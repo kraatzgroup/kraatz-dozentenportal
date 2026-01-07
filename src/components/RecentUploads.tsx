@@ -79,11 +79,11 @@ export function RecentUploads() {
 
       if (filesError) throw filesError;
 
-      // Fetch recent submitted invoices - simplified query
+      // Fetch recent submitted/paid invoices - simplified query
       const { data: invoicesData, error: invoicesError } = await supabase
         .from('invoices')
         .select('id, month, year, status, submitted_at, dozent_id')
-        .eq('status', 'submitted')
+        .in('status', ['submitted', 'paid'])
         .order('submitted_at', { ascending: false })
         .limit(5);
 
@@ -146,11 +146,9 @@ export function RecentUploads() {
         throw new Error('Invalid file path');
       }
 
-      const { data: { publicUrl }, error } = await supabase.storage
+      const { data: { publicUrl } } = supabase.storage
         .from('files')
         .getPublicUrl(filePath);
-
-      if (error) throw error;
 
       // Validate the URL uses the correct domain
       if (!publicUrl.includes('baxmpvbwvtlbrzchabfw.supabase.co')) {

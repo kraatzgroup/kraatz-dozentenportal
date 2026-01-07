@@ -506,7 +506,7 @@ export function AdminDashboard() {
       const { data: invoicesData, error: invoicesError } = await supabase
         .from('invoices')
         .select('id, month, year, status, submitted_at, dozent_id, total_amount')
-        .eq('status', 'submitted')
+        .in('status', ['submitted', 'paid'])
         .order('submitted_at', { ascending: false })
         .limit(50);
 
