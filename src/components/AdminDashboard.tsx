@@ -723,9 +723,9 @@ export function AdminDashboard() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 } whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm sm:text-base flex items-center`}
               >
-                <FileText className="h-4 w-4 sm:h-5 sm:w-5 mr-1.5 sm:mr-2" />
-                Dozenten
-                <span className="ml-1.5 sm:ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">
+                <FileText className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
+                <span className="hidden sm:inline">Dozenten</span>
+                <span className="ml-1 sm:ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">
                   {dozenten.length}
                 </span>
               </button>
@@ -737,9 +737,9 @@ export function AdminDashboard() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 } whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm sm:text-base flex items-center`}
               >
-                <Users className="h-4 w-4 sm:h-5 sm:w-5 mr-1.5 sm:mr-2" />
-                Teilnehmer
-                <span className="ml-1.5 sm:ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">
+                <Users className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
+                <span className="hidden sm:inline">Teilnehmer</span>
+                <span className="ml-1 sm:ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">
                   {teilnehmer.length}
                 </span>
               </button>
@@ -751,9 +751,9 @@ export function AdminDashboard() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 } whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm sm:text-base flex items-center`}
               >
-                <Receipt className="h-4 w-4 sm:h-5 sm:w-5 mr-1.5 sm:mr-2" />
-                Rechnungen
-                <span className="ml-1.5 sm:ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">
+                <Receipt className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
+                <span className="hidden sm:inline">Rechnungen</span>
+                <span className="ml-1 sm:ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">
                   {allRechnungen.length + submittedInvoices.length}
                 </span>
               </button>
@@ -765,10 +765,10 @@ export function AdminDashboard() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 } whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm sm:text-base flex items-center relative`}
               >
-                <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5 mr-1.5 sm:mr-2" />
-                Nachrichten
+                <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
+                <span className="hidden sm:inline">Nachrichten</span>
                 {unreadCount > 0 && (
-                  <span className="ml-1.5 sm:ml-2 bg-red-500 text-white py-0.5 px-2 rounded-full text-xs">
+                  <span className="ml-1 sm:ml-2 bg-red-500 text-white py-0.5 px-2 rounded-full text-xs">
                     {unreadCount}
                   </span>
                 )}
@@ -781,8 +781,8 @@ export function AdminDashboard() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 } whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm sm:text-base flex items-center`}
               >
-                <Calendar className="h-4 w-4 sm:h-5 sm:w-5 mr-1.5 sm:mr-2" />
-                Kalender
+                <Calendar className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
+                <span className="hidden sm:inline">Kalender</span>
               </button>
               <button
                 onClick={() => setActiveTab('emails')}
@@ -792,8 +792,8 @@ export function AdminDashboard() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 } whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm sm:text-base flex items-center`}
               >
-                <Mail className="h-4 w-4 sm:h-5 sm:w-5 mr-1.5 sm:mr-2" />
-                E-Mails
+                <Mail className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
+                <span className="hidden sm:inline">E-Mails</span>
               </button>
             </nav>
           </div>
