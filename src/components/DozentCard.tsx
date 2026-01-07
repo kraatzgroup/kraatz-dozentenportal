@@ -245,18 +245,12 @@ export function DozentCard({ dozent, userRole, onEdit, onDelete, onFolderClick }
           {onEdit && (
             <button
               onClick={() => onEdit(dozent)}
-              className="flex-1 flex items-center justify-center bg-gray-100 text-gray-700 hover:bg-gray-200 py-2 px-3 sm:px-4 rounded-md text-sm font-medium transition-colors"
+              className="w-full flex items-center justify-center bg-gray-100 text-gray-700 hover:bg-gray-200 py-2 px-3 sm:px-4 rounded-md text-sm font-medium transition-colors"
             >
               <Edit2 className="h-4 w-4 mr-1.5" />
               Bearbeiten
             </button>
           )}
-          <button
-            onClick={() => setShowContactInfo(true)}
-            className={`${onEdit ? 'flex-1' : 'w-full'} bg-primary/5 text-primary hover:bg-primary/10 py-2 px-3 sm:px-4 rounded-md text-sm font-medium transition-colors`}
-          >
-            Details anzeigen
-          </button>
         </div>
         {onDelete && (
           <button
