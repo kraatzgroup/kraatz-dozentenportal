@@ -67,6 +67,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     date: new Date().toISOString().split('T')[0],
     description: ''
   });
+  const [activityRefreshKey, setActivityRefreshKey] = useState(0);
 
   const unreadMessages = messages.filter(message => !message.read);
 
@@ -309,6 +310,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       
       // Refresh the monthly summary to show updated hours
       await fetchMonthlySummary();
+      // Trigger ActivitySection refresh
+      setActivityRefreshKey(prev => prev + 1);
       console.log('Monthly summary refreshed');
     } catch (error) {
       console.error('Error creating hours:', error);
@@ -538,6 +541,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                 </div>
               ) : isTaetigkeitsberichtFolder && canViewTaetigkeitsbericht ? (
                 <ActivitySection
+                  key={activityRefreshKey}
                   selectedMonth={activityReportMonth}
                   selectedYear={activityReportYear}
                   onMonthChange={setActivityReportMonth}
