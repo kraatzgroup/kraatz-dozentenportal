@@ -291,7 +291,7 @@ export const useHoursStore = create<HoursState>((set, get) => ({
       const { data: newHours, error } = await supabase
         .from('participant_hours')
         .upsert(hoursData, { 
-          onConflict: 'teilnehmer_id,date',
+          onConflict: 'teilnehmer_id,dozent_id,date',
           ignoreDuplicates: false 
         })
         .select()
