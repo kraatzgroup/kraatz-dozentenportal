@@ -753,9 +753,11 @@ export function AdminDashboard() {
               >
                 <Receipt className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">Rechnungen</span>
-                <span className="ml-1 sm:ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">
-                  {allRechnungen.length + submittedInvoices.length}
-                </span>
+                {submittedInvoices.length > 0 && (
+                  <span className="ml-1 sm:ml-2 bg-red-500 text-white py-0.5 px-2 rounded-full text-xs">
+                    {submittedInvoices.length}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => setActiveTab('nachrichten')}
