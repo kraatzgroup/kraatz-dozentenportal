@@ -58,6 +58,10 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     description: '',
     legal_area: ''
   });
+  const [teilnehmerSearch, setTeilnehmerSearch] = useState('');
+  const [teilnehmerSearchResults, setTeilnehmerSearchResults] = useState<any[]>([]);
+  const [showTeilnehmerDropdown, setShowTeilnehmerDropdown] = useState(false);
+  const [selectedTeilnehmerName, setSelectedTeilnehmerName] = useState('');
   const [activityFormData, setActivityFormData] = useState({
     hours: '',
     date: new Date().toISOString().split('T')[0],
@@ -680,24 +684,88 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   </h3>
                   
                   <div className="space-y-4">
-                    <div>
+                    <div className="relative">
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         <User className="h-4 w-4 inline mr-1" />
                         Teilnehmer
                       </label>
-                      <select
-                        value={hoursFormData.teilnehmer_id}
-                        onChange={(e) => setHoursFormData({ ...hoursFormData, teilnehmer_id: e.target.value })}
+                      <input
+                        type="text"
+                        value={selectedTeilnehmerName || teilnehmerSearch}
+                        onChange={async (e) => {
+                          const value = e.target.value;
+                          setTeilnehmerSearch(value);
+                          setSelectedTeilnehmerName('');
+                          setHoursFormData({ ...hoursFormData, teilnehmer_id: '' });
+                          
+                          if (value.length >= 2) {
+                            // Search all teilnehmer in database
+                            const { data } = await supabase
+                              .from('teilnehmer')
+                              .select('id, name, email')
+                              .ilike('name', `%${value}%`)
+                              .limit(10);
+                            setTeilnehmerSearchResults(data || []);
+                            setShowTeilnehmerDropdown(true);
+                          } else {
+                            setTeilnehmerSearchResults([]);
+                            setShowTeilnehmerDropdown(false);
+                          }
+                        }}
+                        onFocus={() => {
+                          if (teilnehmerSearchResults.length > 0) {
+                            setShowTeilnehmerDropdown(true);
+                          }
+                        }}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                        placeholder="Namen eingeben zum Suchen..."
                         required
-                      >
-                        <option value="">Teilnehmer auswählen</option>
-                        {teilnehmer.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.name}
-                          </option>
-                        ))}
-                      </select>
+                      />
+                      {/* Autocomplete dropdown */}
+                      {showTeilnehmerDropdown && teilnehmerSearchResults.length > 0 && (
+                        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                          {teilnehmerSearchResults.map((t) => (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => {
+                                setHoursFormData({ ...hoursFormData, teilnehmer_id: t.id });
+                                setSelectedTeilnehmerName(t.name);
+                                setTeilnehmerSearch('');
+                                setShowTeilnehmerDropdown(false);
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none"
+                            >
+                              <div className="font-medium text-gray-900">{t.name}</div>
+                              <div className="text-sm text-gray-500">{t.email}</div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {/* Show assigned teilnehmer as quick select */}
+                      {teilnehmer.length > 0 && !showTeilnehmerDropdown && !selectedTeilnehmerName && (
+                        <div className="mt-2">
+                          <p className="text-xs text-gray-500 mb-1">Zugewiesene Teilnehmer:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {teilnehmer.slice(0, 5).map((t) => (
+                              <button
+                                key={t.id}
+                                type="button"
+                                onClick={() => {
+                                  setHoursFormData({ ...hoursFormData, teilnehmer_id: t.id });
+                                  setSelectedTeilnehmerName(t.name);
+                                }}
+                                className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md text-gray-700"
+                              >
+                                {t.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {selectedTeilnehmerName && (
+                        <p className="mt-1 text-xs text-green-600">✓ {selectedTeilnehmerName} ausgewählt</p>
+                      )}
                     </div>
 
                     <div>
