@@ -753,9 +753,9 @@ export function AdminDashboard() {
               >
                 <Receipt className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">Rechnungen</span>
-                {submittedInvoices.length > 0 && (
+                {submittedInvoices.filter(i => i.status === 'submitted').length > 0 && (
                   <span className="ml-1 sm:ml-2 bg-red-500 text-white py-0.5 px-2 rounded-full text-xs">
-                    {submittedInvoices.length}
+                    {submittedInvoices.filter(i => i.status === 'submitted').length}
                   </span>
                 )}
               </button>
