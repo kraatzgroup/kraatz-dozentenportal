@@ -144,37 +144,12 @@ export function ParticipantHoursSection({
           </div>
         </div>
 
-        {teilnehmer.length === 0 ? (
-          <div className="text-center py-8">
-            <Users className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">Keine Teilnehmer</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Fügen Sie Ihre ersten aktiven Teilnehmer hinzu.
-            </p>
-            <div className="mt-6">
-              <button
-                onClick={() => setShowTeilnehmerManagement(true)}
-                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary hover:bg-primary/90"
-              >
-                <Users className="h-4 w-4 mr-2" />
-                Teilnehmer hinzufügen
-              </button>
-            </div>
-          </div>
-        ) : (
-          (() => {
-            // Use monthlySummary directly - it contains all teilnehmer for which hours were logged
-            const participantsWithHours = monthlySummary.filter(s => s.total_hours > 0);
-            
-            if (participantsWithHours.length === 0) {
-              return (
-                <div className="text-center py-8 text-gray-500">
-                  <Clock className="mx-auto h-10 w-10 text-gray-300 mb-2" />
-                  <p>Keine Stunden für {getMonthName(selectedMonth)} {selectedYear} eingetragen</p>
-                </div>
-              );
-            }
-            
+        {(() => {
+          // Use monthlySummary directly - it contains all teilnehmer for which hours were logged
+          const participantsWithHours = monthlySummary.filter(s => s.total_hours > 0);
+          
+          if (participantsWithHours.length > 0) {
+            // Show participants with hours
             return (
               <div className="space-y-4">
                 {participantsWithHours.map((summary) => (
@@ -214,8 +189,17 @@ export function ParticipantHoursSection({
                 ))}
               </div>
             );
-          })()
-        )}
+          }
+          
+          // No hours for this month - show empty state
+          return (
+            <div className="text-center py-8 text-gray-500">
+              <Clock className="mx-auto h-10 w-10 text-gray-300 mb-2" />
+              <p>Keine Stunden für {getMonthName(selectedMonth)} {selectedYear} eingetragen</p>
+              <p className="text-xs mt-2">Klicken Sie auf "Stunden eintragen" um Stunden hinzuzufügen.</p>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
