@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { useUserStore, User } from '../store/userStore';
 import { ProfilePicture } from './ProfilePicture';
 import { Logo } from './Logo';
-import { supabaseAdmin } from '../lib/supabase';
 import { supabase } from '../lib/supabase';
 
 interface DialogState {
@@ -254,7 +253,7 @@ export function UserManagement() {
   const handleDatabaseBackup = async () => {
     setIsBackupLoading(true);
     try {
-      const { data, error } = await supabaseAdmin.rpc('generate_backup');
+      const { data, error } = await supabase.rpc('generate_backup');
       if (error) throw error;
 
       // Create a blob from the SQL data

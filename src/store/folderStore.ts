@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
-import { useAuthStore } from './authStore';
 
 export interface Folder {
   id: string;
@@ -53,15 +52,6 @@ export const useFolderStore = create<FolderState>((set, get) => ({
       
       console.log('FolderStore: Direct query result:', { testData, testError });
       
-      // Also try with supabaseAdmin to bypass RLS
-      console.log('FolderStore: Testing admin query...');
-      const { supabaseAdmin } = await import('../lib/supabase');
-      const { data: adminData, error: adminError } = await supabaseAdmin
-        .from('folders')
-        .select('*')
-        .eq('user_id', userId);
-      
-      console.log('FolderStore: Admin query result:', { adminData, adminError });
 
       const { data, error } = await supabase
         .from('folders')

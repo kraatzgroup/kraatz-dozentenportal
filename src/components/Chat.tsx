@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, Check, CheckCheck } from 'lucide-react';
+import { ArrowLeft, Send, Check, CheckCheck, Search } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore'; 
@@ -22,6 +22,7 @@ export function Chat() {
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     fetchContacts();
@@ -138,6 +139,18 @@ export function Chat() {
     return `${date.toLocaleDateString('de-DE')}, ${time}`;
   };
 
+  // Filter and separate contacts into unread and read
+  const { unreadContacts, readContacts } = useMemo(() => {
+    const filtered = contacts.filter(contact => 
+      contact.full_name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    
+    const unread = filtered.filter(contact => hasUnreadMessages(contact.id));
+    const read = filtered.filter(contact => !hasUnreadMessages(contact.id));
+    
+    return { unreadContacts: unread, readContacts: read };
+  }, [contacts, searchQuery, messages, user?.id]);
+
   return (
     <div className="min-h-screen bg-background">
       <nav className="bg-white shadow-sm">
@@ -170,62 +183,130 @@ export function Chat() {
               {/* Contacts List */}
               <div className="col-span-1 sm:border-r border-gray-200 border-b sm:border-b-0">
                 <div className="p-4 border-b border-gray-200">
-                  <h2 className="text-base sm:text-lg font-medium text-gray-900">Kontakte</h2>
+                  <h2 className="text-base sm:text-lg font-medium text-gray-900 mb-3">Kontakte</h2>
+                  {/* Search Bar */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Kontakt suchen..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                  </div>
                 </div>
-                <div className="overflow-y-auto h-[200px] sm:h-[calc(600px-4rem)]">
-                  {contacts.map(contact => {
-                    const hasUnread = hasUnreadMessages(contact.id);
-                    const isSelected = selectedContact?.id === contact.id;
-                    
-                    return (
-                      <button
-                        key={contact.id}
-                        onClick={() => setSelectedContact(contact)}
-                        className={`w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors duration-150 relative ${
-                          isSelected ? 'bg-blue-50' : ''
-                        } ${hasUnread && !isSelected ? 'bg-blue-50/50' : ''}`}
-                      >
-                        <div className="flex items-center min-w-0 gap-2">
-                          <ProfilePicture
-                            userId={contact.id}
-                            url={contact.profile_picture_url} 
-                            size="sm"
-                            editable={false}
-                            isAdmin={contact.role === 'admin'}
-                            fullName={contact.full_name}
-                          />
-                          <div className="ml-2 sm:ml-3 flex-1 min-w-0">
-                            <div className={`font-medium ${hasUnread && !isSelected ? 'text-blue-600' : 'text-gray-900'}`}>
-                              <span className="truncate block">{contact.full_name}</span>
-                            </div>
-                            <div className="text-xs sm:text-sm text-gray-500">
-                              {contact.role === 'admin' ? 'Administrator' : 
-                               contact.role === 'buchhaltung' ? 'Buchhaltung' :
-                               contact.role === 'verwaltung' ? 'Verwaltung' :
-                               contact.role === 'vertrieb' ? 'Vertrieb' : 'Dozent'}
-                            </div>
-                          </div>
-                          {hasUnread && !isSelected && (
-                            <div className="ml-2 flex-shrink-0">
-                              <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
-                                <span className="text-white text-xs font-bold">
-                                  {messages.filter(msg => 
-                                    msg.sender_id === contact.id && 
-                                    msg.receiver_id === user?.id && 
-                                    !msg.read_at
-                                  ).length > 99 ? '99+' : messages.filter(msg => 
-                                    msg.sender_id === contact.id && 
-                                    msg.receiver_id === user?.id && 
-                                    !msg.read_at
-                                  ).length}
-                                </span>
+                <div className="overflow-y-auto h-[200px] sm:h-[calc(600px-7rem)]">
+                  {/* Unread Section */}
+                  {unreadContacts.length > 0 && (
+                    <>
+                      <div className="px-4 py-2 bg-red-50 border-b border-red-100">
+                        <span className="text-xs font-semibold text-red-600 uppercase tracking-wide">
+                          Ungelesen ({unreadContacts.length})
+                        </span>
+                      </div>
+                      {unreadContacts.map(contact => {
+                        const isSelected = selectedContact?.id === contact.id;
+                        const unreadCount = messages.filter(msg => 
+                          msg.sender_id === contact.id && 
+                          msg.receiver_id === user?.id && 
+                          !msg.read_at
+                        ).length;
+                        
+                        return (
+                          <button
+                            key={contact.id}
+                            onClick={() => setSelectedContact(contact)}
+                            className={`w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors duration-150 relative border-l-4 border-red-500 ${
+                              isSelected ? 'bg-blue-50' : 'bg-red-50/30'
+                            }`}
+                          >
+                            <div className="flex items-center min-w-0 gap-2">
+                              <ProfilePicture
+                                userId={contact.id}
+                                url={contact.profile_picture_url} 
+                                size="sm"
+                                editable={false}
+                                isAdmin={contact.role === 'admin'}
+                                fullName={contact.full_name}
+                              />
+                              <div className="ml-2 sm:ml-3 flex-1 min-w-0">
+                                <div className="font-semibold text-gray-900">
+                                  <span className="truncate block">{contact.full_name}</span>
+                                </div>
+                                <div className="text-xs sm:text-sm text-gray-500">
+                                  {contact.role === 'admin' ? 'Administrator' : 
+                                   contact.role === 'buchhaltung' ? 'Buchhaltung' :
+                                   contact.role === 'verwaltung' ? 'Verwaltung' :
+                                   contact.role === 'vertrieb' ? 'Vertrieb' : 'Dozent'}
+                                </div>
+                              </div>
+                              <div className="ml-2 flex-shrink-0">
+                                <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+                                  <span className="text-white text-xs font-bold">
+                                    {unreadCount > 99 ? '99+' : unreadCount}
+                                  </span>
+                                </div>
                               </div>
                             </div>
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })}
+                          </button>
+                        );
+                      })}
+                    </>
+                  )}
+                  
+                  {/* Read Section */}
+                  {readContacts.length > 0 && (
+                    <>
+                      <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
+                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                          {unreadContacts.length > 0 ? 'Gelesen' : 'Alle Kontakte'} ({readContacts.length})
+                        </span>
+                      </div>
+                      {readContacts.map(contact => {
+                        const isSelected = selectedContact?.id === contact.id;
+                        
+                        return (
+                          <button
+                            key={contact.id}
+                            onClick={() => setSelectedContact(contact)}
+                            className={`w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors duration-150 relative ${
+                              isSelected ? 'bg-blue-50' : ''
+                            }`}
+                          >
+                            <div className="flex items-center min-w-0 gap-2">
+                              <ProfilePicture
+                                userId={contact.id}
+                                url={contact.profile_picture_url} 
+                                size="sm"
+                                editable={false}
+                                isAdmin={contact.role === 'admin'}
+                                fullName={contact.full_name}
+                              />
+                              <div className="ml-2 sm:ml-3 flex-1 min-w-0">
+                                <div className="font-medium text-gray-900">
+                                  <span className="truncate block">{contact.full_name}</span>
+                                </div>
+                                <div className="text-xs sm:text-sm text-gray-500">
+                                  {contact.role === 'admin' ? 'Administrator' : 
+                                   contact.role === 'buchhaltung' ? 'Buchhaltung' :
+                                   contact.role === 'verwaltung' ? 'Verwaltung' :
+                                   contact.role === 'vertrieb' ? 'Vertrieb' : 'Dozent'}
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </>
+                  )}
+                  
+                  {/* No results */}
+                  {unreadContacts.length === 0 && readContacts.length === 0 && (
+                    <div className="p-4 text-center text-gray-500 text-sm">
+                      {searchQuery ? 'Keine Kontakte gefunden' : 'Keine Kontakte verfügbar'}
+                    </div>
+                  )}
                 </div>
               </div>
 

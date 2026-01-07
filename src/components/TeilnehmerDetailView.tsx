@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft, Clock, Calendar, User, BookOpen, GraduationCap, FileText, Edit, Trash2 } from 'lucide-react';
-import { supabase, supabaseAdmin } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useHoursStore } from '../store/hoursStore';
 
@@ -62,10 +62,8 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
     
     try {
       console.log('🔍 Fetching ALL hours for teilnehmer:', teilnehmerId);
-      console.log('🔍 Using supabaseAdmin to bypass all RLS restrictions');
-      
-      // Always use admin client to show ALL hours from ALL dozents for everyone
-      const { data, error } = await supabaseAdmin
+      // Fetch hours using regular client - RLS policies handle access
+      const { data, error } = await supabase
         .from('participant_hours')
         .select(`
           id,
@@ -89,12 +87,12 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
       console.log('📊 Number of hours entries found:', data?.length || 0);
       
       // Debug: Show unique dozents in the data
-      const uniqueDozentenInData = [...new Set(data?.map(h => h.dozent?.full_name).filter(Boolean))];
+      const uniqueDozentenInData = [...new Set(data?.map(h => (h.dozent as any)?.full_name).filter(Boolean))];
       console.log('👥 Unique dozents found in data:', uniqueDozentenInData);
       
       // Debug: Show hours per dozent
       uniqueDozentenInData.forEach(dozentName => {
-        const dozentHours = data?.filter(h => h.dozent?.full_name === dozentName) || [];
+        const dozentHours = data?.filter(h => (h.dozent as any)?.full_name === dozentName) || [];
         console.log(`📈 ${dozentName}: ${dozentHours.length} entries, ${dozentHours.reduce((sum, h) => sum + parseFloat(h.hours.toString()), 0)} total hours`);
       });
 
@@ -106,8 +104,8 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
         description: item.description || '',
         legal_area: item.legal_area || '',
         created_at: item.created_at,
-        dozent_name: item.dozent?.full_name || 'Unbekannt',
-        dozent_email: item.dozent?.email || ''
+        dozent_name: (item.dozent as any)?.full_name || 'Unbekannt',
+        dozent_email: (item.dozent as any)?.email || ''
       })) || [];
 
       setHours(transformedData);
@@ -130,7 +128,7 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
 
   const fetchDozenten = async () => {
     try {
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await supabase
         .from('profiles')
         .select('id, full_name')
         .eq('role', 'dozent')
@@ -147,7 +145,7 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
     e.preventDefault();
     
     try {
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await supabase
         .from('participant_hours')
         .insert([{
           teilnehmer_id: teilnehmerId,
@@ -198,7 +196,7 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
     if (!editingHours) return;
     
     try {
-      const { error } = await supabaseAdmin
+      const { error } = await supabase
         .from('participant_hours')
         .update({
           hours: parseFloat(hoursFormData.hours),
@@ -232,7 +230,7 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
   const handleDeleteHours = async (hoursEntry: TeilnehmerHours) => {
     if (window.confirm(`Möchten Sie den Stundeneintrag vom ${formatDate(hoursEntry.date)} (${hoursEntry.hours}h) wirklich löschen?`)) {
       try {
-        const { error } = await supabaseAdmin
+        const { error } = await supabase
           .from('participant_hours')
           .delete()
           .eq('id', hoursEntry.id);

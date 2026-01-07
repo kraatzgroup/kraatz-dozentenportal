@@ -128,29 +128,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // Fetch messages again to update the chat
       await get().fetchMessages(message.receiver_id);
 
-      // Send email notification asynchronously (don't await)
-      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-message-notification`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
-          messageId: newMessage.id,
-          senderId: user.id,
-          receiverId: message.receiver_id,
-          content: message.content
-        }),
-      }).then(async (response) => {
-        if (response.ok) {
-          const result = await response.json();
-          console.log('Message notification sent successfully:', result);
-        } else {
-          console.warn('Message notification failed:', await response.text());
-        }
-      }).catch((notificationError) => {
-        console.warn('Failed to send message notification:', notificationError);
-      });
+      // Email notifications disabled for now
+      // TODO: Re-enable when Edge Function is deployed to new Supabase project
     } catch (error: any) {
       set({ error: error.message });
       console.error('Error sending message:', error);

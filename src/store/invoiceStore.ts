@@ -10,11 +10,13 @@ export interface Invoice {
   period_start: string;
   period_end: string;
   total_amount: number;
-  status: 'draft' | 'sent' | 'paid';
+  status: 'draft' | 'review' | 'submitted' | 'sent' | 'paid';
   created_at: string;
   updated_at: string;
+  submitted_at?: string;
   sent_at?: string;
   paid_at?: string;
+  file_path?: string;
   dozent?: {
     full_name: string;
     email: string;
@@ -23,6 +25,10 @@ export interface Invoice {
     bank_name: string;
     iban: string;
     bic: string;
+    street?: string;
+    house_number?: string;
+    postal_code?: string;
+    city?: string;
   };
 }
 
@@ -71,7 +77,11 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
             tax_id,
             bank_name,
             iban,
-            bic
+            bic,
+            street,
+            house_number,
+            postal_code,
+            city
           )
         `)
         .order('created_at', { ascending: false });
@@ -186,7 +196,13 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
       return newInvoice;
     } catch (error: any) {
       console.error('Error creating invoice:', error);
-      set({ error: error.message });
+      // Check for duplicate constraint error
+      let errorMessage = error.message;
+      if (error.message?.includes('invoices_dozent_month_year_unique') || 
+          error.code === '23505') {
+        errorMessage = 'Es gibt bereits eine Rechnung für diesen Monat.';
+      }
+      set({ error: errorMessage });
       throw error;
     } finally {
       set({ isLoading: false });
@@ -194,14 +210,21 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
   },
 
   updateInvoice: async (id, data) => {
-    set({ isLoading: true, error: null });
     try {
+      console.log('[updateInvoice] Starting update for:', id, 'data:', data);
+      
+      // Simple update without select
       const { error } = await supabase
         .from('invoices')
         .update(data)
         .eq('id', id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('[updateInvoice] Supabase error:', error);
+        throw error;
+      }
+      
+      console.log('[updateInvoice] Update successful, updating local state');
 
       // Update local state
       set(state => ({
@@ -209,12 +232,11 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
           invoice.id === id ? { ...invoice, ...data } : invoice
         )
       }));
+      
+      console.log('[updateInvoice] Local state updated');
     } catch (error: any) {
-      console.error('Error updating invoice:', error);
-      set({ error: error.message });
+      console.error('[updateInvoice] Error:', error);
       throw error;
-    } finally {
-      set({ isLoading: false });
     }
   },
 

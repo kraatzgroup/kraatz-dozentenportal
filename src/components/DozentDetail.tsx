@@ -61,7 +61,7 @@ export function DozentDetail() {
       console.log('DozentDetail: Fetching folders for dozentId:', dozentId);
       fetchFolders(dozentId);
       fetchTeilnehmer();
-      fetchMonthlySummary(dozentId);
+      fetchMonthlySummary(dozentId, selectedYear, selectedMonth);
       
       // Setup real-time subscriptions
       const { setupRealtimeSubscription: setupTeilnehmerSub, cleanupSubscription: cleanupTeilnehmerSub } = useTeilnehmerStore.getState();
@@ -79,6 +79,13 @@ export function DozentDetail() {
       };
     }
   }, [dozentId]);
+
+  // Refetch monthly summary when month/year changes
+  useEffect(() => {
+    if (dozentId) {
+      fetchMonthlySummary(dozentId, selectedYear, selectedMonth);
+    }
+  }, [dozentId, selectedMonth, selectedYear, fetchMonthlySummary]);
 
   // Create a function to get hours for the specific dozent
   const getDozentMonthHours = (teilnehmerId: string) => {
@@ -482,14 +489,6 @@ export function DozentDetail() {
             )}
           </div>
 
-          {/* Debug info */}
-          <div className="mb-4 p-4 bg-gray-100 rounded text-sm">
-            <div>Debug Info:</div>
-            <div>Dozent ID: {dozentId}</div>
-            <div>Current User Role: {userRole}</div>
-            <div>Folders Count: {folders.length}</div>
-            <div>Folders: {JSON.stringify(folders.map(f => ({ id: f.id, name: f.name })))}</div>
-          </div>
 
           {selectedFolder && (
             <>

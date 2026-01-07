@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabaseServiceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJheG1wdmJ3dnRsYnJ6Y2hhYmZ3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTIwNDAzOCwiZXhwIjoyMDY2NzgwMDM4fQ.QYgIsHuhi_UxdeV9-IyfFg8cExsjWf6y-EgCZS8_TX0';
+// Service role key removed - use Edge Functions for admin operations
 
 // Validate configuration
 if (!supabaseUrl || !supabaseAnonKey) {
@@ -12,8 +12,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 // Log successful configuration
 console.log('✅ Supabase Configuration Validated:', {
   url: supabaseUrl,
-  anonKey: supabaseAnonKey ? `${supabaseAnonKey.substring(0, 20)}...` : 'undefined',
-  serviceKey: supabaseServiceKey ? `${supabaseServiceKey.substring(0, 20)}...` : 'undefined'
+  anonKey: supabaseAnonKey ? `${supabaseAnonKey.substring(0, 20)}...` : 'undefined'
 });
 
 // Create regular client for normal operations
@@ -21,6 +20,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
+    storage: window.localStorage,
+    storageKey: 'dozentenportal-auth-token',
   },
   global: {
     headers: {
@@ -29,18 +30,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-// Create admin client with service role for admin operations
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-  },
-  global: {
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  },
-});
+// Admin operations should use Edge Functions instead of exposing service role key
 
 // Test connection on initialization
 const testConnection = async () => {
@@ -61,7 +51,7 @@ const testConnection = async () => {
     console.log('✅ Supabase connectivity test successful');
     
     // Then test auth session
-    const { data, error } = await supabase.auth.getSession();
+    const { error } = await supabase.auth.getSession();
     if (error) {
       console.warn('⚠️ Auth session error (this is normal if not logged in):', error.message);
     } else {

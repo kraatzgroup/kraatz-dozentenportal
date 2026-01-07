@@ -84,7 +84,7 @@ export function ProfilePicture({
       if (urlError) throw urlError;
 
       // Validate the generated URL uses the correct domain
-      if (!publicUrl.includes('baxmpvbwvtlbrzchabfw.supabase.co')) {
+      if (!publicUrl.includes('gkkveloqajxghhflkfru.supabase.co')) {
         console.error('❌ Generated avatar URL uses wrong domain:', publicUrl);
         throw new Error('Avatar URL generated with wrong domain. Please check Supabase configuration.');
       }
@@ -120,24 +120,30 @@ export function ProfilePicture({
       // Extract the path after the domain and rebuild with new domain
       const pathMatch = imageUrl.match(/\/storage\/v1\/object\/public\/(.+)$/);
       if (pathMatch) {
-        const newUrl = `https://baxmpvbwvtlbrzchabfw.supabase.co/storage/v1/object/public/${pathMatch[1]}`;
+        const newUrl = `https://gkkveloqajxghhflkfru.supabase.co/storage/v1/object/public/${pathMatch[1]}`;
         console.log('✅ Fixed profile picture URL:', newUrl);
         return newUrl;
       }
     }
     
-    // Check if URL uses correct domain
-    if (imageUrl.includes('baxmpvbwvtlbrzchabfw.supabase.co')) {
+    // Check if URL uses correct domain (new Supabase instance)
+    if (imageUrl.includes('gkkveloqajxghhflkfru.supabase.co')) {
       return imageUrl;
+    }
+    
+    // Check if URL uses old correct domain
+    if (imageUrl.includes('baxmpvbwvtlbrzchabfw.supabase.co')) {
+      // Migrate to new domain
+      return imageUrl.replace('baxmpvbwvtlbrzchabfw.supabase.co', 'gkkveloqajxghhflkfru.supabase.co');
     }
     
     // If it's a relative path or other format, try to construct proper URL
     if (imageUrl.startsWith('/') || !imageUrl.includes('http')) {
       const cleanPath = imageUrl.replace(/^\/+/, '');
-      return `https://baxmpvbwvtlbrzchabfw.supabase.co/storage/v1/object/public/${cleanPath}`;
+      return `https://gkkveloqajxghhflkfru.supabase.co/storage/v1/object/public/${cleanPath}`;
     }
     
-    console.warn('⚠️ Unknown profile picture URL format:', imageUrl);
+    // Return as-is for any other format
     return imageUrl;
   };
 
@@ -152,6 +158,11 @@ export function ProfilePicture({
 
   // Get validated image URL
   const validatedUrl = getValidatedImageUrl(url);
+  
+  // Debug log
+  if (url) {
+    console.log('ProfilePicture - url:', url, 'validated:', validatedUrl);
+  }
 
   const content = isAdmin ? (
     <div className={`${sizeClasses[size]} rounded-full bg-white flex items-center justify-center p-1 overflow-hidden`}>

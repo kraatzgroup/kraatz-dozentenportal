@@ -107,7 +107,7 @@ export function FileSection({
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           {/* Left: Section Name */}
           <h3 className="text-lg font-medium text-gray-900">
-            {selectedFolder.name}
+            {selectedFolder.name === 'Rechnungen' ? 'Rechnungen Auslagen' : selectedFolder.name}
           </h3>
           
           {/* Right: Month/Year Selection + Action Buttons */}

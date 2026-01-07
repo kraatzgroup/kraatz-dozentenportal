@@ -4,13 +4,18 @@ export const testDatabaseConnection = async () => {
   try {
     console.log('🔍 Testing database connection...');
     
-    // Test basic connection
+    // Test basic connection (without requiring authentication)
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError) {
+    if (authError && authError.message !== 'Auth session missing!') {
       console.error('❌ Auth error:', authError);
       return false;
     }
-    console.log('✅ Auth connection successful, user:', user?.email);
+    
+    if (user) {
+      console.log('✅ Auth connection successful, user:', user?.email);
+    } else {
+      console.log('ℹ️ No authenticated user (this is normal for initial setup)');
+    }
     
     // Check if participant_hours table exists
     console.log('🔍 Checking if participant_hours table exists...');

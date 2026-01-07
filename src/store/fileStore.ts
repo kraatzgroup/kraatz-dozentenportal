@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
-import { useAuthStore } from './authStore';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
 export interface File {
@@ -12,7 +11,7 @@ export interface File {
   created_at: string;
   assigned_month?: number;
   assigned_year?: number;
-  teilnehmer_id?: string;
+  teilnehmer_id?: string | null;
   teilnehmer?: {
     name: string;
   };
@@ -62,7 +61,7 @@ export const useFileStore = create<FileState>((set, get) => ({
         console.log('🔔 Files change detected:', payload);
         // If we have a specific folder, only refresh if the change affects that folder
         if (folderId) {
-          const affectedFolderId = payload.new?.folder_id || payload.old?.folder_id;
+          const affectedFolderId = (payload.new as any)?.folder_id || (payload.old as any)?.folder_id;
           if (affectedFolderId === folderId) {
             console.log('🔄 Refreshing files for folder:', folderId);
             get().fetchFiles(folderId);
@@ -95,43 +94,6 @@ export const useFileStore = create<FileState>((set, get) => ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error('No authenticated user');
-      }
-      
-      // Check if current user is admin
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-      
-      const isAdmin = profile?.role === 'admin';
-      
-      // Use different query based on user role
-      let query = supabase
-        .from('files')
-        .select(`
-          *,
-          teilnehmer:teilnehmer(name)
-        `)
-        .eq('folder_id', folderId)
-        .order('created_at', { ascending: false });
-      
-      // If admin, don't apply RLS restrictions by using the admin client
-      if (isAdmin) {
-        const { supabaseAdmin } = await import('../lib/supabase');
-        const { data, error } = await supabaseAdmin
-          .from('files')
-          .select(`
-            *,
-            teilnehmer:teilnehmer(name)
-          `)
-          .eq('folder_id', folderId)
-          .order('created_at', { ascending: false });
-        
-        if (error) throw error;
-        console.log('Files fetched (admin):', data?.length || 0);
-        set({ files: data || [] });
-        return;
       }
       
       const { data, error } = await supabase

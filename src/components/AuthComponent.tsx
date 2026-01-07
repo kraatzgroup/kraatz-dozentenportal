@@ -229,50 +229,17 @@ export function AuthComponent() {
     setError(null);
 
     try {
-      // Try edge function first for password reset with generated password
-      try {
-        console.log('Attempting to call send-password-reset edge function...');
-        const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-password-reset`;
-        
-        const response = await fetch(edgeFunctionUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            email: resetEmail
-          }),
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || `HTTP error ${response.status}`);
-        }
-        
-        const result = await response.json();
-        
-        if (result.success) {
-          setSuccessMessage('Ein neues Passwort wurde generiert und an Ihre E-Mail-Adresse gesendet.');
-          setShowPasswordReset(false);
-          setResetEmail('');
-        } else {
-          throw new Error(result.error || 'Edge function failed');
-        }
-      } catch (edgeError) {
-        console.warn('Edge function failed, falling back to Supabase reset:', edgeError);
-        
-        // Fallback to Supabase's built-in password reset
-        const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-          redirectTo: window.location.origin
-        });
-        
-        if (error) throw error;
-        
-        setSuccessMessage('Ein Link zum Zurücksetzen des Passworts wurde an Ihre E-Mail-Adresse gesendet.');
-        setShowPasswordReset(false);
-        setResetEmail('');
-      }
+      // Use Supabase's built-in password reset
+      // Edge function disabled until deployed to new Supabase project
+      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+        redirectTo: window.location.origin
+      });
+      
+      if (error) throw error;
+      
+      setSuccessMessage('Ein Link zum Zurücksetzen des Passworts wurde an Ihre E-Mail-Adresse gesendet.');
+      setShowPasswordReset(false);
+      setResetEmail('');
     } catch (error: any) {
       console.error('Password reset error:', error);
       

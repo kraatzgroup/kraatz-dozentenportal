@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, Edit, Trash2, User, Mail, Calendar, ArrowLeft, Search, UserPlus } from 'lucide-react';
 import { useTeilnehmerStore, Teilnehmer } from '../store/teilnehmerStore';
-import { supabase, supabaseAdmin } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 
 interface TeilnehmerManagementProps {
@@ -91,7 +91,7 @@ export function TeilnehmerManagement({ onBack, isAdmin = false }: TeilnehmerMana
     // Check for duplicates before creating
     if (!editingTeilnehmer) {
       try {
-        const { data: existingTeilnehmer, error: checkError } = await supabaseAdmin
+        const { data: existingTeilnehmer, error: checkError } = await supabase
           .from('teilnehmer')
           .select('id, name, email')
           .or(`name.ilike.${formData.name},email.ilike.${formData.email}`);

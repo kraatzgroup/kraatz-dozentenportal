@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageSquare, LogOut, Settings, FolderIcon, Plus, Edit, Trash2, Users, FileText, User, Clock, Calendar } from 'lucide-react';
+import { MessageSquare, LogOut, Settings, FolderIcon, Plus, Edit, Trash2, Users, FileText, User, Clock, Calendar, X } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useMessageStore } from '../store/messageStore';
 import { useFolderStore } from '../store/folderStore';
@@ -15,6 +15,7 @@ import { ActivitySection } from './ActivitySection';
 import { ParticipantHoursSection } from './ParticipantHoursSection';
 import { TeilnehmerManagement } from './TeilnehmerManagement';
 import { InvoiceManagement } from './InvoiceManagement';
+import { AvailabilitySection } from './AvailabilitySection';
 import '../utils/testDatabase'; // This will run the database test
 
 interface DashboardProps {
@@ -29,7 +30,7 @@ interface Folder {
 
 export function Dashboard({ isAdmin = false }: DashboardProps) {
   const navigate = useNavigate();
-  const { user, signOut, userRole, isAdmin: isUserAdmin, isBuchhaltung, isVerwaltung, isVertrieb } = useAuthStore();
+  const { user, signOut, userRole, isAdmin: isUserAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isDozent } = useAuthStore();
   const { folders, fetchFolders, createFolder, updateFolder, deleteFolder } = useFolderStore();
   const { files, fetchFiles, uploadFile, deleteFile } = useFileStore();
   const { teilnehmer, fetchTeilnehmer } = useTeilnehmerStore();
@@ -48,6 +49,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const [showUnreadPopup, setShowUnreadPopup] = useState(false);
   const [showActivityDialog, setShowActivityDialog] = useState(false);
   const [showNewFolder, setShowNewFolder] = useState(false);
+  const [showAvailabilityPopup, setShowAvailabilityPopup] = useState(false);
+  const [currentAvailability, setCurrentAvailability] = useState<{status: string; notes?: string} | null>(null);
   const [hoursFormData, setHoursFormData] = useState({
     teilnehmer_id: '',
     hours: '',
@@ -67,7 +70,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     fetchFolders();
     fetchMessages();
     fetchTeilnehmer();
-    fetchMonthlySummary(); // Fetch hours data
+    fetchMonthlySummary(undefined, selectedYear, selectedMonth); // Fetch hours data for selected month
 
     // Setup message subscription
     const unsubscribe = setupMessageSubscription();
@@ -89,6 +92,40 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     };
   }, [fetchFolders, fetchMessages, setupMessageSubscription]);
 
+  // Refetch monthly summary when month/year changes
+  useEffect(() => {
+    fetchMonthlySummary(undefined, selectedYear, selectedMonth);
+  }, [selectedMonth, selectedYear, fetchMonthlySummary]);
+
+  // Fetch current month availability
+  useEffect(() => {
+    const fetchCurrentAvailability = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        
+        const currentMonth = new Date().getMonth() + 1;
+        const currentYear = new Date().getFullYear();
+        
+        const { data, error } = await supabase
+          .from('dozent_availability')
+          .select('capacity_status, notes')
+          .eq('dozent_id', user.id)
+          .eq('month', currentMonth)
+          .eq('year', currentYear)
+          .single();
+        
+        if (!error && data) {
+          setCurrentAvailability({ status: data.capacity_status, notes: data.notes });
+        }
+      } catch (error) {
+        console.error('Error fetching availability:', error);
+      }
+    };
+    
+    fetchCurrentAvailability();
+  }, []);
+
   useEffect(() => {
     if (selectedFolder) {
       fetchFiles(selectedFolder.id);
@@ -102,10 +139,12 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const isActiveTeilnehmerFolder = selectedFolder?.name === 'Aktive Teilnehmer';
   const isTaetigkeitsberichtFolder = selectedFolder?.name === 'Tätigkeitsbericht';
   const isRechnungenFolder = selectedFolder?.name === 'Rechnungen';
+  const isVerfuegbarkeitFolder = selectedFolder?.name === 'Verfügbarkeit';
   
   // Check permissions based on role
-  const canViewRechnungen = isUserAdmin || isBuchhaltung;
-  const canViewTaetigkeitsbericht = isUserAdmin || isBuchhaltung;
+  // Dozenten can view their own Rechnungen and Tätigkeitsbericht folders
+  const canViewRechnungen = isUserAdmin || isBuchhaltung || isDozent;
+  const canViewTaetigkeitsbericht = isUserAdmin || isBuchhaltung || isDozent;
   const canManageAll = isUserAdmin || isBuchhaltung;
 
   const handleSignOut = async () => {
@@ -286,13 +325,13 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                     <span className="ml-2 text-xl font-semibold text-gray-900">Dozenten-Portal</span>
                   </div>
                 </div>
-                <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2 sm:space-x-4">
                   <button
-                    onClick={() => setShowUnreadPopup(true)}
-                    className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition relative"
+                    onClick={() => navigate('/messages')}
+                    className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition relative"
                   >
-                    <MessageSquare className="h-5 w-5 mr-2" />
-                    Nachrichten
+                    <MessageSquare className="h-5 w-5 sm:mr-2" />
+                    <span className="hidden sm:inline">Nachrichten</span>
                     {unreadMessages.length > 0 && (
                       <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
                         {unreadMessages.length > 99 ? '99+' : unreadMessages.length}
@@ -301,17 +340,17 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   </button>
                   <button
                     onClick={() => navigate('/settings')}
-                    className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition"
+                    className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition"
                   >
-                    <Settings className="h-5 w-5 mr-2" />
-                    Einstellungen
+                    <Settings className="h-5 w-5 sm:mr-2" />
+                    <span className="hidden sm:inline">Einstellungen</span>
                   </button>
                   <button
                     onClick={handleSignOut}
-                    className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-red-500 hover:text-red-700 focus:outline-none transition"
+                    className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-red-500 hover:text-red-700 focus:outline-none transition"
                   >
-                    <LogOut className="h-5 w-5 mr-2" />
-                    Abmelden
+                    <LogOut className="h-5 w-5 sm:mr-2" />
+                    <span className="hidden sm:inline">Abmelden</span>
                   </button>
                 </div>
               </div>
@@ -338,13 +377,35 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                 <span className="ml-2 text-xl font-semibold text-gray-900">Dozenten-Portal</span>
               </div>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 sm:space-x-4">
+              {/* Availability Badge */}
               <button
-                onClick={() => setShowUnreadPopup(true)}
-                className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition relative"
+                onClick={() => setShowAvailabilityPopup(true)}
+                className={`inline-flex items-center px-2 sm:px-3 py-1.5 rounded-full text-xs font-medium border transition cursor-pointer ${
+                  currentAvailability?.status === 'available' 
+                    ? 'bg-green-100 text-green-800 border-green-300 hover:bg-green-200'
+                    : currentAvailability?.status === 'limited'
+                    ? 'bg-yellow-100 text-yellow-800 border-yellow-300 hover:bg-yellow-200'
+                    : currentAvailability?.status === 'full'
+                    ? 'bg-red-100 text-red-800 border-red-300 hover:bg-red-200'
+                    : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
+                }`}
+                title="Verfügbarkeit bearbeiten"
               >
-                <MessageSquare className="h-5 w-5 mr-2" />
-                Nachrichten
+                <Calendar className="h-3.5 w-3.5 mr-1" />
+                <span className="hidden sm:inline">
+                  {currentAvailability?.status === 'available' ? 'Verfügbar' 
+                    : currentAvailability?.status === 'limited' ? 'Begrenzt'
+                    : currentAvailability?.status === 'full' ? 'Ausgelastet'
+                    : 'Verfügbarkeit'}
+                </span>
+              </button>
+              <button
+                onClick={() => navigate('/messages')}
+                className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition relative"
+              >
+                <MessageSquare className="h-5 w-5 sm:mr-2" />
+                <span className="hidden sm:inline">Nachrichten</span>
                 {unreadMessages.length > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
                     {unreadMessages.length > 99 ? '99+' : unreadMessages.length}
@@ -353,17 +414,17 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
               </button>
               <button
                 onClick={() => navigate('/settings')}
-                className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition"
+                className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition"
               >
-                <Settings className="h-5 w-5 mr-2" />
-                Einstellungen
+                <Settings className="h-5 w-5 sm:mr-2" />
+                <span className="hidden sm:inline">Einstellungen</span>
               </button>
               <button
                 onClick={handleSignOut}
-                className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-red-500 hover:text-red-700 focus:outline-none transition"
+                className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-red-500 hover:text-red-700 focus:outline-none transition"
               >
-                <LogOut className="h-5 w-5 mr-2" />
-                Abmelden
+                <LogOut className="h-5 w-5 sm:mr-2" />
+                <span className="hidden sm:inline">Abmelden</span>
               </button>
             </div>
           </div>
@@ -384,20 +445,13 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   Teilnehmer verwalten
                 </button>
               )}
-              {selectedFolder?.name === 'Rechnungen' && (
-                <button
-                  onClick={() => setShowInvoiceManagement(true)}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-primary/90"
-                >
-                  <FileText className="h-4 w-4 mr-2" />
-                  Rechnungen verwalten
-                </button>
-              )}
             </div>
 
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {folders.filter(folder => {
                 // Filter folders based on user role
+                // Hide Verfügbarkeit folder - it's shown as a badge in the header
+                if (folder.name === 'Verfügbarkeit') return false;
                 if (userRole === 'verwaltung') {
                   return folder.name !== 'Rechnungen' && folder.name !== 'Tätigkeitsbericht';
                 }
@@ -486,6 +540,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   onYearChange={setActivityReportYear}
                   onShowActivityDialog={() => setShowActivityDialog(true)}
                 />
+              ) : isVerfuegbarkeitFolder ? (
+                <AvailabilitySection isAdmin={canManageAll} />
               ) : (isRechnungenFolder && !canViewRechnungen) || (isTaetigkeitsberichtFolder && !canViewTaetigkeitsbericht) ? (
                 <div className="bg-white shadow overflow-hidden sm:rounded-md">
                   <div className="px-4 py-8 text-center text-gray-500">
@@ -520,10 +576,16 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
           {showInvoiceManagement && (
             <div className="fixed z-10 inset-0 overflow-y-auto">
               <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+                <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={handleBackToInvoices}>
                   <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
                 </div>
-                <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
+                <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full relative">
+                  <button
+                    onClick={handleBackToInvoices}
+                    className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 focus:outline-none z-10"
+                  >
+                    <X className="h-6 w-6" />
+                  </button>
                   <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                     <InvoiceManagement
                       onBack={handleBackToInvoices}
@@ -537,6 +599,30 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
         </div>
       </main>
 
+      {/* Availability Popup */}
+      {showAvailabilityPopup && (
+        <div className="fixed z-50 inset-0 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowAvailabilityPopup(false)}>
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full relative">
+              <button
+                onClick={() => setShowAvailabilityPopup(false)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 focus:outline-none z-10"
+              >
+                <X className="h-6 w-6" />
+              </button>
+              <div className="bg-white">
+                <AvailabilitySection 
+                  isAdmin={false}
+                  onAvailabilityChange={(status) => setCurrentAvailability({ status })}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit Folder Dialog */}
       {editingFolder && (

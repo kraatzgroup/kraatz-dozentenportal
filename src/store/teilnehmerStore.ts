@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { supabase, supabaseAdmin } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
 export interface Teilnehmer {
@@ -100,7 +100,7 @@ export const useTeilnehmerStore = create<TeilnehmerState>((set, get) => ({
       } else {
         // Dozents see only their own teilnehmer (where they are the dozent_id)
         console.log('🔍 Dozent: Fetching own teilnehmer...');
-        const { data, error } = await supabaseAdmin
+        const { data, error } = await supabase
           .from('teilnehmer')
           .select('*')
           .eq('dozent_id', user.id)
@@ -128,7 +128,7 @@ export const useTeilnehmerStore = create<TeilnehmerState>((set, get) => ({
       if (!user) throw new Error('No authenticated user');
       console.log('✅ User authenticated:', user.id);
 
-      const { error } = await supabaseAdmin
+      const { error } = await supabase
         .from('teilnehmer')
         .insert([{ ...data, dozent_id: user.id }]);
 
@@ -155,7 +155,7 @@ export const useTeilnehmerStore = create<TeilnehmerState>((set, get) => ({
   updateTeilnehmer: async (id, data) => {
     set({ isLoading: true, error: null });
     try {
-      const { error } = await supabaseAdmin
+      const { error } = await supabase
         .from('teilnehmer')
         .update(data)
         .eq('id', id);
@@ -180,7 +180,7 @@ export const useTeilnehmerStore = create<TeilnehmerState>((set, get) => ({
   deleteTeilnehmer: async (id) => {
     set({ isLoading: true, error: null });
     try {
-      const { error } = await supabaseAdmin
+      const { error } = await supabase
         .from('teilnehmer')
         .delete()
         .eq('id', id);

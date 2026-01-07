@@ -12,6 +12,7 @@ import { usePreviewStore } from './store/previewStore';
 import { PreviewBanner } from './components/PreviewBanner';
 import { supabase } from './lib/supabase';
 import { Footer } from './components/Footer';
+import { ToastContainer } from './components/Toast';
 
 import { useState } from 'react';
 
@@ -162,6 +163,7 @@ function App() {
         </Routes>
         <Footer />
       </div>
+      <ToastContainer />
     </Router>
   );
 }

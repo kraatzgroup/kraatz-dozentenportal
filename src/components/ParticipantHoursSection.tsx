@@ -160,46 +160,62 @@ export function ParticipantHoursSection({
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
-            {teilnehmer.filter(person => getCurrentMonthHours(person.id) > 0).map((person) => (
-              <div key={person.id} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
-                <button
-                  onClick={() => setSelectedTeilnehmer({ id: person.id, name: person.name })}
-                  className="w-full flex items-center justify-between hover:bg-gray-100 transition-colors rounded-lg p-2 -m-2"
-                >
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0">
-                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Users className="h-5 w-5 text-primary" />
-                      </div>
-                    </div>
-                    <div className="ml-4">
+          (() => {
+            // Filter participants who have hours in the selected month
+            const participantsWithHours = teilnehmer.filter(person => getCurrentMonthHours(person.id) > 0);
+            
+            if (participantsWithHours.length === 0) {
+              return (
+                <div className="text-center py-8 text-gray-500">
+                  <Clock className="mx-auto h-10 w-10 text-gray-300 mb-2" />
+                  <p>Keine Stunden für {getMonthName(selectedMonth)} {selectedYear} eingetragen</p>
+                </div>
+              );
+            }
+            
+            return (
+              <div className="space-y-4">
+                {participantsWithHours.map((person) => (
+                  <div key={person.id} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
+                    <button
+                      onClick={() => setSelectedTeilnehmer({ id: person.id, name: person.name })}
+                      className="w-full flex items-center justify-between hover:bg-gray-100 transition-colors rounded-lg p-2 -m-2"
+                    >
                       <div className="flex items-center">
-                        <h4 className="text-sm font-medium text-gray-900">{person.name}</h4>
+                        <div className="flex-shrink-0">
+                          <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                            <Users className="h-5 w-5 text-primary" />
+                          </div>
+                        </div>
+                        <div className="ml-4">
+                          <div className="flex items-center">
+                            <h4 className="text-sm font-medium text-gray-900">{person.name}</h4>
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {person.email}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Aktiv seit: {new Date(person.active_since).toLocaleDateString('de-DE')}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-sm text-gray-500">
-                        {person.email}
+                      <div className="text-right">
+                        <div className="text-lg font-semibold text-primary">
+                          {getCurrentMonthHours(person.id)}h
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {getMonthName(selectedMonth)}
+                        </div>
+                        <div className="text-xs text-green-600">
+                          Stunden eingetragen
+                        </div>
                       </div>
-                      <div className="text-xs text-gray-500">
-                        Aktiv seit: {new Date(person.active_since).toLocaleDateString('de-DE')}
-                      </div>
-                    </div>
+                    </button>
                   </div>
-                  <div className="text-right">
-                    <div className="text-lg font-semibold text-primary">
-                      {getCurrentMonthHours(person.id)}h
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {new Date().toLocaleDateString('de-DE', { month: 'long' })}
-                    </div>
-                    <div className="text-xs text-green-600">
-                      Stunden eingetragen
-                    </div>
-                  </div>
-                </button>
+                ))}
               </div>
-            ))}
-          </div>
+            );
+          })()
         )}
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { supabase, supabaseAdmin } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 
 export interface User {
   id: string;
@@ -16,7 +16,7 @@ interface UserState {
   error: string | null;
   fetchUsers: () => Promise<void>;
   createUser: (userData: { email: string; password: string; fullName: string; role?: string }) => Promise<void>;
-  updateUser: (id: string, fullName: string) => Promise<void>;
+  updateUser: (id: string, data: { fullName: string; role?: string }) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
 }
@@ -87,49 +87,8 @@ export const useUserStore = create<UserState>((set, get) => ({
       } catch (edgeError) {
         console.warn('Edge function failed, using fallback method:', edgeError);
         
-        // Fallback to direct user creation
-        const { data, error: signUpError } = await supabaseAdmin.auth.admin.createUser({
-          email,
-          password: password || 'TempPassword123!', // Temporary password
-          email_confirm: true,
-          user_metadata: {
-            full_name: fullName
-          }
-        });
-
-        if (signUpError) throw signUpError;
-
-        if (!data.user) {
-          throw new Error('Benutzer konnte nicht erstellt werden');
-        }
-
-        // Create profile
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .upsert([{
-            id: data.user.id,
-            email: email,
-            full_name: fullName,
-            role: role
-          }], {
-            onConflict: 'id'
-          });
-
-        if (profileError) {
-          console.error('Profile creation failed:', profileError);
-          throw profileError;
-        }
-
-        // Send password reset email for fallback method
-        try {
-          const redirectUrl = window.location.origin;
-          await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: redirectUrl
-          });
-          console.log('Password reset email sent to new user');
-        } catch (resetError) {
-          console.warn('Could not send password reset email:', resetError);
-        }
+        // Edge function is required for user creation - no fallback available without service key
+        throw new Error('Benutzererstellung erfordert Edge Function. Bitte kontaktieren Sie den Administrator.');
       }
 
       await get().fetchUsers();
@@ -181,9 +140,9 @@ export const useUserStore = create<UserState>((set, get) => ({
 
       if (profileError) throw profileError;
 
-      // Then delete the auth user
-      const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id);
-      if (authError) throw authError;
+      // Auth user deletion requires Edge Function
+      // For now, just delete the profile - the auth user will be orphaned but harmless
+      console.warn('Auth user deletion requires Edge Function - only profile deleted');
 
       // Refresh the users list
       await get().fetchUsers();

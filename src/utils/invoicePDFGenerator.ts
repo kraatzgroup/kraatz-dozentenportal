@@ -30,6 +30,10 @@ interface Invoice {
     bank_name: string;
     iban: string;
     bic: string;
+    street?: string;
+    house_number?: string;
+    postal_code?: string;
+    city?: string;
   };
 }
 
@@ -91,37 +95,54 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   addText(data.invoice.dozent.full_name, margin, yPosition);
-  yPosition += 4;
+  yPosition += 5;
   
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
-  // Address would go here - we don't have it in the current data model
-  addText(`Telefon: ${data.invoice.dozent.phone}`, margin, yPosition);
-  yPosition += 4;
-  addText(`E-Mail: ${data.invoice.dozent.email}`, margin, yPosition);
-  yPosition += 6;
+  
+  // Dozent address
+  if (data.invoice.dozent.street && data.invoice.dozent.house_number) {
+    addText(`${data.invoice.dozent.street} ${data.invoice.dozent.house_number}`, margin, yPosition);
+    yPosition += 4;
+  }
+  if (data.invoice.dozent.postal_code && data.invoice.dozent.city) {
+    addText(`${data.invoice.dozent.postal_code} ${data.invoice.dozent.city}`, margin, yPosition);
+    yPosition += 4;
+  }
+  
+  // Contact info
+  if (data.invoice.dozent.email) {
+    addText(data.invoice.dozent.email, margin, yPosition);
+    yPosition += 4;
+  }
+  if (data.invoice.dozent.phone) {
+    addText(data.invoice.dozent.phone, margin, yPosition);
+    yPosition += 4;
+  }
   
   if (data.invoice.dozent.tax_id) {
     addText(`Steuernummer: ${data.invoice.dozent.tax_id}`, margin, yPosition);
-    yPosition += 8;
-  } else {
     yPosition += 6;
+  } else {
+    yPosition += 4;
   }
 
   // Recipient address
   yPosition += 4;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  addText('Akademie Kraatz GmbH', margin, yPosition);
-  yPosition += 4;
+  doc.setFontSize(11);
+  addText('Akademie Kraatz GmbH & Assessor Akademie Kraatz und Heinze GbR', margin, yPosition);
+  yPosition += 5;
   
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
-  addText('Mario Kraatz', margin, yPosition);
-  yPosition += 4;
-  addText('Wilmersdorfer Straße 145/146', margin, yPosition);
+  addText('Wilmersdorfer Str. 145 / 146', margin, yPosition);
   yPosition += 4;
   addText('10585 Berlin', margin, yPosition);
+  yPosition += 4;
+  addText('Telefon: 030 756 573 97', margin, yPosition);
+  yPosition += 4;
+  addText('E-Mail: info@kraatz-group.de', margin, yPosition);
   yPosition += 12;
 
   // Invoice title and details
@@ -254,4 +275,206 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
 
   // Save the PDF
   doc.save(filename);
+};
+
+// Generate PDF as Blob for preview
+export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob> => {
+  const { jsPDF } = await import('jspdf');
+  
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 15;
+  const contentWidth = pageWidth - 2 * margin;
+  
+  let yPosition = margin;
+  
+  // Helper function to check if we need a new page
+  const checkPageBreak = (requiredHeight: number) => {
+    if (yPosition + requiredHeight > pageHeight - margin - 30) {
+      doc.addPage();
+      yPosition = margin;
+      return true;
+    }
+    return false;
+  };
+  
+  // Helper function to add text with proper encoding
+  const addText = (text: string, x: number, y: number, options?: any) => {
+    const cleanText = text.replace(/[^\x20-\x7E\u00A0-\u00FF\u0100-\u017F]/g, '');
+    doc.text(cleanText, x, y, options);
+  };
+
+  // Helper function to add text with automatic line wrapping
+  const addWrappedText = (text: string, x: number, y: number, maxWidth: number, lineHeight: number = 4) => {
+    const lines = doc.splitTextToSize(text, maxWidth);
+    lines.forEach((line: string, index: number) => {
+      addText(line, x, y + (index * lineHeight));
+    });
+    return y + (lines.length * lineHeight);
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('de-DE', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  };
+
+  const getMonthName = (month: number) => {
+    const months = ['Januar', 'Februar', 'Maerz', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+    return months[month - 1];
+  };
+
+  // Header - Dozent info
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  addText(data.invoice.dozent.full_name, margin, yPosition);
+  yPosition += 5;
+  
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  
+  // Dozent address
+  if (data.invoice.dozent.street && data.invoice.dozent.house_number) {
+    addText(`${data.invoice.dozent.street} ${data.invoice.dozent.house_number}`, margin, yPosition);
+    yPosition += 4;
+  }
+  if (data.invoice.dozent.postal_code && data.invoice.dozent.city) {
+    addText(`${data.invoice.dozent.postal_code} ${data.invoice.dozent.city}`, margin, yPosition);
+    yPosition += 4;
+  }
+  
+  // Contact info
+  if (data.invoice.dozent.email) {
+    addText(data.invoice.dozent.email, margin, yPosition);
+    yPosition += 4;
+  }
+  if (data.invoice.dozent.phone) {
+    addText(data.invoice.dozent.phone, margin, yPosition);
+    yPosition += 4;
+  }
+  if (data.invoice.dozent.tax_id) {
+    addText(`Steuernummer: ${data.invoice.dozent.tax_id}`, margin, yPosition);
+    yPosition += 4;
+  }
+  yPosition += 8;
+
+  // Recipient
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  addText('Akademie Kraatz GmbH & Assessor Akademie Kraatz und Heinze GbR', margin, yPosition);
+  yPosition += 4;
+  doc.setFont('helvetica', 'normal');
+  addText('Wilmersdorfer Str. 145 / 146', margin, yPosition);
+  yPosition += 4;
+  addText('10585 Berlin', margin, yPosition);
+  yPosition += 4;
+  addText('Telefon: 030 756 573 97', margin, yPosition);
+  yPosition += 4;
+  addText('E-Mail: info@kraatz-group.de', margin, yPosition);
+  yPosition += 12;
+
+  // Date
+  addText(`Berlin, den ${formatDate(new Date().toISOString())}`, pageWidth - margin - 50, yPosition);
+  yPosition += 15;
+
+  // Title
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  const monthName = getMonthName(data.invoice.month);
+  addText(`Abrechnung ${monthName} ${data.invoice.year}`, margin, yPosition);
+  yPosition += 6;
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  addText(`Rechnungsnummer: ${data.invoice.invoice_number}`, margin, yPosition);
+  yPosition += 10;
+
+  // Period
+  addText(`Abrechnungszeitraum: ${formatDate(data.invoice.period_start)} - ${formatDate(data.invoice.period_end)}`, margin, yPosition);
+  yPosition += 10;
+
+  // Hours table header
+  checkPageBreak(40);
+  doc.setFillColor(240, 240, 240);
+  doc.rect(margin, yPosition - 3, contentWidth, 8, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  addText('Datum', margin + 2, yPosition + 2);
+  addText('Teilnehmer', margin + 25, yPosition + 2);
+  addText('Beschreibung', margin + 70, yPosition + 2);
+  addText('Stunden', pageWidth - margin - 15, yPosition + 2, { align: 'right' });
+  yPosition += 10;
+
+  // Hours entries
+  doc.setFont('helvetica', 'normal');
+  let totalHours = 0;
+
+  // Participant hours
+  if (data.participantHours && data.participantHours.length > 0) {
+    for (const entry of data.participantHours) {
+      checkPageBreak(8);
+      doc.setFontSize(8);
+      addText(formatDate(entry.date), margin + 2, yPosition);
+      const teilnehmerName = entry.teilnehmer?.name || '-';
+      addText(teilnehmerName.substring(0, 20), margin + 25, yPosition);
+      const desc = (entry.description || '-').substring(0, 35);
+      addText(desc, margin + 70, yPosition);
+      addText(entry.hours.toString(), pageWidth - margin - 15, yPosition, { align: 'right' });
+      totalHours += entry.hours;
+      yPosition += 5;
+    }
+  }
+
+  // Dozent hours
+  if (data.dozentHours && data.dozentHours.length > 0) {
+    for (const entry of data.dozentHours) {
+      checkPageBreak(8);
+      doc.setFontSize(8);
+      addText(formatDate(entry.date), margin + 2, yPosition);
+      addText('Eigenarbeit', margin + 25, yPosition);
+      const desc = (entry.description || '-').substring(0, 35);
+      addText(desc, margin + 70, yPosition);
+      addText(entry.hours.toString(), pageWidth - margin - 15, yPosition, { align: 'right' });
+      totalHours += entry.hours;
+      yPosition += 5;
+    }
+  }
+
+  // Total
+  yPosition += 3;
+  doc.setDrawColor(0);
+  doc.line(margin, yPosition, pageWidth - margin, yPosition);
+  yPosition += 5;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  addText('Gesamt:', margin + 2, yPosition);
+  addText(`${totalHours} Stunden`, pageWidth - margin - 15, yPosition, { align: 'right' });
+  yPosition += 10;
+
+  // Amount
+  if (data.invoice.total_amount > 0) {
+    doc.setFontSize(12);
+    addText(`Rechnungsbetrag: ${data.invoice.total_amount.toFixed(2)} EUR`, margin, yPosition);
+    yPosition += 10;
+  }
+
+  // Footer
+  const addFooter = (pageNum: number, totalPages: number) => {
+    const footerY = pageHeight - 15;
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 100, 100);
+    addText(`Seite ${pageNum} von ${totalPages}`, pageWidth - margin, footerY, { align: 'right' });
+  };
+
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    addFooter(i, pageCount);
+  }
+
+  // Return as Blob
+  return doc.output('blob');
 };
