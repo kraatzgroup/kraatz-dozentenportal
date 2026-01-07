@@ -47,17 +47,14 @@ export function TeilnehmerManagement({ onBack, isAdmin = false }: TeilnehmerMana
               *,
               participant_hours(dozent_id, dozent:profiles!participant_hours_dozent_id_fkey(full_name))
             `)
-            .ilike('name', formData.name);
+            .ilike('name', `%${formData.name}%`)
+            .limit(5);
 
           if (error) throw error;
 
-          // Filter for exact matches (case insensitive)
-          const exactMatches = data?.filter(t => 
-            t.name.toLowerCase() === formData.name.toLowerCase()
-          ) || [];
-
-          setSearchResults(exactMatches);
-          setShowAdoptSuggestion(exactMatches.length > 0);
+          // Show all matching results (partial matches)
+          setSearchResults(data || []);
+          setShowAdoptSuggestion((data || []).length > 0);
         } catch (error) {
           console.error('Error searching for existing Teilnehmer:', error);
           setSearchResults([]);
