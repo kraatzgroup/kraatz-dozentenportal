@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FolderIcon, Edit2, Info, Mail, Phone, MapPin, X, GraduationCap, Scale, CheckCircle, AlertCircle, XCircle, CreditCard } from 'lucide-react';
+import { FolderIcon, Edit2, Mail, Phone, MapPin, X, GraduationCap, Scale, CheckCircle, AlertCircle, XCircle, CreditCard } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { ProfilePicture } from './ProfilePicture';
 import { AvailabilitySection } from './AvailabilitySection';
@@ -35,7 +35,7 @@ interface FileCount {
   count: number;
 }
 
-export function DozentCard({ dozent, userRole, onEdit, onDelete, onFolderClick }: DozentCardProps) {
+export function DozentCard({ dozent, userRole, onEdit, onFolderClick }: DozentCardProps) {
   const [fileCounts, setFileCounts] = useState<FileCount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showContactInfo, setShowContactInfo] = useState(false);
@@ -165,14 +165,16 @@ export function DozentCard({ dozent, userRole, onEdit, onDelete, onFolderClick }
             </p>
           </div>
         </div>
-        {/* Contact Info Button */}
-        <button
-          onClick={() => setShowContactInfo(true)}
-          className="p-1.5 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-full transition-colors"
-          title="Kontaktdaten anzeigen"
-        >
-          <Info className="h-4 w-4" />
-        </button>
+        {/* Edit Button */}
+        {onEdit && (
+          <button
+            onClick={() => onEdit(dozent)}
+            className="p-1.5 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-full transition-colors"
+            title="Bearbeiten"
+          >
+            <Edit2 className="h-4 w-4" />
+          </button>
+        )}
       </div>
       
       <div className="space-y-2 sm:space-y-3 flex-1">
@@ -240,20 +242,7 @@ export function DozentCard({ dozent, userRole, onEdit, onDelete, onFolderClick }
         )}
       </div>
 
-      <div className="mt-3 sm:mt-4 flex flex-col gap-2">
-        <div className="flex gap-2">
-          {onEdit && (
-            <button
-              onClick={() => onEdit(dozent)}
-              className="w-full flex items-center justify-center bg-gray-100 text-gray-700 hover:bg-gray-200 py-2 px-3 sm:px-4 rounded-md text-sm font-medium transition-colors"
-            >
-              <Edit2 className="h-4 w-4 mr-1.5" />
-              Bearbeiten
-            </button>
-          )}
-        </div>
-      </div>
-
+      
       {/* Contact Info Modal */}
       {showContactInfo && (
         <div className="fixed z-50 inset-0 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
