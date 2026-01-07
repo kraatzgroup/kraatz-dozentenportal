@@ -156,25 +156,35 @@ export const useHoursStore = create<HoursState>((set, get) => ({
       const targetYear = year || new Date().getFullYear();
       const targetMonth = month || new Date().getMonth() + 1;
       
-      console.log('Fetching monthly summary for dozent:', targetDozentId, 'month:', targetMonth, 'year:', targetYear);
+      // Calculate next month correctly (handle December -> January)
+      const nextMonth = targetMonth === 12 ? 1 : targetMonth + 1;
+      const nextYear = targetMonth === 12 ? targetYear + 1 : targetYear;
+      
+      const startDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`;
+      const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+      
+      console.log('Fetching monthly summary for dozent:', targetDozentId, 'from:', startDate, 'to:', endDate);
       
       // Get all hours entries for this dozent in the target month
       const { data: hoursData, error: hoursError } = await supabase
         .from('participant_hours')
         .select('teilnehmer_id, hours, date, description')
         .eq('dozent_id', targetDozentId)
-        .gte('date', `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`)
-        .lt('date', `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-01`);
+        .gte('date', startDate)
+        .lt('date', endDate);
       
-      if (hoursError) throw hoursError;
-      console.log('Found hours entries:', hoursData?.length || 0);
+      if (hoursError) {
+        console.error('Error fetching hours:', hoursError);
+        throw hoursError;
+      }
+      console.log('Found hours entries:', hoursData?.length || 0, hoursData);
       
       // Get unique teilnehmer IDs from hours data
       const teilnehmerIds = [...new Set(hoursData?.map(h => h.teilnehmer_id) || [])];
       
       if (teilnehmerIds.length === 0) {
         console.log('No hours found for this month');
-        set({ monthlySummary: [] });
+        set({ monthlySummary: [], isLoading: false });
         return;
       }
       
@@ -184,7 +194,10 @@ export const useHoursStore = create<HoursState>((set, get) => ({
         .select('id, name')
         .in('id', teilnehmerIds);
       
-      if (teilnehmerError) throw teilnehmerError;
+      if (teilnehmerError) {
+        console.error('Error fetching teilnehmer:', teilnehmerError);
+        throw teilnehmerError;
+      }
       
       const teilnehmerMap = new Map(teilnehmerData?.map(t => [t.id, t.name]) || []);
       
@@ -206,12 +219,10 @@ export const useHoursStore = create<HoursState>((set, get) => ({
       }));
       
       console.log('Final monthly summary:', summaryData);
-      set({ monthlySummary: summaryData });
+      set({ monthlySummary: summaryData, isLoading: false });
     } catch (error: any) {
       console.error('Error fetching monthly summary:', error);
-      set({ error: error.message, monthlySummary: [] });
-    } finally {
-      set({ isLoading: false });
+      set({ error: error.message, monthlySummary: [], isLoading: false });
     }
   },
 
