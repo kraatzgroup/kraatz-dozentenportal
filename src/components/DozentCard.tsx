@@ -33,6 +33,7 @@ interface DozentCardProps {
 interface FileCount {
   type: string;
   count: number;
+  unreadCount: number;
 }
 
 export function DozentCard({ dozent, userRole, onEdit, onFolderClick }: DozentCardProps) {
@@ -114,6 +115,8 @@ export function DozentCard({ dozent, userRole, onEdit, onFolderClick }: DozentCa
         if (folders && folders.length > 0) {
           const folder = folders[0];
           console.log(`Found folder for ${type}:`, folder.id);
+          
+          // Get total count
           const { count, error: countError } = await supabase
             .from('files')
             .select('*', { count: 'exact', head: true })
@@ -124,11 +127,22 @@ export function DozentCard({ dozent, userRole, onEdit, onFolderClick }: DozentCa
             continue;
           }
 
-          console.log(`File count for ${type}:`, count);
-          counts.push({ type, count: count || 0 });
+          // Get unread count (files not downloaded by admin)
+          const { count: unreadCount, error: unreadError } = await supabase
+            .from('files')
+            .select('*', { count: 'exact', head: true })
+            .eq('folder_id', folder.id)
+            .is('downloaded_at', null);
+
+          if (unreadError) {
+            console.error(`Error counting unread files for ${type}:`, unreadError);
+          }
+
+          console.log(`File count for ${type}:`, count, 'unread:', unreadCount);
+          counts.push({ type, count: count || 0, unreadCount: unreadCount || 0 });
         } else {
           console.log(`No folder found for ${type} for dozent ${dozent.id}`);
-          counts.push({ type, count: 0 });
+          counts.push({ type, count: 0, unreadCount: 0 });
         }
       }
 
@@ -214,7 +228,7 @@ export function DozentCard({ dozent, userRole, onEdit, onFolderClick }: DozentCa
             </button>
             
             {/* Other folders */}
-            {fileCounts.filter(({ type }) => type !== 'Verfügbarkeit').map(({ type, count }) => (
+            {fileCounts.filter(({ type }) => type !== 'Verfügbarkeit').map(({ type, count, unreadCount }) => (
               <button
                 key={type}
                 onClick={() => onFolderClick && onFolderClick(dozent, type)}
@@ -222,18 +236,24 @@ export function DozentCard({ dozent, userRole, onEdit, onFolderClick }: DozentCa
                 disabled={!onFolderClick}
               >
                 <div className="flex items-center text-sm text-gray-500">
-                  <FolderIcon className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-primary/60" />
+                  <div className="relative">
+                    <FolderIcon className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-primary/60" />
+                    {unreadCount > 0 && (
+                      <div className="absolute -top-1 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border border-white" />
+                    )}
+                  </div>
                   <span>{type}</span>
                 </div>
-                <div className="flex items-center">
+                <div className="flex items-center gap-2">
+                  {unreadCount > 0 && (
+                    <span className="text-xs text-red-600 font-medium">
+                      {unreadCount} neu
+                    </span>
+                  )}
                   {count > 0 && (
-                    <div className="relative">
-                      <div className="w-5 h-5 sm:w-6 sm:h-6 bg-red-500 rounded-full flex items-center justify-center">
-                        <span className="text-white text-xs font-bold">
-                          {count > 99 ? '99+' : count}
-                        </span>
-                      </div>
-                    </div>
+                    <span className="text-xs text-gray-400">
+                      ({count})
+                    </span>
                   )}
                 </div>
               </button>
