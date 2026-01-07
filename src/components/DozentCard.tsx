@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FolderIcon, Edit2, Info, Mail, Phone, MapPin, X, GraduationCap, Scale, Trash2, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
+import { FolderIcon, Edit2, Info, Mail, Phone, MapPin, X, GraduationCap, Scale, Trash2, CheckCircle, AlertCircle, XCircle, CreditCard } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { ProfilePicture } from './ProfilePicture';
 import { AvailabilitySection } from './AvailabilitySection';
@@ -21,6 +20,9 @@ interface DozentCardProps {
     house_number?: string | null;
     postal_code?: string | null;
     city?: string | null;
+    iban?: string | null;
+    bank_name?: string | null;
+    bic?: string | null;
   };
   userRole?: string | null;
   onEdit?: (dozent: any) => void;
@@ -34,14 +36,11 @@ interface FileCount {
 }
 
 export function DozentCard({ dozent, userRole, onEdit, onDelete, onFolderClick }: DozentCardProps) {
-  const navigate = useNavigate();
   const [fileCounts, setFileCounts] = useState<FileCount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showContactInfo, setShowContactInfo] = useState(false);
   const [showAvailabilityPopup, setShowAvailabilityPopup] = useState(false);
   const [currentAvailability, setCurrentAvailability] = useState<{status: string; notes?: string} | null>(null);
-
-  const hasContactInfo = dozent.email || dozent.phone || dozent.street || dozent.city || dozent.title || (dozent.legal_areas && dozent.legal_areas.length > 0);
 
   useEffect(() => {
     fetchFileCounts();
@@ -167,89 +166,13 @@ export function DozentCard({ dozent, userRole, onEdit, onDelete, onFolderClick }
           </div>
         </div>
         {/* Contact Info Button */}
-        {hasContactInfo && (
-          <div className="relative">
-            <button
-              onClick={() => setShowContactInfo(!showContactInfo)}
-              className="p-1.5 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-full transition-colors"
-              title="Kontaktdaten anzeigen"
-            >
-              <Info className="h-4 w-4" />
-            </button>
-            
-            {/* Contact Info Popup */}
-            {showContactInfo && (
-              <div className="absolute right-0 top-8 z-10 bg-white rounded-lg shadow-lg border border-gray-200 p-3 w-72">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-900">Stammdaten</span>
-                  <button
-                    onClick={() => setShowContactInfo(false)}
-                    className="p-0.5 text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-                <div className="space-y-2 text-sm">
-                  {/* Title */}
-                  {dozent.title && (
-                    <div className="flex items-center text-gray-600">
-                      <GraduationCap className="h-3.5 w-3.5 mr-2 text-gray-400 flex-shrink-0" />
-                      <span>{dozent.title}</span>
-                    </div>
-                  )}
-                  {/* Legal Areas */}
-                  {dozent.legal_areas && dozent.legal_areas.length > 0 && (
-                    <div className="flex items-start text-gray-600">
-                      <Scale className="h-3.5 w-3.5 mr-2 mt-0.5 text-gray-400 flex-shrink-0" />
-                      <div className="flex flex-wrap gap-1">
-                        {dozent.legal_areas.map((area, idx) => (
-                          <span key={idx} className="px-1.5 py-0.5 bg-primary/10 text-primary rounded text-xs">
-                            {area}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {/* Email */}
-                  {dozent.email && (
-                    <div className="flex items-center text-gray-600">
-                      <Mail className="h-3.5 w-3.5 mr-2 text-gray-400 flex-shrink-0" />
-                      <a href={`mailto:${dozent.email}`} className="truncate hover:text-primary">
-                        {dozent.email}
-                      </a>
-                    </div>
-                  )}
-                  {/* Phone */}
-                  {dozent.phone && (
-                    <div className="flex items-center text-gray-600">
-                      <Phone className="h-3.5 w-3.5 mr-2 text-gray-400 flex-shrink-0" />
-                      <a href={`tel:${dozent.phone}`} className="hover:text-primary">
-                        {dozent.phone}
-                      </a>
-                    </div>
-                  )}
-                  {/* Address */}
-                  {(dozent.street || dozent.city) && (
-                    <div className="flex items-start text-gray-600">
-                      <MapPin className="h-3.5 w-3.5 mr-2 mt-0.5 text-gray-400 flex-shrink-0" />
-                      <div>
-                        {dozent.street && (
-                          <div>{dozent.street} {dozent.house_number || ''}</div>
-                        )}
-                        {(dozent.postal_code || dozent.city) && (
-                          <div>{dozent.postal_code || ''} {dozent.city || ''}</div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  {!dozent.title && !dozent.email && !dozent.phone && !dozent.street && !dozent.city && (!dozent.legal_areas || dozent.legal_areas.length === 0) && (
-                    <p className="text-gray-400 text-xs">Keine Stammdaten hinterlegt</p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        <button
+          onClick={() => setShowContactInfo(true)}
+          className="p-1.5 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-full transition-colors"
+          title="Kontaktdaten anzeigen"
+        >
+          <Info className="h-4 w-4" />
+        </button>
       </div>
       
       <div className="space-y-2 sm:space-y-3 flex-1">
@@ -329,7 +252,7 @@ export function DozentCard({ dozent, userRole, onEdit, onDelete, onFolderClick }
             </button>
           )}
           <button
-            onClick={() => navigate(`/dozent/${dozent.id}`)}
+            onClick={() => setShowContactInfo(true)}
             className={`${onEdit ? 'flex-1' : 'w-full'} bg-primary/5 text-primary hover:bg-primary/10 py-2 px-3 sm:px-4 rounded-md text-sm font-medium transition-colors`}
           >
             Details anzeigen
@@ -345,6 +268,105 @@ export function DozentCard({ dozent, userRole, onEdit, onDelete, onFolderClick }
           </button>
         )}
       </div>
+
+      {/* Contact Info Modal */}
+      {showContactInfo && (
+        <div className="fixed z-50 inset-0 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowContactInfo(false)}>
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full relative">
+              <button
+                onClick={() => setShowContactInfo(false)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 focus:outline-none z-10"
+              >
+                <X className="h-6 w-6" />
+              </button>
+              <div className="bg-white">
+                <div className="px-4 py-3 border-b border-gray-200">
+                  <h3 className="text-lg font-medium text-gray-900">Kontaktdaten - {dozent.full_name}</h3>
+                </div>
+                <div className="p-4 space-y-4">
+                  {/* Title */}
+                  {dozent.title && (
+                    <div className="flex items-center text-gray-600">
+                      <GraduationCap className="h-5 w-5 mr-3 text-gray-400 flex-shrink-0" />
+                      <span className="text-sm">{dozent.title}</span>
+                    </div>
+                  )}
+                  {/* Legal Areas */}
+                  {dozent.legal_areas && dozent.legal_areas.length > 0 && (
+                    <div className="flex items-start text-gray-600">
+                      <Scale className="h-5 w-5 mr-3 mt-0.5 text-gray-400 flex-shrink-0" />
+                      <div className="flex flex-wrap gap-1">
+                        {dozent.legal_areas.map((area, idx) => (
+                          <span key={idx} className="px-2 py-1 bg-primary/10 text-primary rounded text-sm">
+                            {area}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Email */}
+                  {dozent.email && (
+                    <div className="flex items-center text-gray-600">
+                      <Mail className="h-5 w-5 mr-3 text-gray-400 flex-shrink-0" />
+                      <a href={`mailto:${dozent.email}`} className="text-sm hover:text-primary">
+                        {dozent.email}
+                      </a>
+                    </div>
+                  )}
+                  {/* Phone */}
+                  {dozent.phone && (
+                    <div className="flex items-center text-gray-600">
+                      <Phone className="h-5 w-5 mr-3 text-gray-400 flex-shrink-0" />
+                      <a href={`tel:${dozent.phone}`} className="text-sm hover:text-primary">
+                        {dozent.phone}
+                      </a>
+                    </div>
+                  )}
+                  {/* Address */}
+                  {(dozent.street || dozent.city) && (
+                    <div className="flex items-start text-gray-600">
+                      <MapPin className="h-5 w-5 mr-3 mt-0.5 text-gray-400 flex-shrink-0" />
+                      <div className="text-sm">
+                        {dozent.street && (
+                          <div>{dozent.street} {dozent.house_number || ''}</div>
+                        )}
+                        {(dozent.postal_code || dozent.city) && (
+                          <div>{dozent.postal_code || ''} {dozent.city || ''}</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {/* Bank Details */}
+                  {dozent.iban && (
+                    <div className="pt-3 border-t border-gray-200">
+                      <div className="flex items-start text-gray-600">
+                        <CreditCard className="h-5 w-5 mr-3 mt-0.5 text-gray-400 flex-shrink-0" />
+                        <div>
+                          <div className="text-sm font-medium text-gray-700 mb-1">Bankverbindung</div>
+                          {dozent.bank_name && (
+                            <div className="text-sm">{dozent.bank_name}</div>
+                          )}
+                          <div className="font-mono text-sm mt-1">{dozent.iban}</div>
+                          {dozent.bic && (
+                            <div className="text-xs text-gray-500 mt-1">BIC: {dozent.bic}</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {!dozent.title && !dozent.email && !dozent.phone && !dozent.street && !dozent.city && !dozent.iban && (!dozent.legal_areas || dozent.legal_areas.length === 0) && (
+                    <p className="text-gray-400 text-sm text-center py-4">Keine Stammdaten hinterlegt</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Availability Popup */}
       {showAvailabilityPopup && (
