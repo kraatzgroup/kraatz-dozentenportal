@@ -700,13 +700,19 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                           
                           if (value.length >= 2) {
                             // Search all teilnehmer in database
-                            const { data } = await supabase
+                            const { data, error } = await supabase
                               .from('teilnehmer')
                               .select('id, name, email')
                               .ilike('name', `%${value}%`)
                               .limit(10);
-                            setTeilnehmerSearchResults(data || []);
-                            setShowTeilnehmerDropdown(true);
+                            console.log('Teilnehmer search results:', data, error);
+                            if (data && data.length > 0) {
+                              setTeilnehmerSearchResults(data);
+                              setShowTeilnehmerDropdown(true);
+                            } else {
+                              setTeilnehmerSearchResults([]);
+                              setShowTeilnehmerDropdown(false);
+                            }
                           } else {
                             setTeilnehmerSearchResults([]);
                             setShowTeilnehmerDropdown(false);
@@ -723,7 +729,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                       />
                       {/* Autocomplete dropdown */}
                       {showTeilnehmerDropdown && teilnehmerSearchResults.length > 0 && (
-                        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
                           {teilnehmerSearchResults.map((t) => (
                             <button
                               key={t.id}
