@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Users, Clock, Calendar, User, Plus } from 'lucide-react';
 import { Teilnehmer } from '../store/teilnehmerStore';
+import { useHoursStore } from '../store/hoursStore';
 import { TeilnehmerManagement } from './TeilnehmerManagement';
 import { TeilnehmerDetailView } from './TeilnehmerDetailView';
 
@@ -27,6 +28,7 @@ export function ParticipantHoursSection({
   getCurrentMonthHours,
   isAdmin = false
 }: ParticipantHoursSectionProps) {
+  const { monthlySummary } = useHoursStore();
   const [showTeilnehmerManagement, setShowTeilnehmerManagement] = useState(false);
   const [selectedTeilnehmer, setSelectedTeilnehmer] = useState<{ id: string; name: string } | null>(null);
 
@@ -161,8 +163,8 @@ export function ParticipantHoursSection({
           </div>
         ) : (
           (() => {
-            // Filter participants who have hours in the selected month
-            const participantsWithHours = teilnehmer.filter(person => getCurrentMonthHours(person.id) > 0);
+            // Use monthlySummary directly - it contains all teilnehmer for which hours were logged
+            const participantsWithHours = monthlySummary.filter(s => s.total_hours > 0);
             
             if (participantsWithHours.length === 0) {
               return (
@@ -175,10 +177,10 @@ export function ParticipantHoursSection({
             
             return (
               <div className="space-y-4">
-                {participantsWithHours.map((person) => (
-                  <div key={person.id} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
+                {participantsWithHours.map((summary) => (
+                  <div key={summary.teilnehmer_id} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
                     <button
-                      onClick={() => setSelectedTeilnehmer({ id: person.id, name: person.name })}
+                      onClick={() => setSelectedTeilnehmer({ id: summary.teilnehmer_id, name: summary.teilnehmer_name })}
                       className="w-full flex items-center justify-between hover:bg-gray-100 transition-colors rounded-lg p-2 -m-2"
                     >
                       <div className="flex items-center">
@@ -189,19 +191,16 @@ export function ParticipantHoursSection({
                         </div>
                         <div className="ml-4">
                           <div className="flex items-center">
-                            <h4 className="text-sm font-medium text-gray-900">{person.name}</h4>
+                            <h4 className="text-sm font-medium text-gray-900">{summary.teilnehmer_name}</h4>
                           </div>
                           <div className="text-sm text-gray-500">
-                            {person.email}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            Aktiv seit: {new Date(person.active_since).toLocaleDateString('de-DE')}
+                            {summary.days_worked} Tag(e) gearbeitet
                           </div>
                         </div>
                       </div>
                       <div className="text-right">
                         <div className="text-lg font-semibold text-primary">
-                          {getCurrentMonthHours(person.id)}h
+                          {summary.total_hours}h
                         </div>
                         <div className="text-xs text-gray-500">
                           {getMonthName(selectedMonth)}
