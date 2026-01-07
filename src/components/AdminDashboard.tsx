@@ -1385,11 +1385,11 @@ export function AdminDashboard() {
                     </span>
                   )}
                 </h3>
-                <div className="flex items-center gap-2">
+                <div className="flex-shrink-0 flex gap-2">
                   <select
                     value={invoiceFilterMonth}
                     onChange={(e) => setInvoiceFilterMonth(e.target.value === 'alle' ? 'alle' : parseInt(e.target.value))}
-                    className="text-sm rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                    className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
                   >
                     <option value="alle">Alle Monate</option>
                     {Array.from({ length: 12 }, (_, i) => (
@@ -1401,7 +1401,7 @@ export function AdminDashboard() {
                   <select
                     value={invoiceFilterYear}
                     onChange={(e) => setInvoiceFilterYear(parseInt(e.target.value))}
-                    className="text-sm rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                    className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
                   >
                     {Array.from({ length: 5 }, (_, i) => {
                       const year = new Date().getFullYear() - 2 + i;
