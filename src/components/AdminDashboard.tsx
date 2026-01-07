@@ -1416,10 +1416,11 @@ export function AdminDashboard() {
               </div>
               
               {(() => {
-                // Filter invoices by month/year
+                // Filter invoices by month/year - only show unpaid (submitted) invoices
+                const unpaidInvoices = submittedInvoices.filter(i => i.status === 'submitted');
                 const filteredInvoices = invoiceFilterMonth === 'alle'
-                  ? submittedInvoices.filter(i => i.year === invoiceFilterYear)
-                  : submittedInvoices.filter(i => i.month === invoiceFilterMonth && i.year === invoiceFilterYear);
+                  ? unpaidInvoices.filter(i => i.year === invoiceFilterYear)
+                  : unpaidInvoices.filter(i => i.month === invoiceFilterMonth && i.year === invoiceFilterYear);
                 
                 if (filteredInvoices.length === 0) {
                   return (
