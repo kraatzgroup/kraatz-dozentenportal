@@ -805,32 +805,6 @@ export function AdminDashboard() {
             <div className="mb-8">
               <div className="flex items-center justify-between mb-4 pt-3 pb-3 sm:pt-5 sm:pb-5">
                 <div className="flex items-center">
-                  <Clock className="h-5 w-5 text-primary/60 mr-2" />
-                  <h2 className="text-base sm:text-lg font-medium text-gray-900">Letzte Uploads</h2>
-                  {undownloadedCount > 0 && (
-                    <span className="ml-2 sm:ml-3 inline-flex items-center px-2 sm:px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                      {undownloadedCount} neue
-                    </span>
-                  )}
-                </div>
-                <button
-                  onClick={() => {
-                    fetchActivityLog();
-                    setShowActivityLog(true);
-                  }}
-                  className="flex items-center px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm"
-                >
-                  <Clock className="h-4 w-4 mr-1.5" />
-                  <span className="hidden sm:inline">Aktivitätsprotokoll</span>
-                  <span className="sm:hidden">Alle</span>
-                </button>
-              </div>
-              <RecentUploads />
-            </div>
-
-            <div className="mb-8">
-              <div className="flex items-center justify-between mb-4 pt-3 pb-3 sm:pt-5 sm:pb-5">
-                <div className="flex items-center">
                   <FileText className="h-5 w-5 text-primary/60 mr-2" />
                   <h2 className="text-base sm:text-lg font-medium text-gray-900">Dozenten Übersicht</h2>
                 </div>
