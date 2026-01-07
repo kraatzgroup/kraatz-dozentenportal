@@ -1659,27 +1659,44 @@ export function AdminDashboard() {
                 )}
               </h3>
               
-              {/* Filter by Month */}
+              {/* Filter by Month/Year */}
               <div className="mb-4 flex flex-col sm:flex-row gap-4">
-                <div className="flex-shrink-0">
+                <div className="flex-shrink-0 flex gap-2">
                   <select
-                    value={rechnungenFilter}
-                    onChange={(e) => setRechnungenFilter(e.target.value)}
-                    className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    value={rechnungenFilter === 'alle' ? 'alle' : rechnungenFilter.split('-')[1]}
+                    onChange={(e) => {
+                      if (e.target.value === 'alle') {
+                        setRechnungenFilter('alle');
+                      } else {
+                        const year = rechnungenFilter === 'alle' ? new Date().getFullYear() : rechnungenFilter.split('-')[0];
+                        setRechnungenFilter(`${year}-${e.target.value}`);
+                      }
+                    }}
+                    className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
                   >
                     <option value="alle">Alle Monate</option>
-                    {(() => {
-                      // Generate last 12 months
-                      const months = [];
-                      const now = new Date();
-                      for (let i = 0; i < 12; i++) {
-                        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                        const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                        const label = d.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
-                        months.push(<option key={value} value={value}>{label}</option>);
+                    {Array.from({ length: 12 }, (_, i) => (
+                      <option key={i + 1} value={String(i + 1).padStart(2, '0')}>
+                        {new Date(2023, i).toLocaleDateString('de-DE', { month: 'long' })}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={rechnungenFilter === 'alle' ? new Date().getFullYear() : rechnungenFilter.split('-')[0]}
+                    onChange={(e) => {
+                      if (rechnungenFilter === 'alle') {
+                        setRechnungenFilter(`${e.target.value}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
+                      } else {
+                        const month = rechnungenFilter.split('-')[1];
+                        setRechnungenFilter(`${e.target.value}-${month}`);
                       }
-                      return months;
-                    })()}
+                    }}
+                    className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                  >
+                    {Array.from({ length: 5 }, (_, i) => {
+                      const year = new Date().getFullYear() - 2 + i;
+                      return <option key={year} value={year}>{year}</option>;
+                    })}
                   </select>
                 </div>
                 
