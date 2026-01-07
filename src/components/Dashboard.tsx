@@ -443,7 +443,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
           <div className="mb-8">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-medium text-gray-900">Ordner</h2>
-              {selectedFolder?.name === 'Aktive Teilnehmer' && (
+              {selectedFolder?.name === 'Aktive Teilnehmer' && canManageAll && (
                 <button
                   onClick={() => setShowTeilnehmerManagement(true)}
                   className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-primary/90"
