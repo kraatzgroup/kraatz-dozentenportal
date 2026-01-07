@@ -152,56 +152,59 @@ export const useHoursStore = create<HoursState>((set, get) => ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user && !dozentId) throw new Error('No authenticated user');
       
-      const targetDozentId = dozentId || user.id;
+      const targetDozentId = dozentId || user?.id;
       const targetYear = year || new Date().getFullYear();
       const targetMonth = month || new Date().getMonth() + 1;
       
       console.log('Fetching monthly summary for dozent:', targetDozentId, 'month:', targetMonth, 'year:', targetYear);
       
-      // Get all teilnehmer (not filtered by dozent since we removed dozent_id from teilnehmer table)
+      // Get all hours entries for this dozent in the target month
+      const { data: hoursData, error: hoursError } = await supabase
+        .from('participant_hours')
+        .select('teilnehmer_id, hours, date, description')
+        .eq('dozent_id', targetDozentId)
+        .gte('date', `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`)
+        .lt('date', `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-01`);
+      
+      if (hoursError) throw hoursError;
+      console.log('Found hours entries:', hoursData?.length || 0);
+      
+      // Get unique teilnehmer IDs from hours data
+      const teilnehmerIds = [...new Set(hoursData?.map(h => h.teilnehmer_id) || [])];
+      
+      if (teilnehmerIds.length === 0) {
+        console.log('No hours found for this month');
+        set({ monthlySummary: [] });
+        return;
+      }
+      
+      // Fetch teilnehmer names
       const { data: teilnehmerData, error: teilnehmerError } = await supabase
         .from('teilnehmer')
-        .select('id, name');
+        .select('id, name')
+        .in('id', teilnehmerIds);
       
       if (teilnehmerError) throw teilnehmerError;
-      console.log('Found teilnehmer:', teilnehmerData?.length || 0);
       
-      // Get hours for each teilnehmer for the target month
-      const summaryPromises = teilnehmerData?.map(async (t) => {
-        console.log('Fetching hours for teilnehmer:', t.name, 'dozent:', targetDozentId);
-        const { data: hoursData, error: hoursError } = await supabase
-          .from('participant_hours')
-          .select('hours, date, description')
-          .eq('teilnehmer_id', t.id)
-          .eq('dozent_id', targetDozentId)
-          .gte('date', `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`)
-          .lt('date', `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-01`);
-        
-        if (hoursError) {
-          console.error('Error fetching hours for teilnehmer:', t.id, hoursError);
-          return {
-            teilnehmer_id: t.id,
-            teilnehmer_name: t.name,
-            total_hours: 0,
-            days_worked: 0,
-            legal_areas: {}
-          };
-        }
-
-        const totalHours = hoursData?.reduce((sum, h) => sum + parseFloat(h.hours.toString()), 0) || 0;
-        const daysWorked = new Set(hoursData?.map(h => h.date)).size;
-        
-        console.log('Hours for', t.name, ':', totalHours, 'from', hoursData?.length || 0, 'entries');
-        
-        return {
-          teilnehmer_id: t.id,
-          teilnehmer_name: t.name,
-          total_hours: totalHours,
-          days_worked: daysWorked
-        };
-      }) || [];
-
-      const summaryData = await Promise.all(summaryPromises);
+      const teilnehmerMap = new Map(teilnehmerData?.map(t => [t.id, t.name]) || []);
+      
+      // Group hours by teilnehmer
+      const hoursByTeilnehmer = new Map<string, { hours: number; dates: Set<string> }>();
+      hoursData?.forEach(h => {
+        const existing = hoursByTeilnehmer.get(h.teilnehmer_id) || { hours: 0, dates: new Set() };
+        existing.hours += parseFloat(h.hours.toString());
+        existing.dates.add(h.date);
+        hoursByTeilnehmer.set(h.teilnehmer_id, existing);
+      });
+      
+      // Build summary data
+      const summaryData = Array.from(hoursByTeilnehmer.entries()).map(([teilnehmerId, data]) => ({
+        teilnehmer_id: teilnehmerId,
+        teilnehmer_name: teilnehmerMap.get(teilnehmerId) || 'Unbekannt',
+        total_hours: data.hours,
+        days_worked: data.dates.size
+      }));
+      
       console.log('Final monthly summary:', summaryData);
       set({ monthlySummary: summaryData });
     } catch (error: any) {
