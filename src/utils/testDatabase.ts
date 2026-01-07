@@ -59,7 +59,7 @@ export const testDatabaseConnection = async () => {
       const { data: createdHours, error: createError } = await supabase
         .from('participant_hours')
         .upsert(testHours, { 
-          onConflict: 'teilnehmer_id,date',
+          onConflict: 'teilnehmer_id,dozent_id,date',
           ignoreDuplicates: false 
         })
         .select()
