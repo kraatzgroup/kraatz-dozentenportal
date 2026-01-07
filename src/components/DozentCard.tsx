@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FolderIcon, Edit2, Info, Mail, Phone, MapPin, X, GraduationCap, Scale, Trash2, CheckCircle, AlertCircle, XCircle, CreditCard } from 'lucide-react';
+import { FolderIcon, Edit2, Info, Mail, Phone, MapPin, X, GraduationCap, Scale, CheckCircle, AlertCircle, XCircle, CreditCard } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { ProfilePicture } from './ProfilePicture';
 import { AvailabilitySection } from './AvailabilitySection';
@@ -252,15 +252,6 @@ export function DozentCard({ dozent, userRole, onEdit, onDelete, onFolderClick }
             </button>
           )}
         </div>
-        {onDelete && (
-          <button
-            onClick={() => onDelete(dozent)}
-            className="w-full flex items-center justify-center bg-red-50 text-red-600 hover:bg-red-100 py-2 px-3 sm:px-4 rounded-md text-sm font-medium transition-colors"
-          >
-            <Trash2 className="h-4 w-4 mr-1.5" />
-            Löschen
-          </button>
-        )}
       </div>
 
       {/* Contact Info Modal */}

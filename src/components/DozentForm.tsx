@@ -22,11 +22,13 @@ interface DozentFormProps {
   dozent?: Dozent | null;
   onClose: () => void;
   onSaved: () => void;
+  onDelete?: (dozent: Dozent) => void;
 }
 
-export function DozentForm({ dozent, onClose, onSaved }: DozentFormProps) {
+export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormProps) {
   const { addToast } = useToastStore();
   const [isLoading, setIsLoading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [formData, setFormData] = useState<Dozent>({
     title: '',
     first_name: '',
@@ -475,7 +477,53 @@ export function DozentForm({ dozent, onClose, onSaved }: DozentFormProps) {
               )}
             </button>
           </div>
+
+          {/* Delete Button - only show when editing */}
+          {isEditing && onDelete && dozent && (
+            <div className="pt-4 border-t">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="w-full sm:w-auto px-3 py-1.5 text-red-600 hover:text-red-700 text-sm flex items-center justify-center sm:justify-start"
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                Dozent löschen
+              </button>
+            </div>
+          )}
         </form>
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteConfirm && dozent && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowDeleteConfirm(false)}>
+            <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Dozent löschen?</h3>
+              <p className="text-gray-600 mb-4">
+                Möchten Sie <strong>{dozent.first_name} {dozent.last_name}</strong> wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.
+              </p>
+              <div className="flex gap-3 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDeleteConfirm(false);
+                    if (onDelete) onDelete(dozent as Dozent);
+                  }}
+                  className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors flex items-center"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Löschen
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

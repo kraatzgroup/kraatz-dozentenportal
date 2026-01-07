@@ -2472,6 +2472,11 @@ export function AdminDashboard() {
           onSaved={() => {
             fetchDozenten();
           }}
+          onDelete={(d) => {
+            handleDeleteDozent(d.id!);
+            setShowDozentForm(false);
+            setSelectedDozentForEdit(null);
+          }}
         />
       )}
 
