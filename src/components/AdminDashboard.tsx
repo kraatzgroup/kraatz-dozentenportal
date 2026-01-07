@@ -1814,18 +1814,12 @@ export function AdminDashboard() {
                                     if (urlData?.publicUrl) {
                                       setPdfViewerUrl(urlData.publicUrl);
                                       setPdfViewerFileName(`${invoice.invoice_number}.pdf`);
-                                      setShowPdfViewer(true);
+                                      setPdfViewerOpen(true);
                                       return;
                                     }
                                   }
 
-                                  // Otherwise generate PDF preview
-                                  const { data: items } = await supabase
-                                    .from('invoice_items')
-                                    .select('*')
-                                    .eq('invoice_id', invoice.id);
-
-                                  // Generate PDF
+                                  // Generate simple PDF preview
                                   const { jsPDF } = await import('jspdf');
                                   const doc = new jsPDF();
                                   
@@ -1843,38 +1837,25 @@ export function AdminDashboard() {
                                   }
                                   
                                   doc.text(`Rechnungsnummer: ${invoiceData.invoice_number}`, 140, 40);
-                                  doc.text(`Datum: ${new Date().toLocaleDateString('de-DE')}`, 140, 45);
+                                  doc.text(`Datum: ${new Date(invoiceData.created_at).toLocaleDateString('de-DE')}`, 140, 45);
                                   doc.text(`Zeitraum: ${monthNames[invoiceData.month - 1]} ${invoiceData.year}`, 140, 50);
                                   
-                                  // Items table
-                                  let y = 70;
-                                  doc.setFontSize(10);
-                                  doc.setFont('helvetica', 'bold');
-                                  doc.text('Beschreibung', 20, y);
-                                  doc.text('Stunden', 120, y);
-                                  doc.text('Satz', 145, y);
-                                  doc.text('Betrag', 175, y);
-                                  
-                                  doc.setFont('helvetica', 'normal');
-                                  y += 8;
-                                  
-                                  (items || []).forEach((item: any) => {
-                                    doc.text(item.description || '', 20, y);
-                                    doc.text(String(item.hours || 0), 120, y);
-                                    doc.text(`${(item.rate || 0).toFixed(2)} €`, 145, y);
-                                    doc.text(`${(item.amount || 0).toFixed(2)} €`, 175, y);
-                                    y += 6;
-                                  });
-                                  
                                   // Total
-                                  y += 10;
+                                  let y = 80;
                                   doc.setFont('helvetica', 'bold');
-                                  doc.text('Gesamtbetrag:', 145, y);
-                                  doc.text(`${(invoiceData.total_amount || 0).toFixed(2)} €`, 175, y);
+                                  doc.text('Gesamtbetrag:', 20, y);
+                                  doc.text(`${(invoiceData.total_amount || 0).toFixed(2)} €`, 80, y);
+                                  
+                                  // Status
+                                  y += 15;
+                                  doc.setFont('helvetica', 'normal');
+                                  doc.text(`Status: ${invoiceData.status === 'paid' ? 'Bezahlt' : 'Übermittelt'}`, 20, y);
+                                  if (invoiceData.paid_at) {
+                                    doc.text(`Bezahlt am: ${new Date(invoiceData.paid_at).toLocaleDateString('de-DE')}`, 20, y + 8);
+                                  }
                                   
                                   // Bank details
-                                  y += 20;
-                                  doc.setFont('helvetica', 'normal');
+                                  y += 30;
                                   doc.setFontSize(9);
                                   if (invoiceData.dozent?.bank_name) {
                                     doc.text('Bankverbindung:', 20, y);
@@ -1887,7 +1868,7 @@ export function AdminDashboard() {
                                   const pdfUrl = URL.createObjectURL(pdfBlob);
                                   setPdfViewerUrl(pdfUrl);
                                   setPdfViewerFileName(`${invoice.invoice_number}.pdf`);
-                                  setShowPdfViewer(true);
+                                  setPdfViewerOpen(true);
                                 } catch (error) {
                                   console.error('Error generating preview:', error);
                                   addToast('Fehler beim Laden der Vorschau', 'error');
@@ -1900,9 +1881,8 @@ export function AdminDashboard() {
                             </button>
                             {/* Download Button */}
                             <button
-                              onClick={async () => {
-                                // Similar to preview but trigger download
-                                addToast('Download wird vorbereitet...', 'info');
+                              onClick={() => {
+                                addToast('Bitte nutzen Sie die Vorschau zum Herunterladen', 'success');
                               }}
                               className="inline-flex items-center px-2 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
                               title="Herunterladen"
