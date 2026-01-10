@@ -101,6 +101,27 @@ export function DozentCard({ dozent, userRole, onEdit, onFolderClick }: DozentCa
 
       console.log('Checking folders for types:', folderTypes);
       for (const type of folderTypes) {
+        // Special handling for Rechnungen - count from invoices table
+        if (type === 'Rechnungen') {
+          // Count unpaid invoices (submitted or sent but not paid)
+          const { count: unpaidCount, error: unpaidError } = await supabase
+            .from('invoices')
+            .select('*', { count: 'exact', head: true })
+            .eq('dozent_id', dozent.id)
+            .in('status', ['submitted', 'sent']);
+
+          if (unpaidError) {
+            console.error(`Error counting unpaid invoices for dozent ${dozent.id}:`, unpaidError);
+            counts.push({ type, count: 0, unreadCount: 0 });
+            continue;
+          }
+
+          console.log(`Invoice count for ${type}: unpaid:`, unpaidCount);
+          // Only show count if there are unpaid invoices
+          counts.push({ type, count: unpaidCount || 0, unreadCount: unpaidCount || 0 });
+          continue;
+        }
+
         const { data: folders, error: folderError } = await supabase
           .from('folders')
           .select('id')

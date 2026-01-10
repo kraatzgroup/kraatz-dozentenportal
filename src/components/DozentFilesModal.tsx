@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, FolderIcon, FileText, Download, Eye, Calendar, Clock } from 'lucide-react';
+import { X, FolderIcon, FileText, Download, Eye, Calendar } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface DozentFilesModalProps {
@@ -16,6 +16,7 @@ interface FileItem {
   file_path: string;
   file_size?: number;
   downloaded?: boolean;
+  invoice?: any;
 }
 
 export function DozentFilesModal({ dozentId, dozentName, folderType, onClose }: DozentFilesModalProps) {
@@ -23,6 +24,7 @@ export function DozentFilesModal({ dozentId, dozentName, folderType, onClose }: 
   const [isLoading, setIsLoading] = useState(true);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewFileName, setPreviewFileName] = useState<string>('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     fetchFiles();
@@ -31,6 +33,39 @@ export function DozentFilesModal({ dozentId, dozentName, folderType, onClose }: 
   const fetchFiles = async () => {
     setIsLoading(true);
     try {
+      // Special handling for Rechnungen - fetch from invoices table
+      if (folderType === 'Rechnungen') {
+        const { data: invoices, error: invoicesError } = await supabase
+          .from('invoices')
+          .select('*')
+          .eq('dozent_id', dozentId)
+          .in('status', ['submitted', 'sent', 'paid'])
+          .order('created_at', { ascending: false });
+
+        if (invoicesError) throw invoicesError;
+
+        console.log('DozentFilesModal - Fetched invoices:', invoices?.map(inv => ({
+          id: inv.id,
+          invoice_number: inv.invoice_number,
+          file_path: inv.file_path,
+          status: inv.status
+        })));
+
+        // Transform invoices to file format - only use actual file_path from database
+        const invoiceFiles: FileItem[] = (invoices || []).map(inv => ({
+          id: inv.id,
+          name: inv.invoice_number || `Rechnung ${new Date(2023, inv.month - 1).toLocaleDateString('de-DE', { month: 'long' })} ${inv.year}`,
+          created_at: inv.submitted_at || inv.created_at,
+          file_path: inv.file_path || '',
+          downloaded: inv.status === 'paid',
+          invoice: inv
+        }));
+
+        setFiles(invoiceFiles);
+        setIsLoading(false);
+        return;
+      }
+
       // Get the folder for this dozent and folder type
       const { data: folder, error: folderError } = await supabase
         .from('folders')
@@ -66,17 +101,69 @@ export function DozentFilesModal({ dozentId, dozentName, folderType, onClose }: 
 
   const handleDownload = async (file: FileItem) => {
     try {
+      setErrorMessage(null);
+      
+      // For invoices, fetch fresh data from database and download as blob
+      if (file.invoice) {
+        const { data: invoiceData, error: invoiceError } = await supabase
+          .from('invoices')
+          .select('*')
+          .eq('id', file.id)
+          .single();
+
+        if (invoiceError || !invoiceData) {
+          setErrorMessage('Rechnung nicht gefunden');
+          return;
+        }
+
+        if (invoiceData.file_path) {
+          // Download as blob to fix MIME type issue
+          const { data: pdfData, error: downloadError } = await supabase.storage
+            .from('invoices')
+            .download(invoiceData.file_path);
+          
+          if (!downloadError && pdfData) {
+            const pdfBlob = new Blob([pdfData], { type: 'application/pdf' });
+            const url = URL.createObjectURL(pdfBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = file.name.endsWith('.pdf') ? file.name : `${file.name}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            return;
+          }
+        }
+        
+        setErrorMessage('Keine PDF-Datei für diese Rechnung vorhanden');
+        return;
+      }
+
+      // For regular files
+      if (!file.file_path) {
+        setErrorMessage('Keine Datei verfügbar');
+        return;
+      }
+
       const { data, error } = await supabase.storage
         .from('files')
         .download(file.file_path);
 
-      if (error) throw error;
+      if (error) {
+        if (error.message?.includes('not found') || error.message?.includes('Object not found')) {
+          setErrorMessage('Die Datei wurde nicht gefunden. Sie wurde möglicherweise gelöscht.');
+        } else {
+          setErrorMessage('Fehler beim Herunterladen der Datei');
+        }
+        throw error;
+      }
 
       // Create download link
       const url = URL.createObjectURL(data);
       const a = document.createElement('a');
       a.href = url;
-      a.download = file.name;
+      a.download = file.name.endsWith('.pdf') ? file.name : `${file.name}.pdf`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -97,14 +184,61 @@ export function DozentFilesModal({ dozentId, dozentName, folderType, onClose }: 
 
   const handlePreview = async (file: FileItem) => {
     try {
+      setErrorMessage(null);
+      
+      // For invoices, fetch fresh data from database and download as blob
+      if (file.invoice) {
+        const { data: invoiceData, error: invoiceError } = await supabase
+          .from('invoices')
+          .select('*')
+          .eq('id', file.id)
+          .single();
+
+        if (invoiceError || !invoiceData) {
+          setErrorMessage('Rechnung nicht gefunden');
+          return;
+        }
+
+        if (invoiceData.file_path) {
+          // Download as blob to fix MIME type issue
+          const { data: pdfData, error: downloadError } = await supabase.storage
+            .from('invoices')
+            .download(invoiceData.file_path);
+          
+          if (!downloadError && pdfData) {
+            const pdfBlob = new Blob([pdfData], { type: 'application/pdf' });
+            const url = URL.createObjectURL(pdfBlob);
+            setPreviewUrl(url);
+            setPreviewFileName(file.name.endsWith('.pdf') ? file.name : `${file.name}.pdf`);
+            return;
+          }
+        }
+        
+        setErrorMessage('Keine PDF-Datei für diese Rechnung vorhanden');
+        return;
+      }
+
+      // For regular files
+      if (!file.file_path) {
+        setErrorMessage('Keine Datei verfügbar');
+        return;
+      }
+
       const { data, error } = await supabase.storage
         .from('files')
         .createSignedUrl(file.file_path, 3600); // 1 hour expiry
 
-      if (error) throw error;
+      if (error) {
+        if (error.message?.includes('not found') || error.message?.includes('Object not found')) {
+          setErrorMessage('Die Datei wurde nicht gefunden. Sie wurde möglicherweise gelöscht.');
+        } else {
+          setErrorMessage('Fehler beim Laden der Vorschau');
+        }
+        throw error;
+      }
 
       setPreviewUrl(data.signedUrl);
-      setPreviewFileName(file.name);
+      setPreviewFileName(file.name.endsWith('.pdf') ? file.name : `${file.name}.pdf`);
     } catch (error) {
       console.error('Error creating preview URL:', error);
     }
@@ -153,6 +287,13 @@ export function DozentFilesModal({ dozentId, dozentName, folderType, onClose }: 
           </button>
         </div>
 
+        {/* Error Message */}
+        {errorMessage && (
+          <div className="mx-4 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-700">{errorMessage}</p>
+          </div>
+        )}
+
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-4">
           {isLoading ? (
@@ -186,7 +327,17 @@ export function DozentFilesModal({ dozentId, dozentName, folderType, onClose }: 
                             <span>{formatFileSize(file.file_size)}</span>
                           </>
                         )}
-                        {!file.downloaded && (
+                        {file.invoice && (
+                          <>
+                            <span className="mx-2">•</span>
+                            <span className={`font-medium ${
+                              file.invoice.status === 'paid' ? 'text-green-600' : 'text-blue-600'
+                            }`}>
+                              {file.invoice.status === 'paid' ? 'Bezahlt' : 'Übermittelt'}
+                            </span>
+                          </>
+                        )}
+                        {!file.downloaded && !file.invoice && (
                           <>
                             <span className="mx-2">•</span>
                             <span className="text-yellow-600 font-medium">Neu</span>
@@ -196,20 +347,26 @@ export function DozentFilesModal({ dozentId, dozentName, folderType, onClose }: 
                     </div>
                   </div>
                   <div className="flex items-center gap-2 ml-3">
-                    <button
-                      onClick={() => handlePreview(file)}
-                      className="p-2 text-gray-500 hover:text-primary hover:bg-primary/10 rounded-md transition-colors"
-                      title="Vorschau"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDownload(file)}
-                      className="p-2 text-gray-500 hover:text-primary hover:bg-primary/10 rounded-md transition-colors"
-                      title="Herunterladen"
-                    >
-                      <Download className="h-4 w-4" />
-                    </button>
+                    {(file.file_path || file.invoice) ? (
+                      <>
+                        <button
+                          onClick={() => handlePreview(file)}
+                          className="p-2 text-gray-500 hover:text-primary hover:bg-primary/10 rounded-md transition-colors"
+                          title="Vorschau"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDownload(file)}
+                          className="p-2 text-gray-500 hover:text-primary hover:bg-primary/10 rounded-md transition-colors"
+                          title="Herunterladen"
+                        >
+                          <Download className="h-4 w-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-xs text-gray-400 italic">Keine PDF</span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -251,11 +408,25 @@ export function DozentFilesModal({ dozentId, dozentName, folderType, onClose }: 
             </div>
             <div className="flex-1 overflow-auto bg-gray-100">
               {previewFileName.toLowerCase().endsWith('.pdf') ? (
-                <iframe
-                  src={previewUrl}
-                  className="w-full h-full min-h-[70vh]"
-                  title="PDF Preview"
-                />
+                previewUrl.startsWith('blob:') ? (
+                  <object
+                    data={previewUrl}
+                    type="application/pdf"
+                    className="w-full h-full min-h-[70vh]"
+                  >
+                    <iframe
+                      src={previewUrl}
+                      className="w-full h-full min-h-[70vh]"
+                      title="PDF Preview"
+                    />
+                  </object>
+                ) : (
+                  <iframe
+                    src={previewUrl}
+                    className="w-full h-full min-h-[70vh]"
+                    title="PDF Preview"
+                  />
+                )
               ) : previewFileName.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
                 <div className="flex items-center justify-center p-4">
                   <img

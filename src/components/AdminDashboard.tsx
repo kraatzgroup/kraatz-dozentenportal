@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageSquare, LogOut, Users, Clock, FileText, Calendar, Edit2, X, Check, Plus, ChevronDown, ChevronUp, Receipt, Search, Download, Eye, Mail, Send } from 'lucide-react';
+import { MessageSquare, LogOut, Users, Clock, FileText, Calendar, Edit2, X, Check, Plus, ChevronDown, ChevronUp, Receipt, Search, Download, Eye, Mail, Send, Trash2, Settings } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
 import { useFileStore } from '../store/fileStore';
@@ -29,7 +29,10 @@ const isContractActive = (t: any): boolean => {
   
   if (t.contract_start && t.contract_end) {
     const start = new Date(t.contract_start);
+    start.setHours(0, 0, 0, 0);
     const end = new Date(t.contract_end);
+    end.setHours(0, 0, 0, 0);
+    // Active if today is within contract period
     return today >= start && today <= end;
   }
   // If no contract dates, fall back to status field
@@ -89,7 +92,10 @@ export function AdminDashboard() {
   const [isCheckingDocuments, setIsCheckingDocuments] = useReactState(false);
   const [checkResult, setCheckResult] = useReactState<any>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails'>('dozenten');
+  const [activeTab, setActiveTab] = useState<'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails'>(() => {
+    const saved = localStorage.getItem('adminDashboardTab');
+    return (saved as 'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails') || 'dozenten';
+  });
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [calendarEntries, setCalendarEntries] = useState<any[]>([]);
@@ -140,6 +146,15 @@ export function AdminDashboard() {
   const [selectedFolderType, setSelectedFolderType] = useState<string>('');
   const [showDozentTaetigkeitsbericht, setShowDozentTaetigkeitsbericht] = useState(false);
   const [showDozentTeilnehmer, setShowDozentTeilnehmer] = useState(false);
+  const [calendarFilters, setCalendarFilters] = useState({
+    show25: true,
+    show75: true,
+    showEnd: true,
+    showExam: true,
+    showCustom: true
+  });
+  const [eventListFilter, setEventListFilter] = useState<'alle' | '25' | '75' | 'end' | 'exam' | 'custom'>('alle');
+  const [deleteInvoiceModal, setDeleteInvoiceModal] = useState<{ show: boolean; invoice: any | null }>({ show: false, invoice: null });
 
   useEffect(() => {
     fetchDozenten();
@@ -371,11 +386,11 @@ export function AdminDashboard() {
 
   const fetchSubmittedInvoices = async () => {
     try {
-      // Get all invoices with status 'submitted' (from dozents who have submitted for admin review)
+      // Get all invoices with status 'submitted', 'sent', or 'paid' (from dozents who have shared with admin)
       const { data: invoices, error: invoicesError } = await supabase
         .from('invoices')
         .select('*, profiles!invoices_dozent_id_fkey(full_name, profile_picture_url)')
-        .in('status', ['submitted', 'paid'])
+        .in('status', ['submitted', 'sent', 'paid'])
         .order('created_at', { ascending: false });
 
       if (invoicesError) throw invoicesError;
@@ -561,6 +576,46 @@ export function AdminDashboard() {
     }
   };
 
+  const handleDeleteInvoicePdf = async (invoice: any) => {
+    try {
+      // Fetch invoice to get file_path
+      const { data: invoiceData } = await supabase
+        .from('invoices')
+        .select('file_path')
+        .eq('id', invoice.id)
+        .single();
+      
+      if (invoiceData?.file_path) {
+        // Delete file from storage
+        const { error: storageError } = await supabase.storage
+          .from('invoices')
+          .remove([invoiceData.file_path]);
+        
+        if (storageError) {
+          console.error('Error deleting file from storage:', storageError);
+        }
+      }
+      
+      // Delete the entire invoice from database
+      const { error: dbError } = await supabase
+        .from('invoices')
+        .delete()
+        .eq('id', invoice.id);
+      
+      if (dbError) {
+        throw dbError;
+      }
+      
+      addToast('Rechnung wurde gelöscht', 'success');
+      fetchSubmittedInvoices();
+    } catch (error) {
+      console.error('Error deleting invoice:', error);
+      addToast('Fehler beim Löschen der Rechnung', 'error');
+    } finally {
+      setDeleteInvoiceModal({ show: false, invoice: null });
+    }
+  };
+
   const handleMonthlyDocumentCheck = async () => {
     setIsCheckingDocuments(true);
     setCheckResult(null);
@@ -637,22 +692,10 @@ export function AdminDashboard() {
                 onClick={() => navigate('/users')}
                 className="inline-flex items-center px-2 lg:px-3 py-2 border border-transparent text-xs lg:text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition"
               >
-                <Users className="h-4 w-4 lg:h-5 lg:w-5 mr-1 lg:mr-2" />
+                <Settings className="h-4 w-4 lg:h-5 lg:w-5 mr-1 lg:mr-2" />
                 <span className="hidden lg:inline">Benutzerverwaltung</span>
               </button>
               )}
-              <button
-                onClick={() => navigate('/messages')}
-                className="inline-flex items-center px-2 lg:px-3 py-2 border border-transparent text-xs lg:text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition relative"
-              >
-                <MessageSquare className="h-4 w-4 lg:h-5 lg:w-5 mr-1 lg:mr-2" />
-                <span className="hidden lg:inline">Nachrichten</span>
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 lg:h-5 lg:w-5 flex items-center justify-center font-bold text-xs">
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </span>
-                )}
-              </button>
               <button
                 onClick={handleSignOut}
                 className="inline-flex items-center px-2 lg:px-3 py-2 border border-transparent text-xs lg:text-sm leading-4 font-medium rounded-md text-red-500 hover:text-red-700 focus:outline-none transition"
@@ -675,7 +718,7 @@ export function AdminDashboard() {
                   }}
                   className="flex items-center w-full px-3 py-2 text-base font-medium text-primary hover:text-primary/80 hover:bg-gray-50"
                 >
-                  <Users className="h-5 w-5 mr-3" />
+                  <Settings className="h-5 w-5 mr-3" />
                   Benutzerverwaltung
                 </button>
                 )}
@@ -716,7 +759,7 @@ export function AdminDashboard() {
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex space-x-4 sm:space-x-8" aria-label="Tabs">
               <button
-                onClick={() => setActiveTab('dozenten')}
+                onClick={() => { setActiveTab('dozenten'); localStorage.setItem('adminDashboardTab', 'dozenten'); }}
                 className={`${
                   activeTab === 'dozenten'
                     ? 'border-primary text-primary'
@@ -725,12 +768,9 @@ export function AdminDashboard() {
               >
                 <FileText className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">Dozenten</span>
-                <span className="ml-1 sm:ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">
-                  {dozenten.length}
-                </span>
               </button>
               <button
-                onClick={() => setActiveTab('teilnehmer')}
+                onClick={() => { setActiveTab('teilnehmer'); localStorage.setItem('adminDashboardTab', 'teilnehmer'); }}
                 className={`${
                   activeTab === 'teilnehmer'
                     ? 'border-primary text-primary'
@@ -739,12 +779,23 @@ export function AdminDashboard() {
               >
                 <Users className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">Teilnehmer</span>
-                <span className="ml-1 sm:ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">
-                  {teilnehmer.length}
-                </span>
+                {(() => {
+                  const urgentCount = teilnehmer.filter(t => {
+                    const isActive = isContractActive(t);
+                    const hasHoursLeft = t.booked_hours && (t.booked_hours - (t.completed_hours || 0)) > 0;
+                    const isUrgent = !isActive && hasHoursLeft;
+                    const isStundenVoll = isActive && !hasHoursLeft && t.booked_hours;
+                    return isUrgent || isStundenVoll;
+                  }).length;
+                  return urgentCount > 0 ? (
+                    <span className="ml-1 sm:ml-2 bg-red-500 text-white py-0.5 px-2 rounded-full text-xs">
+                      {urgentCount}
+                    </span>
+                  ) : null;
+                })()}
               </button>
               <button
-                onClick={() => setActiveTab('rechnungen')}
+                onClick={() => { setActiveTab('rechnungen'); localStorage.setItem('adminDashboardTab', 'rechnungen'); }}
                 className={`${
                   activeTab === 'rechnungen'
                     ? 'border-primary text-primary'
@@ -753,14 +804,14 @@ export function AdminDashboard() {
               >
                 <Receipt className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">Rechnungen</span>
-                {submittedInvoices.filter(i => i.status === 'submitted').length > 0 && (
+                {submittedInvoices.filter(i => i.status === 'submitted' || i.status === 'sent').length > 0 && (
                   <span className="ml-1 sm:ml-2 bg-red-500 text-white py-0.5 px-2 rounded-full text-xs">
-                    {submittedInvoices.filter(i => i.status === 'submitted').length}
+                    {submittedInvoices.filter(i => i.status === 'submitted' || i.status === 'sent').length}
                   </span>
                 )}
               </button>
               <button
-                onClick={() => setActiveTab('nachrichten')}
+                onClick={() => { setActiveTab('nachrichten'); localStorage.setItem('adminDashboardTab', 'nachrichten'); }}
                 className={`${
                   activeTab === 'nachrichten'
                     ? 'border-primary text-primary'
@@ -776,7 +827,7 @@ export function AdminDashboard() {
                 )}
               </button>
               <button
-                onClick={() => setActiveTab('kalender')}
+                onClick={() => { setActiveTab('kalender'); localStorage.setItem('adminDashboardTab', 'kalender'); }}
                 className={`${
                   activeTab === 'kalender'
                     ? 'border-primary text-primary'
@@ -787,7 +838,7 @@ export function AdminDashboard() {
                 <span className="hidden sm:inline">Kalender</span>
               </button>
               <button
-                onClick={() => setActiveTab('emails')}
+                onClick={() => { setActiveTab('emails'); localStorage.setItem('adminDashboardTab', 'emails'); }}
                 className={`${
                   activeTab === 'emails'
                     ? 'border-primary text-primary'
@@ -1183,6 +1234,9 @@ export function AdminDashboard() {
                           <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Status
                           </th>
+                          <th scope="col" className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Aktionen
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
@@ -1264,29 +1318,27 @@ export function AdminDashboard() {
                                         <span className="text-gray-400">Nicht festgelegt</span>
                                       )}
                                     </div>
-                                    <button
-                                      onClick={() => startEditingContract(t)}
-                                      className="p-1 text-gray-400 hover:text-primary"
-                                    >
-                                      <Edit2 className="h-3 w-3" />
-                                    </button>
                                   </div>
                                   {/* Progress Bar for Desktop */}
                                   {t.contract_start && t.contract_end && (() => {
                                     const progress = getContractProgress(t);
+                                    const hasHoursLeft = t.booked_hours && (t.booked_hours - (t.completed_hours || 0)) > 0;
+                                    const isFinishedWithHoursLeft = progress.percent >= 100 && hasHoursLeft;
                                     return (
                                       <div className="flex items-center space-x-2">
                                         <div className="w-20 bg-gray-200 rounded-full h-1.5">
                                           <div 
                                             className={`h-1.5 rounded-full ${
+                                              isFinishedWithHoursLeft ? 'bg-red-500' :
                                               progress.percent >= 100 ? 'bg-gray-400' : 
                                               progress.percent >= 75 ? 'bg-orange-500' : 
                                               'bg-primary'
                                             }`}
-                                            style={{ width: `${progress.percent}%` }}
+                                            style={{ width: `${Math.min(progress.percent, 100)}%` }}
                                           />
                                         </div>
                                         <span className={`text-xs ${
+                                          isFinishedWithHoursLeft ? 'text-red-600' :
                                           progress.percent >= 100 ? 'text-gray-500' : 
                                           progress.percent >= 75 ? 'text-orange-600' : 
                                           'text-primary'
@@ -1299,8 +1351,8 @@ export function AdminDashboard() {
                                 </div>
                               )}
                             </td>
-                            <td className="px-4 sm:px-6 py-4 whitespace-nowrap hidden lg:table-cell">
-                              <div className="text-sm text-gray-500">
+                            <td className="px-4 sm:px-6 py-4 hidden lg:table-cell">
+                              <div className="text-xs text-gray-500 max-w-[120px] line-clamp-2">
                                 {t.study_goal || '-'}
                               </div>
                             </td>
@@ -1354,11 +1406,268 @@ export function AdminDashboard() {
                               )}
                             </td>
                             <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                isContractActive(t) ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                              }`}>
-                                {isContractActive(t) ? 'Aktiv' : 'Abgeschlossen'}
-                              </span>
+                              {(() => {
+                                const isActive = isContractActive(t);
+                                const hasHoursLeft = t.booked_hours && (t.booked_hours - (t.completed_hours || 0)) > 0;
+                                const isUrgent = !isActive && hasHoursLeft;
+                                const isRunning = isActive && hasHoursLeft;
+                                return (
+                                  <div className="flex items-center gap-2">
+                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                      isUrgent ? 'bg-red-100 text-red-800' :
+                                      isRunning ? 'bg-blue-100 text-blue-800' :
+                                      isActive ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'
+                                    }`}>
+                                      {isUrgent ? 'Dringend' : isRunning ? 'Laufend' : isActive ? 'Stunden voll' : 'Abgeschlossen'}
+                                    </span>
+                                  </div>
+                                );
+                              })()}
+                            </td>
+                            <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  onClick={() => {
+                                    setSelectedTeilnehmerForEdit(t);
+                                    setShowTeilnehmerForm(true);
+                                  }}
+                                  className="p-1.5 text-gray-400 hover:text-primary hover:bg-gray-100 rounded transition-colors"
+                                  title="Teilnehmer bearbeiten"
+                                >
+                                  <Edit2 className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    
+                                    // Fetch all hours for this participant
+                                    const { data: hoursData, error: hoursError } = await supabase
+                                      .from('participant_hours')
+                                      .select(`
+                                        *,
+                                        dozent:profiles!participant_hours_dozent_id_fkey(full_name)
+                                      `)
+                                      .eq('teilnehmer_id', t.id)
+                                      .order('date', { ascending: false });
+                                    
+                                    if (hoursError) {
+                                      console.error('Error fetching hours:', hoursError);
+                                      return;
+                                    }
+                                    
+                                    const { jsPDF } = await import('jspdf');
+                                    const doc = new jsPDF();
+                                    
+                                    // Portal colors
+                                    const primaryColor = { r: 44, g: 131, b: 192 }; // #2C83C0
+                                    const lightBg = { r: 215, g: 229, b: 243 }; // #D7E5F3
+                                    
+                                    // Add logo
+                                    try {
+                                      const logoImg = new Image();
+                                      logoImg.crossOrigin = 'anonymous';
+                                      await new Promise((resolve, reject) => {
+                                        logoImg.onload = resolve;
+                                        logoImg.onerror = reject;
+                                        logoImg.src = '/KraatzGroup_Logo_web.png';
+                                      });
+                                      // Logo aspect ratio ~2:1 (width:height)
+                                      doc.addImage(logoImg, 'PNG', 15, 8, 40, 22);
+                                    } catch (err) {
+                                      console.log('Logo could not be loaded');
+                                    }
+                                    
+                                    // Header bar
+                                    doc.setFillColor(primaryColor.r, primaryColor.g, primaryColor.b);
+                                    doc.rect(0, 35, 210, 12, 'F');
+                                    
+                                    doc.setTextColor(255, 255, 255);
+                                    doc.setFontSize(14);
+                                    doc.setFont('helvetica', 'bold');
+                                    doc.text('STUNDENÜBERSICHT', 105, 43, { align: 'center' });
+                                    
+                                    // Reset text color
+                                    doc.setTextColor(0, 0, 0);
+                                    
+                                    // Participant info box
+                                    doc.setFillColor(lightBg.r, lightBg.g, lightBg.b);
+                                    doc.roundedRect(15, 52, 180, 45, 3, 3, 'F');
+                                    
+                                    doc.setFontSize(16);
+                                    doc.setFont('helvetica', 'bold');
+                                    doc.setTextColor(primaryColor.r, primaryColor.g, primaryColor.b);
+                                    doc.text(t.name, 25, 65);
+                                    
+                                    doc.setTextColor(80, 80, 80);
+                                    doc.setFontSize(10);
+                                    doc.setFont('helvetica', 'normal');
+                                    doc.text(`E-Mail: ${t.email || '-'}`, 25, 74);
+                                    doc.text(`Studienziel: ${t.study_goal || '-'}`, 25, 81);
+                                    if (t.contract_start && t.contract_end) {
+                                      doc.text(`Vertragszeitraum: ${new Date(t.contract_start).toLocaleDateString('de-DE')} - ${new Date(t.contract_end).toLocaleDateString('de-DE')}`, 25, 88);
+                                    }
+                                    
+                                    // Hours summary box
+                                    doc.setFillColor(255, 255, 255);
+                                    doc.setDrawColor(primaryColor.r, primaryColor.g, primaryColor.b);
+                                    doc.roundedRect(120, 58, 70, 35, 2, 2, 'FD');
+                                    
+                                    doc.setFontSize(9);
+                                    doc.setTextColor(100, 100, 100);
+                                    doc.text('Gebuchte Std.:', 125, 67);
+                                    doc.text('Absolviert:', 125, 76);
+                                    doc.text('Ausstehend:', 125, 85);
+                                    
+                                    doc.setFont('helvetica', 'bold');
+                                    doc.setTextColor(primaryColor.r, primaryColor.g, primaryColor.b);
+                                    doc.text(`${t.booked_hours || 0}`, 175, 67, { align: 'right' });
+                                    doc.setTextColor(34, 139, 34);
+                                    doc.text(`${t.completed_hours || 0}`, 175, 76, { align: 'right' });
+                                    const remaining = (t.booked_hours || 0) - (t.completed_hours || 0);
+                                    doc.setTextColor(remaining > 0 ? 200 : 34, remaining > 0 ? 120 : 139, remaining > 0 ? 50 : 34);
+                                    doc.text(`${remaining}`, 175, 85, { align: 'right' });
+                                    
+                                    // Dozenten section
+                                    let yPos = 105;
+                                    doc.setTextColor(primaryColor.r, primaryColor.g, primaryColor.b);
+                                    doc.setFontSize(11);
+                                    doc.setFont('helvetica', 'bold');
+                                    doc.text('Zugewiesene Dozenten', 20, yPos);
+                                    yPos += 2;
+                                    doc.setDrawColor(primaryColor.r, primaryColor.g, primaryColor.b);
+                                    doc.line(20, yPos, 80, yPos);
+                                    yPos += 8;
+                                    
+                                    doc.setTextColor(60, 60, 60);
+                                    doc.setFontSize(10);
+                                    doc.setFont('helvetica', 'normal');
+                                    
+                                    if (t.dozent_zivilrecht_id) {
+                                      const dozent = dozenten.find(d => d.id === t.dozent_zivilrecht_id);
+                                      doc.text(`• Zivilrecht: ${dozent?.full_name || '-'}`, 25, yPos);
+                                      yPos += 6;
+                                    }
+                                    if (t.dozent_strafrecht_id) {
+                                      const dozent = dozenten.find(d => d.id === t.dozent_strafrecht_id);
+                                      doc.text(`• Strafrecht: ${dozent?.full_name || '-'}`, 25, yPos);
+                                      yPos += 6;
+                                    }
+                                    if (t.dozent_oeffentliches_recht_id) {
+                                      const dozent = dozenten.find(d => d.id === t.dozent_oeffentliches_recht_id);
+                                      doc.text(`• Öffentliches Recht: ${dozent?.full_name || '-'}`, 25, yPos);
+                                      yPos += 6;
+                                    }
+                                    if (!t.dozent_zivilrecht_id && !t.dozent_strafrecht_id && !t.dozent_oeffentliches_recht_id) {
+                                      doc.text('Keine Dozenten zugewiesen', 25, yPos);
+                                      yPos += 6;
+                                    }
+                                    
+                                    // Detailed hours entries
+                                    yPos += 10;
+                                    doc.setTextColor(primaryColor.r, primaryColor.g, primaryColor.b);
+                                    doc.setFontSize(11);
+                                    doc.setFont('helvetica', 'bold');
+                                    doc.text('Stundeneinträge', 20, yPos);
+                                    yPos += 2;
+                                    doc.line(20, yPos, 70, yPos);
+                                    yPos += 8;
+                                    
+                                    if (hoursData && hoursData.length > 0) {
+                                      // Table header with background
+                                      doc.setFillColor(primaryColor.r, primaryColor.g, primaryColor.b);
+                                      doc.rect(15, yPos - 5, 180, 8, 'F');
+                                      
+                                      doc.setFontSize(9);
+                                      doc.setFont('helvetica', 'bold');
+                                      doc.setTextColor(255, 255, 255);
+                                      doc.text('Datum', 20, yPos);
+                                      doc.text('Dozent', 50, yPos);
+                                      doc.text('Std.', 115, yPos);
+                                      doc.text('Inhalt', 130, yPos);
+                                      yPos += 8;
+                                      
+                                      doc.setFont('helvetica', 'normal');
+                                      doc.setTextColor(60, 60, 60);
+                                      let totalHours = 0;
+                                      let rowIndex = 0;
+                                      
+                                      for (const entry of hoursData) {
+                                        // Check if we need a new page
+                                        if (yPos > 265) {
+                                          doc.addPage();
+                                          yPos = 20;
+                                          // Repeat table header on new page
+                                          doc.setFillColor(primaryColor.r, primaryColor.g, primaryColor.b);
+                                          doc.rect(15, yPos - 5, 180, 8, 'F');
+                                          doc.setFont('helvetica', 'bold');
+                                          doc.setTextColor(255, 255, 255);
+                                          doc.text('Datum', 20, yPos);
+                                          doc.text('Dozent', 50, yPos);
+                                          doc.text('Std.', 115, yPos);
+                                          doc.text('Inhalt', 130, yPos);
+                                          yPos += 8;
+                                          doc.setFont('helvetica', 'normal');
+                                          doc.setTextColor(60, 60, 60);
+                                        }
+                                        
+                                        // Alternating row background
+                                        if (rowIndex % 2 === 0) {
+                                          doc.setFillColor(245, 248, 252);
+                                          doc.rect(15, yPos - 4, 180, 7, 'F');
+                                        }
+                                        
+                                        const dateStr = new Date(entry.date).toLocaleDateString('de-DE');
+                                        const dozentName = entry.dozent?.full_name || '-';
+                                        const hours = parseFloat(entry.hours?.toString() || '0');
+                                        totalHours += hours;
+                                        const description = entry.description || '-';
+                                        
+                                        // Truncate long descriptions
+                                        const maxDescLength = 32;
+                                        const truncatedDesc = description.length > maxDescLength 
+                                          ? description.substring(0, maxDescLength) + '...' 
+                                          : description;
+                                        
+                                        doc.setFontSize(9);
+                                        doc.text(dateStr, 20, yPos);
+                                        doc.text(dozentName.substring(0, 28), 50, yPos);
+                                        doc.text(hours.toString(), 115, yPos);
+                                        doc.text(truncatedDesc, 130, yPos);
+                                        yPos += 7;
+                                        rowIndex++;
+                                      }
+                                      
+                                      // Total row
+                                      yPos += 2;
+                                      doc.setFillColor(primaryColor.r, primaryColor.g, primaryColor.b);
+                                      doc.rect(15, yPos - 4, 180, 8, 'F');
+                                      doc.setFont('helvetica', 'bold');
+                                      doc.setTextColor(255, 255, 255);
+                                      doc.text('GESAMT:', 20, yPos);
+                                      doc.text(`${totalHours} Stunden`, 115, yPos);
+                                    } else {
+                                      doc.setFontSize(10);
+                                      doc.setTextColor(100, 100, 100);
+                                      doc.text('Keine Stundeneinträge vorhanden.', 25, yPos);
+                                    }
+                                    
+                                    // Footer
+                                    doc.setFillColor(lightBg.r, lightBg.g, lightBg.b);
+                                    doc.rect(0, 280, 210, 17, 'F');
+                                    doc.setFont('helvetica', 'normal');
+                                    doc.setFontSize(8);
+                                    doc.setTextColor(100, 100, 100);
+                                    doc.text(`Erstellt am: ${new Date().toLocaleDateString('de-DE')} um ${new Date().toLocaleTimeString('de-DE')}`, 20, 288);
+                                    doc.text('info@kraatz-group.de', 190, 288, { align: 'right' });
+                                    
+                                    doc.save(`Stundenübersicht_${t.name.replace(/\s+/g, '_')}.pdf`);
+                                  }}
+                                  className="p-1.5 text-gray-400 hover:text-primary hover:bg-gray-100 rounded transition-colors"
+                                  title="Stundenübersicht als PDF herunterladen"
+                                >
+                                  <Download className="h-4 w-4" />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -1379,9 +1688,9 @@ export function AdminDashboard() {
                 <h3 className="text-lg font-medium text-gray-900 flex items-center">
                   <FileText className="h-5 w-5 text-primary mr-2" />
                   Übermittelte Rechnungen
-                  {submittedInvoices.filter(i => i.status === 'submitted').length > 0 && (
+                  {submittedInvoices.filter(i => i.status === 'submitted' || i.status === 'sent').length > 0 && (
                     <span className="ml-2 bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                      {submittedInvoices.filter(i => i.status === 'submitted').length} zur Bearbeitung
+                      {submittedInvoices.filter(i => i.status === 'submitted' || i.status === 'sent').length} zur Bearbeitung
                     </span>
                   )}
                 </h3>
@@ -1416,8 +1725,8 @@ export function AdminDashboard() {
               </div>
               
               {(() => {
-                // Filter invoices by month/year - only show unpaid (submitted) invoices
-                const unpaidInvoices = submittedInvoices.filter(i => i.status === 'submitted');
+                // Filter invoices by month/year - only show unpaid (submitted/sent) invoices
+                const unpaidInvoices = submittedInvoices.filter(i => i.status === 'submitted' || i.status === 'sent');
                 const filteredInvoices = invoiceFilterMonth === 'alle'
                   ? unpaidInvoices.filter(i => i.year === invoiceFilterYear)
                   : unpaidInvoices.filter(i => i.month === invoiceFilterMonth && i.year === invoiceFilterYear);
@@ -1454,9 +1763,9 @@ export function AdminDashboard() {
                               <div className="flex items-center gap-2">
                                 <p className="text-sm font-medium text-gray-900">{invoice.invoice_number}</p>
                                 <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                  invoice.status === 'submitted' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                                  invoice.status === 'submitted' || invoice.status === 'sent' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
                                 }`}>
-                                  {invoice.status === 'submitted' ? 'Übermittelt' : 'Bezahlt'}
+                                  {invoice.status === 'submitted' || invoice.status === 'sent' ? 'Übermittelt' : 'Bezahlt'}
                                 </span>
                               </div>
                               <p className="text-sm text-gray-500">{invoice.dozent_name}</p>
@@ -1470,72 +1779,34 @@ export function AdminDashboard() {
                             {/* Preview Button */}
                             <button
                               onClick={async () => {
-                                const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
                                 try {
-                                  // Fetch full invoice data
+                                  // Fetch invoice to get file_path
                                   const { data: invoiceData } = await supabase
                                     .from('invoices')
-                                    .select(`
-                                      *,
-                                      dozent:profiles!invoices_dozent_id_fkey(full_name, email, phone, tax_id, bank_name, iban, bic, street, house_number, postal_code, city)
-                                    `)
+                                    .select('file_path')
                                     .eq('id', invoice.id)
                                     .single();
                                   
-                                  if (!invoiceData) {
-                                    addToast('Rechnung nicht gefunden', 'error');
-                                    return;
-                                  }
-
-                                  // If file_path exists, show uploaded PDF
-                                  if (invoiceData.file_path) {
-                                    const { data: urlData } = supabase.storage
+                                  if (invoiceData?.file_path) {
+                                    // Download as blob to fix MIME type issue
+                                    const { data: pdfData, error: downloadError } = await supabase.storage
                                       .from('invoices')
-                                      .getPublicUrl(invoiceData.file_path);
-
-                                    if (urlData?.publicUrl) {
-                                      setPdfViewerUrl(urlData.publicUrl);
-                                      setPdfViewerFileName(`Rechnung_${monthNames[invoice.month - 1]}_${invoice.year}_${invoice.dozent_name}.pdf`);
+                                      .download(invoiceData.file_path);
+                                    
+                                    if (!downloadError && pdfData) {
+                                      const pdfBlob = new Blob([pdfData], { type: 'application/pdf' });
+                                      const url = URL.createObjectURL(pdfBlob);
+                                      setPdfViewerUrl(url);
+                                      setPdfViewerFileName(`${invoice.invoice_number}.pdf`);
                                       setPdfViewerOpen(true);
                                       return;
                                     }
                                   }
-
-                                  // Otherwise generate PDF from data
-                                  const { data: participantHours } = await supabase
-                                    .from('participant_hours')
-                                    .select(`
-                                      date, hours, description, legal_area,
-                                      teilnehmer:teilnehmer(name)
-                                    `)
-                                    .eq('dozent_id', invoiceData.dozent_id)
-                                    .gte('date', invoiceData.period_start)
-                                    .lte('date', invoiceData.period_end)
-                                    .order('date', { ascending: true });
-
-                                  const { data: dozentHours } = await supabase
-                                    .from('dozent_hours')
-                                    .select('date, hours, description')
-                                    .eq('dozent_id', invoiceData.dozent_id)
-                                    .gte('date', invoiceData.period_start)
-                                    .lte('date', invoiceData.period_end)
-                                    .order('date', { ascending: true });
-
-                                  const { generateInvoicePDFBlob } = await import('../utils/invoicePDFGenerator');
                                   
-                                  const pdfBlob = await generateInvoicePDFBlob({
-                                    invoice: { ...invoiceData, dozent: invoiceData.dozent },
-                                    participantHours: (participantHours || []) as any,
-                                    dozentHours: (dozentHours || []) as any
-                                  });
-
-                                  const pdfUrl = URL.createObjectURL(pdfBlob);
-                                  setPdfViewerUrl(pdfUrl);
-                                  setPdfViewerFileName(`Rechnung_${monthNames[invoice.month - 1]}_${invoice.year}_${invoice.dozent_name}.pdf`);
-                                  setPdfViewerOpen(true);
+                                  addToast('Keine PDF-Datei vorhanden', 'error');
                                 } catch (error) {
-                                  console.error('Error loading PDF:', error);
-                                  addToast('Fehler beim Laden der PDF-Vorschau', 'error');
+                                  console.error('Error opening PDF:', error);
+                                  addToast('Fehler beim Öffnen der PDF', 'error');
                                 }
                               }}
                               className="inline-flex items-center px-2 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
@@ -1546,68 +1817,36 @@ export function AdminDashboard() {
                             {/* Download Button */}
                             <button
                               onClick={async () => {
-                                const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
                                 try {
-                                  // Fetch full invoice data
                                   const { data: invoiceData } = await supabase
                                     .from('invoices')
-                                    .select(`
-                                      *,
-                                      dozent:profiles!invoices_dozent_id_fkey(full_name, email, phone, tax_id, bank_name, iban, bic, street, house_number, postal_code, city)
-                                    `)
+                                    .select('file_path')
                                     .eq('id', invoice.id)
                                     .single();
                                   
-                                  if (!invoiceData) {
-                                    addToast('Rechnung nicht gefunden', 'error');
-                                    return;
-                                  }
-
-                                  // If file_path exists, download uploaded PDF
-                                  if (invoiceData.file_path) {
-                                    const { data: urlData } = supabase.storage
+                                  if (invoiceData?.file_path) {
+                                    // Download as blob to fix MIME type issue
+                                    const { data: pdfData, error: downloadError } = await supabase.storage
                                       .from('invoices')
-                                      .getPublicUrl(invoiceData.file_path);
-
-                                    if (urlData?.publicUrl) {
+                                      .download(invoiceData.file_path);
+                                    
+                                    if (!downloadError && pdfData) {
+                                      const pdfBlob = new Blob([pdfData], { type: 'application/pdf' });
+                                      const url = URL.createObjectURL(pdfBlob);
                                       const link = document.createElement('a');
-                                      link.href = urlData.publicUrl;
-                                      link.download = `Rechnung_${monthNames[invoice.month - 1]}_${invoice.year}_${invoice.dozent_name}.pdf`;
-                                      link.target = '_blank';
+                                      link.href = url;
+                                      const monthName = new Date(2023, invoice.month - 1).toLocaleDateString('de-DE', { month: 'long' });
+                                      const dozentName = (invoice.dozent_name || '').replace(/\s+/g, '_');
+                                      link.download = `${invoice.invoice_number}_${monthName}_${invoice.year}_${dozentName}.pdf`;
                                       document.body.appendChild(link);
                                       link.click();
                                       document.body.removeChild(link);
+                                      URL.revokeObjectURL(url);
                                       return;
                                     }
                                   }
-
-                                  // Otherwise generate and download PDF
-                                  const { data: participantHours } = await supabase
-                                    .from('participant_hours')
-                                    .select(`
-                                      date, hours, description, legal_area,
-                                      teilnehmer:teilnehmer(name)
-                                    `)
-                                    .eq('dozent_id', invoiceData.dozent_id)
-                                    .gte('date', invoiceData.period_start)
-                                    .lte('date', invoiceData.period_end)
-                                    .order('date', { ascending: true });
-
-                                  const { data: dozentHours } = await supabase
-                                    .from('dozent_hours')
-                                    .select('date, hours, description')
-                                    .eq('dozent_id', invoiceData.dozent_id)
-                                    .gte('date', invoiceData.period_start)
-                                    .lte('date', invoiceData.period_end)
-                                    .order('date', { ascending: true });
-
-                                  const { generateInvoicePDF } = await import('../utils/invoicePDFGenerator');
                                   
-                                  await generateInvoicePDF({
-                                    invoice: { ...invoiceData, dozent: invoiceData.dozent },
-                                    participantHours: (participantHours || []) as any,
-                                    dozentHours: (dozentHours || []) as any
-                                  });
+                                  addToast('Keine PDF-Datei vorhanden', 'error');
                                 } catch (error) {
                                   console.error('Error downloading PDF:', error);
                                   addToast('Fehler beim Herunterladen der PDF', 'error');
@@ -1618,7 +1857,15 @@ export function AdminDashboard() {
                             >
                               <Download className="h-3.5 w-3.5" />
                             </button>
-                            {invoice.status === 'submitted' && (
+                            {/* Delete PDF Button */}
+                            <button
+                              onClick={() => setDeleteInvoiceModal({ show: true, invoice })}
+                              className="inline-flex items-center px-2 py-1.5 border border-red-300 text-xs font-medium rounded-md text-red-700 bg-white hover:bg-red-50"
+                              title="PDF löschen"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                            {(invoice.status === 'submitted' || invoice.status === 'sent') && (
                               <button
                                 onClick={async () => {
                                   try {
@@ -1779,93 +2026,36 @@ export function AdminDashboard() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2 ml-13 sm:ml-0">
-                            {/* Preview Button */}
+                            {/* Preview Button - Paid Invoices */}
                             <button
                               onClick={async () => {
-                                const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
                                 try {
-                                  // Fetch full invoice data
                                   const { data: invoiceData } = await supabase
                                     .from('invoices')
-                                    .select(`
-                                      *,
-                                      dozent:profiles!invoices_dozent_id_fkey(full_name, email, phone, tax_id, bank_name, iban, bic, street, house_number, postal_code, city)
-                                    `)
+                                    .select('file_path')
                                     .eq('id', invoice.id)
                                     .single();
                                   
-                                  if (!invoiceData) {
-                                    addToast('Rechnung nicht gefunden', 'error');
-                                    return;
-                                  }
-
-                                  // If file_path exists, show uploaded PDF
-                                  if (invoiceData.file_path) {
-                                    const { data: urlData } = supabase.storage
+                                  if (invoiceData?.file_path) {
+                                    // Download as blob to fix MIME type issue
+                                    const { data: pdfData, error: downloadError } = await supabase.storage
                                       .from('invoices')
-                                      .getPublicUrl(invoiceData.file_path);
-
-                                    if (urlData?.publicUrl) {
-                                      setPdfViewerUrl(urlData.publicUrl);
+                                      .download(invoiceData.file_path);
+                                    
+                                    if (!downloadError && pdfData) {
+                                      const pdfBlob = new Blob([pdfData], { type: 'application/pdf' });
+                                      const url = URL.createObjectURL(pdfBlob);
+                                      setPdfViewerUrl(url);
                                       setPdfViewerFileName(`${invoice.invoice_number}.pdf`);
                                       setPdfViewerOpen(true);
                                       return;
                                     }
                                   }
-
-                                  // Generate simple PDF preview
-                                  const { jsPDF } = await import('jspdf');
-                                  const doc = new jsPDF();
                                   
-                                  // Header
-                                  doc.setFontSize(20);
-                                  doc.text('RECHNUNG', 105, 20, { align: 'center' });
-                                  
-                                  doc.setFontSize(10);
-                                  doc.text(invoiceData.dozent?.full_name || '', 20, 40);
-                                  if (invoiceData.dozent?.street) {
-                                    doc.text(`${invoiceData.dozent.street} ${invoiceData.dozent.house_number || ''}`, 20, 45);
-                                  }
-                                  if (invoiceData.dozent?.postal_code) {
-                                    doc.text(`${invoiceData.dozent.postal_code} ${invoiceData.dozent.city || ''}`, 20, 50);
-                                  }
-                                  
-                                  doc.text(`Rechnungsnummer: ${invoiceData.invoice_number}`, 140, 40);
-                                  doc.text(`Datum: ${new Date(invoiceData.created_at).toLocaleDateString('de-DE')}`, 140, 45);
-                                  doc.text(`Zeitraum: ${monthNames[invoiceData.month - 1]} ${invoiceData.year}`, 140, 50);
-                                  
-                                  // Total
-                                  let y = 80;
-                                  doc.setFont('helvetica', 'bold');
-                                  doc.text('Gesamtbetrag:', 20, y);
-                                  doc.text(`${(invoiceData.total_amount || 0).toFixed(2)} €`, 80, y);
-                                  
-                                  // Status
-                                  y += 15;
-                                  doc.setFont('helvetica', 'normal');
-                                  doc.text(`Status: ${invoiceData.status === 'paid' ? 'Bezahlt' : 'Übermittelt'}`, 20, y);
-                                  if (invoiceData.paid_at) {
-                                    doc.text(`Bezahlt am: ${new Date(invoiceData.paid_at).toLocaleDateString('de-DE')}`, 20, y + 8);
-                                  }
-                                  
-                                  // Bank details
-                                  y += 30;
-                                  doc.setFontSize(9);
-                                  if (invoiceData.dozent?.bank_name) {
-                                    doc.text('Bankverbindung:', 20, y);
-                                    doc.text(`Bank: ${invoiceData.dozent.bank_name}`, 20, y + 5);
-                                    doc.text(`IBAN: ${invoiceData.dozent.iban || ''}`, 20, y + 10);
-                                    doc.text(`BIC: ${invoiceData.dozent.bic || ''}`, 20, y + 15);
-                                  }
-                                  
-                                  const pdfBlob = doc.output('blob');
-                                  const pdfUrl = URL.createObjectURL(pdfBlob);
-                                  setPdfViewerUrl(pdfUrl);
-                                  setPdfViewerFileName(`${invoice.invoice_number}.pdf`);
-                                  setPdfViewerOpen(true);
+                                  addToast('Keine PDF-Datei vorhanden', 'error');
                                 } catch (error) {
-                                  console.error('Error generating preview:', error);
-                                  addToast('Fehler beim Laden der Vorschau', 'error');
+                                  console.error('Error opening PDF:', error);
+                                  addToast('Fehler beim Öffnen der PDF', 'error');
                                 }
                               }}
                               className="inline-flex items-center px-2 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
@@ -1873,15 +2063,56 @@ export function AdminDashboard() {
                             >
                               <Eye className="h-3.5 w-3.5" />
                             </button>
-                            {/* Download Button */}
+                            {/* Download Button - Paid Invoices */}
                             <button
-                              onClick={() => {
-                                addToast('Bitte nutzen Sie die Vorschau zum Herunterladen', 'success');
+                              onClick={async () => {
+                                try {
+                                  const { data: invoiceData } = await supabase
+                                    .from('invoices')
+                                    .select('file_path')
+                                    .eq('id', invoice.id)
+                                    .single();
+                                  
+                                  if (invoiceData?.file_path) {
+                                    // Download as blob to fix MIME type issue
+                                    const { data: pdfData, error: downloadError } = await supabase.storage
+                                      .from('invoices')
+                                      .download(invoiceData.file_path);
+                                    
+                                    if (!downloadError && pdfData) {
+                                      const pdfBlob = new Blob([pdfData], { type: 'application/pdf' });
+                                      const url = URL.createObjectURL(pdfBlob);
+                                      const link = document.createElement('a');
+                                      link.href = url;
+                                      const monthName = new Date(2023, invoice.month - 1).toLocaleDateString('de-DE', { month: 'long' });
+                                      const dozentName = (invoice.dozent_name || '').replace(/\s+/g, '_');
+                                      link.download = `${invoice.invoice_number}_${monthName}_${invoice.year}_${dozentName}.pdf`;
+                                      document.body.appendChild(link);
+                                      link.click();
+                                      document.body.removeChild(link);
+                                      URL.revokeObjectURL(url);
+                                      return;
+                                    }
+                                  }
+                                  
+                                  addToast('Keine PDF-Datei vorhanden', 'error');
+                                } catch (error) {
+                                  console.error('Error downloading PDF:', error);
+                                  addToast('Fehler beim Herunterladen der PDF', 'error');
+                                }
                               }}
                               className="inline-flex items-center px-2 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
                               title="Herunterladen"
                             >
                               <Download className="h-3.5 w-3.5" />
+                            </button>
+                            {/* Delete PDF Button */}
+                            <button
+                              onClick={() => setDeleteInvoiceModal({ show: true, invoice })}
+                              className="inline-flex items-center px-2 py-1.5 border border-red-300 text-xs font-medium rounded-md text-red-700 bg-white hover:bg-red-50"
+                              title="PDF löschen"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </div>
                         </div>
@@ -1998,6 +2229,15 @@ export function AdminDashboard() {
                              milestone75Date.getFullYear() === calendarYear;
                     });
 
+                    // Find exam dates for this day
+                    const examDatesToday = teilnehmer.filter(t => {
+                      if (!t.exam_date) return false;
+                      const examDate = new Date(t.exam_date);
+                      return examDate.getDate() === day && 
+                             examDate.getMonth() === calendarMonth && 
+                             examDate.getFullYear() === calendarYear;
+                    });
+
                     // Find custom calendar entries for this day
                     const entriesForDay = calendarEntries.filter(e => {
                       const entryDate = new Date(e.entry_date);
@@ -2035,7 +2275,7 @@ export function AdminDashboard() {
                           {day}
                         </div>
                         <div className="space-y-0.5 overflow-y-auto max-h-14 sm:max-h-16">
-                          {milestones25.map(t => (
+                          {calendarFilters.show25 && milestones25.map(t => (
                             <div 
                               key={`25-${t.id}`}
                               className="text-xs bg-yellow-100 text-yellow-700 px-1 py-0.5 rounded truncate cursor-pointer hover:bg-yellow-200"
@@ -2050,7 +2290,7 @@ export function AdminDashboard() {
                               🔔 25% {t.name}
                             </div>
                           ))}
-                          {milestones75.map(t => (
+                          {calendarFilters.show75 && milestones75.map(t => (
                             <div 
                               key={`75-${t.id}`}
                               className="text-xs bg-orange-100 text-orange-700 px-1 py-0.5 rounded truncate cursor-pointer hover:bg-orange-200"
@@ -2065,7 +2305,7 @@ export function AdminDashboard() {
                               ⏰ 75% {t.name}
                             </div>
                           ))}
-                          {contractsEndingToday.map(t => (
+                          {calendarFilters.showEnd && contractsEndingToday.map(t => (
                             <div 
                               key={t.id}
                               className="text-xs bg-red-100 text-red-700 px-1 py-0.5 rounded truncate cursor-pointer hover:bg-red-200"
@@ -2080,7 +2320,22 @@ export function AdminDashboard() {
                               📋 {t.name}
                             </div>
                           ))}
-                          {entriesForDay.map(entry => (
+                          {calendarFilters.showExam && examDatesToday.map(t => (
+                            <div 
+                              key={`exam-${t.id}`}
+                              className="text-xs bg-purple-100 text-purple-700 px-1 py-0.5 rounded truncate cursor-pointer hover:bg-purple-200"
+                              title={`Prüfungstermin: ${t.name}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPreviewTeilnehmer(t);
+                                setPreviewType('end');
+                                setShowTeilnehmerPreview(true);
+                              }}
+                            >
+                              📝 {t.name}
+                            </div>
+                          ))}
+                          {calendarFilters.showCustom && entriesForDay.map(entry => (
                             <div 
                               key={entry.id}
                               className={`text-xs px-1 py-0.5 rounded truncate cursor-pointer ${colorClasses[entry.color] || colorClasses.blue}`}
@@ -2107,81 +2362,209 @@ export function AdminDashboard() {
                 })()}
               </div>
 
-              {/* Legend */}
+              {/* Legend - Clickable Filters */}
               <div className="mt-6 pt-4 border-t border-gray-200">
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Legende</h3>
-                <div className="flex flex-wrap gap-4">
-                  <div className="flex items-center gap-2">
+                <h3 className="text-sm font-medium text-gray-700 mb-3">Filter (klicken zum Ein-/Ausblenden)</h3>
+                <div className="flex flex-wrap gap-2 sm:gap-4">
+                  <button
+                    onClick={() => setCalendarFilters(prev => ({ ...prev, show25: !prev.show25 }))}
+                    className={`flex items-center gap-2 px-2 py-1 rounded-lg border transition-all ${
+                      calendarFilters.show25 
+                        ? 'border-yellow-300 bg-yellow-50' 
+                        : 'border-gray-200 bg-gray-50 opacity-50'
+                    }`}
+                  >
                     <span className="text-sm">🔔</span>
                     <div className="w-4 h-4 bg-yellow-100 rounded"></div>
-                    <span className="text-sm text-gray-600">25% Vertragslaufzeit</span>
-                  </div>
-                  <div className="flex items-center gap-2">
+                    <span className="text-xs sm:text-sm text-gray-600">25% Vertragslaufzeit</span>
+                  </button>
+                  <button
+                    onClick={() => setCalendarFilters(prev => ({ ...prev, show75: !prev.show75 }))}
+                    className={`flex items-center gap-2 px-2 py-1 rounded-lg border transition-all ${
+                      calendarFilters.show75 
+                        ? 'border-orange-300 bg-orange-50' 
+                        : 'border-gray-200 bg-gray-50 opacity-50'
+                    }`}
+                  >
                     <span className="text-sm">⏰</span>
                     <div className="w-4 h-4 bg-orange-100 rounded"></div>
-                    <span className="text-sm text-gray-600">75% Vertragslaufzeit</span>
-                  </div>
-                  <div className="flex items-center gap-2">
+                    <span className="text-xs sm:text-sm text-gray-600">75% Vertragslaufzeit</span>
+                  </button>
+                  <button
+                    onClick={() => setCalendarFilters(prev => ({ ...prev, showEnd: !prev.showEnd }))}
+                    className={`flex items-center gap-2 px-2 py-1 rounded-lg border transition-all ${
+                      calendarFilters.showEnd 
+                        ? 'border-red-300 bg-red-50' 
+                        : 'border-gray-200 bg-gray-50 opacity-50'
+                    }`}
+                  >
                     <span className="text-sm">📋</span>
                     <div className="w-4 h-4 bg-red-100 rounded"></div>
-                    <span className="text-sm text-gray-600">Vertragsende</span>
-                  </div>
-                  <div className="flex items-center gap-2">
+                    <span className="text-xs sm:text-sm text-gray-600">Vertragsende</span>
+                  </button>
+                  <button
+                    onClick={() => setCalendarFilters(prev => ({ ...prev, showExam: !prev.showExam }))}
+                    className={`flex items-center gap-2 px-2 py-1 rounded-lg border transition-all ${
+                      calendarFilters.showExam 
+                        ? 'border-purple-300 bg-purple-50' 
+                        : 'border-gray-200 bg-gray-50 opacity-50'
+                    }`}
+                  >
+                    <span className="text-sm">📝</span>
+                    <div className="w-4 h-4 bg-purple-100 rounded"></div>
+                    <span className="text-xs sm:text-sm text-gray-600">Prüfungstermin</span>
+                  </button>
+                  <button
+                    onClick={() => setCalendarFilters(prev => ({ ...prev, showCustom: !prev.showCustom }))}
+                    className={`flex items-center gap-2 px-2 py-1 rounded-lg border transition-all ${
+                      calendarFilters.showCustom 
+                        ? 'border-blue-300 bg-blue-50' 
+                        : 'border-gray-200 bg-gray-50 opacity-50'
+                    }`}
+                  >
+                    <span className="text-sm">📅</span>
+                    <div className="w-4 h-4 bg-blue-100 rounded"></div>
+                    <span className="text-xs sm:text-sm text-gray-600">Eigene Einträge</span>
+                  </button>
+                  <div className="flex items-center gap-2 px-2 py-1">
                     <div className="w-4 h-4 border-2 border-primary bg-primary/5 rounded"></div>
-                    <span className="text-sm text-gray-600">Heute</span>
+                    <span className="text-xs sm:text-sm text-gray-600">Heute</span>
                   </div>
                 </div>
               </div>
 
-              {/* Upcoming Contract Endings */}
+              {/* All Events List */}
               <div className="mt-6 pt-4 border-t border-gray-200">
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Anstehende Vertragsenden (nächste 30 Tage)</h3>
-                <div className="space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                  <h3 className="text-sm font-medium text-gray-700">Alle Termine</h3>
+                  <select
+                    value={eventListFilter}
+                    onChange={(e) => setEventListFilter(e.target.value as typeof eventListFilter)}
+                    className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="alle">Alle Kategorien</option>
+                    <option value="25">🔔 25% Vertragslaufzeit</option>
+                    <option value="75">⏰ 75% Vertragslaufzeit</option>
+                    <option value="end">📋 Vertragsende</option>
+                    <option value="exam">📝 Prüfungstermin</option>
+                    <option value="custom">📅 Eigene Einträge</option>
+                  </select>
+                </div>
+                <div className="space-y-2 max-h-80 overflow-y-auto">
                   {(() => {
                     const today = new Date();
-                    const in30Days = new Date();
-                    in30Days.setDate(today.getDate() + 30);
-                    
-                    const upcomingEndings = teilnehmer
-                      .filter(t => {
-                        if (!t.contract_end) return false;
-                        const endDate = new Date(t.contract_end);
-                        return endDate >= today && endDate <= in30Days;
-                      })
-                      .sort((a, b) => new Date(a.contract_end).getTime() - new Date(b.contract_end).getTime());
+                    today.setHours(0, 0, 0, 0);
+                    const allEvents: { date: Date; type: string; name: string; teilnehmer?: any; entry?: any }[] = [];
 
-                    if (upcomingEndings.length === 0) {
+                    // Collect 25% milestones
+                    if (eventListFilter === 'alle' || eventListFilter === '25') {
+                      teilnehmer.forEach(t => {
+                        if (!t.contract_start || !t.contract_end) return;
+                        const start = new Date(t.contract_start);
+                        const end = new Date(t.contract_end);
+                        const totalDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                        const milestone25Date = new Date(start.getTime() + totalDays * 0.25 * 24 * 60 * 60 * 1000);
+                        allEvents.push({ date: milestone25Date, type: '25', name: t.name, teilnehmer: t });
+                      });
+                    }
+
+                    // Collect 75% milestones
+                    if (eventListFilter === 'alle' || eventListFilter === '75') {
+                      teilnehmer.forEach(t => {
+                        if (!t.contract_start || !t.contract_end) return;
+                        const start = new Date(t.contract_start);
+                        const end = new Date(t.contract_end);
+                        const totalDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                        const milestone75Date = new Date(start.getTime() + totalDays * 0.75 * 24 * 60 * 60 * 1000);
+                        allEvents.push({ date: milestone75Date, type: '75', name: t.name, teilnehmer: t });
+                      });
+                    }
+
+                    // Collect contract endings
+                    if (eventListFilter === 'alle' || eventListFilter === 'end') {
+                      teilnehmer.forEach(t => {
+                        if (!t.contract_end) return;
+                        const endDate = new Date(t.contract_end);
+                        allEvents.push({ date: endDate, type: 'end', name: t.name, teilnehmer: t });
+                      });
+                    }
+
+                    // Collect exam dates
+                    if (eventListFilter === 'alle' || eventListFilter === 'exam') {
+                      teilnehmer.forEach(t => {
+                        if (!t.exam_date) return;
+                        const examDate = new Date(t.exam_date);
+                        allEvents.push({ date: examDate, type: 'exam', name: t.name, teilnehmer: t });
+                      });
+                    }
+
+                    // Collect custom calendar entries
+                    if (eventListFilter === 'alle' || eventListFilter === 'custom') {
+                      calendarEntries.forEach(entry => {
+                        const entryDate = new Date(entry.entry_date);
+                        allEvents.push({ date: entryDate, type: 'custom', name: entry.title, entry: entry });
+                      });
+                    }
+
+                    // Sort by date
+                    allEvents.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+                    if (allEvents.length === 0) {
                       return (
-                        <p className="text-sm text-gray-500">Keine Vertragsenden in den nächsten 30 Tagen</p>
+                        <p className="text-sm text-gray-500 py-4 text-center">Keine Termine in der ausgewählten Kategorie</p>
                       );
                     }
 
-                    return upcomingEndings.map(t => (
-                      <div 
-                        key={t.id}
-                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer"
-                        onClick={() => {
-                          setPreviewTeilnehmer(t);
-                          setPreviewType('end');
-                          setShowTeilnehmerPreview(true);
-                        }}
-                      >
-                        <div>
-                          <p className="font-medium text-gray-900">{t.name}</p>
-                          <p className="text-sm text-gray-500">
-                            {t.dozent_name && `Dozent: ${t.dozent_name}`}
-                          </p>
+                    const typeStyles: { [key: string]: { bg: string; text: string; icon: string; label: string } } = {
+                      '25': { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '🔔', label: '25% Vertragslaufzeit' },
+                      '75': { bg: 'bg-orange-100', text: 'text-orange-700', icon: '⏰', label: '75% Vertragslaufzeit' },
+                      'end': { bg: 'bg-red-100', text: 'text-red-700', icon: '📋', label: 'Vertragsende' },
+                      'exam': { bg: 'bg-purple-100', text: 'text-purple-700', icon: '📝', label: 'Prüfungstermin' },
+                      'custom': { bg: 'bg-blue-100', text: 'text-blue-700', icon: '📅', label: 'Eigener Eintrag' }
+                    };
+
+                    return allEvents.map((event, idx) => {
+                      const style = typeStyles[event.type];
+                      const daysUntil = Math.ceil((event.date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                      
+                      return (
+                        <div 
+                          key={`${event.type}-${idx}`}
+                          className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer"
+                          onClick={() => {
+                            if (event.teilnehmer) {
+                              setPreviewTeilnehmer(event.teilnehmer);
+                              setPreviewType(event.type === '25' ? '25' : event.type === '75' ? '75' : 'end');
+                              setShowTeilnehmerPreview(true);
+                            } else if (event.entry) {
+                              setSelectedCalendarDate(new Date(event.entry.entry_date));
+                              setCalendarEntryTitle(event.entry.title);
+                              setCalendarEntryDescription(event.entry.description || '');
+                              setCalendarEntryColor(event.entry.color);
+                              setEditingCalendarEntry(event.entry);
+                              setShowCalendarEntryModal(true);
+                            }
+                          }}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className={`px-2 py-1 rounded text-xs ${style.bg} ${style.text}`}>
+                              {style.icon} {style.label}
+                            </span>
+                            <div>
+                              <p className="font-medium text-gray-900 text-sm">{event.name}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className={`text-sm font-medium ${style.text}`}>
+                              {event.date.toLocaleDateString('de-DE')}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {daysUntil === 0 ? 'Heute' : daysUntil === 1 ? 'Morgen' : daysUntil === -1 ? 'Gestern' : daysUntil > 0 ? `in ${daysUntil} Tagen` : `vor ${Math.abs(daysUntil)} Tagen`}
+                            </p>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-sm font-medium text-red-600">
-                            {new Date(t.contract_end).toLocaleDateString('de-DE')}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {Math.ceil((new Date(t.contract_end).getTime() - today.getTime()) / (1000 * 60 * 60 * 24))} Tage
-                          </p>
-                        </div>
-                      </div>
-                    ));
+                      );
+                    });
                   })()}
                 </div>
               </div>
@@ -3036,6 +3419,7 @@ export function AdminDashboard() {
                     onClick={() => {
                       setShowTeilnehmerPreview(false);
                       setActiveTab('teilnehmer');
+                      localStorage.setItem('adminDashboardTab', 'teilnehmer');
                       setExpandedTeilnehmer(previewTeilnehmer.id);
                     }}
                     className="flex-1 px-4 py-2 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary/90"
@@ -3119,6 +3503,56 @@ export function AdminDashboard() {
                     Vorlage speichern
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Invoice PDF Confirmation Modal */}
+      {deleteInvoiceModal.show && deleteInvoiceModal.invoice && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="sm:flex sm:items-start">
+                  <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                    <X className="h-6 w-6 text-red-600" />
+                  </div>
+                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900">
+                      Rechnung löschen
+                    </h3>
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-500">
+                        Möchten Sie die Rechnung <span className="font-semibold">{deleteInvoiceModal.invoice.invoice_number}</span> wirklich löschen?
+                      </p>
+                      <p className="text-sm text-gray-500 mt-2">
+                        Diese Aktion kann nicht rückgängig gemacht werden. Die Rechnung und die zugehörige PDF werden sowohl für Sie als auch für den Dozenten gelöscht.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleDeleteInvoicePdf(deleteInvoiceModal.invoice)}
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:w-auto sm:text-sm"
+                >
+                  Löschen
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeleteInvoiceModal({ show: false, invoice: null })}
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"
+                >
+                  Abbrechen
+                </button>
               </div>
             </div>
           </div>

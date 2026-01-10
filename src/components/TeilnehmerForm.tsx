@@ -17,7 +17,28 @@ interface Teilnehmer {
   dozent_zivilrecht_id: string | null;
   dozent_strafrecht_id: string | null;
   dozent_oeffentliches_recht_id: string | null;
+  exam_date: string;
+  state_law: string;
 }
+
+const GERMAN_STATES = [
+  'Baden-Württemberg',
+  'Bayern',
+  'Berlin',
+  'Brandenburg',
+  'Bremen',
+  'Hamburg',
+  'Hessen',
+  'Mecklenburg-Vorpommern',
+  'Niedersachsen',
+  'Nordrhein-Westfalen',
+  'Rheinland-Pfalz',
+  'Saarland',
+  'Sachsen',
+  'Sachsen-Anhalt',
+  'Schleswig-Holstein',
+  'Thüringen'
+];
 
 interface TeilnehmerFormProps {
   teilnehmer?: Teilnehmer | null;
@@ -41,7 +62,9 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
     legal_areas: [],
     dozent_zivilrecht_id: null,
     dozent_strafrecht_id: null,
-    dozent_oeffentliches_recht_id: null
+    dozent_oeffentliches_recht_id: null,
+    exam_date: '',
+    state_law: ''
   });
 
   const isEditing = !!teilnehmer?.id;
@@ -60,7 +83,9 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
         legal_areas: teilnehmer.legal_areas || [],
         dozent_zivilrecht_id: teilnehmer.dozent_zivilrecht_id || null,
         dozent_strafrecht_id: teilnehmer.dozent_strafrecht_id || null,
-        dozent_oeffentliches_recht_id: teilnehmer.dozent_oeffentliches_recht_id || null
+        dozent_oeffentliches_recht_id: teilnehmer.dozent_oeffentliches_recht_id || null,
+        exam_date: teilnehmer.exam_date || '',
+        state_law: teilnehmer.state_law || ''
       });
     }
   }, [teilnehmer]);
@@ -76,6 +101,18 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
     setIsLoading(true);
 
     try {
+      // Use selected dozent from dropdown, or any of the legal area dozents as fallback
+      const dozentId = formData.dozent_id || 
+                       formData.dozent_zivilrecht_id || 
+                       formData.dozent_strafrecht_id || 
+                       formData.dozent_oeffentliches_recht_id;
+      
+      if (!dozentId) {
+        addToast('Bitte mindestens einen Dozenten zuweisen', 'error');
+        setIsLoading(false);
+        return;
+      }
+
       const fullName = `${formData.first_name.trim()} ${formData.last_name.trim()}`;
       
       const dataToSave = {
@@ -87,11 +124,13 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
         contract_start: formData.contract_start || null,
         contract_end: formData.contract_end || null,
         booked_hours: formData.booked_hours || null,
-        dozent_id: formData.dozent_id || null,
+        dozent_id: dozentId,
         legal_areas: formData.legal_areas.length > 0 ? formData.legal_areas : null,
         dozent_zivilrecht_id: formData.dozent_zivilrecht_id || null,
         dozent_strafrecht_id: formData.dozent_strafrecht_id || null,
         dozent_oeffentliches_recht_id: formData.dozent_oeffentliches_recht_id || null,
+        exam_date: formData.exam_date || null,
+        state_law: formData.state_law || null,
         updated_at: new Date().toISOString()
       };
 
@@ -214,6 +253,38 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
               <option value="2. Staatsexamen Erstversuch">2. Staatsexamen Erstversuch</option>
               <option value="2. Staatsexamen Verbesserungsversuch">2. Staatsexamen Verbesserungsversuch</option>
               <option value="2. Staatsexamen Letztversuch">2. Staatsexamen Letztversuch</option>
+            </select>
+          </div>
+
+          {/* Exam Date */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Prüfungstermin
+            </label>
+            <input
+              type="date"
+              value={formData.exam_date}
+              onChange={(e) => setFormData({ ...formData, exam_date: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+            />
+          </div>
+
+          {/* State Law */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Landesrecht
+            </label>
+            <select
+              value={formData.state_law}
+              onChange={(e) => setFormData({ ...formData, state_law: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+            >
+              <option value="">Bitte auswählen</option>
+              {GERMAN_STATES.map((state) => (
+                <option key={state} value={state}>
+                  {state}
+                </option>
+              ))}
             </select>
           </div>
 

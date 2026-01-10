@@ -37,10 +37,22 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const { getCurrentMonthHours, fetchMonthlySummary } = useHoursStore();
   const { messages, fetchMessages, markAsRead, markAllAsRead, setupMessageSubscription } = useMessageStore();
   const [selectedFolder, setSelectedFolder] = useState<Folder | null>(null);
+  
+  // Persist selected folder to localStorage
+  const handleSelectFolder = (folder: Folder | null) => {
+    setSelectedFolder(folder);
+    if (folder) {
+      localStorage.setItem('dozentSelectedFolder', folder.name);
+    } else {
+      localStorage.removeItem('dozentSelectedFolder');
+    }
+  };
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
   const [newFolderName, setNewFolderName] = useState('');
   const [showTeilnehmerManagement, setShowTeilnehmerManagement] = useState(false);
-  const [showInvoiceManagement, setShowInvoiceManagement] = useState(false);
+  const [showInvoiceManagement, setShowInvoiceManagement] = useState(() => {
+    return localStorage.getItem('dozentDashboardView') === 'invoices';
+  });
   const [showHoursDialog, setShowHoursDialog] = useState(false);
   const [activityReportMonth, setActivityReportMonth] = useState(new Date().getMonth() + 1);
   const [activityReportYear, setActivityReportYear] = useState(new Date().getFullYear());
@@ -70,6 +82,17 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const [activityRefreshKey, setActivityRefreshKey] = useState(0);
 
   const unreadMessages = messages.filter(message => !message.read);
+
+  // Restore selected folder from localStorage after folders are loaded
+  useEffect(() => {
+    const savedFolderName = localStorage.getItem('dozentSelectedFolder');
+    if (savedFolderName && folders.length > 0 && !selectedFolder) {
+      const folder = folders.find(f => f.name === savedFolderName);
+      if (folder) {
+        setSelectedFolder(folder);
+      }
+    }
+  }, [folders]);
 
   useEffect(() => {
     fetchFolders();
@@ -476,7 +499,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   } bg-white rounded-lg shadow p-4 transition-all`}
                 >
                   <button
-                    onClick={() => setSelectedFolder(folder)}
+                    onClick={() => handleSelectFolder(folder)}
                     className="w-full flex items-center text-left"
                   >
                     <FolderIcon className="h-6 w-6 text-primary" />

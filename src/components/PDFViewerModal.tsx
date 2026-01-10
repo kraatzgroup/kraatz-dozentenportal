@@ -127,15 +127,34 @@ export function PDFViewerModal({ isOpen, onClose, fileUrl, fileName }: PDFViewer
                   </div>
                 )}
                 
-                {/* PDF iframe */}
-                <iframe
-                  src={`${fileUrl}#toolbar=1&navpanes=1&scrollbar=1&page=1&view=FitH`}
-                  className="w-full h-full border-0"
-                  title={fileName}
-                  onLoad={handleIframeLoad}
-                  onError={handleIframeError}
-                  style={{ display: isLoading ? 'none' : 'block' }}
-                />
+                {/* PDF iframe - use object tag for blob URLs */}
+                {fileUrl.startsWith('blob:') ? (
+                  <object
+                    data={fileUrl}
+                    type="application/pdf"
+                    className="w-full h-full border-0"
+                    onLoad={handleIframeLoad}
+                    style={{ display: isLoading ? 'none' : 'block' }}
+                  >
+                    <iframe
+                      src={fileUrl}
+                      className="w-full h-full border-0"
+                      title={fileName}
+                      onLoad={handleIframeLoad}
+                      onError={handleIframeError}
+                      style={{ display: isLoading ? 'none' : 'block' }}
+                    />
+                  </object>
+                ) : (
+                  <iframe
+                    src={`${fileUrl}#toolbar=1&navpanes=1&scrollbar=1&page=1&view=FitH`}
+                    className="w-full h-full border-0"
+                    title={fileName}
+                    onLoad={handleIframeLoad}
+                    onError={handleIframeError}
+                    style={{ display: isLoading ? 'none' : 'block' }}
+                  />
+                )}
               </>
             )}
           </div>

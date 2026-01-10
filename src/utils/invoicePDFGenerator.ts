@@ -66,8 +66,7 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
   
   // Helper function to add text with proper encoding
   const addText = (text: string, x: number, y: number, options?: any) => {
-    const cleanText = text.replace(/[^\x20-\x7E\u00A0-\u00FF\u0100-\u017F]/g, '');
-    doc.text(cleanText, x, y, options);
+    doc.text(text, x, y, options);
   };
 
   // Helper function to add text with automatic line wrapping
@@ -269,9 +268,9 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
     addFooter(i, pageCount);
   }
 
-  // Generate filename
+  // Generate filename: invoice_number_month_year_dozent_name.pdf
   const monthName = getMonthName(data.invoice.month);
-  const filename = `Rechnung_${data.invoice.invoice_number}_${monthName}_${data.invoice.year}_${data.invoice.dozent.full_name.replace(/\s+/g, '_')}.pdf`;
+  const filename = `${data.invoice.invoice_number}_${monthName}_${data.invoice.year}_${data.invoice.dozent.full_name.replace(/\s+/g, '_')}.pdf`;
 
   // Save the PDF
   doc.save(filename);
@@ -301,8 +300,7 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   
   // Helper function to add text with proper encoding
   const addText = (text: string, x: number, y: number, options?: any) => {
-    const cleanText = text.replace(/[^\x20-\x7E\u00A0-\u00FF\u0100-\u017F]/g, '');
-    doc.text(cleanText, x, y, options);
+    doc.text(text, x, y, options);
   };
 
   // Helper function to add text with automatic line wrapping
@@ -322,13 +320,8 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     });
   };
 
-  const getMonthName = (month: number) => {
-    const months = ['Januar', 'Februar', 'Maerz', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
-    return months[month - 1];
-  };
-
   // Header - Dozent info
-  doc.setFontSize(11);
+  doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   addText(data.invoice.dozent.full_name, margin, yPosition);
   yPosition += 5;
@@ -336,17 +329,7 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
   
-  // Dozent address
-  if (data.invoice.dozent.street && data.invoice.dozent.house_number) {
-    addText(`${data.invoice.dozent.street} ${data.invoice.dozent.house_number}`, margin, yPosition);
-    yPosition += 4;
-  }
-  if (data.invoice.dozent.postal_code && data.invoice.dozent.city) {
-    addText(`${data.invoice.dozent.postal_code} ${data.invoice.dozent.city}`, margin, yPosition);
-    yPosition += 4;
-  }
-  
-  // Contact info
+  // Contact info (email, phone)
   if (data.invoice.dozent.email) {
     addText(data.invoice.dozent.email, margin, yPosition);
     yPosition += 4;
@@ -355,18 +338,15 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     addText(data.invoice.dozent.phone, margin, yPosition);
     yPosition += 4;
   }
-  if (data.invoice.dozent.tax_id) {
-    addText(`Steuernummer: ${data.invoice.dozent.tax_id}`, margin, yPosition);
-    yPosition += 4;
-  }
-  yPosition += 8;
+  yPosition += 6;
 
   // Recipient
-  doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
   addText('Akademie Kraatz GmbH & Assessor Akademie Kraatz und Heinze GbR', margin, yPosition);
-  yPosition += 4;
+  yPosition += 5;
   doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
   addText('Wilmersdorfer Str. 145 / 146', margin, yPosition);
   yPosition += 4;
   addText('10585 Berlin', margin, yPosition);
@@ -376,24 +356,41 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   addText('E-Mail: info@kraatz-group.de', margin, yPosition);
   yPosition += 12;
 
-  // Date
-  addText(`Berlin, den ${formatDate(new Date().toISOString())}`, pageWidth - margin - 50, yPosition);
-  yPosition += 15;
-
-  // Title
+  // Invoice title and details
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  const monthName = getMonthName(data.invoice.month);
-  addText(`Abrechnung ${monthName} ${data.invoice.year}`, margin, yPosition);
+  addText('Rechnung Erteilung Unterricht lt. Aufstellung', margin, yPosition);
+  
+  // Invoice number (right aligned)
+  addText(`RE-Nr: ${data.invoice.invoice_number}`, pageWidth - margin, yPosition, { align: 'right' });
   yPosition += 6;
+
+  // Date (right aligned)
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  addText(`Rechnungsnummer: ${data.invoice.invoice_number}`, margin, yPosition);
-  yPosition += 10;
+  addText(`Datum: ${formatDate(new Date().toISOString())}`, pageWidth - margin, yPosition, { align: 'right' });
+  yPosition += 6;
 
   // Period
-  addText(`Abrechnungszeitraum: ${formatDate(data.invoice.period_start)} - ${formatDate(data.invoice.period_end)}`, margin, yPosition);
+  const periodText = `Leistungszeitraum: ${formatDate(data.invoice.period_start)} - ${formatDate(data.invoice.period_end)}`;
+  addText(periodText, margin, yPosition);
+  yPosition += 12;
+
+  // Greeting
+  doc.setFontSize(11);
+  addText('Sehr geehrter Herr Kraatz,', margin, yPosition);
   yPosition += 10;
+
+  // Main text
+  const mainText = 'entsprechend unserer Vereinbarung erlaube ich mir meine Leistungen in Ihrem Auftrag in Rechnung zu stellen. Ich bedanke mich fuer die gute Zusammenarbeit. Die Leistungsuebersicht lege ich Ihnen als Anlage bei.';
+  yPosition = addWrappedText(mainText, margin, yPosition, contentWidth, 4);
+  yPosition += 10;
+
+  // Leistungsübersicht header
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  addText('Leistungsuebersicht:', margin, yPosition);
+  yPosition += 8;
 
   // Hours table header
   checkPageBreak(40);
@@ -409,7 +406,8 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
 
   // Hours entries
   doc.setFont('helvetica', 'normal');
-  let totalHours = 0;
+  let totalParticipantHours = 0;
+  let totalDozentHours = 0;
 
   // Participant hours
   if (data.participantHours && data.participantHours.length > 0) {
@@ -422,7 +420,7 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       const desc = (entry.description || '-').substring(0, 35);
       addText(desc, margin + 70, yPosition);
       addText(entry.hours.toString(), pageWidth - margin - 15, yPosition, { align: 'right' });
-      totalHours += entry.hours;
+      totalParticipantHours += entry.hours;
       yPosition += 5;
     }
   }
@@ -437,28 +435,76 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       const desc = (entry.description || '-').substring(0, 35);
       addText(desc, margin + 70, yPosition);
       addText(entry.hours.toString(), pageWidth - margin - 15, yPosition, { align: 'right' });
-      totalHours += entry.hours;
+      totalDozentHours += entry.hours;
       yPosition += 5;
     }
   }
 
-  // Total
+  // Total line
   yPosition += 3;
   doc.setDrawColor(0);
   doc.line(margin, yPosition, pageWidth - margin, yPosition);
-  yPosition += 5;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  addText('Gesamt:', margin + 2, yPosition);
-  addText(`${totalHours} Stunden`, pageWidth - margin - 15, yPosition, { align: 'right' });
-  yPosition += 10;
+  yPosition += 8;
 
-  // Amount
-  if (data.invoice.total_amount > 0) {
-    doc.setFontSize(12);
-    addText(`Rechnungsbetrag: ${data.invoice.total_amount.toFixed(2)} EUR`, margin, yPosition);
-    yPosition += 10;
+  // Hours summary
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  
+  if (totalParticipantHours > 0) {
+    addText(`Unterrichtsstunden: ${totalParticipantHours.toFixed(2)} Stunden`, margin, yPosition);
+    yPosition += 5;
   }
+  
+  if (totalDozentHours > 0) {
+    addText(`Sonstige Tätigkeiten: ${totalDozentHours.toFixed(2)} Stunden`, margin, yPosition);
+    yPosition += 5;
+  }
+
+  yPosition += 6;
+
+  // Total
+  const totalHours = totalParticipantHours + totalDozentHours;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  addText(`Gesamt: ${totalHours.toFixed(2)} Stunden`, margin, yPosition);
+  yPosition += 15;
+
+  // Tax notice
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  const taxNoticeText = 'Auf den Ausweis der Umsatzsteuer wurde verzichtet, da von der Befreiung nach Paragraph 4 Nr. 21 b Doppelbuchstabe b UStG Gebrauch gemacht wurde. Am Abrechnungstag ggf. noch nicht vorliegende Belege rechne ich mit der folgenden Abrechnung ab.';
+  yPosition = addWrappedText(taxNoticeText, margin, yPosition, contentWidth, 3.5);
+  yPosition += 6;
+
+  // Bank request
+  doc.setFontSize(10);
+  const bankRequestText = 'Ich bitte, den entsprechenden Betrag, basierend auf den vereinbarten Stundensaetzen, auf mein nachfolgendes Konto zu ueberweisen:';
+  yPosition = addWrappedText(bankRequestText, margin, yPosition, contentWidth, 4);
+  yPosition += 6;
+
+  // Bank details
+  addText(`Kontoinhaber: ${data.invoice.dozent.full_name}`, margin, yPosition);
+  yPosition += 4;
+  if (data.invoice.dozent.bank_name) {
+    addText(`Bank: ${data.invoice.dozent.bank_name}`, margin, yPosition);
+    yPosition += 4;
+  }
+  if (data.invoice.dozent.iban) {
+    addText(`IBAN: ${data.invoice.dozent.iban}`, margin, yPosition);
+    yPosition += 4;
+  }
+  if (data.invoice.dozent.bic) {
+    addText(`BIC: ${data.invoice.dozent.bic}`, margin, yPosition);
+    yPosition += 4;
+  }
+  yPosition += 8;
+
+  // Closing
+  addText('Vielen Dank!', margin, yPosition);
+  yPosition += 8;
+  addText('Mit freundlichen Gruessen', margin, yPosition);
+  yPosition += 12;
+  addText(data.invoice.dozent.full_name, margin, yPosition);
 
   // Footer
   const addFooter = (pageNum: number, totalPages: number) => {

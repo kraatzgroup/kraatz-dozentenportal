@@ -111,13 +111,11 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
 
       const targetDozentId = data.dozentId || user.id;
 
-      // Calculate period dates
-      const periodStart = new Date(data.year, data.month - 1, 1);
-      const periodEnd = new Date(data.year, data.month, 0);
-
-      // Get total hours for the period to calculate amount
-      const startDate = periodStart.toISOString().split('T')[0];
-      const endDate = periodEnd.toISOString().split('T')[0];
+      // Calculate period dates (first and last day of the selected month)
+      // Use string format directly to avoid timezone issues
+      const lastDayOfMonth = new Date(data.year, data.month, 0).getDate();
+      const startDate = `${data.year}-${String(data.month).padStart(2, '0')}-01`;
+      const endDate = `${data.year}-${String(data.month).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
 
       // Fetch participant hours
       const { data: participantHours, error: hoursError } = await supabase
@@ -147,53 +145,27 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
       // Set amount to 0 since it will be calculated based on agreed hourly rates
       const totalAmount = 0;
 
-      const invoiceData = {
-        dozent_id: targetDozentId,
-        month: data.month,
-        year: data.year,
-        period_start: startDate,
-        period_end: endDate,
-        total_amount: totalAmount,
-        status: 'draft' as const
-      };
-
+      // Use atomic stored procedure to create invoice with unique number
       const { data: newInvoice, error } = await supabase
-        .from('invoices')
-        .insert([invoiceData])
-        .select(`
-          id,
-          invoice_number,
-          dozent_id,
-          month,
-          year,
-          period_start,
-          period_end,
-          total_amount,
-          status,
-          created_at,
-          updated_at,
-          sent_at,
-          paid_at,
-          dozent:profiles!invoices_dozent_id_fkey(
-            full_name,
-            email,
-            phone,
-            tax_id,
-            bank_name,
-            iban,
-            bic
-          )
-        `)
-        .single();
+        .rpc('create_invoice_atomic', {
+          p_dozent_id: targetDozentId,
+          p_month: data.month,
+          p_year: data.year,
+          p_period_start: startDate,
+          p_period_end: endDate,
+          p_total_amount: totalAmount,
+          p_status: 'draft'
+        });
 
       if (error) throw error;
+      if (!newInvoice || newInvoice.length === 0) throw new Error('Failed to create invoice');
 
-      // Update local state
-      set(state => ({
-        invoices: [newInvoice, ...state.invoices]
-      }));
+      const createdInvoice = newInvoice[0];
 
-      return newInvoice;
+      // Re-fetch to ensure consistency
+      await get().fetchInvoices(targetDozentId);
+
+      return createdInvoice;
     } catch (error: any) {
       console.error('Error creating invoice:', error);
       // Check for duplicate constraint error
@@ -243,10 +215,15 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
   deleteInvoice: async (id) => {
     set({ isLoading: true, error: null });
     try {
-      const { error } = await supabase
+      console.log('[deleteInvoice] Deleting invoice:', id);
+      
+      const { data, error } = await supabase
         .from('invoices')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .select();
+
+      console.log('[deleteInvoice] Response:', { data, error });
 
       if (error) throw error;
 
@@ -254,8 +231,16 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
       set(state => ({
         invoices: state.invoices.filter(invoice => invoice.id !== id)
       }));
+      
+      console.log('[deleteInvoice] Local state updated');
+      
+      // Re-fetch to ensure consistency
+      const dozentId = data?.[0]?.dozent_id;
+      if (dozentId) {
+        await get().fetchInvoices(dozentId);
+      }
     } catch (error: any) {
-      console.error('Error deleting invoice:', error);
+      console.error('[deleteInvoice] Error:', error);
       set({ error: error.message });
       throw error;
     } finally {
