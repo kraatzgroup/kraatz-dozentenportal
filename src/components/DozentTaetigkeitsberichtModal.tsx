@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Clock, Calendar, User, BookOpen, FileText } from 'lucide-react';
+import { X, Clock, BookOpen, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface DozentTaetigkeitsberichtModalProps {
@@ -17,12 +17,44 @@ interface HoursEntry {
   created_at: string;
   teilnehmer_id: string;
   teilnehmer_name: string;
+  type: 'participant' | 'dozent';
 }
 
 export function DozentTaetigkeitsberichtModal({ dozentId, dozentName, onClose }: DozentTaetigkeitsberichtModalProps) {
   const [entries, setEntries] = useState<HoursEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [totalHours, setTotalHours] = useState(0);
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
+
+  // Disable body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
+
+  // Get current month key for default expansion
+  const currentMonthKey = new Date().toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+
+  const toggleMonth = (month: string) => {
+    setExpandedMonths(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(month)) {
+        newSet.delete(month);
+      } else {
+        newSet.add(month);
+      }
+      return newSet;
+    });
+  };
+
+  const isMonthExpanded = (month: string) => {
+    // Current month is expanded by default, others need to be explicitly expanded
+    if (expandedMonths.has(month)) return true;
+    if (month === currentMonthKey && !expandedMonths.has(`collapsed-${month}`)) return true;
+    return false;
+  };
 
   useEffect(() => {
     fetchHours();
@@ -31,8 +63,8 @@ export function DozentTaetigkeitsberichtModal({ dozentId, dozentName, onClose }:
   const fetchHours = async () => {
     setIsLoading(true);
     try {
-      // Fetch all hours entries for this dozent
-      const { data, error } = await supabase
+      // Fetch participant hours entries for this dozent
+      const { data: participantData, error: pError } = await supabase
         .from('participant_hours')
         .select(`
           id,
@@ -47,9 +79,18 @@ export function DozentTaetigkeitsberichtModal({ dozentId, dozentName, onClose }:
         .eq('dozent_id', dozentId)
         .order('date', { ascending: false });
 
-      if (error) throw error;
+      if (pError) throw pError;
 
-      const formattedEntries = (data || []).map((entry: any) => ({
+      // Fetch dozent hours (Sonstige Tätigkeiten)
+      const { data: dozentData, error: dError } = await supabase
+        .from('dozent_hours')
+        .select('id, hours, date, description, created_at')
+        .eq('dozent_id', dozentId)
+        .order('date', { ascending: false });
+
+      if (dError) throw dError;
+
+      const participantEntries = (participantData || []).map((entry: any) => ({
         id: entry.id,
         hours: entry.hours,
         date: entry.date,
@@ -57,11 +98,28 @@ export function DozentTaetigkeitsberichtModal({ dozentId, dozentName, onClose }:
         legal_area: entry.legal_area,
         created_at: entry.created_at,
         teilnehmer_id: entry.teilnehmer_id,
-        teilnehmer_name: entry.teilnehmer?.name || 'Unbekannt'
+        teilnehmer_name: entry.teilnehmer?.name || 'Unbekannt',
+        type: 'participant' as const
       }));
 
-      setEntries(formattedEntries);
-      setTotalHours(formattedEntries.reduce((sum, e) => sum + e.hours, 0));
+      const dozentEntries = (dozentData || []).map((entry: any) => ({
+        id: entry.id,
+        hours: entry.hours,
+        date: entry.date,
+        description: entry.description,
+        legal_area: 'Sonstige',
+        created_at: entry.created_at,
+        teilnehmer_id: '',
+        teilnehmer_name: 'Sonstige Tätigkeit',
+        type: 'dozent' as const
+      }));
+
+      const allEntries = [...participantEntries, ...dozentEntries].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+
+      setEntries(allEntries);
+      setTotalHours(allEntries.reduce((sum, e) => sum + e.hours, 0));
     } catch (error) {
       console.error('Error fetching hours:', error);
       setEntries([]);
@@ -86,6 +144,8 @@ export function DozentTaetigkeitsberichtModal({ dozentId, dozentName, onClose }:
         return 'bg-red-100 text-red-800';
       case 'Öffentliches Recht':
         return 'bg-green-100 text-green-800';
+      case 'Sonstige':
+        return 'bg-purple-100 text-purple-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -161,50 +221,78 @@ export function DozentTaetigkeitsberichtModal({ dozentId, dozentName, onClose }:
               <p>Keine Einträge vorhanden</p>
             </div>
           ) : (
-            <div className="space-y-6">
-              {Object.entries(groupedByMonth).map(([month, monthEntries]) => (
-                <div key={month}>
-                  <h3 className="text-sm font-medium text-gray-500 mb-3 sticky top-0 bg-white py-1">
-                    {month} ({monthEntries.reduce((sum, e) => sum + e.hours, 0)} Stunden)
-                  </h3>
-                  <div className="space-y-2">
-                    {monthEntries.map((entry) => (
-                      <div
-                        key={entry.id}
-                        className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${getLegalAreaColor(entry.legal_area)}`}>
-                                {entry.legal_area || 'Kein Rechtsgebiet'}
-                              </span>
-                              <span className="text-sm text-gray-500 flex items-center">
-                                <Calendar className="h-3.5 w-3.5 mr-1" />
-                                {formatDate(entry.date)}
-                              </span>
-                            </div>
-                            <div className="flex items-center text-sm text-gray-700 mb-1">
-                              <User className="h-4 w-4 mr-1.5 text-gray-400" />
-                              <span className="font-medium">{entry.teilnehmer_name}</span>
-                            </div>
-                            {entry.description && (
-                              <p className="text-sm text-gray-600 mt-2">{entry.description}</p>
-                            )}
-                          </div>
-                          <div className="ml-4 flex-shrink-0">
-                            <div className="flex items-center bg-primary/10 text-primary px-3 py-1.5 rounded-full">
-                              <Clock className="h-4 w-4 mr-1.5" />
-                              <span className="font-bold">{entry.hours}</span>
-                              <span className="ml-1 text-sm">Std.</span>
-                            </div>
-                          </div>
-                        </div>
+            <div className="space-y-2">
+              {Object.entries(groupedByMonth).map(([month, monthEntries]) => {
+                const isExpanded = isMonthExpanded(month);
+                const monthHours = monthEntries.reduce((sum, e) => sum + e.hours, 0);
+                return (
+                  <div key={month} className="border border-gray-200 rounded-lg overflow-hidden">
+                    <button
+                      onClick={() => {
+                        if (month === currentMonthKey && isExpanded) {
+                          setExpandedMonths(prev => new Set([...prev, `collapsed-${month}`]));
+                        } else if (month === currentMonthKey) {
+                          setExpandedMonths(prev => {
+                            const newSet = new Set(prev);
+                            newSet.delete(`collapsed-${month}`);
+                            return newSet;
+                          });
+                        } else {
+                          toggleMonth(month);
+                        }
+                      }}
+                      className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-medium text-gray-700">{month}</span>
+                        <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
+                          {monthHours} Std.
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {monthEntries.length} Einträge
+                        </span>
                       </div>
-                    ))}
+                      {isExpanded ? (
+                        <ChevronUp className="h-4 w-4 text-gray-500" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-gray-500" />
+                      )}
+                    </button>
+                    {isExpanded && (
+                      <div className="divide-y divide-gray-100">
+                        {monthEntries.map((entry) => (
+                          <div
+                            key={entry.id}
+                            className="p-3 hover:bg-gray-50 transition-colors"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${getLegalAreaColor(entry.legal_area)}`}>
+                                  {entry.legal_area || '-'}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  {formatDate(entry.date)}
+                                </span>
+                                <span className="text-xs text-gray-700 truncate">
+                                  {entry.type === 'participant' ? entry.teilnehmer_name : <em>Sonstige</em>}
+                                </span>
+                                {entry.description && (
+                                  <span className="text-xs text-gray-400 truncate hidden sm:inline" title={entry.description}>
+                                    - {entry.description}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center text-primary text-sm font-bold ml-2">
+                                {entry.hours} Std.
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

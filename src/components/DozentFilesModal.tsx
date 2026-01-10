@@ -26,6 +26,14 @@ export function DozentFilesModal({ dozentId, dozentName, folderType, onClose }: 
   const [previewFileName, setPreviewFileName] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Disable body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
+
   useEffect(() => {
     fetchFiles();
   }, [dozentId, folderType]);

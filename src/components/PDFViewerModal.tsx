@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, Download, ExternalLink } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Download } from 'lucide-react';
 
 interface PDFViewerModalProps {
   isOpen: boolean;
@@ -16,7 +16,12 @@ export function PDFViewerModal({ isOpen, onClose, fileUrl, fileName }: PDFViewer
     if (isOpen) {
       setLoadError(false);
       setIsLoading(true);
+      // Disable body scroll when modal is open
+      document.body.style.overflow = 'hidden';
     }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
   }, [isOpen, fileUrl]);
 
   if (!isOpen) return null;
@@ -28,10 +33,6 @@ export function PDFViewerModal({ isOpen, onClose, fileUrl, fileName }: PDFViewer
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  };
-
-  const handleOpenInNewTab = () => {
-    window.open(fileUrl, '_blank');
   };
 
   const handleIframeLoad = () => {
@@ -58,19 +59,10 @@ export function PDFViewerModal({ isOpen, onClose, fileUrl, fileName }: PDFViewer
             <div className="flex items-center space-x-2">
               <button
                 onClick={handleDownload}
-                className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+                className="text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded-full p-2"
                 title="PDF herunterladen"
               >
-                <Download className="h-4 w-4 mr-2" />
-                Herunterladen
-              </button>
-              <button
-                onClick={handleOpenInNewTab}
-                className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
-                title="In neuem Tab öffnen"
-              >
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Neuer Tab
+                <Download className="h-6 w-6" />
               </button>
               <button
                 onClick={onClose}
@@ -104,13 +96,6 @@ export function PDFViewerModal({ isOpen, onClose, fileUrl, fileName }: PDFViewer
                     >
                       <Download className="h-4 w-4 mr-2" />
                       PDF herunterladen
-                    </button>
-                    <button
-                      onClick={handleOpenInNewTab}
-                      className="w-full inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                    >
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      In neuem Tab öffnen
                     </button>
                   </div>
                 </div>
@@ -159,21 +144,6 @@ export function PDFViewerModal({ isOpen, onClose, fileUrl, fileName }: PDFViewer
             )}
           </div>
 
-          {/* Footer with keyboard shortcuts */}
-          <div className="px-4 py-2 border-t border-gray-200 bg-gray-50">
-            <div className="flex items-center justify-between text-xs text-gray-500">
-              <div className="flex items-center space-x-4">
-                <span>Tastenkürzel:</span>
-                <span><kbd className="px-1 py-0.5 bg-gray-200 rounded">Esc</kbd> Schließen</span>
-                <span><kbd className="px-1 py-0.5 bg-gray-200 rounded">Ctrl+D</kbd> Herunterladen</span>
-              </div>
-              {!loadError && (
-                <div>
-                  PDF Viewer - Verwenden Sie die Browser-Steuerelemente zum Zoomen und Navigieren
-                </div>
-              )}
-            </div>
-          </div>
         </div>
       </div>
     </div>
