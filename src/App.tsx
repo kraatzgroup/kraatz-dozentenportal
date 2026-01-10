@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthComponent } from './components/AuthComponent';
 import { Dashboard } from './components/Dashboard';
 import { AdminDashboard } from './components/AdminDashboard';
+import { VertriebDashboard } from './components/VertriebDashboard';
 import { DozentDetail } from './components/DozentDetail';
 import { UserManagement } from './components/UserManagement';
 import { Chat } from './components/Chat';
@@ -106,13 +107,25 @@ function App() {
       )}
       <div className="min-h-screen bg-background flex flex-col">
         <Routes>
-          {/* Root redirect based on admin status */}
+          {/* Root redirect based on role */}
           <Route 
             path="/" 
             element={
-              (showAdminView || showVerwaltungView || showVertriebView) ? 
+              showVertriebView ? 
+                <Navigate to="/vertrieb" replace /> :
+              (showAdminView || showVerwaltungView) ? 
                 <Navigate to="/admin" replace /> : 
                 <Navigate to="/dashboard" replace />
+            } 
+          />
+
+          {/* Vertrieb route */}
+          <Route 
+            path="/vertrieb" 
+            element={
+              showVertriebView ? 
+                <VertriebDashboard /> : 
+                <Navigate to="/" replace />
             } 
           />
 
@@ -120,9 +133,11 @@ function App() {
           <Route 
             path="/admin" 
             element={
-              (showAdminView || showVerwaltungView || showVertriebView) ? 
+              (showAdminView || showVerwaltungView) ? 
                 <AdminDashboard /> : 
-                <Navigate to="/dashboard" replace />
+                showVertriebView ?
+                  <Navigate to="/vertrieb" replace /> :
+                  <Navigate to="/dashboard" replace />
             } 
           />
           <Route 
@@ -155,7 +170,9 @@ function App() {
           <Route 
             path="*" 
             element={
-              (showAdminView || showVerwaltungView || showVertriebView) ? 
+              showVertriebView ?
+                <Navigate to="/vertrieb" replace /> :
+              (showAdminView || showVerwaltungView) ? 
                 <Navigate to="/admin" replace /> : 
                 <Navigate to="/dashboard" replace />
             } 

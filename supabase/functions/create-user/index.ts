@@ -371,63 +371,65 @@ const getInviteEmailTemplate = (data: EmailData): string => {
 </html>`;
 };
 
-// Function to send email using Resend API
-const sendEmailViaResend = async (to: string, subject: string, html: string) => {
-  console.log('📧 sendEmailViaResend called with:', { to, subject: subject.substring(0, 50) + '...' });
+// Function to send email using Mailgun API
+const sendEmailViaMailgun = async (to: string, subject: string, html: string) => {
+  console.log('📧 sendEmailViaMailgun called with:', { to, subject: subject.substring(0, 50) + '...' });
   
-  const resendApiKey = Deno.env.get('RESEND_API_KEY');
+  const mailgunApiKey = Deno.env.get('MAILGUN_API_KEY');
+  const mailgunDomain = Deno.env.get('MAILGUN_DOMAIN') || 'kraatz-group.de';
   
-  if (!resendApiKey) {
-    console.error('❌ RESEND_API_KEY environment variable is not set');
-    throw new Error('RESEND_API_KEY environment variable is not set');
+  if (!mailgunApiKey) {
+    console.error('❌ MAILGUN_API_KEY environment variable is not set');
+    throw new Error('MAILGUN_API_KEY environment variable is not set');
   }
-  console.log('✅ Resend API key found');
+  console.log('✅ Mailgun API key found, domain:', mailgunDomain);
   
-  const emailPayload = {
-    from: 'Dozentenportal | Kraatz Group <dozentenportal@kraatz-group.de>',
-    to: [to],
-    subject: subject,
-    html: html,
-  };
-  console.log('📧 Email payload prepared:', { ...emailPayload, html: 'HTML_CONTENT_TRUNCATED' });
+  const formData = new FormData();
+  // Use sandbox-compatible from address or custom domain
+  const fromAddress = 'Dozentenportal | Kraatz Group <no-reply@kraatz-group.de>';
+  formData.append('from', fromAddress);
+  formData.append('to', to);
+  formData.append('subject', subject);
+  formData.append('html', html);
   
-  console.log('🌐 Making request to Resend API...');
-  const response = await fetch('https://api.resend.com/emails', {
+  console.log('📧 Email FormData prepared for:', to);
+  
+  console.log('🌐 Making request to Mailgun API (EU endpoint)...');
+  const response = await fetch(`https://api.eu.mailgun.net/v3/${mailgunDomain}/messages`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${resendApiKey}`,
-      'Content-Type': 'application/json',
+      'Authorization': `Basic ${btoa(`api:${mailgunApiKey}`)}`,
     },
-    body: JSON.stringify(emailPayload),
+    body: formData,
   });
 
-  console.log('📡 Resend API response status:', response.status);
+  console.log('📡 Mailgun API response status:', response.status);
   
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('❌ Resend API error response:', errorText);
-    throw new Error(`Resend API error: ${response.status} - ${errorText}`);
+    console.error('❌ Mailgun API error response:', errorText);
+    throw new Error(`Mailgun API error: ${response.status} - ${errorText}`);
   }
 
   const result = await response.json();
-  console.log('✅ Resend API success response:', result);
+  console.log('✅ Mailgun API success response:', result);
   return result;
 };
 
 // Generate a secure random password
 const generateSecurePassword = (): string => {
   const length = 12;
-  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()';
+  // Use only alphanumeric characters to avoid encoding issues
+  const charset = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let password = '';
   
   // Ensure at least one character from each category
-  password += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)]; // uppercase
-  password += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)]; // lowercase
-  password += '0123456789'[Math.floor(Math.random() * 10)]; // digit
-  password += '!@#$%^&*()'[Math.floor(Math.random() * 10)]; // special
+  password += 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random() * 24)]; // uppercase (no I, O)
+  password += 'abcdefghijkmnopqrstuvwxyz'[Math.floor(Math.random() * 25)]; // lowercase (no l)
+  password += '23456789'[Math.floor(Math.random() * 8)]; // digit (no 0, 1)
   
   // Fill the rest randomly
-  for (let i = 4; i < length; i++) {
+  for (let i = 3; i < length; i++) {
     const randomIndex = Math.floor(Math.random() * charset.length);
     password += charset[randomIndex];
   }
@@ -454,9 +456,11 @@ Deno.serve(async (req) => {
     const { createClient } = await import('npm:@supabase/supabase-js@2');
     
     console.log(`🔗 [${requestId}] Creating Supabase client...`);
+    // Use SERVICE_ROLE_KEY (custom secret) or fall back to SUPABASE_SERVICE_ROLE_KEY (auto-injected)
+    const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      serviceRoleKey,
       {
         auth: {
           autoRefreshToken: false,
@@ -481,11 +485,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if user already exists
+    // Check if user already exists in profiles
     console.log(`🔍 [${requestId}] Checking if user already exists...`);
-    const { data: existingUsers, error: existingUserError } = await supabaseAdmin
+    const { data: existingProfiles, error: existingUserError } = await supabaseAdmin
       .from('profiles')
-      .select('id')
+      .select('id, email')
       .eq('email', email);
 
     if (existingUserError) {
@@ -493,48 +497,62 @@ Deno.serve(async (req) => {
       throw existingUserError;
     }
 
-    if (existingUsers && existingUsers.length > 0) {
-      console.error(`❌ [${requestId}] User already exists with this email`);
-      return new Response(
-        JSON.stringify({ error: 'Ein Benutzer mit dieser E-Mail-Adresse existiert bereits' }),
-        { 
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    let userId: string;
+    let tempPassword: string | null = null;
+    let isNewUser = false;
+
+    if (existingProfiles && existingProfiles.length > 0) {
+      // User already exists - just update the profile
+      console.log(`ℹ️ [${requestId}] User already exists, updating profile...`);
+      userId = existingProfiles[0].id;
+    } else {
+      // Generate a secure temporary password for new user
+      tempPassword = generateSecurePassword();
+      console.log(`🔑 [${requestId}] Generated temporary password`);
+
+      // Create the user in Supabase Auth
+      console.log(`👤 [${requestId}] Creating user in Supabase Auth...`);
+      const { data: userData, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
+        email: email,
+        password: tempPassword,
+        email_confirm: true,
+        user_metadata: { full_name: fullName }
+      });
+
+      if (createUserError) {
+        // Check if user exists in auth but not in profiles
+        if (createUserError.code === 'email_exists') {
+          console.log(`ℹ️ [${requestId}] User exists in auth, fetching user...`);
+          const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers();
+          const existingAuthUser = authUsers?.users?.find(u => u.email === email);
+          if (existingAuthUser) {
+            userId = existingAuthUser.id;
+            // User exists in auth but not in profiles - treat as new for email purposes
+            isNewUser = true;
+            console.log(`ℹ️ [${requestId}] Found existing auth user, will create profile: ${userId}`);
+          } else {
+            throw createUserError;
+          }
+        } else {
+          console.error(`❌ [${requestId}] Error creating user:`, createUserError);
+          throw createUserError;
         }
-      );
+      } else if (!userData?.user) {
+        console.error(`❌ [${requestId}] User creation failed - no user returned`);
+        throw new Error('User creation failed');
+      } else {
+        userId = userData.user.id;
+        isNewUser = true;
+        console.log(`✅ [${requestId}] User created successfully:`, userId);
+      }
     }
 
-    // Generate a secure temporary password
-    const tempPassword = generateSecurePassword();
-    console.log(`🔑 [${requestId}] Generated temporary password`);
-
-    // Create the user in Supabase Auth
-    console.log(`👤 [${requestId}] Creating user in Supabase Auth...`);
-    const { data: userData, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
-      email: email,
-      password: tempPassword, // Use the generated password
-      email_confirm: true, // Skip email confirmation
-      user_metadata: { full_name: fullName }
-    });
-
-    if (createUserError) {
-      console.error(`❌ [${requestId}] Error creating user:`, createUserError);
-      throw createUserError;
-    }
-
-    if (!userData.user) {
-      console.error(`❌ [${requestId}] User creation failed - no user returned`);
-      throw new Error('User creation failed');
-    }
-
-    console.log(`✅ [${requestId}] User created successfully:`, userData.user.id);
-
-    // Create profile for the user
-    console.log(`👤 [${requestId}] Creating profile for user...`);
+    // Create/update profile for the user
+    console.log(`👤 [${requestId}] Creating/updating profile for user...`);
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .upsert([{
-        id: userData.user.id,
+        id: userId,
         email: email,
         full_name: fullName,
         role: role
@@ -549,23 +567,33 @@ Deno.serve(async (req) => {
 
     console.log(`✅ [${requestId}] Profile created successfully`);
 
-    // Send invitation email with credentials
-    console.log(`📧 [${requestId}] Sending invitation email with credentials...`);
-    const portalUrl = Deno.env.get('SITE_URL') || 'http://portal.kraatz-group.de';
+    // Send invitation email with credentials (optional - skip if MAILGUN_API_KEY not configured)
+    console.log(`📧 [${requestId}] Checking if email sending is configured...`);
+    const portalUrl = Deno.env.get('SITE_URL') || 'https://portal.kraatz-group.de';
+    const mailgunApiKey = Deno.env.get('MAILGUN_API_KEY');
+    
+    let emailResult = null;
+    let emailSent = false;
+    
+    if (mailgunApiKey && isNewUser && tempPassword) {
+      console.log(`📧 [${requestId}] Sending invitation email with credentials via Mailgun...`);
+      const emailData: EmailData = {
+        recipientEmail: email,
+        recipientName: fullName,
+        temporaryPassword: tempPassword as string,
+        portalUrl: portalUrl,
+        portalName: 'Dozentenportal'
+      };
 
-    const emailData: EmailData = {
-      recipientEmail: email,
-      recipientName: fullName,
-      temporaryPassword: tempPassword,
-      portalUrl: portalUrl,
-      portalName: 'Dozentenportal'
-    };
+      const emailHtml = getInviteEmailTemplate(emailData);
+      const emailSubject = 'Willkommen im Kraatz Group Dozentenportal - Ihre Anmeldedaten';
 
-    const emailHtml = getInviteEmailTemplate(emailData);
-    const emailSubject = 'Willkommen im Kraatz Group Dozentenportal - Ihre Anmeldedaten';
-
-    const emailResult = await sendEmailViaResend(email, emailSubject, emailHtml);
-    console.log(`✅ [${requestId}] Invitation email sent:`, emailResult);
+      emailResult = await sendEmailViaMailgun(email, emailSubject, emailHtml);
+      emailSent = true;
+      console.log(`✅ [${requestId}] Invitation email sent via Mailgun:`, emailResult);
+    } else {
+      console.log(`⚠️ [${requestId}] MAILGUN_API_KEY not configured - skipping email. Temporary password: ${tempPassword}`);
+    }
 
     const endTime = Date.now();
     console.log(`⏱️ [${requestId}] Function completed in ${endTime - startTime}ms`);
@@ -574,10 +602,13 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true, 
-        message: 'User created and invitation with credentials sent successfully',
-        userId: userData.user.id,
+        message: emailSent 
+          ? 'User created and invitation with credentials sent successfully'
+          : isNewUser ? 'User created successfully' : 'User profile updated successfully',
+        userId: userId,
         email: email,
-        emailId: emailResult.id
+        temporaryPassword: emailSent ? undefined : tempPassword,
+        emailId: emailResult?.id
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

@@ -332,17 +332,17 @@ const getPasswordResetWithCredentialsTemplate = (data: PasswordResetEmailData): 
 // Generate a secure random password
 const generateSecurePassword = (): string => {
   const length = 12;
-  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()';
+  // Use only alphanumeric characters to avoid encoding issues
+  const charset = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let password = '';
   
   // Ensure at least one character from each category
-  password += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)]; // uppercase
-  password += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)]; // lowercase
-  password += '0123456789'[Math.floor(Math.random() * 10)]; // digit
-  password += '!@#$%^&*()'[Math.floor(Math.random() * 10)]; // special
+  password += 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random() * 24)]; // uppercase (no I, O)
+  password += 'abcdefghijkmnopqrstuvwxyz'[Math.floor(Math.random() * 25)]; // lowercase (no l)
+  password += '23456789'[Math.floor(Math.random() * 8)]; // digit (no 0, 1)
   
   // Fill the rest randomly
-  for (let i = 4; i < length; i++) {
+  for (let i = 3; i < length; i++) {
     const randomIndex = Math.floor(Math.random() * charset.length);
     password += charset[randomIndex];
   }
@@ -351,46 +351,46 @@ const generateSecurePassword = (): string => {
   return password.split('').sort(() => 0.5 - Math.random()).join('');
 };
 
-// Function to send email using Resend API
-const sendEmailViaResend = async (to: string, subject: string, html: string) => {
-  console.log('📧 sendEmailViaResend called with:', { to, subject: subject.substring(0, 50) + '...' });
+// Function to send email using Mailgun API (EU endpoint)
+const sendEmailViaMailgun = async (to: string, subject: string, html: string) => {
+  console.log('📧 sendEmailViaMailgun called with:', { to, subject: subject.substring(0, 50) + '...' });
   
-  const resendApiKey = Deno.env.get('RESEND_API_KEY');
+  const mailgunApiKey = Deno.env.get('MAILGUN_API_KEY');
+  const mailgunDomain = Deno.env.get('MAILGUN_DOMAIN') || 'kraatz-group.de';
   
-  if (!resendApiKey) {
-    console.error('❌ RESEND_API_KEY environment variable is not set');
-    throw new Error('RESEND_API_KEY environment variable is not set');
+  if (!mailgunApiKey) {
+    console.error('❌ MAILGUN_API_KEY environment variable is not set');
+    throw new Error('MAILGUN_API_KEY environment variable is not set');
   }
-  console.log('✅ Resend API key found');
+  console.log('✅ Mailgun API key found, domain:', mailgunDomain);
   
-  const emailPayload = {
-    from: 'Dozentenportal | Kraatz Group <dozentenportal@kraatz-group.de>',
-    to: [to],
-    subject: subject,
-    html: html,
-  };
-  console.log('📧 Email payload prepared:', { ...emailPayload, html: 'HTML_CONTENT_TRUNCATED' });
+  const formData = new FormData();
+  formData.append('from', 'Dozentenportal | Kraatz Group <no-reply@kraatz-group.de>');
+  formData.append('to', to);
+  formData.append('subject', subject);
+  formData.append('html', html);
   
-  console.log('🌐 Making request to Resend API...');
-  const response = await fetch('https://api.resend.com/emails', {
+  console.log('📧 Email FormData prepared for:', to);
+  
+  console.log('🌐 Making request to Mailgun API (EU endpoint)...');
+  const response = await fetch(`https://api.eu.mailgun.net/v3/${mailgunDomain}/messages`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${resendApiKey}`,
-      'Content-Type': 'application/json',
+      'Authorization': `Basic ${btoa(`api:${mailgunApiKey}`)}`,
     },
-    body: JSON.stringify(emailPayload),
+    body: formData,
   });
 
-  console.log('📡 Resend API response status:', response.status);
+  console.log('📡 Mailgun API response status:', response.status);
   
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('❌ Resend API error response:', errorText);
-    throw new Error(`Resend API error: ${response.status} - ${errorText}`);
+    console.error('❌ Mailgun API error response:', errorText);
+    throw new Error(`Mailgun API error: ${response.status} - ${errorText}`);
   }
 
   const result = await response.json();
-  console.log('✅ Resend API success response:', result);
+  console.log('✅ Mailgun API success response:', result);
   return result;
 };
 
@@ -439,12 +439,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get user information
-    console.log(`🔍 [${requestId}] Looking up user...`);
-    const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserByEmail(email);
+    // Get user profile first (includes user id)
+    console.log(`🔍 [${requestId}] Looking up user profile...`);
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles') 
+      .select('id, full_name, email')
+      .eq('email', email)
+      .single();
 
-    if (userError || !userData.user) {
-      console.error(`❌ [${requestId}] User not found:`, userError);
+    if (profileError || !profile) {
+      console.error(`❌ [${requestId}] Profile not found:`, profileError);
       return new Response(
         JSON.stringify({ error: 'Benutzer nicht gefunden' }),
         { 
@@ -454,24 +458,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get user profile for full name
-    console.log(`🔍 [${requestId}] Getting user profile...`);
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from('profiles') 
-      .select('full_name')
-      .eq('id', userData.user.id)
-      .single();
-
-    if (profileError) {
-      console.error(`❌ [${requestId}] Profile not found:`, profileError);
-      return new Response(
-        JSON.stringify({ error: 'Benutzerprofil nicht gefunden' }),
-        { 
-          status: 404,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
-    }
+    const userId = profile.id;
+    console.log(`✅ [${requestId}] Found user:`, userId);
 
     // Generate new random password
     const newPassword = generateSecurePassword();
@@ -480,7 +468,7 @@ Deno.serve(async (req) => {
     // Update user password
     console.log(`🔄 [${requestId}] Updating user password...`);
     const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
-      userData.user.id,
+      userId,
       { password: newPassword }
     );
 
@@ -505,7 +493,7 @@ Deno.serve(async (req) => {
     const emailHtml = getPasswordResetWithCredentialsTemplate(emailData);
     const emailSubject = 'Ihr neues Passwort - Kraatz Group Dozentenportal';
 
-    const emailResult = await sendEmailViaResend(email, emailSubject, emailHtml);
+    const emailResult = await sendEmailViaMailgun(email, emailSubject, emailHtml);
     console.log(`✅ [${requestId}] Password reset email sent:`, emailResult);
 
     const endTime = Date.now();
