@@ -1,6 +1,13 @@
-import { useState } from 'react';
-import { GraduationCap, Calendar, User, Check, X, Plus, Edit2, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { GraduationCap, Calendar, User, Check, X, Plus, Edit2, Trash2, UserPlus, Clock, CheckCircle, CalendarClock } from 'lucide-react';
 import { TrialLesson } from '../../store/salesStore';
+import { supabase } from '../../lib/supabase';
+
+interface Dozent {
+  id: string;
+  name: string;
+  email: string;
+}
 
 interface TrialLessonsListProps {
   trialLessons: TrialLesson[];
@@ -12,6 +19,9 @@ interface TrialLessonsListProps {
 export function TrialLessonsList({ trialLessons, onUpdate, onCreate, onDelete }: TrialLessonsListProps) {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [dozenten, setDozenten] = useState<Dozent[]>([]);
+  const [selectedDozent, setSelectedDozent] = useState<string>('');
+  const [assigningId, setAssigningId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     teilnehmer_name: '',
     teilnehmer_email: '',
@@ -20,30 +30,38 @@ export function TrialLessonsList({ trialLessons, onUpdate, onCreate, onDelete }:
     notes: '',
   });
 
-  const upcomingLessons = trialLessons.filter(t => 
-    t.status === 'scheduled' && new Date(t.scheduled_date) >= new Date()
-  );
+  useEffect(() => {
+    fetchDozenten();
+  }, []);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'scheduled': return 'bg-blue-100 text-blue-800';
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'converted': return 'bg-purple-100 text-purple-800';
-      case 'no_show': return 'bg-red-100 text-red-800';
-      case 'cancelled': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
+  const fetchDozenten = async () => {
+    const { data } = await supabase.from('users').select('id, name, email').eq('role', 'dozent');
+    setDozenten(data || []);
   };
 
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'scheduled': return 'Geplant';
-      case 'completed': return 'Durchgeführt';
-      case 'converted': return 'Konvertiert';
-      case 'no_show': return 'Nicht erschienen';
-      case 'cancelled': return 'Abgesagt';
-      default: return status;
-    }
+  // Filter by stages
+  const requestedLessons = trialLessons.filter(t => t.status === 'requested');
+  const assignedLessons = trialLessons.filter(t => t.status === 'dozent_assigned');
+  const pendingSchedulingLessons = trialLessons.filter(t => t.status === 'confirmed');
+  const scheduledLessons = trialLessons.filter(t => t.status === 'scheduled');
+
+  const assignDozent = async (lessonId: string, dozentId: string) => {
+    const dozent = dozenten.find(d => d.id === dozentId);
+    await onUpdate(lessonId, { 
+      dozent_id: dozentId, 
+      dozent_name: dozent?.name,
+      status: 'dozent_assigned' 
+    });
+    setAssigningId(null);
+    setSelectedDozent('');
+  };
+
+  const confirmLesson = async (lessonId: string) => {
+    await onUpdate(lessonId, { status: 'confirmed', dozent_confirmed: true });
+  };
+
+  const scheduleLesson = async (lessonId: string) => {
+    await onUpdate(lessonId, { status: 'scheduled' });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -52,7 +70,7 @@ export function TrialLessonsList({ trialLessons, onUpdate, onCreate, onDelete }:
       if (editingId) {
         await onUpdate(editingId, formData);
       } else {
-        await onCreate({ ...formData, status: 'scheduled' });
+        await onCreate({ ...formData, status: 'requested' });
       }
       resetForm();
     } catch (error) {
@@ -98,25 +116,73 @@ export function TrialLessonsList({ trialLessons, onUpdate, onCreate, onDelete }:
     });
   };
 
+  const renderLessonCard = (lesson: TrialLesson, showActions: 'assign' | 'confirm' | 'schedule' | 'complete') => (
+    <div key={lesson.id} className="p-3 bg-white border border-gray-200 rounded-lg hover:shadow-sm transition">
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <h4 className="font-medium text-gray-900 truncate">{lesson.teilnehmer_name}</h4>
+          <div className="mt-1 text-xs text-gray-500 space-y-1">
+            {lesson.scheduled_date && (
+              <div className="flex items-center"><Calendar className="h-3 w-3 mr-1" />{formatDate(lesson.scheduled_date)}</div>
+            )}
+            {lesson.dozent_name && (
+              <div className="flex items-center"><User className="h-3 w-3 mr-1" />{lesson.dozent_name}</div>
+            )}
+            {lesson.teilnehmer_phone && (
+              <a href={`tel:${lesson.teilnehmer_phone}`} className="text-primary hover:underline">{lesson.teilnehmer_phone}</a>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-col space-y-1 ml-2">
+          {showActions === 'assign' && (
+            assigningId === lesson.id ? (
+              <div className="flex flex-col space-y-1">
+                <select value={selectedDozent} onChange={(e) => setSelectedDozent(e.target.value)} className="text-xs border rounded px-1 py-0.5">
+                  <option value="">Dozent wählen...</option>
+                  {dozenten.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+                <div className="flex space-x-1">
+                  <button onClick={() => selectedDozent && assignDozent(lesson.id, selectedDozent)} disabled={!selectedDozent} className="p-1 text-green-600 hover:bg-green-100 rounded disabled:opacity-50"><Check className="h-3 w-3" /></button>
+                  <button onClick={() => setAssigningId(null)} className="p-1 text-gray-600 hover:bg-gray-100 rounded"><X className="h-3 w-3" /></button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setAssigningId(lesson.id)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded" title="Dozent zuweisen"><UserPlus className="h-4 w-4" /></button>
+            )
+          )}
+          {showActions === 'confirm' && (
+            <button onClick={() => confirmLesson(lesson.id)} className="p-1.5 text-green-600 hover:bg-green-100 rounded" title="Bestätigen"><CheckCircle className="h-4 w-4" /></button>
+          )}
+          {showActions === 'schedule' && (
+            <button onClick={() => scheduleLesson(lesson.id)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded" title="Termin vereinbart"><CalendarClock className="h-4 w-4" /></button>
+          )}
+          {showActions === 'complete' && lesson.status !== 'completed' && (
+            <>
+              <button onClick={() => updateStatus(lesson.id, 'completed')} className="p-1.5 text-green-600 hover:bg-green-100 rounded" title="Durchgeführt"><Check className="h-4 w-4" /></button>
+              <button onClick={() => updateStatus(lesson.id, 'no_show')} className="p-1.5 text-red-600 hover:bg-red-100 rounded" title="Nicht erschienen"><X className="h-4 w-4" /></button>
+            </>
+          )}
+          <button onClick={() => startEdit(lesson)} className="p-1.5 text-gray-600 hover:bg-gray-100 rounded" title="Bearbeiten"><Edit2 className="h-4 w-4" /></button>
+          <button onClick={() => onDelete(lesson.id)} className="p-1.5 text-red-600 hover:bg-red-100 rounded" title="Löschen"><Trash2 className="h-4 w-4" /></button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="bg-white rounded-lg shadow">
-      <div className="p-4 sm:p-6 border-b border-gray-200">
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="bg-white rounded-lg shadow p-4 sm:p-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center">
             <GraduationCap className="h-5 w-5 text-primary mr-2" />
             <h2 className="text-lg font-semibold text-gray-900">Probestunden</h2>
-            {upcomingLessons.length > 0 && (
-              <span className="ml-2 bg-primary text-white text-xs px-2 py-0.5 rounded-full">
-                {upcomingLessons.length}
-              </span>
-            )}
+            <span className="ml-2 bg-primary text-white text-xs px-2 py-0.5 rounded-full">
+              {trialLessons.filter(t => !['completed', 'cancelled', 'no_show', 'converted'].includes(t.status)).length}
+            </span>
           </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 transition"
-          >
-            <Plus className="h-4 w-4 mr-1" />
-            Neu
+          <button onClick={() => setShowForm(true)} className="flex items-center px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 transition">
+            <Plus className="h-4 w-4 mr-1" />Neu
           </button>
         </div>
       </div>
@@ -202,80 +268,71 @@ export function TrialLessonsList({ trialLessons, onUpdate, onCreate, onDelete }:
         </div>
       )}
 
-      <div className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
-        {upcomingLessons.length === 0 ? (
-          <div className="p-6 text-center text-gray-500">
-            Keine anstehenden Probestunden
+      {/* Vertical Layout - 4 Stages */}
+      <div className="space-y-4">
+        {/* Stage 1: Angefragt */}
+        <div className="bg-orange-50 rounded-lg p-4">
+          <div className="flex items-center mb-3">
+            <Clock className="h-4 w-4 text-orange-600 mr-2" />
+            <h3 className="font-semibold text-orange-800">1. Probestunde angefragt</h3>
+            <span className="ml-auto bg-orange-200 text-orange-800 text-xs px-2 py-0.5 rounded-full">{requestedLessons.length}</span>
           </div>
-        ) : (
-          upcomingLessons.map((lesson) => (
-            <div key={lesson.id} className="p-4 hover:bg-gray-50 transition">
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-2">
-                    <h3 className="font-medium text-gray-900 truncate">
-                      {lesson.teilnehmer_name}
-                    </h3>
-                    <span className={`px-2 py-0.5 text-xs rounded-full ${getStatusColor(lesson.status)}`}>
-                      {getStatusLabel(lesson.status)}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex items-center text-sm text-gray-500 space-x-3">
-                    <span className="flex items-center">
-                      <Calendar className="h-3 w-3 mr-1" />
-                      {formatDate(lesson.scheduled_date)}
-                    </span>
-                    {lesson.dozent_name && (
-                      <span className="flex items-center">
-                        <User className="h-3 w-3 mr-1" />
-                        {lesson.dozent_name}
-                      </span>
-                    )}
-                  </div>
-                  {lesson.teilnehmer_phone && (
-                    <a href={`tel:${lesson.teilnehmer_phone}`} className="text-sm text-primary hover:underline">
-                      {lesson.teilnehmer_phone}
-                    </a>
-                  )}
-                </div>
-                <div className="flex items-center space-x-1 ml-2">
-                  {lesson.status === 'scheduled' && (
-                    <>
-                      <button
-                        onClick={() => updateStatus(lesson.id, 'completed')}
-                        className="p-1.5 text-green-600 hover:bg-green-100 rounded transition"
-                        title="Als durchgeführt markieren"
-                      >
-                        <Check className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => updateStatus(lesson.id, 'no_show')}
-                        className="p-1.5 text-red-600 hover:bg-red-100 rounded transition"
-                        title="Nicht erschienen"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </>
-                  )}
-                  <button
-                    onClick={() => startEdit(lesson)}
-                    className="p-1.5 text-gray-600 hover:bg-gray-100 rounded transition"
-                    title="Bearbeiten"
-                  >
-                    <Edit2 className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => onDelete(lesson.id)}
-                    className="p-1.5 text-red-600 hover:bg-red-100 rounded transition"
-                    title="Löschen"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+            {requestedLessons.length === 0 ? (
+              <p className="text-sm text-orange-600 py-2">Keine Anfragen</p>
+            ) : (
+              requestedLessons.map(lesson => renderLessonCard(lesson, 'assign'))
+            )}
+          </div>
+        </div>
+
+        {/* Stage 2: Dozent zugewiesen */}
+        <div className="bg-yellow-50 rounded-lg p-4">
+          <div className="flex items-center mb-3">
+            <UserPlus className="h-4 w-4 text-yellow-600 mr-2" />
+            <h3 className="font-semibold text-yellow-800">2. Dozent zugewiesen</h3>
+            <span className="ml-auto bg-yellow-200 text-yellow-800 text-xs px-2 py-0.5 rounded-full">{assignedLessons.length}</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+            {assignedLessons.length === 0 ? (
+              <p className="text-sm text-yellow-600 py-2">Keine zugewiesenen</p>
+            ) : (
+              assignedLessons.map(lesson => renderLessonCard(lesson, 'confirm'))
+            )}
+          </div>
+        </div>
+
+        {/* Stage 3: Terminvereinbarung ausstehend */}
+        <div className="bg-blue-50 rounded-lg p-4">
+          <div className="flex items-center mb-3">
+            <CalendarClock className="h-4 w-4 text-blue-600 mr-2" />
+            <h3 className="font-semibold text-blue-800">3. Terminvereinbarung ausstehend</h3>
+            <span className="ml-auto bg-blue-200 text-blue-800 text-xs px-2 py-0.5 rounded-full">{pendingSchedulingLessons.length}</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+            {pendingSchedulingLessons.length === 0 ? (
+              <p className="text-sm text-blue-600 py-2">Keine ausstehenden Termine</p>
+            ) : (
+              pendingSchedulingLessons.map(lesson => renderLessonCard(lesson, 'schedule'))
+            )}
+          </div>
+        </div>
+
+        {/* Stage 4: Vereinbart */}
+        <div className="bg-green-50 rounded-lg p-4">
+          <div className="flex items-center mb-3">
+            <CheckCircle className="h-4 w-4 text-green-600 mr-2" />
+            <h3 className="font-semibold text-green-800">4. Probestunde vereinbart</h3>
+            <span className="ml-auto bg-green-200 text-green-800 text-xs px-2 py-0.5 rounded-full">{scheduledLessons.length}</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+            {scheduledLessons.length === 0 ? (
+              <p className="text-sm text-green-600 py-2">Keine vereinbarten Probestunden</p>
+            ) : (
+              scheduledLessons.map(lesson => renderLessonCard(lesson, 'complete'))
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -26,6 +26,29 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+    // Check if integration is enabled (skip check for manual sync requests)
+    const body = await req.json().catch(() => ({}))
+    const isManualSync = body.manual === true
+    
+    if (!isManualSync) {
+      const { data: settings } = await supabase
+        .from('integration_settings')
+        .select('enabled')
+        .eq('id', 'cal')
+        .single()
+      
+      if (!settings?.enabled) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            message: 'Cal.com integration is disabled',
+            skipped: true 
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
+
     // Fetch bookings from Cal.com API
     const response = await fetch(`https://api.cal.com/v1/bookings?apiKey=${calApiKey}`)
     

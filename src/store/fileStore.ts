@@ -171,40 +171,6 @@ export const useFileStore = create<FileState>((set, get) => ({
         files: [newFile, ...state.files]
       }));
 
-      // Send email notification asynchronously after successful upload and UI update
-      setTimeout(async () => {
-        try {
-          const { data: { user } } = await supabase.auth.getUser();
-          if (user) {
-            console.log('Sending upload notification for file:', newFile.id);
-            const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-upload-notification`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-              },
-              body: JSON.stringify({
-                fileId: newFile.id,
-                uploadedBy: user.id,
-                fileName: name,
-                fileSize: file.size,
-                folderId: folderId
-              }),
-            });
-
-            if (response.ok) {
-              const result = await response.json();
-              console.log('Upload notification sent successfully:', result);
-            } else {
-              const errorText = await response.text();
-              console.warn('Upload notification failed:', errorText);
-            }
-          }
-        } catch (notificationError) {
-          console.warn('Failed to send upload notification:', notificationError);
-        }
-      }, 100); // Small delay to ensure UI has updated
-
     } catch (error: any) {
       console.error('Upload process error:', error);
       set({ error: error.message });

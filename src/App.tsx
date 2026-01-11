@@ -8,6 +8,7 @@ import { DozentDetail } from './components/DozentDetail';
 import { UserManagement } from './components/UserManagement';
 import { Chat } from './components/Chat';
 import { Settings } from './components/Settings';
+import { IntegrationsTab } from './components/IntegrationsTab';
 import { useAuthStore } from './store/authStore';
 import { usePreviewStore } from './store/previewStore';
 import { PreviewBanner } from './components/PreviewBanner';
@@ -164,6 +165,14 @@ function App() {
           />
           <Route path="/messages" element={<Chat />} />
           <Route path="/settings" element={<Settings />} />
+          <Route 
+            path="/integrationen" 
+            element={
+              (showAdminView || showVerwaltungView || showVertriebView) ? 
+                <IntegrationsTab /> : 
+                <Navigate to="/dashboard" replace />
+            } 
+          />
 
 
           {/* Catch-all redirect */}

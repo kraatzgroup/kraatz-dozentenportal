@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageSquare, LogOut, Users, Clock, FileText, Calendar, Edit2, X, Check, Plus, ChevronDown, ChevronUp, Receipt, Search, Download, Eye, Mail, Send, Trash2, Settings } from 'lucide-react';
+import { MessageSquare, LogOut, Users, Clock, FileText, Calendar, Edit2, X, Check, Plus, ChevronDown, ChevronUp, Receipt, Search, Download, Eye, Mail, Send, Trash2, Settings, TrendingUp } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
 import { useFileStore } from '../store/fileStore';
@@ -21,6 +21,8 @@ import { DozentListModal } from './DozentListModal';
 import { DozentFilesModal } from './DozentFilesModal';
 import { DozentTaetigkeitsberichtModal } from './DozentTaetigkeitsberichtModal';
 import { DozentTeilnehmerModal } from './DozentTeilnehmerModal';
+import { VertriebDashboard } from './VertriebDashboard';
+import { IntegrationsTab } from './IntegrationsTab';
 
 // Helper function to check if teilnehmer is active based on contract dates
 const isContractActive = (t: any): boolean => {
@@ -92,9 +94,15 @@ export function AdminDashboard() {
   const [isCheckingDocuments, setIsCheckingDocuments] = useReactState(false);
   const [checkResult, setCheckResult] = useReactState<any>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails'>(() => {
+  const [activeTab, setActiveTab] = useState<'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen'>(() => {
+    // Check URL parameter first
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+    if (tabParam && ['dozenten', 'teilnehmer', 'nachrichten', 'rechnungen', 'kalender', 'emails', 'vertrieb', 'integrationen'].includes(tabParam)) {
+      return tabParam as 'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen';
+    }
     const saved = localStorage.getItem('adminDashboardTab');
-    return (saved as 'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails') || 'dozenten';
+    return (saved as 'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen') || 'dozenten';
   });
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
@@ -847,6 +855,17 @@ export function AdminDashboard() {
               >
                 <Mail className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">E-Mails</span>
+              </button>
+              <button
+                onClick={() => { setActiveTab('vertrieb'); localStorage.setItem('adminDashboardTab', 'vertrieb'); }}
+                className={`${
+                  activeTab === 'vertrieb'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm sm:text-base flex items-center`}
+              >
+                <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
+                <span className="hidden sm:inline">Vertrieb</span>
               </button>
             </nav>
           </div>
@@ -2785,6 +2804,14 @@ export function AdminDashboard() {
               </div>
             </div>
           </div>
+        )}
+
+        {activeTab === 'vertrieb' && (
+          <VertriebDashboard />
+        )}
+
+        {activeTab === 'integrationen' && (
+          <IntegrationsTab />
         )}
       </main>
 

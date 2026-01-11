@@ -53,6 +53,29 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+    // Check if integration is enabled (skip check for manual sync requests)
+    const body = await req.json().catch(() => ({}))
+    const isManualSync = body.manual === true
+    
+    if (!isManualSync) {
+      const { data: settings } = await supabase
+        .from('integration_settings')
+        .select('enabled')
+        .eq('id', 'monday')
+        .single()
+      
+      if (!settings?.enabled) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            message: 'Monday.com integration is disabled',
+            skipped: true 
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
+
     // Fetch items from Monday.com board
     const query = `{
       boards(ids: ${BOARD_ID}) {

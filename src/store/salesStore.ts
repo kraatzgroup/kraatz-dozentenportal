@@ -51,7 +51,9 @@ export interface TrialLesson {
   scheduled_date: string;
   dozent_id: string | null;
   dozent_name?: string;
-  status: 'scheduled' | 'completed' | 'no_show' | 'cancelled' | 'converted';
+  status: 'requested' | 'dozent_assigned' | 'confirmed' | 'scheduled' | 'completed' | 'no_show' | 'cancelled' | 'converted';
+  dozent_confirmed: boolean;
+  lead_id: string | null;
   notes: string | null;
   converted_to_package_id: string | null;
   created_at: string;
@@ -130,11 +132,13 @@ export interface Lead {
   email: string;
   phone: string | null;
   source: string;
-  status: 'new' | 'contacted' | 'qualified' | 'converted' | 'lost';
+  status: 'new' | 'offer_sent' | 'post_offer_call' | 'trial_pending' | 'post_trial_call' | 'finalgespraech' | 'vertragsanforderung' | 'vertrag_versendet' | 'downsell' | 'unqualified' | 'contract_closed' | 'closed';
   study_goal: string | null;
   study_location: string | null;
   notes: string | null;
   booking_date: string | null;
+  contract_requested_at: string | null;
+  final_call_date: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -172,6 +176,7 @@ interface SalesState {
   createTrialLesson: (data: Partial<TrialLesson>) => Promise<void>;
   createSale: (data: Partial<Sale>) => Promise<void>;
   createUpsell: (data: Partial<Upsell>) => Promise<void>;
+  createLead: (data: Partial<Lead>) => Promise<void>;
   updateLead: (id: string, data: Partial<Lead>) => Promise<void>;
 
   // Update methods
@@ -620,6 +625,22 @@ export const useSalesStore = create<SalesState>((set, get) => ({
       await get().fetchUpsells();
     } catch (error: any) {
       console.error('Error creating upsell:', error);
+      set({ error: error.message });
+      throw error;
+    }
+  },
+
+  createLead: async (data) => {
+    try {
+      const { error } = await supabase.from('leads').insert({
+        ...data,
+        source: data.source || 'manual',
+        status: data.status || 'new',
+      });
+      if (error) throw error;
+      await get().fetchLeads();
+    } catch (error: any) {
+      console.error('Error creating lead:', error);
       set({ error: error.message });
       throw error;
     }

@@ -1,23 +1,17 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { LogOut, RefreshCw, Settings, Calendar, ChevronDown } from 'lucide-react';
-import { useAuthStore } from '../store/authStore';
+import { Settings, Calendar, ChevronDown } from 'lucide-react';
 import { useSalesStore } from '../store/salesStore';
 import { Logo } from './Logo';
 import { SalesKPICards } from './vertrieb/SalesKPICards';
-import { FollowUpList } from './vertrieb/FollowUpList';
 import { TrialLessonsList } from './vertrieb/TrialLessonsList';
-import { ActiveParticipantsList } from './vertrieb/ActiveParticipantsList';
 import { CalBookingsList } from './vertrieb/CalBookingsList';
-import { UpsellOpportunities } from './vertrieb/UpsellOpportunities';
-import { PackageManagement } from './vertrieb/PackageManagement';
 import { LeadsList } from './vertrieb/LeadsList';
+import { SalesCalendar } from './vertrieb/SalesCalendar';
+import { FinalgespraechList } from './vertrieb/FinalgespraechList';
 
-type TabType = 'overview' | 'calls' | 'leads' | 'followups' | 'trials' | 'participants' | 'upsells' | 'packages';
+type TabType = 'overview' | 'calendar' | 'calls' | 'leads' | 'trials' | 'finalgespraech';
 
 export function VertriebDashboard() {
-  const navigate = useNavigate();
-  const { signOut } = useAuthStore();
   const [activeTab, setActiveTab] = useState<TabType>(() => {
     const saved = localStorage.getItem('vertriebDashboardTab');
     return (saved as TabType) || 'overview';
@@ -27,13 +21,10 @@ export function VertriebDashboard() {
   const [showDateDropdown, setShowDateDropdown] = useState(false);
 
   const {
-    packages,
     followUps,
     trialLessons,
-    upsells,
     calBookings,
     leads,
-    activeTeilnehmer,
     isLoading,
     fetchPackages,
     fetchFollowUps,
@@ -44,19 +35,11 @@ export function VertriebDashboard() {
     fetchLeads,
     fetchSales,
     fetchActiveTeilnehmer,
-    createPackage,
-    createFollowUp,
     createTrialLesson,
-    createUpsell,
-    updatePackage,
-    updateFollowUp,
+    createLead,
     updateTrialLesson,
-    updateUpsell,
     updateLead,
-    deletePackage,
-    deleteFollowUp,
     deleteTrialLesson,
-    deleteUpsell,
     getKPISummary,
   } = useSalesStore();
 
@@ -80,11 +63,6 @@ export function VertriebDashboard() {
     } finally {
       setIsRefreshing(false);
     }
-  };
-
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/');
   };
 
   const handleTabChange = (tab: TabType) => {
@@ -161,17 +139,15 @@ export function VertriebDashboard() {
 
   const tabs = [
     { id: 'overview' as TabType, label: 'Übersicht' },
-    { id: 'calls' as TabType, label: 'Calls', badge: calBookings.filter(b => new Date(b.end_time) >= new Date()).length },
     { id: 'leads' as TabType, label: 'Leads', badge: leads.filter(l => l.status === 'new').length },
-    { id: 'followups' as TabType, label: 'Follow-ups', badge: pendingFollowUps },
+    { id: 'calendar' as TabType, label: 'Kalender' },
+    { id: 'calls' as TabType, label: 'Calls', badge: calBookings.filter(b => new Date(b.end_time) >= new Date()).length },
     { id: 'trials' as TabType, label: 'Probestunden', badge: upcomingTrials },
-    { id: 'participants' as TabType, label: 'Teilnehmer' },
-    { id: 'upsells' as TabType, label: 'Upsells' },
-    { id: 'packages' as TabType, label: 'Pakete' },
+    { id: 'finalgespraech' as TabType, label: 'Finalgespräch', badge: leads.filter(l => l.status === 'finalgespraech').length },
   ];
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen" style={{ backgroundColor: '#05161f' }}>
       {/* Navigation */}
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -184,26 +160,13 @@ export function VertriebDashboard() {
             </div>
             <div className="flex items-center space-x-2">
               <button
-                onClick={loadAllData}
-                disabled={isRefreshing}
+                onClick={() => {
+                  window.location.href = '/integrationen';
+                }}
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition"
-                title="Daten aktualisieren"
-              >
-                <RefreshCw className={`h-5 w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
-              </button>
-              <button
-                onClick={() => navigate('/users')}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition"
-                title="Einstellungen"
+                title="Integrationen verwalten"
               >
                 <Settings className="h-5 w-5" />
-              </button>
-              <button
-                onClick={handleSignOut}
-                className="flex items-center px-3 py-2 text-sm text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"
-              >
-                <LogOut className="h-5 w-5 mr-1" />
-                <span className="hidden sm:inline">Abmelden</span>
               </button>
             </div>
           </div>
@@ -287,6 +250,10 @@ export function VertriebDashboard() {
           </div>
         )}
 
+        {activeTab === 'calendar' && (
+          <SalesCalendar />
+        )}
+
         {activeTab === 'calls' && (
           <CalBookingsList
             bookings={calBookings}
@@ -299,15 +266,8 @@ export function VertriebDashboard() {
           <LeadsList
             leads={leads}
             onUpdateStatus={(id, status) => updateLead(id, { status })}
-          />
-        )}
-
-        {activeTab === 'followups' && (
-          <FollowUpList
-            followUps={followUps}
-            onUpdate={updateFollowUp}
-            onCreate={createFollowUp}
-            onDelete={deleteFollowUp}
+            onCreateLead={createLead}
+            onUpdateLead={updateLead}
           />
         )}
 
@@ -320,33 +280,17 @@ export function VertriebDashboard() {
           />
         )}
 
-        {activeTab === 'participants' && (
-          <ActiveParticipantsList
-            participants={activeTeilnehmer}
-            onUpsellClick={() => {
-              handleTabChange('upsells');
-            }}
+        {activeTab === 'finalgespraech' && (
+          <FinalgespraechList
+            leads={leads}
+            onUpdateStatus={(id, status, contractRequestedAt) => updateLead(id, { 
+              status: status as any,
+              ...(contractRequestedAt && { contract_requested_at: contractRequestedAt })
+            })}
+            onUpdateLead={(id, data) => updateLead(id, data as any)}
           />
         )}
 
-        {activeTab === 'upsells' && (
-          <UpsellOpportunities
-            upsells={upsells}
-            packages={packages}
-            onUpdate={updateUpsell}
-            onCreate={createUpsell}
-            onDelete={deleteUpsell}
-          />
-        )}
-
-        {activeTab === 'packages' && (
-          <PackageManagement
-            packages={packages}
-            onCreate={createPackage}
-            onUpdate={updatePackage}
-            onDelete={deletePackage}
-          />
-        )}
       </main>
     </div>
   );

@@ -1,44 +1,69 @@
 import { useState } from 'react';
-import { Users, Mail, Phone, MapPin, GraduationCap, Calendar, Search, Filter } from 'lucide-react';
+import { Users, Mail, Phone, MapPin, GraduationCap, Calendar, Search, Filter, Plus, X, Edit2 } from 'lucide-react';
 import { Lead } from '../../store/salesStore';
 
 interface LeadsListProps {
   leads: Lead[];
   onUpdateStatus: (id: string, status: Lead['status']) => Promise<void>;
+  onCreateLead: (data: Partial<Lead>) => Promise<void>;
+  onUpdateLead: (id: string, data: Partial<Lead>) => Promise<void>;
 }
 
-export function LeadsList({ leads, onUpdateStatus }: LeadsListProps) {
+export function LeadsList({ leads, onUpdateStatus, onCreateLead, onUpdateLead }: LeadsListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<Lead['status'] | 'all'>('all');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [newLead, setNewLead] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    study_goal: '',
+    study_location: '',
+    notes: '',
+    booking_date: '',
+    source: '',
+  });
+  const [editFormData, setEditFormData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    study_goal: '',
+    study_location: '',
+    notes: '',
+    booking_date: '',
+    source: '',
+  });
 
   const getStatusColor = (status: Lead['status']) => {
     switch (status) {
       case 'new': return 'bg-blue-100 text-blue-800';
-      case 'contacted': return 'bg-yellow-100 text-yellow-800';
-      case 'qualified': return 'bg-purple-100 text-purple-800';
-      case 'converted': return 'bg-green-100 text-green-800';
-      case 'lost': return 'bg-red-100 text-red-800';
+      case 'offer_sent': return 'bg-yellow-100 text-yellow-800';
+      case 'post_offer_call': return 'bg-orange-100 text-orange-800';
+      case 'trial_pending': return 'bg-purple-100 text-purple-800';
+      case 'post_trial_call': return 'bg-indigo-100 text-indigo-800';
+      case 'finalgespraech': return 'bg-red-100 text-red-800';
+      case 'vertragsanforderung': return 'bg-green-100 text-green-800';
+      case 'contract_closed': return 'bg-green-100 text-green-800';
+      case 'downsell': return 'bg-teal-100 text-teal-800';
+      case 'unqualified': return 'bg-gray-100 text-gray-800';
+      case 'closed': return 'bg-gray-100 text-gray-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
 
-  const getStatusLabel = (status: Lead['status']) => {
-    switch (status) {
-      case 'new': return 'Neu';
-      case 'contacted': return 'Kontaktiert';
-      case 'qualified': return 'Qualifiziert';
-      case 'converted': return 'Konvertiert';
-      case 'lost': return 'Verloren';
-      default: return status;
-    }
-  };
-
   const statusOptions: { id: Lead['status']; label: string }[] = [
-    { id: 'new', label: 'Neu' },
-    { id: 'contacted', label: 'Kontaktiert' },
-    { id: 'qualified', label: 'Qualifiziert' },
-    { id: 'converted', label: 'Konvertiert' },
-    { id: 'lost', label: 'Verloren' },
+    { id: 'new', label: 'Beratungsgespräch' },
+    { id: 'offer_sent', label: 'Angebot versendet' },
+    { id: 'post_offer_call', label: 'Gespräch nach Angebot' },
+    { id: 'trial_pending', label: 'Probestunde' },
+    { id: 'post_trial_call', label: 'Finalgespräch nach Probestunde' },
+    { id: 'vertragsanforderung', label: 'Vertragsanforderung' },
+    { id: 'downsell', label: 'Kraatz Club Downsell' },
+    { id: 'closed', label: 'Closed' },
+    { id: 'contract_closed', label: 'Abgeschlossen' },
   ];
 
   const filteredLeads = leads.filter(lead => {
@@ -53,13 +78,19 @@ export function LeadsList({ leads, onUpdateStatus }: LeadsListProps) {
     return matchesSearch && matchesStatus;
   });
 
-  const leadCounts = {
+  const leadCounts: Record<string, number> = {
     all: leads.length,
     new: leads.filter(l => l.status === 'new').length,
-    contacted: leads.filter(l => l.status === 'contacted').length,
-    qualified: leads.filter(l => l.status === 'qualified').length,
-    converted: leads.filter(l => l.status === 'converted').length,
-    lost: leads.filter(l => l.status === 'lost').length,
+    offer_sent: leads.filter(l => l.status === 'offer_sent').length,
+    post_offer_call: leads.filter(l => l.status === 'post_offer_call').length,
+    trial_pending: leads.filter(l => l.status === 'trial_pending').length,
+    post_trial_call: leads.filter(l => l.status === 'post_trial_call').length,
+    finalgespraech: leads.filter(l => l.status === 'finalgespraech').length,
+    vertragsanforderung: leads.filter(l => l.status === 'vertragsanforderung').length,
+    contract_closed: leads.filter(l => l.status === 'contract_closed').length,
+    downsell: leads.filter(l => l.status === 'downsell').length,
+    unqualified: leads.filter(l => l.status === 'unqualified').length,
+    closed: leads.filter(l => l.status === 'closed').length,
   };
 
   const formatDate = (dateStr: string | null) => {
@@ -71,31 +102,114 @@ export function LeadsList({ leads, onUpdateStatus }: LeadsListProps) {
     });
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newLead.name || !newLead.email) return;
+    
+    setIsSubmitting(true);
+    try {
+      await onCreateLead({
+        name: newLead.name,
+        email: newLead.email,
+        phone: newLead.phone || null,
+        study_goal: newLead.study_goal || null,
+        study_location: newLead.study_location || null,
+        notes: newLead.notes || null,
+        booking_date: newLead.booking_date || null,
+        source: newLead.source || 'manual',
+      });
+      setNewLead({ name: '', email: '', phone: '', study_goal: '', study_location: '', notes: '', booking_date: '', source: '' });
+      setShowAddModal(false);
+    } catch (error) {
+      console.error('Error creating lead:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const startEdit = (lead: Lead) => {
+    setEditingLead(lead);
+    setEditFormData({
+      name: lead.name,
+      email: lead.email,
+      phone: lead.phone || '',
+      study_goal: lead.study_goal || '',
+      study_location: lead.study_location || '',
+      notes: lead.notes || '',
+      booking_date: lead.booking_date ? lead.booking_date.slice(0, 16) : '',
+      source: lead.source || '',
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingLead || !editFormData.name || !editFormData.email) return;
+    
+    setIsSubmitting(true);
+    try {
+      await onUpdateLead(editingLead.id, {
+        name: editFormData.name,
+        email: editFormData.email,
+        phone: editFormData.phone || null,
+        study_goal: editFormData.study_goal || null,
+        study_location: editFormData.study_location || null,
+        notes: editFormData.notes || null,
+        booking_date: editFormData.booking_date || null,
+        source: editFormData.source || editingLead.source,
+      });
+      setShowEditModal(false);
+      setEditingLead(null);
+    } catch (error) {
+      console.error('Error updating lead:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* Header with Add Button */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-gray-900">Leads Pipeline</h2>
         <button
-          onClick={() => setStatusFilter('all')}
-          className={`p-3 rounded-lg text-left transition ${
-            statusFilter === 'all' ? 'bg-primary text-white' : 'bg-white shadow hover:shadow-md'
-          }`}
+          onClick={() => setShowAddModal(true)}
+          className="px-4 py-2 rounded-lg transition bg-green-500 hover:bg-green-600 text-white flex items-center gap-2"
         >
-          <p className="text-xs opacity-75">Gesamt</p>
-          <p className="text-xl font-bold">{leadCounts.all}</p>
+          <Plus className="h-5 w-5" />
+          <span className="font-medium">Lead hinzufügen</span>
         </button>
-        {statusOptions.map(option => (
+      </div>
+
+      {/* Stats Cards - Horizontal scrollable on mobile */}
+      <div className="bg-white rounded-lg shadow p-3">
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
           <button
-            key={option.id}
-            onClick={() => setStatusFilter(option.id)}
-            className={`p-3 rounded-lg text-left transition ${
-              statusFilter === option.id ? 'bg-primary text-white' : 'bg-white shadow hover:shadow-md'
+            onClick={() => setStatusFilter('all')}
+            className={`flex-shrink-0 px-4 py-2 rounded-lg transition flex flex-col items-center min-w-[80px] ${
+              statusFilter === 'all' 
+                ? 'bg-primary text-white' 
+                : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
             }`}
           >
-            <p className="text-xs opacity-75">{option.label}</p>
-            <p className="text-xl font-bold">{leadCounts[option.id]}</p>
+            <span className="text-lg font-bold">{leadCounts.all}</span>
+            <span className="text-xs whitespace-nowrap">Gesamt</span>
           </button>
-        ))}
+          {statusOptions.map(option => (
+            <button
+              key={option.id}
+              onClick={() => setStatusFilter(option.id)}
+              className={`flex-shrink-0 px-3 py-2 rounded-lg transition flex flex-col items-center min-w-[70px] ${
+                statusFilter === option.id 
+                  ? 'bg-primary text-white' 
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+              }`}
+            >
+              <span className="text-lg font-bold">{leadCounts[option.id]}</span>
+              <span className="text-xs whitespace-nowrap">{option.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Search and Filter */}
@@ -206,6 +320,7 @@ export function LeadsList({ leads, onUpdateStatus }: LeadsListProps) {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Standort</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Termin</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"></th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -258,6 +373,15 @@ export function LeadsList({ leads, onUpdateStatus }: LeadsListProps) {
                         ))}
                       </select>
                     </td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => startEdit(lead)}
+                        className="p-1.5 text-gray-600 hover:bg-gray-100 rounded transition"
+                        title="Bearbeiten"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -265,6 +389,239 @@ export function LeadsList({ leads, onUpdateStatus }: LeadsListProps) {
           </table>
         </div>
       </div>
+
+      {/* Add Lead Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">Neuen Lead hinzufügen</h3>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="p-1 text-gray-400 hover:text-gray-600 rounded"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSubmit} className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newLead.name}
+                  onChange={(e) => setNewLead({ ...newLead, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  placeholder="Max Mustermann"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  E-Mail <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  value={newLead.email}
+                  onChange={(e) => setNewLead({ ...newLead, email: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  placeholder="max@beispiel.de"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Telefon</label>
+                <input
+                  type="tel"
+                  value={newLead.phone}
+                  onChange={(e) => setNewLead({ ...newLead, phone: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  placeholder="+49 123 456789"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Studienziel</label>
+                <input
+                  type="text"
+                  value={newLead.study_goal}
+                  onChange={(e) => setNewLead({ ...newLead, study_goal: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  placeholder="z.B. Staatsexamen, Bachelor"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Standort</label>
+                <input
+                  type="text"
+                  value={newLead.study_location}
+                  onChange={(e) => setNewLead({ ...newLead, study_location: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  placeholder="z.B. München, Berlin"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Quelle</label>
+                <input
+                  type="text"
+                  value={newLead.source}
+                  onChange={(e) => setNewLead({ ...newLead, source: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  placeholder="z.B. Instagram, Empfehlung, Website"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Termin</label>
+                <input
+                  type="datetime-local"
+                  value={newLead.booking_date}
+                  onChange={(e) => setNewLead({ ...newLead, booking_date: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notizen</label>
+                <textarea
+                  value={newLead.notes}
+                  onChange={(e) => setNewLead({ ...newLead, notes: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  rows={3}
+                  placeholder="Zusätzliche Informationen..."
+                />
+              </div>
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !newLead.name || !newLead.email}
+                  className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSubmitting ? 'Speichern...' : 'Lead erstellen'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Lead Modal */}
+      {showEditModal && editingLead && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">Lead bearbeiten</h3>
+              <button
+                onClick={() => { setShowEditModal(false); setEditingLead(null); }}
+                className="p-1 text-gray-400 hover:text-gray-600 rounded"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleEditSubmit} className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={editFormData.name}
+                  onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  E-Mail <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  value={editFormData.email}
+                  onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Telefon</label>
+                <input
+                  type="tel"
+                  value={editFormData.phone}
+                  onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Studienziel</label>
+                <input
+                  type="text"
+                  value={editFormData.study_goal}
+                  onChange={(e) => setEditFormData({ ...editFormData, study_goal: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Standort</label>
+                <input
+                  type="text"
+                  value={editFormData.study_location}
+                  onChange={(e) => setEditFormData({ ...editFormData, study_location: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Quelle</label>
+                <input
+                  type="text"
+                  value={editFormData.source}
+                  onChange={(e) => setEditFormData({ ...editFormData, source: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Termin</label>
+                <input
+                  type="datetime-local"
+                  value={editFormData.booking_date}
+                  onChange={(e) => setEditFormData({ ...editFormData, booking_date: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notizen</label>
+                <textarea
+                  value={editFormData.notes}
+                  onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  rows={3}
+                />
+              </div>
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => { setShowEditModal(false); setEditingLead(null); }}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !editFormData.name || !editFormData.email}
+                  className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSubmitting ? 'Speichern...' : 'Änderungen speichern'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

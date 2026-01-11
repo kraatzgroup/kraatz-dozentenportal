@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface LogoProps {
   onClick?: () => void;
 }
@@ -9,6 +7,7 @@ export function Logo({ onClick }: LogoProps) {
     if (onClick) {
       onClick();
     } else {
+      // Use window.location for navigation to work outside Router context
       window.location.href = '/';
     }
   };
