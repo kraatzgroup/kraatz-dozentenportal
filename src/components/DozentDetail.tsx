@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, FolderIcon, Plus, Edit, Trash2, Users, FileText, Mail, User, Clock, Calendar } from 'lucide-react';
+import { ArrowLeft, FolderIcon, Plus, Edit, Trash2, Users, FileText, Mail, User, Clock, Calendar, GraduationCap, Check, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useFolderStore } from '../store/folderStore';
 import { useFileStore } from '../store/fileStore';
 import { useTeilnehmerStore } from '../store/teilnehmerStore';
 import { useHoursStore } from '../store/hoursStore';
+import { useSalesStore } from '../store/salesStore';
 import { Logo } from './Logo';
 import { FileSection } from './FileSection';
 import { ActivitySection } from './ActivitySection';
@@ -28,6 +29,7 @@ export function DozentDetail() {
   const { files, fetchFiles, uploadFile, deleteFile } = useFileStore();
   const { teilnehmer, fetchTeilnehmer } = useTeilnehmerStore();
   const { getCurrentMonthHours, fetchMonthlySummary } = useHoursStore();
+  const { trialLessons, fetchTrialLessons, updateTrialLesson } = useSalesStore();
   
   const [selectedFolder, setSelectedFolder] = useState<Folder | null>(null);
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
@@ -121,6 +123,13 @@ export function DozentDetail() {
   const isActiveTeilnehmerFolder = selectedFolder?.name === 'Aktive Teilnehmer';
   const isTaetigkeitsberichtFolder = selectedFolder?.name === 'Tätigkeitsbericht';
   const isRechnungenFolder = selectedFolder?.name === 'Rechnungen';
+  const isProbestundenFolder = selectedFolder?.name === 'Probestunden';
+  
+  // Filter trial lessons for this dozent
+  const dozentTrialLessons = trialLessons.filter(t => t.dozent_id === dozentId);
+  const pendingTrialLessons = dozentTrialLessons.filter(t => 
+    ['requested', 'dozent_assigned', 'confirmed', 'scheduled'].includes(t.status)
+  );
   
   // Check permissions based on role
   const canViewRechnungen = isAdmin || isBuchhaltung;
@@ -375,7 +384,7 @@ export function DozentDetail() {
             </div>
             <div className="flex items-center">
               <button
-                onClick={() => navigate('/admin')}
+                onClick={() => navigate('/')}
                 className="p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 rounded-full"
               >
                 <ArrowLeft className="h-5 w-5" />
@@ -391,7 +400,7 @@ export function DozentDetail() {
             <div className="mb-8">
               <div className="flex items-center mb-2">
                 <button
-                  onClick={() => navigate('/admin')}
+                  onClick={() => navigate('/')}
                   className="mr-4 p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded-full"
                 >
                   <ArrowLeft className="h-6 w-6" />
@@ -450,7 +459,7 @@ export function DozentDetail() {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
                 {folders.map((folder) => (
                   <div
                     key={folder.id}
@@ -485,6 +494,27 @@ export function DozentDetail() {
                     )}
                   </div>
                 ))}
+                {/* Virtual Probestunden Folder */}
+                <div
+                  className={`relative block w-full text-left ${
+                    isProbestundenFolder
+                      ? 'ring-2 ring-primary'
+                      : 'hover:bg-gray-50'
+                  } bg-white rounded-lg shadow p-4 transition-all`}
+                >
+                  <button
+                    onClick={() => setSelectedFolder({ id: 'probestunden', name: 'Probestunden', is_system: true })}
+                    className="w-full flex items-center text-left"
+                  >
+                    <GraduationCap className="h-6 w-6 text-primary" />
+                    <span className="ml-3 font-medium text-gray-900">Probestunden</span>
+                    {pendingTrialLessons.length > 0 && (
+                      <span className="ml-2 bg-orange-500 text-white text-xs px-2 py-0.5 rounded-full">
+                        {pendingTrialLessons.length}
+                      </span>
+                    )}
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -536,6 +566,136 @@ export function DozentDetail() {
                   onShowActivityDialog={() => setShowActivityDialog(true)}
                   dozentId={dozentId}
                 />
+              ) : isProbestundenFolder ? (
+                <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+                  <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
+                    <h3 className="text-lg font-medium text-gray-900">Probestunden-Anfragen</h3>
+                    <p className="mt-1 text-sm text-gray-500">Übersicht aller Probestunden für diesen Dozenten</p>
+                  </div>
+                  <div className="p-4">
+                    {dozentTrialLessons.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <GraduationCap className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                        <p>Keine Probestunden vorhanden</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {/* Pending/Requested */}
+                        {pendingTrialLessons.length > 0 && (
+                          <div className="bg-orange-50 rounded-lg p-4">
+                            <h4 className="font-medium text-orange-800 mb-3 flex items-center">
+                              <Clock className="h-4 w-4 mr-2" />
+                              Ausstehende Anfragen ({pendingTrialLessons.length})
+                            </h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {pendingTrialLessons.map(lesson => (
+                                <div key={lesson.id} className="bg-white p-3 rounded-lg border border-orange-200">
+                                  <div className="flex justify-between items-start">
+                                    <div>
+                                      <p className="font-medium text-gray-900">{lesson.teilnehmer_name}</p>
+                                      <p className="text-sm text-gray-500">{lesson.teilnehmer_email}</p>
+                                      {lesson.teilnehmer_phone && (
+                                        <p className="text-sm text-gray-500">{lesson.teilnehmer_phone}</p>
+                                      )}
+                                    </div>
+                                    <span className={`px-2 py-1 text-xs rounded-full ${
+                                      lesson.status === 'requested' ? 'bg-orange-100 text-orange-800' :
+                                      lesson.status === 'dozent_assigned' ? 'bg-yellow-100 text-yellow-800' :
+                                      lesson.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
+                                      'bg-green-100 text-green-800'
+                                    }`}>
+                                      {lesson.status === 'requested' ? 'Angefragt' :
+                                       lesson.status === 'dozent_assigned' ? 'Zugewiesen' :
+                                       lesson.status === 'confirmed' ? 'Bestätigt' : 'Geplant'}
+                                    </span>
+                                  </div>
+                                  <div className="mt-2 text-xs text-gray-500 space-y-1">
+                                    {lesson.rechtsgebiet && (
+                                      <p><span className="font-medium">Rechtsgebiet:</span> {lesson.rechtsgebiet}</p>
+                                    )}
+                                    {lesson.uni_standort && (
+                                      <p><span className="font-medium">Uni-Standort:</span> {lesson.uni_standort}</p>
+                                    )}
+                                    {lesson.landesrecht && (
+                                      <p><span className="font-medium">Landesrecht:</span> {lesson.landesrecht}</p>
+                                    )}
+                                    {lesson.duration && (
+                                      <p><span className="font-medium">Dauer:</span> {lesson.duration} Min</p>
+                                    )}
+                                    {lesson.scheduled_date && (
+                                      <p><span className="font-medium">Termin:</span> {new Date(lesson.scheduled_date).toLocaleString('de-DE')}</p>
+                                    )}
+                                    {lesson.notes && (
+                                      <p><span className="font-medium">Notizen:</span> {lesson.notes}</p>
+                                    )}
+                                  </div>
+                                  {lesson.status === 'dozent_assigned' && (
+                                    <div className="mt-3 space-y-2">
+                                      <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs text-blue-800">
+                                        <p className="font-medium flex items-center">
+                                          <Calendar className="h-3 w-3 mr-1" />
+                                          Bitte vereinbaren Sie einen Termin mit dem Teilnehmer
+                                        </p>
+                                        <p className="mt-1 text-blue-600">
+                                          Kontaktieren Sie {lesson.teilnehmer_name} per E-Mail oder Telefon, um einen passenden Termin für die Probestunde zu finden.
+                                        </p>
+                                      </div>
+                                      <div className="flex space-x-2">
+                                        <button
+                                          onClick={() => updateTrialLesson(lesson.id, { status: 'confirmed', dozent_confirmed: true })}
+                                          className="flex-1 px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700 flex items-center justify-center"
+                                        >
+                                          <Check className="h-3 w-3 mr-1" />
+                                          Termin vereinbart
+                                        </button>
+                                        <button
+                                          onClick={() => updateTrialLesson(lesson.id, { status: 'cancelled' })}
+                                          className="flex-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700 flex items-center justify-center"
+                                        >
+                                          <X className="h-3 w-3 mr-1" />
+                                          Ablehnen
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Completed/Past */}
+                        {dozentTrialLessons.filter(t => ['completed', 'no_show', 'cancelled', 'converted'].includes(t.status)).length > 0 && (
+                          <div className="bg-gray-50 rounded-lg p-4">
+                            <h4 className="font-medium text-gray-700 mb-3">Abgeschlossene Probestunden</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {dozentTrialLessons.filter(t => ['completed', 'no_show', 'cancelled', 'converted'].includes(t.status)).map(lesson => (
+                                <div key={lesson.id} className="bg-white p-3 rounded-lg border border-gray-200">
+                                  <div className="flex justify-between items-start">
+                                    <p className="font-medium text-gray-900">{lesson.teilnehmer_name}</p>
+                                    <span className={`px-2 py-1 text-xs rounded-full ${
+                                      lesson.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                      lesson.status === 'converted' ? 'bg-purple-100 text-purple-800' :
+                                      lesson.status === 'no_show' ? 'bg-red-100 text-red-800' :
+                                      'bg-gray-100 text-gray-800'
+                                    }`}>
+                                      {lesson.status === 'completed' ? 'Durchgeführt' :
+                                       lesson.status === 'converted' ? 'Konvertiert' :
+                                       lesson.status === 'no_show' ? 'Nicht erschienen' : 'Abgesagt'}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    {new Date(lesson.scheduled_date).toLocaleDateString('de-DE')}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
               ) : (isRechnungenFolder && !canViewRechnungen) || (isTaetigkeitsberichtFolder && !canViewTaetigkeitsbericht) ? (
                 <div className="bg-white shadow overflow-hidden sm:rounded-md">
                   <div className="px-4 py-8 text-center text-gray-500">

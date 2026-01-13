@@ -47,6 +47,7 @@ interface HoursState {
   deleteHours: (id: string) => Promise<void>;
   getTotalHours: (teilnehmerId: string, startDate?: string, endDate?: string) => Promise<number>;
   getMonthlyHours: (teilnehmerId: string, year: number, month: number) => number;
+  getCurrentMonthHours: (teilnehmerId: string) => number;
   setupRealtimeSubscription: () => void;
   cleanupSubscription: () => void;
 }

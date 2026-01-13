@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, Check, X, Clock, Settings, Link2, Link2Off, LogOut } from 'lucide-react';
+import { RefreshCw, Check, X, Clock, Settings, Link2, Link2Off, LogOut, ArrowLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useNavigate } from 'react-router-dom';
@@ -217,7 +217,13 @@ export function IntegrationsTab() {
         <nav className="bg-white shadow-sm sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
-              <div className="flex items-center cursor-pointer" onClick={() => navigate('/')}>
+              <div className="flex items-center">
+                <button
+                  onClick={() => navigate('/')}
+                  className="mr-3 p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded-full"
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                </button>
                 <Logo />
                 <span className="ml-2 text-lg sm:text-xl font-semibold text-gray-900">
                   Integrationen
@@ -248,7 +254,13 @@ export function IntegrationsTab() {
       <nav className="bg-white shadow-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <div className="flex items-center cursor-pointer" onClick={() => navigate('/')}>
+            <div className="flex items-center">
+              <button
+                onClick={() => navigate('/')}
+                className="mr-3 p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded-full"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
               <Logo />
               <span className="ml-2 text-lg sm:text-xl font-semibold text-gray-900">
                 Integrationen

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageSquare, LogOut, Settings, FolderIcon, Plus, Edit, Trash2, Users, FileText, User, Clock, Calendar, X } from 'lucide-react';
+import { MessageSquare, LogOut, Settings, FolderIcon, Plus, Edit, Trash2, Users, FileText, User, Clock, Calendar, X, GraduationCap, Check } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useMessageStore } from '../store/messageStore';
 import { useFolderStore } from '../store/folderStore';
@@ -16,6 +16,7 @@ import { ParticipantHoursSection } from './ParticipantHoursSection';
 import { TeilnehmerManagement } from './TeilnehmerManagement';
 import { InvoiceManagement } from './InvoiceManagement';
 import { AvailabilitySection } from './AvailabilitySection';
+import { useSalesStore } from '../store/salesStore';
 import '../utils/testDatabase'; // This will run the database test
 
 interface DashboardProps {
@@ -34,8 +35,11 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const { folders, fetchFolders, createFolder, updateFolder, deleteFolder } = useFolderStore();
   const { files, fetchFiles, uploadFile, deleteFile } = useFileStore();
   const { teilnehmer, fetchTeilnehmer } = useTeilnehmerStore();
-  const { getCurrentMonthHours, fetchMonthlySummary } = useHoursStore();
+  const hoursStore = useHoursStore();
+  const { fetchMonthlySummary } = hoursStore;
+  const getCurrentMonthHours = hoursStore.getCurrentMonthHours;
   const { messages, fetchMessages, markAsRead, markAllAsRead, setupMessageSubscription } = useMessageStore();
+  const { trialLessons, fetchTrialLessons, updateTrialLesson } = useSalesStore();
   const [selectedFolder, setSelectedFolder] = useState<Folder | null>(null);
   
   // Persist selected folder to localStorage
@@ -98,6 +102,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     fetchFolders();
     fetchMessages();
     fetchTeilnehmer();
+    fetchTrialLessons();
     fetchMonthlySummary(undefined, selectedYear, selectedMonth); // Fetch hours data for selected month
 
     // Setup message subscription
@@ -118,7 +123,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       cleanupHoursSub();
       cleanupFilesSub();
     };
-  }, [fetchFolders, fetchMessages, setupMessageSubscription]);
+  }, [fetchFolders, fetchMessages, fetchTrialLessons, setupMessageSubscription]);
 
   // Refetch monthly summary when month/year changes
   useEffect(() => {
@@ -168,6 +173,13 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const isTaetigkeitsberichtFolder = selectedFolder?.name === 'Tätigkeitsbericht';
   const isRechnungenFolder = selectedFolder?.name === 'Rechnungen';
   const isVerfuegbarkeitFolder = selectedFolder?.name === 'Verfügbarkeit';
+  const isProbestundenFolder = selectedFolder?.name === 'Probestunden';
+  
+  // Filter trial lessons for current user (dozent)
+  const myTrialLessons = trialLessons.filter(t => t.dozent_id === user?.id);
+  const pendingTrialLessons = myTrialLessons.filter(t => 
+    ['requested', 'dozent_assigned', 'confirmed', 'scheduled'].includes(t.status)
+  );
   
   // Check permissions based on role
   // Dozenten can view their own Rechnungen and Tätigkeitsbericht folders
@@ -178,6 +190,39 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
+  };
+
+  // Handle completing a trial lesson - adds hours to Tätigkeitsbericht
+  const handleCompleteTrialLesson = async (lesson: typeof trialLessons[0]) => {
+    try {
+      // Calculate hours from duration (duration is in minutes)
+      const durationMinutes = lesson.duration || 60;
+      const hours = durationMinutes / 60;
+      
+      // Create hours entry for Tätigkeitsbericht
+      const hoursData = {
+        dozent_id: user?.id,
+        hours: hours,
+        date: lesson.scheduled_date ? new Date(lesson.scheduled_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        description: `Probestunde mit ${lesson.teilnehmer_name}`,
+        legal_area: lesson.rechtsgebiet || '',
+        teilnehmer_id: null
+      };
+      
+      // Insert directly via supabase
+      const { error } = await supabase.from('participant_hours').insert(hoursData);
+      if (error) {
+        console.error('Error adding hours for trial lesson:', error);
+      }
+      
+      // Update trial lesson status
+      await updateTrialLesson(lesson.id, { status: 'completed' });
+      
+      // Refresh monthly summary
+      await fetchMonthlySummary();
+    } catch (error) {
+      console.error('Error completing trial lesson:', error);
+    }
   };
 
   const handleFileUpload = async (file: File) => {
@@ -477,7 +522,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
               )}
             </div>
 
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
               {folders.filter(folder => {
                 // Filter folders based on user role
                 // Hide Verfügbarkeit folder - it's shown as a badge in the header
@@ -523,6 +568,29 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   )}
                 </div>
               ))}
+              {/* Virtual Probestunden Folder - only for Dozenten */}
+              {isDozent && (
+                <div
+                  className={`relative block w-full text-left ${
+                    isProbestundenFolder
+                      ? 'ring-2 ring-primary'
+                      : 'hover:bg-gray-50'
+                  } bg-white rounded-lg shadow p-4 transition-all`}
+                >
+                  <button
+                    onClick={() => handleSelectFolder({ id: 'probestunden', name: 'Probestunden', is_system: true })}
+                    className="w-full flex items-center text-left"
+                  >
+                    <GraduationCap className="h-6 w-6 text-primary" />
+                    <span className="ml-3 font-medium text-gray-900">Probestunden</span>
+                    {pendingTrialLessons.length > 0 && (
+                      <span className="ml-2 bg-orange-500 text-white text-xs px-2 py-0.5 rounded-full">
+                        {pendingTrialLessons.length}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -573,6 +641,288 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                 />
               ) : isVerfuegbarkeitFolder ? (
                 <AvailabilitySection isAdmin={canManageAll} />
+              ) : isProbestundenFolder ? (
+                <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+                  <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
+                    <h3 className="text-lg font-medium text-gray-900">Meine Probestunden</h3>
+                    <p className="mt-1 text-sm text-gray-500">Übersicht aller Probestunden-Anfragen</p>
+                  </div>
+                  <div className="p-4">
+                    <div className="space-y-6">
+                        {/* 1. Neue Anfragen - Dozent muss akzeptieren/ablehnen */}
+                        <div className="bg-orange-50 rounded-lg p-4">
+                          <h4 className="font-medium text-orange-800 mb-3 flex items-center">
+                            <span className="bg-orange-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs mr-2">1</span>
+                            Neue Anfragen ({myTrialLessons.filter(t => t.status === 'requested' || t.status === 'dozent_assigned').length})
+                          </h4>
+                          {myTrialLessons.filter(t => t.status === 'requested' || t.status === 'dozent_assigned').length === 0 ? (
+                            <p className="text-sm text-orange-600 italic">Keine neuen Anfragen vorhanden</p>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {myTrialLessons.filter(t => t.status === 'requested' || t.status === 'dozent_assigned').map(lesson => (
+                                <div key={lesson.id} className="bg-white p-3 rounded-lg border border-orange-200">
+                                  <div className="flex justify-between items-start">
+                                    <div>
+                                      <p className="font-medium text-gray-900">{lesson.teilnehmer_name}</p>
+                                      <p className="text-sm text-gray-500">{lesson.teilnehmer_email}</p>
+                                      {lesson.teilnehmer_phone && (
+                                        <p className="text-sm text-gray-500">{lesson.teilnehmer_phone}</p>
+                                      )}
+                                    </div>
+                                    <span className="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-800">
+                                      Angefragt
+                                    </span>
+                                  </div>
+                                  <div className="mt-2 text-xs text-gray-500 space-y-1">
+                                    {lesson.rechtsgebiet && (
+                                      <p><span className="font-medium">Rechtsgebiet:</span> {lesson.rechtsgebiet}</p>
+                                    )}
+                                    {lesson.uni_standort && (
+                                      <p><span className="font-medium">Uni-Standort:</span> {lesson.uni_standort}</p>
+                                    )}
+                                    {lesson.landesrecht && (
+                                      <p><span className="font-medium">Landesrecht:</span> {lesson.landesrecht}</p>
+                                    )}
+                                    {lesson.duration && (
+                                      <p><span className="font-medium">Dauer:</span> {lesson.duration} Min</p>
+                                    )}
+                                    {lesson.notes && (
+                                      <p><span className="font-medium">Notizen:</span> {lesson.notes}</p>
+                                    )}
+                                  </div>
+                                  <div className="mt-3 flex space-x-2">
+                                    <button
+                                      onClick={() => updateTrialLesson(lesson.id, { status: 'confirmed', dozent_confirmed: true })}
+                                      className="flex-1 px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700 flex items-center justify-center"
+                                    >
+                                      <Check className="h-3 w-3 mr-1" />
+                                      Akzeptieren
+                                    </button>
+                                    <button
+                                      onClick={() => updateTrialLesson(lesson.id, { status: 'cancelled' })}
+                                      className="flex-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700 flex items-center justify-center"
+                                    >
+                                      <X className="h-3 w-3 mr-1" />
+                                      Ablehnen
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 2. Terminvereinbarung ausstehend - Dozent muss Termin eintragen */}
+                        <div className="bg-yellow-50 rounded-lg p-4">
+                          <h4 className="font-medium text-yellow-800 mb-3 flex items-center">
+                            <span className="bg-yellow-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs mr-2">2</span>
+                            Terminvereinbarung ausstehend ({myTrialLessons.filter(t => t.status === 'confirmed' && !t.scheduled_date).length})
+                          </h4>
+                          {myTrialLessons.filter(t => t.status === 'confirmed' && !t.scheduled_date).length === 0 ? (
+                            <p className="text-sm text-yellow-600 italic">Keine ausstehenden Terminvereinbarungen</p>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {myTrialLessons.filter(t => t.status === 'confirmed' && !t.scheduled_date).map(lesson => (
+                                <div key={lesson.id} className="bg-white p-3 rounded-lg border border-yellow-200">
+                                  <div className="flex justify-between items-start">
+                                    <div>
+                                      <p className="font-medium text-gray-900">{lesson.teilnehmer_name}</p>
+                                      <p className="text-sm text-gray-500">{lesson.teilnehmer_email}</p>
+                                      {lesson.teilnehmer_phone && (
+                                        <p className="text-sm text-gray-500">{lesson.teilnehmer_phone}</p>
+                                      )}
+                                    </div>
+                                    <span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800">
+                                      Akzeptiert
+                                    </span>
+                                  </div>
+                                  <div className="mt-2 text-xs text-gray-500 space-y-1">
+                                    {lesson.rechtsgebiet && (
+                                      <p><span className="font-medium">Rechtsgebiet:</span> {lesson.rechtsgebiet}</p>
+                                    )}
+                                    {lesson.duration && (
+                                      <p><span className="font-medium">Dauer:</span> {lesson.duration} Min</p>
+                                    )}
+                                  </div>
+                                  <div className="mt-3 space-y-2">
+                                    <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs text-blue-800">
+                                      <p className="font-medium flex items-center">
+                                        <Calendar className="h-3 w-3 mr-1" />
+                                        Bitte vereinbaren Sie einen Termin
+                                      </p>
+                                      <p className="mt-1 text-blue-600">
+                                        Kontaktieren Sie {lesson.teilnehmer_name} per E-Mail oder Telefon.
+                                      </p>
+                                    </div>
+                                    <div className="space-y-2">
+                                      <label className="block text-xs font-medium text-gray-700">
+                                        Probestunde vereinbart am:
+                                      </label>
+                                      <div className="flex space-x-2">
+                                        <input
+                                          type="date"
+                                          id={`date-${lesson.id}`}
+                                          className="flex-1 px-2 py-1.5 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                                        />
+                                        <input
+                                          type="time"
+                                          id={`time-${lesson.id}`}
+                                          defaultValue="12:00"
+                                          className="w-24 px-2 py-1.5 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                                        />
+                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          const dateInput = document.getElementById(`date-${lesson.id}`) as HTMLInputElement;
+                                          const timeInput = document.getElementById(`time-${lesson.id}`) as HTMLInputElement;
+                                          if (dateInput?.value && timeInput?.value) {
+                                            updateTrialLesson(lesson.id, { 
+                                              scheduled_date: `${dateInput.value}T${timeInput.value}`, 
+                                              status: 'scheduled' 
+                                            });
+                                          }
+                                        }}
+                                        className="w-full px-3 py-1.5 text-xs bg-yellow-600 text-white rounded hover:bg-yellow-700 flex items-center justify-center"
+                                      >
+                                        <Check className="h-3 w-3 mr-1" />
+                                        Termin speichern
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 3. Termin vereinbart */}
+                        <div className="bg-green-50 rounded-lg p-4">
+                          <h4 className="font-medium text-green-800 mb-3 flex items-center">
+                            <span className="bg-green-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs mr-2">3</span>
+                            Termin vereinbart ({myTrialLessons.filter(t => (t.status === 'confirmed' || t.status === 'scheduled') && t.scheduled_date).length})
+                          </h4>
+                          {myTrialLessons.filter(t => (t.status === 'confirmed' || t.status === 'scheduled') && t.scheduled_date).length === 0 ? (
+                            <p className="text-sm text-green-600 italic">Keine vereinbarten Termine</p>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {myTrialLessons.filter(t => (t.status === 'confirmed' || t.status === 'scheduled') && t.scheduled_date).map(lesson => (
+                                <div key={lesson.id} className="bg-white p-3 rounded-lg border border-green-200">
+                                  <div className="flex justify-between items-start">
+                                    <div>
+                                      <p className="font-medium text-gray-900">{lesson.teilnehmer_name}</p>
+                                      <p className="text-sm text-gray-500">{lesson.teilnehmer_email}</p>
+                                    </div>
+                                    <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
+                                      Geplant
+                                    </span>
+                                  </div>
+                                  <div className="mt-2 text-xs text-gray-500 space-y-1">
+                                    {lesson.rechtsgebiet && (
+                                      <p><span className="font-medium">Rechtsgebiet:</span> {lesson.rechtsgebiet}</p>
+                                    )}
+                                    {lesson.duration && (
+                                      <p><span className="font-medium">Dauer:</span> {lesson.duration} Min</p>
+                                    )}
+                                  </div>
+                                  <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded">
+                                    <label className="block text-xs font-medium text-green-700 mb-1">
+                                      <Calendar className="h-3 w-3 inline mr-1" />
+                                      Probestunde vereinbart am:
+                                    </label>
+                                    <div className="flex space-x-2">
+                                      <input
+                                        type="date"
+                                        defaultValue={lesson.scheduled_date ? new Date(lesson.scheduled_date).toISOString().split('T')[0] : ''}
+                                        className="flex-1 px-2 py-1.5 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                        onChange={(e) => {
+                                          if (e.target.value) {
+                                            const currentTime = lesson.scheduled_date 
+                                              ? new Date(lesson.scheduled_date).toTimeString().slice(0, 5) 
+                                              : '12:00';
+                                            updateTrialLesson(lesson.id, { scheduled_date: `${e.target.value}T${currentTime}` });
+                                          }
+                                        }}
+                                      />
+                                      <input
+                                        type="time"
+                                        defaultValue={lesson.scheduled_date ? new Date(lesson.scheduled_date).toTimeString().slice(0, 5) : ''}
+                                        className="w-24 px-2 py-1.5 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                        onChange={(e) => {
+                                          if (e.target.value) {
+                                            const currentDate = lesson.scheduled_date 
+                                              ? new Date(lesson.scheduled_date).toISOString().split('T')[0] 
+                                              : new Date().toISOString().split('T')[0];
+                                            updateTrialLesson(lesson.id, { scheduled_date: `${currentDate}T${e.target.value}` });
+                                          }
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="mt-3 flex space-x-2">
+                                    <button
+                                      onClick={() => handleCompleteTrialLesson(lesson)}
+                                      className="flex-1 px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700 flex items-center justify-center"
+                                    >
+                                      <Check className="h-3 w-3 mr-1" />
+                                      Durchgeführt
+                                    </button>
+                                    <button
+                                      onClick={() => updateTrialLesson(lesson.id, { status: 'no_show' })}
+                                      className="flex-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700 flex items-center justify-center"
+                                    >
+                                      <X className="h-3 w-3 mr-1" />
+                                      Nicht erschienen
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 4. Abgeschlossene Probestunden */}
+                        <div className="bg-gray-50 rounded-lg p-4">
+                          <h4 className="font-medium text-gray-700 mb-3 flex items-center">
+                            <span className="bg-gray-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs mr-2">4</span>
+                            Abgeschlossen ({myTrialLessons.filter(t => ['completed', 'no_show', 'cancelled', 'converted'].includes(t.status)).length})
+                          </h4>
+                          {myTrialLessons.filter(t => ['completed', 'no_show', 'cancelled', 'converted'].includes(t.status)).length === 0 ? (
+                            <p className="text-sm text-gray-500 italic">Keine abgeschlossenen Probestunden</p>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {myTrialLessons.filter(t => ['completed', 'no_show', 'cancelled', 'converted'].includes(t.status)).map(lesson => (
+                                <div key={lesson.id} className="bg-white p-3 rounded-lg border border-gray-200">
+                                  <div className="flex justify-between items-start">
+                                    <p className="font-medium text-gray-900">{lesson.teilnehmer_name}</p>
+                                    <span className={`px-2 py-1 text-xs rounded-full ${
+                                      lesson.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                      lesson.status === 'converted' ? 'bg-purple-100 text-purple-800' :
+                                      lesson.status === 'no_show' ? 'bg-red-100 text-red-800' :
+                                      'bg-gray-100 text-gray-800'
+                                    }`}>
+                                      {lesson.status === 'completed' ? 'Durchgeführt' :
+                                       lesson.status === 'converted' ? 'Konvertiert' :
+                                       lesson.status === 'no_show' ? 'Nicht erschienen' : 'Abgesagt'}
+                                    </span>
+                                  </div>
+                                  {lesson.scheduled_date && (
+                                    <p className="text-xs text-gray-500 mt-1">
+                                      {new Date(lesson.scheduled_date).toLocaleDateString('de-DE')}
+                                    </p>
+                                  )}
+                                  {lesson.status === 'completed' && lesson.duration && (
+                                    <p className="text-xs text-green-600 mt-1">
+                                      ✓ {lesson.duration} Min im Tätigkeitsbericht erfasst
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                  </div>
+                </div>
               ) : (isRechnungenFolder && !canViewRechnungen) || (isTaetigkeitsberichtFolder && !canViewTaetigkeitsbericht) ? (
                 <div className="bg-white shadow overflow-hidden sm:rounded-md">
                   <div className="px-4 py-8 text-center text-gray-500">

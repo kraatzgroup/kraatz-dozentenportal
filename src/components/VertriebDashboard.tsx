@@ -8,8 +8,9 @@ import { CalBookingsList } from './vertrieb/CalBookingsList';
 import { LeadsList } from './vertrieb/LeadsList';
 import { SalesCalendar } from './vertrieb/SalesCalendar';
 import { FinalgespraechList } from './vertrieb/FinalgespraechList';
+import { AfterSalesList } from './vertrieb/AfterSalesList';
 
-type TabType = 'overview' | 'calendar' | 'calls' | 'leads' | 'trials' | 'finalgespraech';
+type TabType = 'overview' | 'calendar' | 'calls' | 'leads' | 'trials' | 'finalgespraech' | 'aftersales';
 
 export function VertriebDashboard() {
   const [activeTab, setActiveTab] = useState<TabType>(() => {
@@ -41,10 +42,18 @@ export function VertriebDashboard() {
     updateLead,
     deleteTrialLesson,
     getKPISummary,
+    subscribeToChanges,
   } = useSalesStore();
 
   useEffect(() => {
     loadAllData();
+    
+    // Subscribe to real-time changes for synchronization
+    const unsubscribe = subscribeToChanges();
+    
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const loadAllData = async () => {
@@ -143,7 +152,8 @@ export function VertriebDashboard() {
     { id: 'calendar' as TabType, label: 'Kalender' },
     { id: 'calls' as TabType, label: 'Calls', badge: calBookings.filter(b => new Date(b.end_time) >= new Date()).length },
     { id: 'trials' as TabType, label: 'Probestunden', badge: upcomingTrials },
-    { id: 'finalgespraech' as TabType, label: 'Finalgespräch', badge: leads.filter(l => l.status === 'finalgespraech').length },
+    { id: 'finalgespraech' as TabType, label: 'Finalgespräch', badge: leads.filter(l => l.status === 'finalgespraech' || l.status === 'post_trial_call').length },
+    { id: 'aftersales' as TabType, label: 'After Sales', badge: leads.filter(l => l.status === 'contract_closed').length },
   ];
 
   return (
@@ -243,7 +253,7 @@ export function VertriebDashboard() {
               closeRate={kpiSummary.closeRate}
               totalRevenue={kpiSummary.totalRevenue}
               avgDealSize={kpiSummary.avgDealSize}
-              pendingFollowUps={pendingFollowUps}
+              pendingFinalgespraeche={leads.filter(l => l.status === 'finalgespraech' || l.status === 'post_trial_call').length}
               upcomingTrials={upcomingTrials}
             />
 
@@ -287,6 +297,13 @@ export function VertriebDashboard() {
               status: status as any,
               ...(contractRequestedAt && { contract_requested_at: contractRequestedAt })
             })}
+            onUpdateLead={(id, data) => updateLead(id, data as any)}
+          />
+        )}
+
+        {activeTab === 'aftersales' && (
+          <AfterSalesList
+            leads={leads}
             onUpdateLead={(id, data) => updateLead(id, data as any)}
           />
         )}

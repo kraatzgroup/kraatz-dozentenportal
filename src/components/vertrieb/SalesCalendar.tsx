@@ -66,6 +66,7 @@ export function SalesCalendar() {
     teilnehmer_phone: '',
     notes: '',
   });
+  const [selectedEvent, setSelectedEvent] = useState<SalesTodo | null>(null);
 
   useEffect(() => {
     fetchTodos();
@@ -96,6 +97,7 @@ export function SalesCalendar() {
       .from('trial_lessons')
       .select('*')
       .in('status', ['scheduled', 'confirmed'])
+      .not('scheduled_date', 'is', null)
       .order('scheduled_date', { ascending: true });
     if (!error && data) setTrialLessons(data);
   };
@@ -581,7 +583,15 @@ export function SalesCalendar() {
                   <div className="space-y-0.5">
                     {dayTodos.slice(0, 3).map(todo => {
                       const config = getTypeConfig(todo.todo_type);
-                      return <div key={todo.id} className={`text-xs px-1 py-0.5 rounded truncate border ${config.color}`}>{todo.scheduled_time && <span className="font-medium">{todo.scheduled_time.slice(0, 5)} </span>}{todo.title}</div>;
+                      return (
+                        <div 
+                          key={todo.id} 
+                          className={`text-xs px-1 py-0.5 rounded truncate border cursor-pointer hover:opacity-80 ${config.color}`}
+                          onClick={(e) => { e.stopPropagation(); setSelectedEvent(todo); }}
+                        >
+                          {todo.scheduled_time && <span className="font-medium">{todo.scheduled_time.slice(0, 5)} </span>}{todo.title}
+                        </div>
+                      );
                     })}
                     {dayTodos.length > 3 && <div className="text-xs text-gray-500">+{dayTodos.length - 3}</div>}
                   </div>
@@ -629,6 +639,102 @@ export function SalesCalendar() {
           )}
         </div>
       </div>
+
+      {/* Event Detail Popup */}
+      {selectedEvent && (
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setSelectedEvent(null)}
+        >
+          <div 
+            className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <span className={`inline-block px-2 py-1 text-xs rounded-full mb-2 ${getTypeConfig(selectedEvent.todo_type).color}`}>
+                  {TODO_TYPES.find(t => t.id === selectedEvent.todo_type)?.label || selectedEvent.todo_type}
+                </span>
+                <h3 className="text-lg font-semibold text-gray-900">{selectedEvent.title}</h3>
+              </div>
+              <button 
+                onClick={() => setSelectedEvent(null)}
+                className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center text-gray-600">
+                <Calendar className="h-4 w-4 mr-2" />
+                <span>
+                  {new Date(selectedEvent.scheduled_date).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+                  {selectedEvent.scheduled_time && ` um ${selectedEvent.scheduled_time.slice(0, 5)} Uhr`}
+                </span>
+              </div>
+              
+              {selectedEvent.teilnehmer_name && (
+                <div className="flex items-center text-gray-600">
+                  <span className="font-medium mr-2">Teilnehmer:</span>
+                  {selectedEvent.teilnehmer_name}
+                </div>
+              )}
+              
+              {selectedEvent.teilnehmer_phone && (
+                <div className="flex items-center text-gray-600">
+                  <Phone className="h-4 w-4 mr-2" />
+                  <a href={`tel:${selectedEvent.teilnehmer_phone}`} className="text-primary hover:underline">
+                    {selectedEvent.teilnehmer_phone}
+                  </a>
+                </div>
+              )}
+              
+              {selectedEvent.teilnehmer_email && (
+                <div className="flex items-center text-gray-600">
+                  <span className="font-medium mr-2">E-Mail:</span>
+                  <a href={`mailto:${selectedEvent.teilnehmer_email}`} className="text-primary hover:underline">
+                    {selectedEvent.teilnehmer_email}
+                  </a>
+                </div>
+              )}
+              
+              {selectedEvent.description && (
+                <div className="text-gray-600">
+                  <span className="font-medium">Beschreibung:</span>
+                  <p className="mt-1">{selectedEvent.description}</p>
+                </div>
+              )}
+              
+              {selectedEvent.notes && (
+                <div className="text-gray-600">
+                  <span className="font-medium">Notizen:</span>
+                  <p className="mt-1">{selectedEvent.notes}</p>
+                </div>
+              )}
+            </div>
+            
+            {!selectedEvent.isCalBooking && !selectedEvent.isTrialLesson && (
+              <div className="mt-6 flex space-x-2">
+                <button 
+                  onClick={() => { updateStatus(selectedEvent.id, 'completed'); setSelectedEvent(null); }}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center justify-center"
+                >
+                  <Check className="h-4 w-4 mr-2" />
+                  Erledigt
+                </button>
+                <button 
+                  onClick={() => { startEdit(selectedEvent); setSelectedEvent(null); }}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex items-center justify-center"
+                >
+                  <Edit2 className="h-4 w-4 mr-2" />
+                  Bearbeiten
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

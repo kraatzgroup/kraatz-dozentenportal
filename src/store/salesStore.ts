@@ -51,6 +51,10 @@ export interface TrialLesson {
   scheduled_date: string;
   dozent_id: string | null;
   dozent_name?: string;
+  rechtsgebiet: string | null;
+  uni_standort: string | null;
+  landesrecht: string | null;
+  duration: number | null;
   status: 'requested' | 'dozent_assigned' | 'confirmed' | 'scheduled' | 'completed' | 'no_show' | 'cancelled' | 'converted';
   dozent_confirmed: boolean;
   lead_id: string | null;
@@ -201,6 +205,9 @@ interface SalesState {
     totalRevenue: number;
     avgDealSize: number;
   };
+
+  // Real-time subscriptions
+  subscribeToChanges: () => () => void;
 }
 
 export const useSalesStore = create<SalesState>((set, get) => ({
@@ -267,11 +274,21 @@ export const useSalesStore = create<SalesState>((set, get) => ({
     try {
       const { data, error } = await supabase
         .from('trial_lessons')
-        .select('*')
+        .select(`
+          *,
+          dozent:dozent_id(id, full_name)
+        `)
         .order('scheduled_date', { ascending: true });
 
       if (error) throw error;
-      set({ trialLessons: data || [] });
+      
+      // Map dozent name from joined data if not already set
+      const lessonsWithDozentName = (data || []).map(lesson => ({
+        ...lesson,
+        dozent_name: lesson.dozent_name || lesson.dozent?.full_name || null
+      }));
+      
+      set({ trialLessons: lessonsWithDozentName });
     } catch (error: any) {
       console.error('Error fetching trial lessons:', error);
       set({ error: error.message });
@@ -789,6 +806,51 @@ export const useSalesStore = create<SalesState>((set, get) => ({
       closeRate,
       totalRevenue,
       avgDealSize
+    };
+  },
+
+  // Real-time subscriptions for synchronization
+  subscribeToChanges: () => {
+    const { fetchLeads, fetchTrialLessons, fetchFollowUps, fetchCalBookings } = get();
+
+    // Subscribe to leads changes
+    const leadsChannel = supabase
+      .channel('leads-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => {
+        fetchLeads();
+      })
+      .subscribe();
+
+    // Subscribe to trial_lessons changes
+    const trialsChannel = supabase
+      .channel('trials-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trial_lessons' }, () => {
+        fetchTrialLessons();
+      })
+      .subscribe();
+
+    // Subscribe to follow_ups changes
+    const followUpsChannel = supabase
+      .channel('followups-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'follow_ups' }, () => {
+        fetchFollowUps();
+      })
+      .subscribe();
+
+    // Subscribe to cal_bookings changes
+    const calBookingsChannel = supabase
+      .channel('calbookings-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cal_bookings' }, () => {
+        fetchCalBookings();
+      })
+      .subscribe();
+
+    // Return cleanup function
+    return () => {
+      supabase.removeChannel(leadsChannel);
+      supabase.removeChannel(trialsChannel);
+      supabase.removeChannel(followUpsChannel);
+      supabase.removeChannel(calBookingsChannel);
     };
   }
 }));

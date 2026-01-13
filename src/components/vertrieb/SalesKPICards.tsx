@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, Phone, Users, Target, Euro, CheckCircle } from 'lucide-react';
+import { TrendingUp, TrendingDown, Phone, Users, Target, Euro, CheckCircle, FileText } from 'lucide-react';
 
 interface KPICardProps {
   title: string;
@@ -52,7 +52,7 @@ interface SalesKPICardsProps {
   closeRate: number;
   totalRevenue: number;
   avgDealSize: number;
-  pendingFollowUps: number;
+  pendingFinalgespraeche: number;
   upcomingTrials: number;
 }
 
@@ -62,7 +62,7 @@ export function SalesKPICards({
   closeRate,
   totalRevenue,
   avgDealSize,
-  pendingFollowUps,
+  pendingFinalgespraeche,
   upcomingTrials,
 }: SalesKPICardsProps) {
   const formatCurrency = (amount: number) => {
@@ -102,10 +102,10 @@ export function SalesKPICards({
         color="blue"
       />
       <KPICard
-        title="Offene Follow-ups"
-        value={pendingFollowUps}
-        icon={<Phone className="h-5 w-5 sm:h-6 sm:w-6" />}
-        color="blue"
+        title="Finalgespräche"
+        value={pendingFinalgespraeche}
+        icon={<FileText className="h-5 w-5 sm:h-6 sm:w-6" />}
+        color="red"
       />
       <KPICard
         title="Anstehende Probestunden"
