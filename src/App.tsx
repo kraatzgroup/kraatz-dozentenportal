@@ -9,6 +9,10 @@ import { UserManagement } from './components/UserManagement';
 import { Chat } from './components/Chat';
 import { Settings } from './components/Settings';
 import { IntegrationsTab } from './components/IntegrationsTab';
+import { DozentenRechnungen } from './components/dozent/DozentenRechnungen';
+import { DozentenTaetigkeitsbericht } from './components/dozent/DozentenTaetigkeitsbericht';
+import { DozentenTeilnehmer } from './components/dozent/DozentenTeilnehmer';
+import { DozentenProbestunden } from './components/dozent/DozentenProbestunden';
 import { useAuthStore } from './store/authStore';
 import { usePreviewStore } from './store/previewStore';
 import { PreviewBanner } from './components/PreviewBanner';
@@ -165,6 +169,13 @@ function App() {
           />
           <Route path="/messages" element={<Chat />} />
           <Route path="/settings" element={<Settings />} />
+          
+          {/* Dozenten-Ordner Routen */}
+          <Route path="/rechnungen/:id" element={<DozentenRechnungen />} />
+          <Route path="/taetigkeitsbericht/:id" element={<DozentenTaetigkeitsbericht />} />
+          <Route path="/teilnehmer/:id" element={<DozentenTeilnehmer />} />
+          <Route path="/probestunden/:id" element={<DozentenProbestunden />} />
+          
           <Route 
             path="/integrationen" 
             element={

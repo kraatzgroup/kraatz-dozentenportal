@@ -59,7 +59,7 @@ export function DozentCard({ dozent, userRole, onEdit, onFolderClick }: DozentCa
         .eq('dozent_id', dozent.id)
         .eq('month', currentMonth)
         .eq('year', currentYear)
-        .single();
+        .maybeSingle();
       
       if (!error && data) {
         setCurrentAvailability({ status: data.capacity_status, notes: data.notes });

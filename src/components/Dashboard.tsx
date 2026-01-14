@@ -17,6 +17,7 @@ import { TeilnehmerManagement } from './TeilnehmerManagement';
 import { InvoiceManagement } from './InvoiceManagement';
 import { AvailabilitySection } from './AvailabilitySection';
 import { useSalesStore } from '../store/salesStore';
+import { DozentenDashboard } from './DozentenDashboard';
 import '../utils/testDatabase'; // This will run the database test
 
 interface DashboardProps {
@@ -448,7 +449,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
           <div className="flex justify-between h-16">
             <div className="flex">
               <div className="flex-shrink-0 flex items-center">
-                <Logo />
+                <Logo onClick={isDozent ? () => handleSelectFolder(null) : undefined} />
                 <span className="ml-2 text-xl font-semibold text-gray-900">Dozenten-Portal</span>
               </div>
             </div>
@@ -508,9 +509,23 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
+          {/* Ordner-Sektion für alle Benutzer - am Anfang */}
           <div className="mb-8">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-medium text-gray-900">Ordner</h2>
+              <div className="flex items-center gap-3">
+                {selectedFolder && isDozent && (
+                  <button
+                    onClick={() => handleSelectFolder(null)}
+                    className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
+                      <path d="m15 18-6-6 6-6"/>
+                    </svg>
+                    Zurück
+                  </button>
+                )}
+                <h2 className="text-lg font-medium text-gray-900">Ordner</h2>
+              </div>
               {selectedFolder?.name === 'Aktive Teilnehmer' && canManageAll && (
                 <button
                   onClick={() => setShowTeilnehmerManagement(true)}
@@ -950,6 +965,9 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
               )}
             </>
           )}
+
+          {/* DozentenDashboard für Dozenten - nur anzeigen wenn kein Ordner ausgewählt ist */}
+          {isDozent && !selectedFolder && <DozentenDashboard />}
 
           {/* Teilnehmer Management Modal */}
 

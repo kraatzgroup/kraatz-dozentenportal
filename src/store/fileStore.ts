@@ -90,6 +90,13 @@ export const useFileStore = create<FileState>((set, get) => ({
     try {
       console.log('Fetching files for folder:', folderId);
       
+      // Skip fetching for virtual folders like 'probestunden'
+      if (folderId === 'probestunden') {
+        console.log('Skipping file fetch for virtual folder:', folderId);
+        set({ files: [], isLoading: false });
+        return;
+      }
+      
       // Check if we're in admin context by looking at current user
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {

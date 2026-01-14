@@ -119,9 +119,9 @@ function YouTubeChannelWidget({ widget, isEditMode, onEdit, onDelete, cache, set
         <p className="text-sm text-gray-500 text-center py-4">Keine Videos gefunden</p>
       ) : (
         <div className="space-y-3">
-          {videos.map(video => (
+          {videos.map((video, index) => (
             <a 
-              key={video.id} 
+              key={video.id || `video-${index}`} 
               href={`https://www.youtube.com/watch?v=${video.id}`} 
               target="_blank" 
               rel="noopener noreferrer"

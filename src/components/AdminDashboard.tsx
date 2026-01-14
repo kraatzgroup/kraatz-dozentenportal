@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MessageSquare, LogOut, Users, Clock, FileText, Calendar, Edit2, X, Check, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Receipt, Search, Download, Eye, Mail, Send, Trash2, Settings, TrendingUp, GraduationCap } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
@@ -192,15 +192,39 @@ export function AdminDashboard() {
     return () => window.removeEventListener('resize', checkScrollArrows);
   }, []);
 
+  // Track which tabs have been loaded
+  const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set(['dozenten']));
+
+  // Load data only for the active tab
+  const loadTabData = useCallback((tab: string) => {
+    if (loadedTabs.has(tab)) return;
+    
+    switch (tab) {
+      case 'dozenten':
+        fetchDozenten();
+        break;
+      case 'teilnehmer':
+        fetchTeilnehmer();
+        break;
+      case 'kalender':
+        fetchCalendarEntries();
+        break;
+      case 'emails':
+        fetchEmailTemplates();
+        break;
+      case 'rechnungen':
+        fetchAllRechnungen();
+        fetchSubmittedInvoices();
+        break;
+    }
+    setLoadedTabs(prev => new Set([...prev, tab]));
+  }, [loadedTabs]);
+
+  // Initial load - only essential data
   useEffect(() => {
-    fetchDozenten();
-    fetchTeilnehmer();
-    fetchCalendarEntries();
-    fetchEmailTemplates();
+    fetchDozenten(); // Default tab
     fetchUnreadCount();
     fetchUndownloadedCount();
-    fetchAllRechnungen();
-    fetchSubmittedInvoices();
     
     // Setup real-time subscription for file uploads (undownloaded count)
     const { setupRealtimeSubscription, cleanupSubscription } = useFileStore.getState();
@@ -210,6 +234,11 @@ export function AdminDashboard() {
       cleanupSubscription();
     };
   }, []);
+
+  // Load tab data when tab changes
+  useEffect(() => {
+    loadTabData(activeTab);
+  }, [activeTab, loadTabData]);
 
   const fetchCalendarEntries = async () => {
     try {
@@ -325,18 +354,20 @@ export function AdminDashboard() {
 
   const fetchTeilnehmer = async () => {
     try {
-      // Fetch teilnehmer
+      // Fetch teilnehmer with limit for better performance
       const { data: teilnehmerData, error: teilnehmerError } = await supabase
         .from('teilnehmer')
         .select('*')
-        .order('name');
+        .order('name')
+        .limit(500);
       
       if (teilnehmerError) throw teilnehmerError;
 
-      // Fetch completed hours from participant_hours table
+      // Fetch completed hours from participant_hours table - only sum, not all records
       const { data: hoursData, error: hoursError } = await supabase
         .from('participant_hours')
-        .select('teilnehmer_id, hours');
+        .select('teilnehmer_id, hours')
+        .limit(5000);
 
       if (hoursError) throw hoursError;
 

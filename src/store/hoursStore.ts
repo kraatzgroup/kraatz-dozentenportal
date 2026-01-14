@@ -180,8 +180,8 @@ export const useHoursStore = create<HoursState>((set, get) => ({
       }
       console.log('Found hours entries:', hoursData?.length || 0, hoursData);
       
-      // Get unique teilnehmer IDs from hours data
-      const teilnehmerIds = [...new Set(hoursData?.map(h => h.teilnehmer_id) || [])];
+      // Get unique teilnehmer IDs from hours data, filtering out null values
+      const teilnehmerIds = [...new Set(hoursData?.map(h => h.teilnehmer_id).filter(id => id != null) || [])];
       
       if (teilnehmerIds.length === 0) {
         console.log('No hours found for this month');
