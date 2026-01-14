@@ -1,18 +1,20 @@
-import React, { useEffect } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthComponent } from './components/AuthComponent';
-import { Dashboard } from './components/Dashboard';
-import { AdminDashboard } from './components/AdminDashboard';
-import { VertriebDashboard } from './components/VertriebDashboard';
-import { DozentDetail } from './components/DozentDetail';
-import { UserManagement } from './components/UserManagement';
-import { Chat } from './components/Chat';
-import { Settings } from './components/Settings';
-import { IntegrationsTab } from './components/IntegrationsTab';
-import { DozentenRechnungen } from './components/dozent/DozentenRechnungen';
-import { DozentenTaetigkeitsbericht } from './components/dozent/DozentenTaetigkeitsbericht';
-import { DozentenTeilnehmer } from './components/dozent/DozentenTeilnehmer';
-import { DozentenProbestunden } from './components/dozent/DozentenProbestunden';
+
+// Lazy load heavy components
+const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
+const AdminDashboard = lazy(() => import('./components/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const VertriebDashboard = lazy(() => import('./components/VertriebDashboard').then(m => ({ default: m.VertriebDashboard })));
+const DozentDetail = lazy(() => import('./components/DozentDetail').then(m => ({ default: m.DozentDetail })));
+const UserManagement = lazy(() => import('./components/UserManagement').then(m => ({ default: m.UserManagement })));
+const Chat = lazy(() => import('./components/Chat').then(m => ({ default: m.Chat })));
+const Settings = lazy(() => import('./components/Settings').then(m => ({ default: m.Settings })));
+const IntegrationsTab = lazy(() => import('./components/IntegrationsTab').then(m => ({ default: m.IntegrationsTab })));
+const DozentenRechnungen = lazy(() => import('./components/dozent/DozentenRechnungen').then(m => ({ default: m.DozentenRechnungen })));
+const DozentenTaetigkeitsbericht = lazy(() => import('./components/dozent/DozentenTaetigkeitsbericht').then(m => ({ default: m.DozentenTaetigkeitsbericht })));
+const DozentenTeilnehmer = lazy(() => import('./components/dozent/DozentenTeilnehmer').then(m => ({ default: m.DozentenTeilnehmer })));
+const DozentenProbestunden = lazy(() => import('./components/dozent/DozentenProbestunden').then(m => ({ default: m.DozentenProbestunden })));
 import { useAuthStore } from './store/authStore';
 import { usePreviewStore } from './store/previewStore';
 import { PreviewBanner } from './components/PreviewBanner';
@@ -111,6 +113,11 @@ function App() {
         />
       )}
       <div className="min-h-screen bg-background flex flex-col">
+        <Suspense fallback={
+          <div className="flex-1 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </div>
+        }>
         <Routes>
           {/* Root redirect based on role */}
           <Route 
@@ -198,6 +205,7 @@ function App() {
             } 
           />
         </Routes>
+        </Suspense>
         <Footer />
       </div>
       <ToastContainer />

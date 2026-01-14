@@ -143,6 +143,7 @@ export function AdminDashboard() {
   const [selectedDozentForEdit, setSelectedDozentForEdit] = useState<any>(null);
   const [showDozentList, setShowDozentList] = useState(false);
   const [showDozentFiles, setShowDozentFiles] = useState(false);
+  const [dozentAvailability, setDozentAvailability] = useState<Record<string, { status: string; notes?: string }>>({});
   const [showActivityLog, setShowActivityLog] = useState(false);
   const [activityLogData, setActivityLogData] = useState<any[]>([]);
   const [showInvoicePreview, setShowInvoicePreview] = useState(false);
@@ -192,13 +193,9 @@ export function AdminDashboard() {
     return () => window.removeEventListener('resize', checkScrollArrows);
   }, []);
 
-  // Track which tabs have been loaded
-  const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set(['dozenten']));
-
-  // Load data only for the active tab
+  
+  // Load data for the active tab - always reload to ensure fresh data
   const loadTabData = useCallback((tab: string) => {
-    if (loadedTabs.has(tab)) return;
-    
     switch (tab) {
       case 'dozenten':
         fetchDozenten();
@@ -208,6 +205,7 @@ export function AdminDashboard() {
         break;
       case 'kalender':
         fetchCalendarEntries();
+        fetchTeilnehmer(); // Needed for contract milestones in calendar
         break;
       case 'emails':
         fetchEmailTemplates();
@@ -217,8 +215,7 @@ export function AdminDashboard() {
         fetchSubmittedInvoices();
         break;
     }
-    setLoadedTabs(prev => new Set([...prev, tab]));
-  }, [loadedTabs]);
+  }, []);
 
   // Initial load - only essential data
   useEffect(() => {
@@ -478,30 +475,36 @@ export function AdminDashboard() {
 
   const fetchDozenten = async () => {
     try {
-      console.log('Fetching dozenten...');
-      
-      let query = supabase
+      // Fetch dozenten profiles
+      const { data, error } = await supabase
         .from('profiles')
         .select('*')
+        .eq('role', 'dozent')
         .order('full_name');
-      
-      // Filter based on role
-      if (isVertrieb) {
-        // Vertrieb can see dozenten
-        query = query.eq('role', 'dozent');
-      } else if (isVerwaltung) {
-        // Verwaltung can see dozenten (but with restricted folder access)
-        query = query.eq('role', 'dozent');
-      } else {
-        // Admin and Buchhaltung can see all dozenten
-        query = query.eq('role', 'dozent');
-      }
-
-      const { data, error } = await query;
 
       if (error) throw error;
-      console.log('Dozenten fetched:', data?.length || 0);
       setDozenten(data || []);
+      
+      // Batch fetch availability for all dozenten in ONE query
+      if (data && data.length > 0) {
+        const dozentIds = data.map(d => d.id);
+        const currentMonth = new Date().getMonth() + 1;
+        const currentYear = new Date().getFullYear();
+        
+        const { data: availabilityData } = await supabase
+          .from('dozent_availability')
+          .select('dozent_id, capacity_status, notes')
+          .in('dozent_id', dozentIds)
+          .eq('month', currentMonth)
+          .eq('year', currentYear);
+        
+        // Create a map for quick lookup
+        const availabilityMap: Record<string, { status: string; notes?: string }> = {};
+        (availabilityData || []).forEach(a => {
+          availabilityMap[a.dozent_id] = { status: a.capacity_status, notes: a.notes };
+        });
+        setDozentAvailability(availabilityMap);
+      }
     } catch (error) {
       console.error('Error fetching dozenten:', error);
     } finally {
@@ -1011,6 +1014,7 @@ export function AdminDashboard() {
                       key={dozent.id} 
                       dozent={dozent} 
                       userRole={userRole}
+                      preloadedAvailability={dozentAvailability[dozent.id] || null}
                       onEdit={(d) => {
                         setSelectedDozentForEdit(d);
                         setShowDozentForm(true);

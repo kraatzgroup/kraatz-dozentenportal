@@ -11,4 +11,17 @@ export default defineConfig({
     port: 3000,
     host: 'localhost'
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-dnd': ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
+          'vendor-supabase': ['@supabase/supabase-js'],
+          'vendor-ui': ['lucide-react', 'zustand'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 1000,
+  },
 });

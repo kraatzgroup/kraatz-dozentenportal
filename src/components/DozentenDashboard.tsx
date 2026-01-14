@@ -252,7 +252,7 @@ export function DozentenDashboard() {
   const { isAdmin, isBuchhaltung } = useAuthStore();
   const { addToast } = useToastStore();
   const [chapters, setChapters] = useState<Chapter[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
   const [expandedLessons, setExpandedLessons] = useState<Set<string>>(new Set());
   const [showMasterclassView, setShowMasterclassView] = useState(false);
@@ -386,7 +386,15 @@ export function DozentenDashboard() {
     }
   };
 
-  useEffect(() => { fetchChapters(); fetchBulletinPosts(); fetchWidgets(); fetchSections(); fetchMaterials(); fetchFolders(); }, []);
+  useEffect(() => { 
+    // Alle wichtigen Daten beim Start laden
+    fetchChapters();
+    fetchBulletinPosts(); 
+    fetchWidgets(); 
+    fetchSections();
+    fetchMaterials();
+    fetchFolders();
+  }, []);
 
   const fetchChapters = async () => {
     try {

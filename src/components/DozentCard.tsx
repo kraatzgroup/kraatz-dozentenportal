@@ -28,6 +28,9 @@ interface DozentCardProps {
   onEdit?: (dozent: any) => void;
   onDelete?: (dozent: any) => void;
   onFolderClick?: (dozent: any, folderType: string) => void;
+  // Pre-loaded data to avoid API calls per card
+  preloadedFileCounts?: FileCount[];
+  preloadedAvailability?: { status: string; notes?: string } | null;
 }
 
 interface FileCount {
@@ -36,17 +39,22 @@ interface FileCount {
   unreadCount: number;
 }
 
-export function DozentCard({ dozent, userRole, onEdit, onFolderClick }: DozentCardProps) {
-  const [fileCounts, setFileCounts] = useState<FileCount[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+export function DozentCard({ dozent, userRole, onEdit, onFolderClick, preloadedFileCounts, preloadedAvailability }: DozentCardProps) {
+  const [fileCounts, setFileCounts] = useState<FileCount[]>(preloadedFileCounts || []);
+  const [isLoading, setIsLoading] = useState(!preloadedFileCounts);
   const [showContactInfo, setShowContactInfo] = useState(false);
   const [showAvailabilityPopup, setShowAvailabilityPopup] = useState(false);
-  const [currentAvailability, setCurrentAvailability] = useState<{status: string; notes?: string} | null>(null);
+  const [currentAvailability, setCurrentAvailability] = useState<{status: string; notes?: string} | null>(preloadedAvailability || null);
 
   useEffect(() => {
-    fetchFileCounts();
-    fetchCurrentAvailability();
-  }, [dozent.id]);
+    // Only fetch if no preloaded data
+    if (!preloadedFileCounts) {
+      fetchFileCounts();
+    }
+    if (!preloadedAvailability) {
+      fetchCurrentAvailability();
+    }
+  }, [dozent.id, preloadedFileCounts, preloadedAvailability]);
 
   const fetchCurrentAvailability = async () => {
     try {

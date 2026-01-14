@@ -43,11 +43,19 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const { trialLessons, fetchTrialLessons, updateTrialLesson } = useSalesStore();
   const [selectedFolder, setSelectedFolder] = useState<Folder | null>(null);
   
-  // Persist selected folder to localStorage
+  // Persist selected folder to localStorage and lazy load data
   const handleSelectFolder = (folder: Folder | null) => {
     setSelectedFolder(folder);
     if (folder) {
       localStorage.setItem('dozentSelectedFolder', folder.name);
+      // Lazy load data based on folder type
+      if (folder.name === 'Aktive Teilnehmer' && teilnehmer.length === 0) {
+        fetchTeilnehmer();
+        fetchMonthlySummary(undefined, selectedYear, selectedMonth);
+      }
+      if (folder.id && folder.id !== 'probestunden') {
+        fetchFiles(folder.id);
+      }
     } else {
       localStorage.removeItem('dozentSelectedFolder');
     }
@@ -100,11 +108,12 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   }, [folders]);
 
   useEffect(() => {
+    // Alle Daten beim Start laden
     fetchFolders();
     fetchMessages();
     fetchTeilnehmer();
     fetchTrialLessons();
-    fetchMonthlySummary(undefined, selectedYear, selectedMonth); // Fetch hours data for selected month
+    fetchMonthlySummary(undefined, selectedYear, selectedMonth);
 
     // Setup message subscription
     const unsubscribe = setupMessageSubscription();
@@ -116,7 +125,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     
     setupTeilnehmerSub();
     setupHoursSub();
-    setupFilesSub(); // For undownloaded count
+    setupFilesSub();
     
     return () => {
       unsubscribe();
