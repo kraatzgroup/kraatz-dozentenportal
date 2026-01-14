@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageSquare, LogOut, Users, Clock, FileText, Calendar, Edit2, X, Check, Plus, ChevronDown, ChevronUp, Receipt, Search, Download, Eye, Mail, Send, Trash2, Settings, TrendingUp } from 'lucide-react';
+import { MessageSquare, LogOut, Users, Clock, FileText, Calendar, Edit2, X, Check, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Receipt, Search, Download, Eye, Mail, Send, Trash2, Settings, TrendingUp, GraduationCap } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
 import { useFileStore } from '../store/fileStore';
@@ -23,6 +23,7 @@ import { DozentTaetigkeitsberichtModal } from './DozentTaetigkeitsberichtModal';
 import { DozentTeilnehmerModal } from './DozentTeilnehmerModal';
 import { VertriebDashboard } from './VertriebDashboard';
 import { IntegrationsTab } from './IntegrationsTab';
+import { DozentenDashboard } from './DozentenDashboard';
 
 // Helper function to check if teilnehmer is active based on contract dates
 const isContractActive = (t: any): boolean => {
@@ -94,15 +95,15 @@ export function AdminDashboard() {
   const [isCheckingDocuments, setIsCheckingDocuments] = useReactState(false);
   const [checkResult, setCheckResult] = useReactState<any>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen'>(() => {
+  const [activeTab, setActiveTab] = useState<'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard'>(() => {
     // Check URL parameter first
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
-    if (tabParam && ['dozenten', 'teilnehmer', 'nachrichten', 'rechnungen', 'kalender', 'emails', 'vertrieb', 'integrationen'].includes(tabParam)) {
-      return tabParam as 'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen';
+    if (tabParam && ['dozenten', 'teilnehmer', 'nachrichten', 'rechnungen', 'kalender', 'emails', 'vertrieb', 'integrationen', 'dozenten-dashboard'].includes(tabParam)) {
+      return tabParam as 'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard';
     }
     const saved = localStorage.getItem('adminDashboardTab');
-    return (saved as 'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen') || 'dozenten';
+    return (saved as 'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard') || 'dozenten';
   });
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
@@ -163,6 +164,33 @@ export function AdminDashboard() {
   });
   const [eventListFilter, setEventListFilter] = useState<'alle' | '25' | '75' | 'end' | 'exam' | 'custom'>('alle');
   const [deleteInvoiceModal, setDeleteInvoiceModal] = useState<{ show: boolean; invoice: any | null }>({ show: false, invoice: null });
+  const tabNavRef = useRef<HTMLDivElement>(null);
+  const [showLeftArrow, setShowLeftArrow] = useState(false);
+  const [showRightArrow, setShowRightArrow] = useState(false);
+
+  const checkScrollArrows = () => {
+    if (tabNavRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = tabNavRef.current;
+      setShowLeftArrow(scrollLeft > 0);
+      setShowRightArrow(scrollLeft + clientWidth < scrollWidth - 5);
+    }
+  };
+
+  const scrollTabs = (direction: 'left' | 'right') => {
+    if (tabNavRef.current) {
+      const scrollAmount = 200;
+      tabNavRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  useEffect(() => {
+    checkScrollArrows();
+    window.addEventListener('resize', checkScrollArrows);
+    return () => window.removeEventListener('resize', checkScrollArrows);
+  }, []);
 
   useEffect(() => {
     fetchDozenten();
@@ -764,8 +792,32 @@ export function AdminDashboard() {
       <main className="max-w-7xl mx-auto py-4 sm:py-6 px-2 sm:px-6 lg:px-8">
         {/* Tab Navigation */}
         <div className="mb-6">
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-4 sm:space-x-8" aria-label="Tabs">
+          <div className="border-b border-gray-200 relative">
+            {/* Left Arrow */}
+            {showLeftArrow && (
+              <button
+                onClick={() => scrollTabs('left')}
+                className="absolute left-0 top-0 bottom-0 z-10 flex items-center justify-center w-8 bg-gradient-to-r from-white via-white to-transparent"
+              >
+                <ChevronLeft className="h-5 w-5 text-gray-500 hover:text-primary" />
+              </button>
+            )}
+            {/* Right Arrow */}
+            {showRightArrow && (
+              <button
+                onClick={() => scrollTabs('right')}
+                className="absolute right-0 top-0 bottom-0 z-10 flex items-center justify-center w-8 bg-gradient-to-l from-white via-white to-transparent"
+              >
+                <ChevronRight className="h-5 w-5 text-gray-500 hover:text-primary" />
+              </button>
+            )}
+            <nav 
+              ref={tabNavRef}
+              onScroll={checkScrollArrows}
+              className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto scrollbar-hide scroll-smooth" 
+              aria-label="Tabs"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
               <button
                 onClick={() => { setActiveTab('dozenten'); localStorage.setItem('adminDashboardTab', 'dozenten'); }}
                 className={`${
@@ -866,6 +918,17 @@ export function AdminDashboard() {
               >
                 <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">Vertrieb</span>
+              </button>
+              <button
+                onClick={() => { setActiveTab('dozenten-dashboard'); localStorage.setItem('adminDashboardTab', 'dozenten-dashboard'); }}
+                className={`${
+                  activeTab === 'dozenten-dashboard'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm sm:text-base flex items-center`}
+              >
+                <GraduationCap className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
+                <span className="hidden sm:inline">Dozenten Dashboard</span>
               </button>
             </nav>
           </div>
@@ -2808,6 +2871,10 @@ export function AdminDashboard() {
 
         {activeTab === 'vertrieb' && (
           <VertriebDashboard />
+        )}
+
+        {activeTab === 'dozenten-dashboard' && (
+          <DozentenDashboard />
         )}
 
         {activeTab === 'integrationen' && (
