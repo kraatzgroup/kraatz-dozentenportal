@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { GraduationCap, Calendar, User, Check, X, Plus, Edit2, Trash2, UserPlus, Clock, CheckCircle, CalendarClock, Search, AlertCircle, Mail, Phone } from 'lucide-react';
+import { GraduationCap, Calendar, User, Check, X, Plus, Edit2, Trash2, UserPlus, Clock, CheckCircle, CalendarClock, Search, AlertCircle, Mail, Phone, MessageCircle } from 'lucide-react';
 import { TrialLesson, Lead, useSalesStore } from '../../store/salesStore';
 import { supabase } from '../../lib/supabase';
 
@@ -182,11 +182,15 @@ export function TrialLessonsList({ trialLessons, onUpdate, onCreate, onDelete }:
   const updateStatus = async (id: string, status: TrialLesson['status']) => {
     await onUpdate(id, { status });
     
-    // When trial lesson is completed, update the lead to post_trial_call status for Finalgespräch
+    // When trial lesson is completed, just mark it - Finalgespräch is already scheduled at booking time
     if (status === 'completed') {
       const lesson = trialLessons.find(t => t.id === id);
+      // Only update lead status if not already in post_trial_call
       if (lesson?.lead_id) {
-        await updateLead(lesson.lead_id, { status: 'post_trial_call' });
+        const lead = allLeads.find(l => l.id === lesson.lead_id);
+        if (lead && lead.status !== 'post_trial_call' && lead.status !== 'finalgespraech') {
+          await updateLead(lesson.lead_id, { status: 'post_trial_call' });
+        }
       }
     }
   };
@@ -209,6 +213,18 @@ export function TrialLessonsList({ trialLessons, onUpdate, onCreate, onDelete }:
           <div className="mt-1 text-xs text-gray-500 space-y-1">
             {lesson.scheduled_date && (
               <div className="flex items-center"><Calendar className="h-3 w-3 mr-1" />{formatDate(lesson.scheduled_date)}</div>
+            )}
+            {lesson.scheduled_date && (
+              <div className="flex items-center text-blue-600">
+                <MessageCircle className="h-3 w-3 mr-1" />
+                <span>Finalgespräch: {(() => {
+                  const trialDate = new Date(lesson.scheduled_date);
+                  const duration = lesson.duration || 60;
+                  trialDate.setMinutes(trialDate.getMinutes() + duration + 60);
+                  return trialDate.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ', ' + 
+                         trialDate.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                })()}</span>
+              </div>
             )}
             {lesson.dozent_name && (
               <div className="flex items-center"><User className="h-3 w-3 mr-1" />{lesson.dozent_name}</div>
@@ -447,6 +463,20 @@ export function TrialLessonsList({ trialLessons, onUpdate, onCreate, onDelete }:
                   lead_id: formData.lead_id || undefined,
                   status: 'requested',
                 });
+                
+                // If a scheduled_date is set, automatically set the Finalgespräch date on the lead
+                if (formData.scheduled_date && formData.lead_id) {
+                  const trialDate = new Date(formData.scheduled_date);
+                  const duration = parseInt(formData.duration, 10) || 60;
+                  trialDate.setMinutes(trialDate.getMinutes() + duration + 60); // End of trial + 1 hour
+                  const finalCallDate = trialDate.toISOString();
+                  
+                  await updateLead(formData.lead_id, { 
+                    status: 'post_trial_call',
+                    final_call_date: finalCallDate
+                  });
+                }
+                
                 resetForm();
               }} className="space-y-4">
                 {/* Teilnehmer Selection */}

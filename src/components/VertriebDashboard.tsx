@@ -298,6 +298,7 @@ export function VertriebDashboard() {
               ...(contractRequestedAt && { contract_requested_at: contractRequestedAt })
             })}
             onUpdateLead={(id, data) => updateLead(id, data as any)}
+            onRefresh={fetchLeads}
           />
         )}
 

@@ -147,6 +147,39 @@ export interface Lead {
   updated_at: string;
 }
 
+export interface LeadNote {
+  id: string;
+  lead_id: string;
+  note: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ContractRequest {
+  id: string;
+  lead_id: string | null;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  phone: string | null;
+  street: string | null;
+  house_number: string | null;
+  postal_code: string | null;
+  city: string | null;
+  study_goal: string | null;
+  exam_date: string | null;
+  state_law: string | null;
+  legal_areas: string[];
+  booked_hours: number | null;
+  notes: string | null;
+  status: 'requested' | 'sent' | 'signed' | 'cancelled';
+  requested_at: string;
+  sent_at: string | null;
+  signed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 interface SalesState {
   packages: Package[];
   salesCalls: SalesCall[];
@@ -157,6 +190,8 @@ interface SalesState {
   kpis: SalesKPI[];
   calBookings: CalBooking[];
   leads: Lead[];
+  leadNotes: LeadNote[];
+  contractRequests: ContractRequest[];
   activeTeilnehmer: any[];
   isLoading: boolean;
   error: string | null;
@@ -172,6 +207,9 @@ interface SalesState {
   fetchCalBookings: () => Promise<void>;
   refreshCalBookings: () => Promise<void>;
   fetchLeads: () => Promise<void>;
+  fetchLeadNotes: (leadId?: string) => Promise<void>;
+  addLeadNote: (leadId: string, note: string) => Promise<void>;
+  fetchContractRequests: () => Promise<void>;
   fetchActiveTeilnehmer: () => Promise<void>;
 
   // Create methods
@@ -182,6 +220,7 @@ interface SalesState {
   createUpsell: (data: Partial<Upsell>) => Promise<void>;
   createLead: (data: Partial<Lead>) => Promise<void>;
   updateLead: (id: string, data: Partial<Lead>) => Promise<void>;
+  updateContractRequest: (id: string, data: Partial<ContractRequest>) => Promise<void>;
 
   // Update methods
   updatePackage: (id: string, data: Partial<Package>) => Promise<void>;
@@ -220,6 +259,8 @@ export const useSalesStore = create<SalesState>((set, get) => ({
   kpis: [],
   calBookings: [],
   leads: [],
+  leadNotes: [],
+  contractRequests: [],
   activeTeilnehmer: [],
   isLoading: false,
   error: null,
@@ -521,6 +562,79 @@ export const useSalesStore = create<SalesState>((set, get) => ({
       });
     } catch (error: any) {
       console.error('Error updating lead:', error);
+      set({ error: error.message });
+    }
+  },
+
+  fetchContractRequests: async () => {
+    try {
+      const { data, error } = await supabase
+        .from('contract_requests')
+        .select('*')
+        .order('requested_at', { ascending: false });
+
+      if (error) throw error;
+      set({ contractRequests: data || [] });
+    } catch (error: any) {
+      console.error('Error fetching contract requests:', error);
+      set({ error: error.message });
+    }
+  },
+
+  updateContractRequest: async (id: string, data: Partial<ContractRequest>) => {
+    try {
+      const { error } = await supabase
+        .from('contract_requests')
+        .update({ ...data, updated_at: new Date().toISOString() })
+        .eq('id', id);
+
+      if (error) throw error;
+      
+      const { contractRequests } = get();
+      set({
+        contractRequests: contractRequests.map(cr => cr.id === id ? { ...cr, ...data } : cr)
+      });
+    } catch (error: any) {
+      console.error('Error updating contract request:', error);
+      set({ error: error.message });
+    }
+  },
+
+  fetchLeadNotes: async (leadId?: string) => {
+    try {
+      let query = supabase
+        .from('lead_notes')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (leadId) {
+        query = query.eq('lead_id', leadId);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      set({ leadNotes: data || [] });
+    } catch (error: any) {
+      console.error('Error fetching lead notes:', error);
+      set({ error: error.message });
+    }
+  },
+
+  addLeadNote: async (leadId: string, note: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data, error } = await supabase
+        .from('lead_notes')
+        .insert({ lead_id: leadId, note, created_by: user?.id })
+        .select()
+        .single();
+
+      if (error) throw error;
+      
+      const { leadNotes } = get();
+      set({ leadNotes: [data, ...leadNotes] });
+    } catch (error: any) {
+      console.error('Error adding lead note:', error);
       set({ error: error.message });
     }
   },

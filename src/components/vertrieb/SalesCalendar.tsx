@@ -46,6 +46,7 @@ export function SalesCalendar() {
   const [calBookings, setCalBookings] = useState<CalBooking[]>([]);
   const [trialLessons, setTrialLessons] = useState<any[]>([]);
   const [finalCallLeads, setFinalCallLeads] = useState<any[]>([]);
+  const [consultationLeads, setConsultationLeads] = useState<any[]>([]);
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [showForm, setShowForm] = useState(false);
@@ -73,6 +74,7 @@ export function SalesCalendar() {
     fetchCalBookings();
     fetchTrialLessons();
     fetchFinalCallLeads();
+    fetchConsultationLeads();
   }, []);
 
   const fetchTodos = async () => {
@@ -107,9 +109,17 @@ export function SalesCalendar() {
       .from('leads')
       .select('*')
       .not('final_call_date', 'is', null)
-      .in('status', ['post_trial_call', 'finalgespraech'])
       .order('final_call_date', { ascending: true });
     if (!error && data) setFinalCallLeads(data);
+  };
+
+  const fetchConsultationLeads = async () => {
+    const { data, error } = await supabase
+      .from('leads')
+      .select('*')
+      .not('booking_date', 'is', null)
+      .order('booking_date', { ascending: true });
+    if (!error && data) setConsultationLeads(data);
   };
 
   // Convert Cal bookings to SalesTodo format for unified display
@@ -175,7 +185,28 @@ export function SalesCalendar() {
     isFinalCallLead: true,
   }));
 
-  const allTodos = [...todos, ...calBookingsAsTodos, ...trialLessonsAsTodos, ...finalCallLeadsAsTodos];
+  // Convert consultation leads (booking_date) to SalesTodo format
+  const consultationLeadsAsTodos: SalesTodo[] = consultationLeads.map(l => ({
+    id: `consultation-${l.id}`,
+    vertrieb_user_id: null,
+    lead_id: l.id,
+    todo_type: 'beratungsgespraech' as const,
+    title: `Beratungsgespräch: ${l.name}`,
+    description: l.source ? `Quelle: ${l.source}` : null,
+    scheduled_date: l.booking_date?.split('T')[0] || l.booking_date,
+    scheduled_time: l.booking_date?.includes('T') ? new Date(l.booking_date).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : null,
+    status: 'pending' as const,
+    priority: 'medium' as const,
+    teilnehmer_name: l.name,
+    teilnehmer_email: l.email,
+    teilnehmer_phone: l.phone,
+    notes: l.notes,
+    created_at: l.created_at,
+    updated_at: l.updated_at,
+    isConsultationLead: true,
+  }));
+
+  const allTodos = [...todos, ...calBookingsAsTodos, ...consultationLeadsAsTodos, ...trialLessonsAsTodos, ...finalCallLeadsAsTodos];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

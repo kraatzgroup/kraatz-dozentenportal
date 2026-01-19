@@ -1,12 +1,30 @@
-import { useState } from 'react';
-import { Users, Mail, Phone, MapPin, GraduationCap, Calendar, Search, Filter, Plus, X, Edit2 } from 'lucide-react';
-import { Lead } from '../../store/salesStore';
+import React, { useState, useEffect } from 'react';
+import { Users, Mail, Phone, MapPin, GraduationCap, Calendar, Search, Filter, Plus, X, Edit2, ChevronDown, MessageSquare, FileText, Clock, CheckCircle } from 'lucide-react';
+import { Lead, LeadNote, useSalesStore } from '../../store/salesStore';
+import { supabase } from '../../lib/supabase';
 
 interface LeadsListProps {
   leads: Lead[];
   onUpdateStatus: (id: string, status: Lead['status']) => Promise<void>;
   onCreateLead: (data: Partial<Lead>) => Promise<void>;
   onUpdateLead: (id: string, data: Partial<Lead>) => Promise<void>;
+}
+
+interface TrialLesson {
+  id: string;
+  teilnehmer_name: string;
+  scheduled_date: string;
+  status: string;
+  dozent_name: string | null;
+  rechtsgebiet: string | null;
+}
+
+interface ActivityItem {
+  type: 'note' | 'status_change' | 'trial_lesson' | 'final_call' | 'created';
+  date: string;
+  title: string;
+  description?: string;
+  icon: 'message' | 'status' | 'lesson' | 'call' | 'created';
 }
 
 export function LeadsList({ leads, onUpdateStatus, onCreateLead, onUpdateLead }: LeadsListProps) {
@@ -16,6 +34,120 @@ export function LeadsList({ leads, onUpdateStatus, onCreateLead, onUpdateLead }:
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null);
+  const [trialLessons, setTrialLessons] = useState<TrialLesson[]>([]);
+  const [newNoteText, setNewNoteText] = useState('');
+  
+  const { leadNotes, fetchLeadNotes, addLeadNote } = useSalesStore();
+  
+  useEffect(() => {
+    fetchLeadNotes();
+    fetchTrialLessons();
+  }, [fetchLeadNotes]);
+  
+  const fetchTrialLessons = async () => {
+    const { data } = await supabase.from('trial_lessons').select('id, teilnehmer_name, scheduled_date, status, dozent_name, rechtsgebiet, lead_id');
+    if (data) setTrialLessons(data);
+  };
+  
+  const getNotesForLead = (leadId: string): LeadNote[] => {
+    return leadNotes.filter(n => n.lead_id === leadId);
+  };
+  
+  const getTrialLessonsForLead = (leadId: string) => {
+    return trialLessons.filter((t: any) => t.lead_id === leadId);
+  };
+  
+  const getActivityTimeline = (lead: Lead): ActivityItem[] => {
+    const activities: ActivityItem[] = [];
+    
+    // Lead created
+    if (lead.created_at) {
+      activities.push({
+        type: 'created',
+        date: lead.created_at,
+        title: 'Lead erstellt',
+        description: `Quelle: ${lead.source || 'Unbekannt'}`,
+        icon: 'created'
+      });
+    }
+    
+    // Booking date
+    if (lead.booking_date) {
+      activities.push({
+        type: 'status_change',
+        date: lead.booking_date,
+        title: 'Beratungsgespräch',
+        description: 'Termin gebucht',
+        icon: 'call'
+      });
+    }
+    
+    // Trial lessons
+    getTrialLessonsForLead(lead.id).forEach((lesson: any) => {
+      activities.push({
+        type: 'trial_lesson',
+        date: lesson.scheduled_date,
+        title: 'Probestunde',
+        description: `${lesson.rechtsgebiet || ''} ${lesson.dozent_name ? `mit ${lesson.dozent_name}` : ''} - Status: ${lesson.status}`,
+        icon: 'lesson'
+      });
+    });
+    
+    // Final call date
+    if (lead.final_call_date) {
+      activities.push({
+        type: 'final_call',
+        date: lead.final_call_date,
+        title: 'Finalgespräch',
+        description: 'Geplant',
+        icon: 'call'
+      });
+    }
+    
+    // Contract requested
+    if (lead.contract_requested_at) {
+      activities.push({
+        type: 'status_change',
+        date: lead.contract_requested_at,
+        title: 'Vertrag angefordert',
+        icon: 'status'
+      });
+    }
+    
+    // Notes
+    getNotesForLead(lead.id).forEach(note => {
+      activities.push({
+        type: 'note',
+        date: note.created_at,
+        title: 'Notiz',
+        description: note.note,
+        icon: 'message'
+      });
+    });
+    
+    // Legacy notes
+    if (lead.notes) {
+      activities.push({
+        type: 'note',
+        date: lead.created_at,
+        title: 'Ursprüngliche Notiz',
+        description: lead.notes,
+        icon: 'message'
+      });
+    }
+    
+    // Sort by date ascending (chronological order: oldest first)
+    return activities.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  };
+  
+  const handleAddNote = async (leadId: string) => {
+    if (newNoteText.trim()) {
+      await addLeadNote(leadId, newNoteText.trim());
+      setNewNoteText('');
+    }
+  };
+  
   const [newLead, setNewLead] = useState({
     name: '',
     email: '',
@@ -247,9 +379,6 @@ export function LeadsList({ leads, onUpdateStatus, onCreateLead, onUpdateLead }:
           <div className="flex items-center">
             <Users className="h-5 w-5 text-primary mr-2" />
             <h2 className="text-lg font-semibold text-gray-900">Leads</h2>
-            <span className="ml-2 bg-primary text-white text-xs px-2 py-0.5 rounded-full">
-              {filteredLeads.length}
-            </span>
           </div>
         </div>
 
@@ -332,57 +461,142 @@ export function LeadsList({ leads, onUpdateStatus, onCreateLead, onUpdateLead }:
                 </tr>
               ) : (
                 filteredLeads.map((lead) => (
-                  <tr key={lead.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <div>
-                        <p className="font-medium text-gray-900">{lead.name}</p>
-                        <p className="text-sm text-gray-500">{lead.source}</p>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="space-y-1">
-                        <a href={`mailto:${lead.email}`} className="flex items-center text-sm text-primary hover:underline">
-                          <Mail className="h-3 w-3 mr-1" />
-                          {lead.email}
-                        </a>
-                        {lead.phone && (
-                          <a href={`tel:${lead.phone}`} className="flex items-center text-sm text-primary hover:underline">
-                            <Phone className="h-3 w-3 mr-1" />
-                            {lead.phone}
+                  <React.Fragment key={lead.id}>
+                    <tr 
+                      className={`hover:bg-gray-50 cursor-pointer ${expandedLeadId === lead.id ? 'bg-primary/5' : ''}`}
+                      onClick={() => setExpandedLeadId(expandedLeadId === lead.id ? null : lead.id)}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center">
+                          <ChevronDown className={`h-4 w-4 mr-2 text-gray-400 transition ${expandedLeadId === lead.id ? 'rotate-180' : ''}`} />
+                          <div>
+                            <p className="font-medium text-gray-900">{lead.name}</p>
+                            <p className="text-sm text-gray-500">{lead.source}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <div className="space-y-1">
+                          <a href={`mailto:${lead.email}`} className="flex items-center text-sm text-primary hover:underline">
+                            <Mail className="h-3 w-3 mr-1" />
+                            {lead.email}
                           </a>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      {lead.study_goal || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      {lead.study_location || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      {formatDate(lead.booking_date)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <select
-                        value={lead.status}
-                        onChange={(e) => onUpdateStatus(lead.id, e.target.value as Lead['status'])}
-                        className={`text-xs px-2 py-1 rounded-full border-0 cursor-pointer ${getStatusColor(lead.status)}`}
-                      >
-                        {statusOptions.map(option => (
-                          <option key={option.id} value={option.id}>{option.label}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => startEdit(lead)}
-                        className="p-1.5 text-gray-600 hover:bg-gray-100 rounded transition"
-                        title="Bearbeiten"
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
+                          {lead.phone && (
+                            <a href={`tel:${lead.phone}`} className="flex items-center text-sm text-primary hover:underline">
+                              <Phone className="h-3 w-3 mr-1" />
+                              {lead.phone}
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {lead.study_goal || '-'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {lead.study_location || '-'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {formatDate(lead.booking_date)}
+                      </td>
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <select
+                          value={lead.status}
+                          onChange={(e) => onUpdateStatus(lead.id, e.target.value as Lead['status'])}
+                          className={`text-xs px-2 py-1 rounded-full border-0 cursor-pointer ${getStatusColor(lead.status)}`}
+                        >
+                          {statusOptions.map(option => (
+                            <option key={option.id} value={option.id}>{option.label}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => startEdit(lead)}
+                          className="p-1.5 text-gray-600 hover:bg-gray-100 rounded transition"
+                          title="Bearbeiten"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                    {/* Expanded Activity Timeline */}
+                    {expandedLeadId === lead.id && (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-4 bg-gray-50 border-t border-b">
+                          <div className="max-w-4xl">
+                            <h4 className="font-medium text-gray-900 mb-3 flex items-center">
+                              <Clock className="h-4 w-4 mr-2 text-primary" />
+                              Aktivitätenprotokoll
+                            </h4>
+                            
+                            {/* Add Note Input */}
+                            <div className="flex gap-2 mb-4">
+                              <input
+                                type="text"
+                                value={newNoteText}
+                                onChange={(e) => setNewNoteText(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleAddNote(lead.id);
+                                }}
+                                placeholder="Neue Notiz hinzufügen..."
+                                className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg"
+                              />
+                              <button
+                                onClick={() => handleAddNote(lead.id)}
+                                className="px-4 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90"
+                              >
+                                Hinzufügen
+                              </button>
+                            </div>
+                            
+                            {/* Timeline */}
+                            <div className="relative">
+                              <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200"></div>
+                              <div className="space-y-4">
+                                {getActivityTimeline(lead).map((activity, idx) => (
+                                  <div key={idx} className="relative flex items-start pl-10">
+                                    <div className={`absolute left-2 w-5 h-5 rounded-full flex items-center justify-center ${
+                                      activity.icon === 'message' ? 'bg-blue-100' :
+                                      activity.icon === 'lesson' ? 'bg-green-100' :
+                                      activity.icon === 'call' ? 'bg-purple-100' :
+                                      activity.icon === 'status' ? 'bg-yellow-100' :
+                                      'bg-gray-100'
+                                    }`}>
+                                      {activity.icon === 'message' && <MessageSquare className="h-3 w-3 text-blue-600" />}
+                                      {activity.icon === 'lesson' && <GraduationCap className="h-3 w-3 text-green-600" />}
+                                      {activity.icon === 'call' && <Phone className="h-3 w-3 text-purple-600" />}
+                                      {activity.icon === 'status' && <FileText className="h-3 w-3 text-yellow-600" />}
+                                      {activity.icon === 'created' && <CheckCircle className="h-3 w-3 text-gray-600" />}
+                                    </div>
+                                    <div className="flex-1 bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
+                                      <div className="flex items-center justify-between mb-1">
+                                        <span className="font-medium text-sm text-gray-900">{activity.title}</span>
+                                        <span className="text-xs text-gray-500">
+                                          {new Date(activity.date).toLocaleString('de-DE', {
+                                            day: '2-digit',
+                                            month: '2-digit',
+                                            year: 'numeric',
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          })}
+                                        </span>
+                                      </div>
+                                      {activity.description && (
+                                        <p className="text-sm text-gray-600">{activity.description}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                                {getActivityTimeline(lead).length === 0 && (
+                                  <p className="text-sm text-gray-500 pl-10">Keine Aktivitäten vorhanden</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 ))
               )}
             </tbody>

@@ -108,6 +108,9 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   }, [folders]);
 
   useEffect(() => {
+    // Nur laden wenn Benutzer authentifiziert ist
+    if (!user) return;
+    
     // Alle Daten beim Start laden
     fetchFolders();
     fetchMessages();
@@ -133,12 +136,13 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       cleanupHoursSub();
       cleanupFilesSub();
     };
-  }, [fetchFolders, fetchMessages, fetchTrialLessons, setupMessageSubscription]);
+  }, [user, fetchFolders, fetchMessages, fetchTrialLessons, setupMessageSubscription]);
 
   // Refetch monthly summary when month/year changes
   useEffect(() => {
+    if (!user) return;
     fetchMonthlySummary(undefined, selectedYear, selectedMonth);
-  }, [selectedMonth, selectedYear, fetchMonthlySummary]);
+  }, [user, selectedMonth, selectedYear, fetchMonthlySummary]);
 
   // Fetch current month availability
   useEffect(() => {
