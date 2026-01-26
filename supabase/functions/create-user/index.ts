@@ -9,7 +9,7 @@ const corsHeaders = {
 interface CreateUserRequest {
   email: string;
   fullName: string;
-  role?: 'admin' | 'buchhaltung' | 'verwaltung' | 'vertrieb' | 'dozent';
+  role?: 'admin' | 'buchhaltung' | 'verwaltung' | 'vertrieb' | 'dozent' | 'elite_kleingruppe';
 }
 
 // Generate a secure random password

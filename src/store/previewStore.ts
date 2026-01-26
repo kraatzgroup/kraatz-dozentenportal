@@ -2,9 +2,9 @@ import { create } from 'zustand';
 
 interface PreviewState {
   isPreviewMode: boolean;
-  previewedRole: 'admin' | 'buchhaltung' | 'verwaltung' | 'vertrieb' | 'dozent' | null;
+  previewedRole: 'admin' | 'buchhaltung' | 'verwaltung' | 'vertrieb' | 'dozent' | 'elite_kleingruppe' | null;
   togglePreview: () => void;
-  setPreviewedRole: (role: 'admin' | 'buchhaltung' | 'verwaltung' | 'vertrieb' | 'dozent') => void;
+  setPreviewedRole: (role: 'admin' | 'buchhaltung' | 'verwaltung' | 'vertrieb' | 'dozent' | 'elite_kleingruppe') => void;
 }
 
 export const usePreviewStore = create<PreviewState>((set) => ({

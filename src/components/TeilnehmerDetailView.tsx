@@ -57,6 +57,12 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
   }, [teilnehmerId]);
 
   const fetchTeilnehmerHours = async () => {
+    if (!teilnehmerId) {
+      console.warn('⚠️ teilnehmerId is null or undefined, skipping fetch');
+      setIsLoading(false);
+      return;
+    }
+    
     setIsLoading(true);
     setError(null);
     

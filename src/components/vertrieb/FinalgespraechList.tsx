@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { FileText, Phone, Mail, ChevronDown, Calendar, Plus, Clock, MessageSquare } from 'lucide-react';
+import { FileText, Phone, Mail, ChevronDown, Calendar, Plus, Clock, MessageSquare, FileDown } from 'lucide-react';
 import { Lead, LeadNote, useSalesStore } from '../../store/salesStore';
 import { RequestContractModal } from './RequestContractModal';
+import { ContractTemplateEditor } from './ContractTemplateEditor';
 
 interface FinalgespraechListProps {
   leads: Lead[];
@@ -21,6 +22,8 @@ export function FinalgespraechList({ leads, onUpdateStatus, onUpdateLead, onRefr
   const [editingDateId, setEditingDateId] = useState<string | null>(null);
   const [showContractModal, setShowContractModal] = useState(false);
   const [selectedLeadForContract, setSelectedLeadForContract] = useState<Lead | null>(null);
+  const [showContractEditor, setShowContractEditor] = useState(false);
+  const [selectedLeadForGenerate, setSelectedLeadForGenerate] = useState<Lead | null>(null);
   const [showUpcoming, setShowUpcoming] = useState(false);
   const [newNote, setNewNote] = useState('');
   
@@ -459,16 +462,28 @@ export function FinalgespraechList({ leads, onUpdateStatus, onUpdateLead, onRefr
                 {leads.filter(l => l.status === 'vertragsanforderung' || l.status === 'vertrag_versendet').length}
               </span>
             </h3>
-            <button
-              onClick={() => {
-                setSelectedLeadForContract(null);
-                setShowContractModal(true);
-              }}
-              className="flex items-center px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              Vertrag anfordern
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setSelectedLeadForGenerate(null);
+                  setShowContractEditor(true);
+                }}
+                className="flex items-center px-3 py-1.5 text-sm bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition"
+              >
+                <FileDown className="h-4 w-4 mr-1" />
+                Vertrag generieren
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedLeadForContract(null);
+                  setShowContractModal(true);
+                }}
+                className="flex items-center px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Vertrag anfordern
+              </button>
+            </div>
           </div>
 
           {/* Sub-section: Vertrag angefordert */}
@@ -499,12 +514,24 @@ export function FinalgespraechList({ leads, onUpdateStatus, onUpdateLead, onRefr
                           )}
                         </div>
                       </div>
-                      <button
-                        onClick={() => onUpdateStatus(lead.id, 'vertrag_versendet')}
-                        className="px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700"
-                      >
-                        Vertrag versendet
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setSelectedLeadForGenerate(lead);
+                            setShowContractEditor(true);
+                          }}
+                          className="px-3 py-1.5 text-xs bg-primary/10 text-primary rounded-lg hover:bg-primary/20"
+                        >
+                          <FileDown className="h-3 w-3 inline mr-1" />
+                          PDF
+                        </button>
+                        <button
+                          onClick={() => onUpdateStatus(lead.id, 'vertrag_versendet')}
+                          className="px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700"
+                        >
+                          Vertrag versendet
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -646,6 +673,31 @@ export function FinalgespraechList({ leads, onUpdateStatus, onUpdateLead, onRefr
             onRefresh?.();
           }}
           preselectedLead={selectedLeadForContract}
+        />
+      )}
+
+      {/* Contract Template Editor Modal */}
+      {showContractEditor && (
+        <ContractTemplateEditor
+          contractData={selectedLeadForGenerate ? {
+            first_name: selectedLeadForGenerate.first_name || selectedLeadForGenerate.name.split(' ')[0] || '',
+            last_name: selectedLeadForGenerate.last_name || selectedLeadForGenerate.name.split(' ').slice(1).join(' ') || '',
+            email: selectedLeadForGenerate.email || '',
+            phone: selectedLeadForGenerate.phone || '',
+            street: selectedLeadForGenerate.street || '',
+            house_number: selectedLeadForGenerate.house_number || '',
+            postal_code: selectedLeadForGenerate.postal_code || '',
+            city: selectedLeadForGenerate.city || '',
+            study_goal: selectedLeadForGenerate.study_goal || '',
+            exam_date: selectedLeadForGenerate.exam_date || '',
+            state_law: selectedLeadForGenerate.state_law || '',
+            legal_areas: selectedLeadForGenerate.legal_areas || [],
+            booked_hours: null
+          } : undefined}
+          onClose={() => {
+            setShowContractEditor(false);
+            setSelectedLeadForGenerate(null);
+          }}
         />
       )}
     </div>

@@ -143,6 +143,13 @@ export interface Lead {
   booking_date: string | null;
   contract_requested_at: string | null;
   final_call_date: string | null;
+  street: string | null;
+  house_number: string | null;
+  postal_code: string | null;
+  city: string | null;
+  state_law: string | null;
+  exam_date: string | null;
+  legal_areas: string[] | null;
   created_at: string;
   updated_at: string;
 }

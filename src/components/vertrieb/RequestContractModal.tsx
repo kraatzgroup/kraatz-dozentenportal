@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { X, FileText, Search, User, MapPin, GraduationCap, Clock } from 'lucide-react';
-import { Lead } from '../../store/salesStore';
+import { X, FileText, Search, User, MapPin, GraduationCap, Clock, MessageSquare, FileDown } from 'lucide-react';
+import { Lead, LeadNote, useSalesStore } from '../../store/salesStore';
 import { supabase } from '../../lib/supabase';
 import { useToastStore } from '../../store/toastStore';
+import { ContractTemplateEditor } from './ContractTemplateEditor';
 
 interface ContractRequest {
   id?: string;
@@ -21,6 +22,15 @@ interface ContractRequest {
   legal_areas: string[];
   booked_hours: number | null;
   notes: string;
+  preferred_dozent_zivilrecht_id: string | null;
+  preferred_dozent_strafrecht_id: string | null;
+  preferred_dozent_oeffentliches_recht_id: string | null;
+}
+
+interface Dozent {
+  id: string;
+  full_name: string;
+  legal_areas: string[] | null;
 }
 
 interface RequestContractModalProps {
@@ -62,10 +72,23 @@ const STUDY_GOALS = [
 
 export function RequestContractModal({ leads, onClose, onSuccess, preselectedLead }: RequestContractModalProps) {
   const { addToast } = useToastStore();
+  const { leadNotes, fetchLeadNotes } = useSalesStore();
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [showLeadSearch, setShowLeadSearch] = useState(!preselectedLead);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(preselectedLead || null);
+
+  // Fetch lead notes on mount
+  useEffect(() => {
+    fetchLeadNotes();
+  }, [fetchLeadNotes]);
+
+  // Get notes for selected lead
+  const getNotesForLead = (leadId: string): LeadNote[] => {
+    return leadNotes.filter(n => n.lead_id === leadId).sort((a, b) => 
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  };
   
   const [formData, setFormData] = useState<ContractRequest>({
     lead_id: null,
@@ -82,8 +105,32 @@ export function RequestContractModal({ leads, onClose, onSuccess, preselectedLea
     state_law: '',
     legal_areas: [],
     booked_hours: null,
-    notes: ''
+    notes: '',
+    preferred_dozent_zivilrecht_id: null,
+    preferred_dozent_strafrecht_id: null,
+    preferred_dozent_oeffentliches_recht_id: null
   });
+
+  const [dozenten, setDozenten] = useState<Dozent[]>([]);
+  const [showContractEditor, setShowContractEditor] = useState(false);
+
+  // Fetch dozenten on mount
+  useEffect(() => {
+    const fetchDozenten = async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, legal_areas')
+        .eq('role', 'dozent')
+        .order('full_name');
+      if (data) setDozenten(data);
+    };
+    fetchDozenten();
+  }, []);
+
+  // Get dozenten for a specific legal area
+  const getDozentenForArea = (area: string): Dozent[] => {
+    return dozenten.filter(d => d.legal_areas?.includes(area));
+  };
 
   // Filter leads for search
   const filteredLeads = leads.filter(lead => {
@@ -95,7 +142,7 @@ export function RequestContractModal({ leads, onClose, onSuccess, preselectedLea
     );
   });
 
-  // Pre-fill form when lead is selected
+  // Pre-fill form when lead is selected - includes all available data
   useEffect(() => {
     if (selectedLead) {
       const nameParts = selectedLead.name.split(' ');
@@ -109,7 +156,14 @@ export function RequestContractModal({ leads, onClose, onSuccess, preselectedLea
         last_name: lastName,
         email: selectedLead.email || '',
         phone: selectedLead.phone || '',
-        study_goal: selectedLead.study_goal || ''
+        street: selectedLead.street || '',
+        house_number: selectedLead.house_number || '',
+        postal_code: selectedLead.postal_code || '',
+        city: selectedLead.city || '',
+        study_goal: selectedLead.study_goal || '',
+        exam_date: selectedLead.exam_date || '',
+        state_law: selectedLead.state_law || '',
+        legal_areas: selectedLead.legal_areas || []
       }));
       setShowLeadSearch(false);
     }
@@ -163,6 +217,9 @@ export function RequestContractModal({ leads, onClose, onSuccess, preselectedLea
           legal_areas: formData.legal_areas,
           booked_hours: formData.booked_hours,
           notes: formData.notes.trim() || null,
+          preferred_dozent_zivilrecht_id: formData.preferred_dozent_zivilrecht_id || null,
+          preferred_dozent_strafrecht_id: formData.preferred_dozent_strafrecht_id || null,
+          preferred_dozent_oeffentliches_recht_id: formData.preferred_dozent_oeffentliches_recht_id || null,
           status: 'requested',
           requested_at: new Date().toISOString()
         });
@@ -236,7 +293,15 @@ export function RequestContractModal({ leads, onClose, onSuccess, preselectedLea
                       first_name: '',
                       last_name: '',
                       email: '',
-                      phone: ''
+                      phone: '',
+                      street: '',
+                      house_number: '',
+                      postal_code: '',
+                      city: '',
+                      study_goal: '',
+                      exam_date: '',
+                      state_law: '',
+                      legal_areas: []
                     }));
                   }}
                   className="text-xs text-primary hover:underline"
@@ -285,10 +350,78 @@ export function RequestContractModal({ leads, onClose, onSuccess, preselectedLea
                 </p>
               </div>
             ) : selectedLead ? (
-              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                <p className="font-medium text-green-800">{selectedLead.name}</p>
-                <p className="text-sm text-green-600">{selectedLead.email}</p>
-                {selectedLead.phone && <p className="text-sm text-green-600">{selectedLead.phone}</p>}
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg space-y-2">
+                <div>
+                  <p className="font-medium text-green-800">{selectedLead.name}</p>
+                  <p className="text-sm text-green-600">{selectedLead.email}</p>
+                  {selectedLead.phone && <p className="text-sm text-green-600">{selectedLead.phone}</p>}
+                </div>
+                
+                {/* Adresse anzeigen wenn vorhanden */}
+                {(selectedLead.street || selectedLead.city) && (
+                  <div className="pt-2 border-t border-green-200">
+                    <p className="text-xs font-medium text-green-700 mb-1">Adresse:</p>
+                    <p className="text-sm text-green-600">
+                      {selectedLead.street && `${selectedLead.street} ${selectedLead.house_number || ''}`}
+                      {selectedLead.street && (selectedLead.postal_code || selectedLead.city) && ', '}
+                      {selectedLead.postal_code && `${selectedLead.postal_code} `}
+                      {selectedLead.city}
+                    </p>
+                  </div>
+                )}
+                
+                {/* Studieninfos anzeigen wenn vorhanden */}
+                {(selectedLead.study_goal || selectedLead.state_law || selectedLead.exam_date || selectedLead.study_location) && (
+                  <div className="pt-2 border-t border-green-200">
+                    <p className="text-xs font-medium text-green-700 mb-1">Studieninformationen:</p>
+                    <div className="text-sm text-green-600 space-y-0.5">
+                      {selectedLead.study_goal && <p>Studienziel: {selectedLead.study_goal}</p>}
+                      {selectedLead.study_location && <p>Standort: {selectedLead.study_location}</p>}
+                      {selectedLead.state_law && <p>Landesrecht: {selectedLead.state_law}</p>}
+                      {selectedLead.exam_date && <p>Prüfungstermin: {new Date(selectedLead.exam_date).toLocaleDateString('de-DE')}</p>}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Rechtsgebiete anzeigen wenn vorhanden */}
+                {selectedLead.legal_areas && selectedLead.legal_areas.length > 0 && (
+                  <div className="pt-2 border-t border-green-200">
+                    <p className="text-xs font-medium text-green-700 mb-1">Rechtsgebiete:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {selectedLead.legal_areas.map((area) => (
+                        <span key={area} className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">
+                          {area}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Notizen anzeigen wenn vorhanden */}
+                {getNotesForLead(selectedLead.id).length > 0 && (
+                  <div className="pt-2 border-t border-green-200">
+                    <p className="text-xs font-medium text-green-700 mb-1 flex items-center">
+                      <MessageSquare className="h-3 w-3 mr-1" />
+                      Notizen ({getNotesForLead(selectedLead.id).length}):
+                    </p>
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {getNotesForLead(selectedLead.id).map((note) => (
+                        <div key={note.id} className="text-sm text-green-600 bg-green-100/50 rounded p-2">
+                          <p className="whitespace-pre-wrap">{note.note}</p>
+                          <p className="text-xs text-green-500 mt-1">
+                            {new Date(note.created_at).toLocaleDateString('de-DE', { 
+                              day: '2-digit', 
+                              month: '2-digit', 
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : null}
           </div>
@@ -441,23 +574,92 @@ export function RequestContractModal({ leads, onClose, onSuccess, preselectedLea
             </div>
           </div>
 
-          {/* Legal Areas */}
+          {/* Legal Areas with Dozent Selection */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Rechtsgebiet *
+              Rechtsgebiet * & Bevorzugte Dozenten
             </label>
-            <div className="space-y-2 bg-gray-50 p-3 rounded-lg">
-              {['Zivilrecht', 'Strafrecht', 'Öffentliches Recht'].map((area) => (
-                <label key={area} className="flex items-center cursor-pointer">
+            <div className="space-y-3 bg-gray-50 p-3 rounded-lg">
+              {/* Zivilrecht */}
+              <div className="space-y-2">
+                <label className="flex items-center cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={formData.legal_areas.includes(area)}
-                    onChange={(e) => handleLegalAreaChange(area, e.target.checked)}
+                    checked={formData.legal_areas.includes('Zivilrecht')}
+                    onChange={(e) => handleLegalAreaChange('Zivilrecht', e.target.checked)}
                     className="h-4 w-4 text-primary border-gray-300 rounded focus:ring-primary"
                   />
-                  <span className="ml-2 text-sm text-gray-700">{area}</span>
+                  <span className="ml-2 text-sm font-medium text-gray-700">Zivilrecht</span>
                 </label>
-              ))}
+                {formData.legal_areas.includes('Zivilrecht') && (
+                  <div className="ml-6">
+                    <select
+                      value={formData.preferred_dozent_zivilrecht_id || ''}
+                      onChange={(e) => setFormData({ ...formData, preferred_dozent_zivilrecht_id: e.target.value || null })}
+                      className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    >
+                      <option value="">Bevorzugter Dozent (optional)</option>
+                      {getDozentenForArea('Zivilrecht').map(d => (
+                        <option key={d.id} value={d.id}>{d.full_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* Strafrecht */}
+              <div className="space-y-2">
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.legal_areas.includes('Strafrecht')}
+                    onChange={(e) => handleLegalAreaChange('Strafrecht', e.target.checked)}
+                    className="h-4 w-4 text-primary border-gray-300 rounded focus:ring-primary"
+                  />
+                  <span className="ml-2 text-sm font-medium text-gray-700">Strafrecht</span>
+                </label>
+                {formData.legal_areas.includes('Strafrecht') && (
+                  <div className="ml-6">
+                    <select
+                      value={formData.preferred_dozent_strafrecht_id || ''}
+                      onChange={(e) => setFormData({ ...formData, preferred_dozent_strafrecht_id: e.target.value || null })}
+                      className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    >
+                      <option value="">Bevorzugter Dozent (optional)</option>
+                      {getDozentenForArea('Strafrecht').map(d => (
+                        <option key={d.id} value={d.id}>{d.full_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* Öffentliches Recht */}
+              <div className="space-y-2">
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.legal_areas.includes('Öffentliches Recht')}
+                    onChange={(e) => handleLegalAreaChange('Öffentliches Recht', e.target.checked)}
+                    className="h-4 w-4 text-primary border-gray-300 rounded focus:ring-primary"
+                  />
+                  <span className="ml-2 text-sm font-medium text-gray-700">Öffentliches Recht</span>
+                </label>
+                {formData.legal_areas.includes('Öffentliches Recht') && (
+                  <div className="ml-6">
+                    <select
+                      value={formData.preferred_dozent_oeffentliches_recht_id || ''}
+                      onChange={(e) => setFormData({ ...formData, preferred_dozent_oeffentliches_recht_id: e.target.value || null })}
+                      className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    >
+                      <option value="">Bevorzugter Dozent (optional)</option>
+                      {getDozentenForArea('Öffentliches Recht').map(d => (
+                        <option key={d.id} value={d.id}>{d.full_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -490,30 +692,62 @@ export function RequestContractModal({ leads, onClose, onSuccess, preselectedLea
           </div>
 
           {/* Buttons */}
-          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-4 border-t">
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-3 pt-4 border-t">
             <button
               type="button"
-              onClick={onClose}
-              className="w-full sm:w-auto px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+              onClick={() => setShowContractEditor(true)}
+              className="w-full sm:w-auto px-4 py-2 text-primary bg-primary/10 hover:bg-primary/20 rounded-md transition-colors flex items-center justify-center"
             >
-              Abbrechen
+              <FileDown className="h-4 w-4 mr-2" />
+              Vertrag generieren
             </button>
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full sm:w-auto px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center justify-center disabled:opacity-50"
-            >
-              {isLoading ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-              ) : (
-                <>
-                  <FileText className="h-4 w-4 mr-2" />
-                  Vertrag anfordern
-                </>
-              )}
-            </button>
+            <div className="flex flex-col-reverse sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full sm:w-auto px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full sm:w-auto px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center justify-center disabled:opacity-50"
+              >
+                {isLoading ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                ) : (
+                  <>
+                    <FileText className="h-4 w-4 mr-2" />
+                    Vertrag anfordern
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </form>
+
+        {/* Contract Template Editor Modal */}
+        {showContractEditor && (
+          <ContractTemplateEditor
+            contractData={{
+              first_name: formData.first_name,
+              last_name: formData.last_name,
+              email: formData.email,
+              phone: formData.phone,
+              street: formData.street,
+              house_number: formData.house_number,
+              postal_code: formData.postal_code,
+              city: formData.city,
+              study_goal: formData.study_goal,
+              exam_date: formData.exam_date,
+              state_law: formData.state_law,
+              legal_areas: formData.legal_areas,
+              booked_hours: formData.booked_hours
+            }}
+            onClose={() => setShowContractEditor(false)}
+          />
+        )}
       </div>
     </div>
   );

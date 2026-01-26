@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useToastStore } from '../store/toastStore';
-import { GraduationCap, Plus, Edit2, Trash2, ChevronDown, ChevronUp, X, Play, FileText, ExternalLink, Info, Pin, AlertTriangle, Clock, Upload, Eye, GripVertical, LayoutGrid, Download, Search } from 'lucide-react';
+import { GraduationCap, Plus, Edit2, Trash2, ChevronDown, ChevronUp, X, Play, FileText, ExternalLink, Info, Pin, AlertTriangle, Clock, Upload, Eye, GripVertical, LayoutGrid, Download, Search, Users } from 'lucide-react';
+import { EliteKleingruppe } from './EliteKleingruppe';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, DragOverEvent, useDroppable } from '@dnd-kit/core';
@@ -249,7 +250,9 @@ function LinkPreviewWidget({ widget, isEditMode, onEdit, onDelete, cache, setCac
 }
 
 export function DozentenDashboard() {
-  const { isAdmin, isBuchhaltung } = useAuthStore();
+  const { isAdmin, isBuchhaltung, user } = useAuthStore();
+  const [isEliteKleingruppeDozent, setIsEliteKleingruppeDozent] = useState(false);
+  const [showEliteKleingruppe, setShowEliteKleingruppe] = useState(false);
   const { addToast } = useToastStore();
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -394,7 +397,14 @@ export function DozentenDashboard() {
     fetchSections();
     fetchMaterials();
     fetchFolders();
+    checkEliteKleingruppeDozent();
   }, []);
+
+  const checkEliteKleingruppeDozent = async () => {
+    if (!user) return;
+    const { data } = await supabase.from('elite_kleingruppe_dozenten').select('id').eq('dozent_id', user.id);
+    setIsEliteKleingruppeDozent((data && data.length > 0) || false);
+  };
 
   const fetchChapters = async () => {
     try {
@@ -757,6 +767,21 @@ export function DozentenDashboard() {
   const getEmbedUrl = (url: string) => { if (!url) return null; const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/); if (yt) return `https://www.youtube.com/embed/${yt[1]}`; const vm = url.match(/vimeo\.com\/(\d+)/); if (vm) return `https://player.vimeo.com/video/${vm[1]}`; return url; };
 
   if (isLoading) return <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
+
+  // Elite-Kleingruppe View
+  if (showEliteKleingruppe) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-white rounded-xl shadow-md p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setShowEliteKleingruppe(false)} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronDown className="h-5 w-5 rotate-90" /></button>
+            <Users className="h-6 w-6 text-primary" /><h1 className="text-lg font-semibold">Elite-Kleingruppe</h1>
+          </div>
+        </div>
+        <EliteKleingruppe isAdmin={false} />
+      </div>
+    );
+  }
 
   if (showMaterialsView) {
     const currentFolders = searchQuery ? [] : folders.filter(f => f.parent_id === currentFolderId);
@@ -1450,6 +1475,19 @@ export function DozentenDashboard() {
           </div>
         </div>
       </div>}
+
+      {/* Elite-Kleingruppe Button - nur anzeigen wenn Dozent zugewiesen ist */}
+      {isEliteKleingruppeDozent && (
+        <div className="mt-6">
+          <button 
+            onClick={() => setShowEliteKleingruppe(true)} 
+            className="w-full flex items-center justify-center gap-3 p-4 text-white rounded-xl shadow-lg hover:shadow-xl transition-all" style={{ backgroundColor: '#2e83c2' }}
+          >
+            <Users className="h-6 w-6" />
+            <span className="text-lg font-semibold">Elite-Kleingruppe</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

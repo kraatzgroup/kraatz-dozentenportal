@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Save, UserPlus } from 'lucide-react';
+import { X, Save, UserPlus, MapPin } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useToastStore } from '../store/toastStore';
 
@@ -8,6 +8,7 @@ interface Teilnehmer {
   first_name: string;
   last_name: string;
   email: string;
+  phone: string;
   study_goal: string;
   contract_start: string;
   contract_end: string;
@@ -19,6 +20,10 @@ interface Teilnehmer {
   dozent_oeffentliches_recht_id: string | null;
   exam_date: string;
   state_law: string;
+  street: string;
+  house_number: string;
+  postal_code: string;
+  city: string;
 }
 
 const GERMAN_STATES = [
@@ -54,6 +59,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
     first_name: '',
     last_name: '',
     email: '',
+    phone: '',
     study_goal: '',
     contract_start: '',
     contract_end: '',
@@ -64,7 +70,11 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
     dozent_strafrecht_id: null,
     dozent_oeffentliches_recht_id: null,
     exam_date: '',
-    state_law: ''
+    state_law: '',
+    street: '',
+    house_number: '',
+    postal_code: '',
+    city: ''
   });
 
   const isEditing = !!teilnehmer?.id;
@@ -75,6 +85,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
         first_name: teilnehmer.first_name || '',
         last_name: teilnehmer.last_name || '',
         email: teilnehmer.email || '',
+        phone: (teilnehmer as any).phone || '',
         study_goal: teilnehmer.study_goal || '',
         contract_start: teilnehmer.contract_start || '',
         contract_end: teilnehmer.contract_end || '',
@@ -85,7 +96,11 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
         dozent_strafrecht_id: teilnehmer.dozent_strafrecht_id || null,
         dozent_oeffentliches_recht_id: teilnehmer.dozent_oeffentliches_recht_id || null,
         exam_date: teilnehmer.exam_date || '',
-        state_law: teilnehmer.state_law || ''
+        state_law: teilnehmer.state_law || '',
+        street: (teilnehmer as any).street || '',
+        house_number: (teilnehmer as any).house_number || '',
+        postal_code: (teilnehmer as any).postal_code || '',
+        city: (teilnehmer as any).city || ''
       });
     }
   }, [teilnehmer]);
@@ -120,6 +135,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
         last_name: formData.last_name.trim(),
         name: fullName,
         email: formData.email.trim() || null,
+        phone: formData.phone.trim() || null,
         study_goal: formData.study_goal.trim() || null,
         contract_start: formData.contract_start || null,
         contract_end: formData.contract_end || null,
@@ -131,6 +147,10 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
         dozent_oeffentliches_recht_id: formData.dozent_oeffentliches_recht_id || null,
         exam_date: formData.exam_date || null,
         state_law: formData.state_law || null,
+        street: formData.street.trim() || null,
+        house_number: formData.house_number.trim() || null,
+        postal_code: formData.postal_code.trim() || null,
+        city: formData.city.trim() || null,
         updated_at: new Date().toISOString()
       };
 
@@ -220,18 +240,83 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
             </div>
           </div>
 
-          {/* Email */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              E-Mail-Adresse
-            </label>
-            <input
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-              placeholder="max.mustermann@email.de"
-            />
+          {/* Email & Phone */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                E-Mail-Adresse
+              </label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                placeholder="max.mustermann@email.de"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Telefon
+              </label>
+              <input
+                type="tel"
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                placeholder="+49 123 456789"
+              />
+            </div>
+          </div>
+
+          {/* Address */}
+          <div className="border-t pt-4 mt-2">
+            <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+              <MapPin className="h-4 w-4 mr-2" />
+              Adressdaten
+            </h4>
+            <div className="grid grid-cols-4 gap-2">
+              <div className="col-span-3">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Straße</label>
+                <input
+                  type="text"
+                  value={formData.street}
+                  onChange={(e) => setFormData({ ...formData, street: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                  placeholder="Musterstraße"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Hausnr.</label>
+                <input
+                  type="text"
+                  value={formData.house_number}
+                  onChange={(e) => setFormData({ ...formData, house_number: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                  placeholder="12a"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">PLZ</label>
+                <input
+                  type="text"
+                  value={formData.postal_code}
+                  onChange={(e) => setFormData({ ...formData, postal_code: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                  placeholder="12345"
+                  maxLength={5}
+                />
+              </div>
+              <div className="col-span-3">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Stadt</label>
+                <input
+                  type="text"
+                  value={formData.city}
+                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                  placeholder="Musterstadt"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Study Goal */}

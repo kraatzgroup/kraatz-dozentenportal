@@ -157,6 +157,13 @@ export function LeadsList({ leads, onUpdateStatus, onCreateLead, onUpdateLead }:
     notes: '',
     booking_date: '',
     source: '',
+    street: '',
+    house_number: '',
+    postal_code: '',
+    city: '',
+    state_law: '',
+    exam_date: '',
+    legal_areas: [] as string[],
   });
   const [editFormData, setEditFormData] = useState({
     name: '',
@@ -167,6 +174,13 @@ export function LeadsList({ leads, onUpdateStatus, onCreateLead, onUpdateLead }:
     notes: '',
     booking_date: '',
     source: '',
+    street: '',
+    house_number: '',
+    postal_code: '',
+    city: '',
+    state_law: '',
+    exam_date: '',
+    legal_areas: [] as string[],
   });
 
   const getStatusColor = (status: Lead['status']) => {
@@ -250,7 +264,7 @@ export function LeadsList({ leads, onUpdateStatus, onCreateLead, onUpdateLead }:
         booking_date: newLead.booking_date || null,
         source: newLead.source || 'manual',
       });
-      setNewLead({ name: '', email: '', phone: '', study_goal: '', study_location: '', notes: '', booking_date: '', source: '' });
+      setNewLead({ name: '', email: '', phone: '', study_goal: '', study_location: '', notes: '', booking_date: '', source: '', street: '', house_number: '', postal_code: '', city: '', state_law: '', exam_date: '', legal_areas: [] });
       setShowAddModal(false);
     } catch (error) {
       console.error('Error creating lead:', error);
@@ -270,6 +284,13 @@ export function LeadsList({ leads, onUpdateStatus, onCreateLead, onUpdateLead }:
       notes: lead.notes || '',
       booking_date: lead.booking_date ? lead.booking_date.slice(0, 16) : '',
       source: lead.source || '',
+      street: lead.street || '',
+      house_number: lead.house_number || '',
+      postal_code: lead.postal_code || '',
+      city: lead.city || '',
+      state_law: lead.state_law || '',
+      exam_date: lead.exam_date || '',
+      legal_areas: lead.legal_areas || [],
     });
     setShowEditModal(true);
   };
@@ -289,6 +310,13 @@ export function LeadsList({ leads, onUpdateStatus, onCreateLead, onUpdateLead }:
         notes: editFormData.notes || null,
         booking_date: editFormData.booking_date || null,
         source: editFormData.source || editingLead.source,
+        street: editFormData.street || null,
+        house_number: editFormData.house_number || null,
+        postal_code: editFormData.postal_code || null,
+        city: editFormData.city || null,
+        state_law: editFormData.state_law || null,
+        exam_date: editFormData.exam_date || null,
+        legal_areas: editFormData.legal_areas.length > 0 ? editFormData.legal_areas : null,
       });
       setShowEditModal(false);
       setEditingLead(null);
@@ -789,6 +817,125 @@ export function LeadsList({ leads, onUpdateStatus, onCreateLead, onUpdateLead }:
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                 />
               </div>
+
+              {/* Adressdaten */}
+              <div className="border-t pt-4 mt-2">
+                <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+                  <MapPin className="h-4 w-4 mr-2" />
+                  Adressdaten
+                </h4>
+                <div className="grid grid-cols-4 gap-2">
+                  <div className="col-span-3">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Straße</label>
+                    <input
+                      type="text"
+                      value={editFormData.street}
+                      onChange={(e) => setEditFormData({ ...editFormData, street: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                      placeholder="Musterstraße"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Hausnr.</label>
+                    <input
+                      type="text"
+                      value={editFormData.house_number}
+                      onChange={(e) => setEditFormData({ ...editFormData, house_number: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                      placeholder="12a"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">PLZ</label>
+                    <input
+                      type="text"
+                      value={editFormData.postal_code}
+                      onChange={(e) => setEditFormData({ ...editFormData, postal_code: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                      placeholder="12345"
+                      maxLength={5}
+                    />
+                  </div>
+                  <div className="col-span-3">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Stadt</label>
+                    <input
+                      type="text"
+                      value={editFormData.city}
+                      onChange={(e) => setEditFormData({ ...editFormData, city: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                      placeholder="Musterstadt"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Studieninformationen */}
+              <div className="border-t pt-4 mt-2">
+                <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+                  <GraduationCap className="h-4 w-4 mr-2" />
+                  Studieninformationen
+                </h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Landesrecht</label>
+                    <select
+                      value={editFormData.state_law}
+                      onChange={(e) => setEditFormData({ ...editFormData, state_law: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                    >
+                      <option value="">Bitte auswählen</option>
+                      <option value="Baden-Württemberg">Baden-Württemberg</option>
+                      <option value="Bayern">Bayern</option>
+                      <option value="Berlin">Berlin</option>
+                      <option value="Brandenburg">Brandenburg</option>
+                      <option value="Bremen">Bremen</option>
+                      <option value="Hamburg">Hamburg</option>
+                      <option value="Hessen">Hessen</option>
+                      <option value="Mecklenburg-Vorpommern">Mecklenburg-Vorpommern</option>
+                      <option value="Niedersachsen">Niedersachsen</option>
+                      <option value="Nordrhein-Westfalen">Nordrhein-Westfalen</option>
+                      <option value="Rheinland-Pfalz">Rheinland-Pfalz</option>
+                      <option value="Saarland">Saarland</option>
+                      <option value="Sachsen">Sachsen</option>
+                      <option value="Sachsen-Anhalt">Sachsen-Anhalt</option>
+                      <option value="Schleswig-Holstein">Schleswig-Holstein</option>
+                      <option value="Thüringen">Thüringen</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Prüfungstermin</label>
+                    <input
+                      type="date"
+                      value={editFormData.exam_date}
+                      onChange={(e) => setEditFormData({ ...editFormData, exam_date: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Rechtsgebiete</label>
+                    <div className="flex flex-wrap gap-2">
+                      {['Zivilrecht', 'Strafrecht', 'Öffentliches Recht'].map((area) => (
+                        <label key={area} className="flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={editFormData.legal_areas.includes(area)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setEditFormData({ ...editFormData, legal_areas: [...editFormData.legal_areas, area] });
+                              } else {
+                                setEditFormData({ ...editFormData, legal_areas: editFormData.legal_areas.filter(a => a !== area) });
+                              }
+                            }}
+                            className="h-4 w-4 text-primary border-gray-300 rounded focus:ring-primary"
+                          />
+                          <span className="ml-1 text-sm text-gray-700">{area}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Quelle</label>
                 <input

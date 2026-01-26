@@ -9,6 +9,7 @@ interface AuthState {
   isVerwaltung: boolean;
   isVertrieb: boolean;
   isDozent: boolean;
+  isEliteKleingruppe: boolean;
   userRole: string | null;
   isSigningOut: boolean;
   isSettingUser: boolean;
@@ -23,6 +24,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isVerwaltung: false,
   isVertrieb: false,
   isDozent: false,
+  isEliteKleingruppe: false,
   userRole: null,
   isSigningOut: false,
   isSettingUser: false,
@@ -93,6 +95,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               isVerwaltung: data.role === 'verwaltung',
               isVertrieb: data.role === 'vertrieb',
               isDozent: data.role === 'dozent',
+              isEliteKleingruppe: data.role === 'elite_kleingruppe',
               userRole: data.role,
               isSettingUser: false
             });
@@ -106,6 +109,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               isVerwaltung: false,
               isVertrieb: false,
               isDozent: false,
+              isEliteKleingruppe: false,
               userRole: null,
               isSettingUser: false 
             });
@@ -122,6 +126,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               isVerwaltung: false,
               isVertrieb: false,
               isDozent: false,
+              isEliteKleingruppe: false,
               userRole: null,
               isSettingUser: false 
             });
@@ -138,6 +143,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isVerwaltung: false,
         isVertrieb: false,
         isDozent: false,
+        isEliteKleingruppe: false,
         userRole: null,
         isSettingUser: false 
       });
@@ -158,6 +164,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isVerwaltung: false,
         isVertrieb: false,
         isDozent: false,
+        isEliteKleingruppe: false,
         userRole: null,
         isSigningOut: true, 
         isSettingUser: false 

@@ -6,6 +6,7 @@ import { AuthComponent } from './components/AuthComponent';
 const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
 const VertriebDashboard = lazy(() => import('./components/VertriebDashboard').then(m => ({ default: m.VertriebDashboard })));
+const EliteKleingruppeDashboard = lazy(() => import('./components/EliteKleingruppeDashboard').then(m => ({ default: m.EliteKleingruppeDashboard })));
 const DozentDetail = lazy(() => import('./components/DozentDetail').then(m => ({ default: m.DozentDetail })));
 const UserManagement = lazy(() => import('./components/UserManagement').then(m => ({ default: m.UserManagement })));
 const Chat = lazy(() => import('./components/Chat').then(m => ({ default: m.Chat })));
@@ -25,7 +26,7 @@ import { ToastContainer } from './components/Toast';
 import { useState } from 'react';
 
 function App() {
-  const { setUser, user, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, userRole } = useAuthStore();
+  const { setUser, user, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isEliteKleingruppe, userRole } = useAuthStore();
   const { isPreviewMode, previewedRole, togglePreview, setPreviewedRole } = usePreviewStore();
   const [appLoading, setAppLoading] = useState(true);
 
@@ -99,8 +100,9 @@ function App() {
   const showAdminView = showPreview ? previewedRole === 'admin' : (isAdmin || isBuchhaltung);
   const showVerwaltungView = showPreview ? previewedRole === 'verwaltung' : isVerwaltung;
   const showVertriebView = showPreview ? previewedRole === 'vertrieb' : isVertrieb;
+  const showEliteKleingruppeView = showPreview ? previewedRole === 'elite_kleingruppe' : isEliteKleingruppe;
 
-  console.log('App: Rendering with views:', { showAdminView, showVerwaltungView, showVertriebView, userRole });
+  console.log('App: Rendering with views:', { showAdminView, showVerwaltungView, showVertriebView, showEliteKleingruppeView, userRole });
 
   return (
     <Router>
@@ -123,11 +125,23 @@ function App() {
           <Route 
             path="/" 
             element={
+              showEliteKleingruppeView ?
+                <Navigate to="/elite-kleingruppe" replace /> :
               showVertriebView ? 
                 <Navigate to="/vertrieb" replace /> :
               (showAdminView || showVerwaltungView) ? 
                 <Navigate to="/admin" replace /> : 
                 <Navigate to="/dashboard" replace />
+            } 
+          />
+
+          {/* Elite-Kleingruppe route */}
+          <Route 
+            path="/elite-kleingruppe" 
+            element={
+              showEliteKleingruppeView ? 
+                <EliteKleingruppeDashboard /> : 
+                <Navigate to="/" replace />
             } 
           />
 

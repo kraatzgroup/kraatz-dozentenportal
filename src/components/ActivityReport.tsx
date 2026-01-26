@@ -28,6 +28,7 @@ interface DozentHoursEntry {
   date: string;
   hours: number;
   description: string;
+  category?: string;
   type: 'dozent';
 }
 
@@ -38,6 +39,7 @@ interface CombinedHoursEntry {
   description: string;
   legal_area?: string;
   teilnehmer_name?: string;
+  category?: string;
   type: 'participant' | 'dozent';
 }
 
@@ -95,6 +97,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
         date: h.date,
         hours: h.hours,
         description: h.description,
+        category: h.category,
         type: 'dozent' as const
       }))
     ];
@@ -334,14 +337,16 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
                        </div>
                      ) : (
                        <div className="flex items-center text-sm text-gray-500">
-                         <span className="font-medium">Sonstige Tätigkeit</span>
+                         <span className="font-medium">
+                           {entry.category === 'Elite-Kleingruppe Korrektur' ? 'Klausurkorrektur' : 'Sonstige Tätigkeit'}
+                         </span>
                        </div>
                      )}
                      <div className="flex items-center space-x-4 mb-3">
-                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getLegalAreaColor(entry.legal_area || '')}`}>
+                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${entry.category === 'Elite-Kleingruppe Korrektur' ? 'bg-orange-100 text-orange-800' : getLegalAreaColor(entry.legal_area || '')}`}>
                          {entry.type === 'participant' 
                            ? `Rechtsgebiet: ${entry.legal_area || 'Nicht angegeben'}`
-                           : 'Sonstige Tätigkeit'
+                           : entry.category === 'Elite-Kleingruppe Korrektur' ? 'Klausurenkorrektur Elite-Kleingruppe' : 'Sonstige Tätigkeit'
                          }
                        </span>
                        <div className="flex items-center text-sm text-gray-900">

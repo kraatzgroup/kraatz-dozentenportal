@@ -24,6 +24,7 @@ import { DozentTeilnehmerModal } from './DozentTeilnehmerModal';
 import { VertriebDashboard } from './VertriebDashboard';
 import { IntegrationsTab } from './IntegrationsTab';
 import { DozentenDashboard } from './DozentenDashboard';
+import { EliteKleingruppe } from './EliteKleingruppe';
 
 // Helper function to check if teilnehmer is active based on contract dates
 const isContractActive = (t: any): boolean => {
@@ -95,15 +96,15 @@ export function AdminDashboard() {
   const [isCheckingDocuments, setIsCheckingDocuments] = useReactState(false);
   const [checkResult, setCheckResult] = useReactState<any>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard'>(() => {
+  const [activeTab, setActiveTab] = useState<'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard' | 'elite-kleingruppe'>(() => {
     // Check URL parameter first
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
-    if (tabParam && ['dozenten', 'teilnehmer', 'nachrichten', 'rechnungen', 'kalender', 'emails', 'vertrieb', 'integrationen', 'dozenten-dashboard'].includes(tabParam)) {
-      return tabParam as 'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard';
+    if (tabParam && ['dozenten', 'teilnehmer', 'nachrichten', 'rechnungen', 'kalender', 'emails', 'vertrieb', 'integrationen', 'dozenten-dashboard', 'elite-kleingruppe'].includes(tabParam)) {
+      return tabParam as 'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard' | 'elite-kleingruppe';
     }
     const saved = localStorage.getItem('adminDashboardTab');
-    return (saved as 'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard') || 'dozenten';
+    return (saved as 'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard' | 'elite-kleingruppe') || 'dozenten';
   });
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
@@ -963,6 +964,17 @@ export function AdminDashboard() {
               >
                 <GraduationCap className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">Dozenten Dashboard</span>
+              </button>
+              <button
+                onClick={() => { setActiveTab('elite-kleingruppe'); localStorage.setItem('adminDashboardTab', 'elite-kleingruppe'); }}
+                className={`${
+                  activeTab === 'elite-kleingruppe'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm sm:text-base flex items-center`}
+              >
+                <Users className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
+                <span className="hidden sm:inline">Elite-Kleingruppe</span>
               </button>
             </nav>
           </div>
@@ -2914,6 +2926,10 @@ export function AdminDashboard() {
 
         {activeTab === 'integrationen' && (
           <IntegrationsTab />
+        )}
+
+        {activeTab === 'elite-kleingruppe' && (
+          <EliteKleingruppe />
         )}
       </main>
 

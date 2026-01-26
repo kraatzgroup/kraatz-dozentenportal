@@ -52,7 +52,11 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('No authenticated user');
+      if (!user) {
+        console.log('No authenticated user, skipping fetchInvoices');
+        set({ invoices: [], isLoading: false });
+        return;
+      }
 
       let query = supabase
         .from('invoices')

@@ -100,7 +100,9 @@ export const useFileStore = create<FileState>((set, get) => ({
       // Check if we're in admin context by looking at current user
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        throw new Error('No authenticated user');
+        console.log('No authenticated user, skipping fetchFiles');
+        set({ files: [], isLoading: false });
+        return;
       }
       
       const { data, error } = await supabase

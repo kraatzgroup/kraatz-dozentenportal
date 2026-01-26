@@ -10,7 +10,6 @@ export interface ParticipantHours {
   date: string;
   description?: string;
   legal_area?: string;
-  legal_area?: string;
   created_at: string;
   updated_at: string;
   teilnehmer_name?: string;
@@ -151,7 +150,11 @@ export const useHoursStore = create<HoursState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user && !dozentId) throw new Error('No authenticated user');
+      if (!user && !dozentId) {
+        console.log('No authenticated user, skipping fetchMonthlySummary');
+        set({ monthlySummary: [], isLoading: false });
+        return;
+      }
       
       const targetDozentId = dozentId || user?.id;
       const targetYear = year || new Date().getFullYear();
@@ -202,9 +205,10 @@ export const useHoursStore = create<HoursState>((set, get) => ({
       
       const teilnehmerMap = new Map(teilnehmerData?.map(t => [t.id, t.name]) || []);
       
-      // Group hours by teilnehmer
+      // Group hours by teilnehmer (skip entries with null teilnehmer_id)
       const hoursByTeilnehmer = new Map<string, { hours: number; dates: Set<string> }>();
       hoursData?.forEach(h => {
+        if (!h.teilnehmer_id) return; // Skip entries without teilnehmer_id
         const existing = hoursByTeilnehmer.get(h.teilnehmer_id) || { hours: 0, dates: new Set() };
         existing.hours += parseFloat(h.hours.toString());
         existing.dates.add(h.date);

@@ -8,6 +8,8 @@ export interface DozentHours {
   hours: number;
   date: string;
   description: string;
+  category?: string;
+  status?: string;
   created_at: string;
   updated_at: string;
 }
