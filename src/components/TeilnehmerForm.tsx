@@ -24,6 +24,7 @@ interface Teilnehmer {
   house_number: string;
   postal_code: string;
   city: string;
+  elite_kleingruppe?: boolean;
 }
 
 const GERMAN_STATES = [
@@ -74,7 +75,8 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
     street: '',
     house_number: '',
     postal_code: '',
-    city: ''
+    city: '',
+    elite_kleingruppe: false
   });
 
   const isEditing = !!teilnehmer?.id;
@@ -100,7 +102,8 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
         street: (teilnehmer as any).street || '',
         house_number: (teilnehmer as any).house_number || '',
         postal_code: (teilnehmer as any).postal_code || '',
-        city: (teilnehmer as any).city || ''
+        city: (teilnehmer as any).city || '',
+        elite_kleingruppe: (teilnehmer as any).elite_kleingruppe || false
       });
     }
   }, [teilnehmer]);
@@ -117,12 +120,13 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
 
     try {
       // Use selected dozent from dropdown, or any of the legal area dozents as fallback
+      // Elite-Kleingruppe participants don't need a dozent assigned here
       const dozentId = formData.dozent_id || 
                        formData.dozent_zivilrecht_id || 
                        formData.dozent_strafrecht_id || 
                        formData.dozent_oeffentliches_recht_id;
       
-      if (!dozentId) {
+      if (!dozentId && !formData.elite_kleingruppe) {
         addToast('Bitte mindestens einen Dozenten zuweisen', 'error');
         setIsLoading(false);
         return;
@@ -140,7 +144,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
         contract_start: formData.contract_start || null,
         contract_end: formData.contract_end || null,
         booked_hours: formData.booked_hours || null,
-        dozent_id: dozentId,
+        dozent_id: dozentId || null,
         legal_areas: formData.legal_areas.length > 0 ? formData.legal_areas : null,
         dozent_zivilrecht_id: formData.dozent_zivilrecht_id || null,
         dozent_strafrecht_id: formData.dozent_strafrecht_id || null,
@@ -151,6 +155,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
         house_number: formData.house_number.trim() || null,
         postal_code: formData.postal_code.trim() || null,
         city: formData.city.trim() || null,
+        elite_kleingruppe: formData.elite_kleingruppe || false,
         updated_at: new Date().toISOString()
       };
 
@@ -373,6 +378,19 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
             </select>
           </div>
 
+          {/* Elite-Kleingruppe Checkbox */}
+          <div>
+            <label className="flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formData.elite_kleingruppe || false}
+                onChange={(e) => setFormData({ ...formData, elite_kleingruppe: e.target.checked })}
+                className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+              />
+              <span className="ml-2 text-sm font-medium text-gray-700">Elite-Kleingruppe</span>
+            </label>
+          </div>
+
           {/* Legal Areas - Checkboxes */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -441,8 +459,8 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
             />
           </div>
 
-          {/* Dynamic Dozent Assignment based on selected legal areas */}
-          {formData.legal_areas.length > 0 && (
+          {/* Dynamic Dozent Assignment based on selected legal areas - hidden for Elite-Kleingruppe */}
+          {formData.legal_areas.length > 0 && !formData.elite_kleingruppe && (
             <div className="space-y-4">
               <label className="block text-sm font-medium text-gray-700">
                 Dozenten nach Rechtsgebiet

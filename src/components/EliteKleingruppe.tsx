@@ -100,7 +100,18 @@ interface Teilnehmer {
   email: string;
 }
 
-type SubTab = 'einheiten' | 'klausuren' | 'kommunikation';
+type SubTab = 'einheiten' | 'klausuren' | 'kommunikation' | 'kurszeiten';
+
+interface CourseTime {
+  id: string;
+  weekday: number;
+  start_time: string;
+  end_time: string;
+  legal_area: string;
+  description: string | null;
+  meeting_link: string | null;
+  is_active: boolean;
+}
 
 interface EliteKleingruppeProps {
   isAdmin?: boolean;
@@ -150,6 +161,19 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
   const [newDozentId, setNewDozentId] = useState('');
   const [newDozentLegalArea, setNewDozentLegalArea] = useState('');
   const [allDozenten, setAllDozenten] = useState<{id: string; name: string; email: string}[]>([]);
+  
+  // Kurszeiten state
+  const [courseTimes, setCourseTimes] = useState<CourseTime[]>([]);
+  const [showCourseTimeModal, setShowCourseTimeModal] = useState(false);
+  const [editingCourseTime, setEditingCourseTime] = useState<CourseTime | null>(null);
+  const [courseTimeForm, setCourseTimeForm] = useState({
+    weekday: 0,
+    start_time: '09:00',
+    end_time: '10:30',
+    legal_area: 'Zivilrecht',
+    description: '',
+    meeting_link: ''
+  });
 
   useEffect(() => {
     fetchData();
@@ -193,6 +217,10 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
       // Fetch all dozenten for assignment
       const { data: dozentenData } = await supabase.from('profiles').select('id, full_name, email').eq('role', 'dozent');
       setAllDozenten((dozentenData || []).map(d => ({ id: d.id, name: d.full_name || d.email, email: d.email })));
+      
+      // Fetch course times
+      const { data: courseTimesData } = await supabase.from('elite_course_times').select('*').eq('is_active', true).order('weekday').order('start_time');
+      setCourseTimes(courseTimesData || []);
       
       setMessages([]);
     } catch (error) {
@@ -437,6 +465,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
           <button onClick={() => setActiveSubTab('einheiten')} className={(activeSubTab === 'einheiten' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><Calendar className="h-4 w-4 mr-2" />Einheiten & Materialfreigabe</button>
           <button onClick={() => setActiveSubTab('klausuren')} className={(activeSubTab === 'klausuren' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><PenTool className="h-4 w-4 mr-2" />Klausurenkorrekturen</button>
           <button onClick={() => setActiveSubTab('kommunikation')} className={(activeSubTab === 'kommunikation' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><MessageSquare className="h-4 w-4 mr-2" />Kommunikation</button>
+          <button onClick={() => setActiveSubTab('kurszeiten')} className={(activeSubTab === 'kurszeiten' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><Clock className="h-4 w-4 mr-2" />Kurszeiten</button>
         </nav>
       </div>
 
@@ -818,6 +847,230 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                   ) : (
                     <><Save className="h-4 w-4 inline mr-1" />Korrektur speichern</>
                   )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Kurszeiten Tab */}
+      {activeSubTab === 'kurszeiten' && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-lg shadow">
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">Reguläre Kurszeiten</h3>
+                <p className="text-sm text-gray-500 mt-1">Wöchentliche Termine für die Elite-Kleingruppe</p>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingCourseTime(null);
+                  setCourseTimeForm({ weekday: 0, start_time: '09:00', end_time: '10:30', legal_area: 'Zivilrecht', description: '', meeting_link: '' });
+                  setShowCourseTimeModal(true);
+                }}
+                className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Kurszeit hinzufügen
+              </button>
+            </div>
+            
+            {courseTimes.length === 0 ? (
+              <div className="p-8 text-center">
+                <Clock className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                <h4 className="text-lg font-medium text-gray-900 mb-2">Keine Kurszeiten hinterlegt</h4>
+                <p className="text-gray-500">Fügen Sie reguläre Kurszeiten hinzu, damit Teilnehmer wissen, wann der Unterricht stattfindet.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-200">
+                {['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'].map((dayName, dayIndex) => {
+                  const dayTimes = courseTimes.filter(ct => ct.weekday === dayIndex);
+                  if (dayTimes.length === 0) return null;
+                  return (
+                    <div key={dayIndex} className="p-4">
+                      <h4 className="text-sm font-semibold text-gray-700 mb-3">{dayName}</h4>
+                      <div className="space-y-2">
+                        {dayTimes.map(ct => (
+                          <div key={ct.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                            <div className="flex items-center gap-4">
+                              <div className="flex items-center gap-2">
+                                <Clock className="h-4 w-4 text-gray-400" />
+                                <span className="font-medium text-gray-900">{ct.start_time.slice(0, 5)} - {ct.end_time.slice(0, 5)}</span>
+                              </div>
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                ct.legal_area === 'Zivilrecht' ? 'bg-blue-100 text-blue-700' :
+                                ct.legal_area === 'Strafrecht' ? 'bg-red-100 text-red-700' :
+                                'bg-green-100 text-green-700'
+                              }`}>
+                                {ct.legal_area}
+                              </span>
+                              {ct.description && <span className="text-sm text-gray-500">{ct.description}</span>}
+                              {ct.meeting_link && (
+                                <a
+                                  href={ct.meeting_link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary rounded text-xs hover:bg-primary/20"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                                  Meeting
+                                </a>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  setEditingCourseTime(ct);
+                                  setCourseTimeForm({
+                                    weekday: ct.weekday,
+                                    start_time: ct.start_time.slice(0, 5),
+                                    end_time: ct.end_time.slice(0, 5),
+                                    legal_area: ct.legal_area,
+                                    description: ct.description || '',
+                                    meeting_link: ct.meeting_link || ''
+                                  });
+                                  setShowCourseTimeModal(true);
+                                }}
+                                className="p-1.5 text-gray-400 hover:text-primary hover:bg-primary/10 rounded"
+                              >
+                                <PenTool className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (confirm('Kurszeit wirklich löschen?')) {
+                                    await supabase.from('elite_course_times').delete().eq('id', ct.id);
+                                    fetchData();
+                                  }
+                                }}
+                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Kurszeit Modal */}
+      {showCourseTimeModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4">
+            <div className="fixed inset-0 bg-black/50" onClick={() => setShowCourseTimeModal(false)} />
+            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  {editingCourseTime ? 'Kurszeit bearbeiten' : 'Neue Kurszeit'}
+                </h3>
+                <button onClick={() => setShowCourseTimeModal(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Wochentag</label>
+                  <select
+                    value={courseTimeForm.weekday}
+                    onChange={(e) => setCourseTimeForm({ ...courseTimeForm, weekday: parseInt(e.target.value) })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  >
+                    <option value={0}>Montag</option>
+                    <option value={1}>Dienstag</option>
+                    <option value={2}>Mittwoch</option>
+                    <option value={3}>Donnerstag</option>
+                    <option value={4}>Freitag</option>
+                    <option value={5}>Samstag</option>
+                    <option value={6}>Sonntag</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Startzeit</label>
+                    <input
+                      type="time"
+                      value={courseTimeForm.start_time}
+                      onChange={(e) => setCourseTimeForm({ ...courseTimeForm, start_time: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Endzeit</label>
+                    <input
+                      type="time"
+                      value={courseTimeForm.end_time}
+                      onChange={(e) => setCourseTimeForm({ ...courseTimeForm, end_time: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Rechtsgebiet</label>
+                  <select
+                    value={courseTimeForm.legal_area}
+                    onChange={(e) => setCourseTimeForm({ ...courseTimeForm, legal_area: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  >
+                    <option value="Zivilrecht">Zivilrecht</option>
+                    <option value="Strafrecht">Strafrecht</option>
+                    <option value="Öffentliches Recht">Öffentliches Recht</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Beschreibung (optional)</label>
+                  <input
+                    type="text"
+                    value={courseTimeForm.description}
+                    onChange={(e) => setCourseTimeForm({ ...courseTimeForm, description: e.target.value })}
+                    placeholder="z.B. Klausurenkurs, Grundkurs..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Meeting-Link (optional)</label>
+                  <input
+                    type="url"
+                    value={courseTimeForm.meeting_link}
+                    onChange={(e) => setCourseTimeForm({ ...courseTimeForm, meeting_link: e.target.value })}
+                    placeholder="https://zoom.us/j/... oder https://meet.google.com/..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end space-x-3">
+                <button onClick={() => setShowCourseTimeModal(false)} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
+                  Abbrechen
+                </button>
+                <button
+                  onClick={async () => {
+                    const data = {
+                      weekday: courseTimeForm.weekday,
+                      start_time: courseTimeForm.start_time,
+                      end_time: courseTimeForm.end_time,
+                      legal_area: courseTimeForm.legal_area,
+                      description: courseTimeForm.description || null,
+                      meeting_link: courseTimeForm.meeting_link || null
+                    };
+                    if (editingCourseTime) {
+                      await supabase.from('elite_course_times').update(data).eq('id', editingCourseTime.id);
+                    } else {
+                      await supabase.from('elite_course_times').insert(data);
+                    }
+                    setShowCourseTimeModal(false);
+                    fetchData();
+                  }}
+                  className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+                >
+                  <Save className="h-4 w-4 inline mr-1" />
+                  {editingCourseTime ? 'Speichern' : 'Hinzufügen'}
                 </button>
               </div>
             </div>

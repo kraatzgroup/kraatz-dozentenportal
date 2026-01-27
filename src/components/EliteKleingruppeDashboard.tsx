@@ -51,6 +51,16 @@ interface Message {
   is_group_message: boolean;
 }
 
+interface CourseTime {
+  id: string;
+  weekday: number;
+  start_time: string;
+  end_time: string;
+  legal_area: string;
+  description: string | null;
+  meeting_link: string | null;
+}
+
 type Tab = 'dashboard' | 'kalender' | 'materialien' | 'klausuren' | 'kommunikation';
 
 export function EliteKleingruppeDashboard() {
@@ -87,6 +97,7 @@ export function EliteKleingruppeDashboard() {
   const [examStartDate, setExamStartDate] = useState<string | null>(null);
   const [showExamDateInput, setShowExamDateInput] = useState(false);
   const [tempExamDate, setTempExamDate] = useState('');
+  const [courseTimes, setCourseTimes] = useState<CourseTime[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -94,7 +105,13 @@ export function EliteKleingruppeDashboard() {
     fetchMessages();
     fetchDozenten();
     fetchProfileData();
+    fetchCourseTimes();
   }, [user]);
+
+  const fetchCourseTimes = async () => {
+    const { data } = await supabase.from('elite_course_times').select('*').eq('is_active', true).order('weekday').order('start_time');
+    setCourseTimes(data || []);
+  };
 
   const fetchProfileData = async () => {
     if (!user) return;
@@ -807,47 +824,153 @@ export function EliteKleingruppeDashboard() {
                     </div>
                   </div>
 
-                  {/* Notenverteilung */}
+                  {/* Punkteverlauf Diagramm - 3 separate Grafiken */}
                   <div>
-                    <p className="text-sm font-medium text-gray-700 mb-3">Notenverteilung</p>
-                    <div className="grid grid-cols-5 gap-2">
-                      {[
-                        { label: '16-18', range: [16, 18], color: 'bg-green-500' },
-                        { label: '13-15', range: [13, 15], color: 'bg-green-400' },
-                        { label: '10-12', range: [10, 12], color: 'bg-yellow-400' },
-                        { label: '7-9', range: [7, 9], color: 'bg-yellow-500' },
-                        { label: '4-6', range: [4, 6], color: 'bg-orange-500' },
-                      ].map(({ label, range, color }) => {
-                        const count = klausuren.filter(k => k.status === 'completed' && k.score !== undefined && k.score >= range[0] && k.score <= range[1]).length;
+                    <p className="text-sm font-medium text-gray-700 mb-3">Punkteverlauf nach Rechtsgebieten</p>
+                    
+                    {(() => {
+                      const completedKlausuren = klausuren
+                        .filter(k => k.status === 'completed' && k.score !== undefined)
+                        .sort((a, b) => new Date(a.corrected_at || a.submitted_at).getTime() - new Date(b.corrected_at || b.submitted_at).getTime());
+                      
+                      if (completedKlausuren.length === 0) {
                         return (
-                          <div key={label} className="text-center">
-                            <div className={`${color} text-white text-xs font-bold py-2 rounded-t-lg`}>
-                              {count}
-                            </div>
-                            <div className="bg-gray-100 text-xs text-gray-600 py-1 rounded-b-lg">
-                              {label}
-                            </div>
+                          <div className="text-center py-6 text-gray-400">
+                            <p className="text-sm">Noch keine korrigierten Klausuren</p>
                           </div>
                         );
-                      })}
-                    </div>
-                    <div className="grid grid-cols-4 gap-2 mt-2">
-                      {[
-                        { label: '1-3', range: [1, 3], color: 'bg-red-400' },
-                        { label: '0', range: [0, 0], color: 'bg-red-500' },
-                      ].map(({ label, range, color }) => {
-                        const count = klausuren.filter(k => k.status === 'completed' && k.score !== undefined && k.score >= range[0] && k.score <= range[1]).length;
-                        return (
-                          <div key={label} className="text-center">
-                            <div className={`${color} text-white text-xs font-bold py-2 rounded-t-lg`}>
-                              {count}
-                            </div>
-                            <div className="bg-gray-100 text-xs text-gray-600 py-1 rounded-b-lg">
-                              {label}
-                            </div>
-                          </div>
-                        );
-                      })}
+                      }
+                      
+                      const legalAreas = [
+                        { name: 'Zivilrecht', color: '#3B82F6', bgColor: 'bg-blue-50' },
+                        { name: 'Strafrecht', color: '#EF4444', bgColor: 'bg-red-50' },
+                        { name: 'Öffentliches Recht', color: '#22C55E', bgColor: 'bg-green-50' },
+                      ];
+                      
+                      const chartHeight = 50;
+                      const chartWidth = 100;
+                      const padding = { top: 5, right: 5, bottom: 5, left: 15 };
+                      const innerWidth = chartWidth - padding.left - padding.right;
+                      const innerHeight = chartHeight - padding.top - padding.bottom;
+                      
+                      // Helper function to determine trend
+                      const getTrend = (klausurenList: typeof completedKlausuren) => {
+                        if (klausurenList.length < 2) return 'neutral';
+                        const lastScore = klausurenList[klausurenList.length - 1].score || 0;
+                        const prevScore = klausurenList[klausurenList.length - 2].score || 0;
+                        if (lastScore > prevScore) return 'improved';
+                        if (lastScore < prevScore) return 'declined';
+                        return 'stable';
+                      };
+                      
+                      return (
+                        <div className="grid grid-cols-3 gap-2">
+                          {legalAreas.map(({ name, color, bgColor }) => {
+                            const areaKlausuren = completedKlausuren.filter(k => k.legal_area === name);
+                            const trend = getTrend(areaKlausuren);
+                            
+                            const avgScore = areaKlausuren.length > 0 
+                              ? Math.round(areaKlausuren.reduce((sum, k) => sum + (k.score || 0), 0) / areaKlausuren.length)
+                              : 0;
+                            
+                            return (
+                              <div key={name} className={`${bgColor} rounded-lg p-2 relative`}>
+                                {/* Konfetti bei Verbesserung */}
+                                {trend === 'improved' && (
+                                  <div className="absolute -top-1 -right-1 animate-bounce">
+                                    <span className="text-sm">🎉</span>
+                                  </div>
+                                )}
+                                
+                                {/* Header - kompakt für 3-Spalten */}
+                                <div className="text-center mb-1">
+                                  <div className="text-xs font-semibold" style={{ color }}>{name}</div>
+                                  {areaKlausuren.length > 0 && (
+                                    <div className="text-xs text-gray-600">Ø {avgScore} Pkt.</div>
+                                  )}
+                                  {areaKlausuren.length >= 2 && (
+                                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium inline-block mt-1 ${
+                                      trend === 'improved' ? 'bg-green-100 text-green-700' :
+                                      trend === 'declined' ? 'bg-red-100 text-red-700' :
+                                      'bg-gray-100 text-gray-600'
+                                    }`}>
+                                      {trend === 'improved' ? '↑' :
+                                       trend === 'declined' ? '↓' :
+                                       '→'}
+                                    </span>
+                                  )}
+                                </div>
+                                
+                                {areaKlausuren.length === 0 ? (
+                                  <div className="h-8 flex items-center justify-center">
+                                    <span className="text-xs text-gray-400">-</span>
+                                  </div>
+                                ) : (
+                                  <svg width="100%" viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="overflow-visible">
+                                    {/* Y-Achse Beschriftung */}
+                                    <text x={padding.left - 2} y={padding.top + 3} fontSize="6" fill="#9CA3AF" textAnchor="end">18</text>
+                                    <text x={padding.left - 2} y={padding.top + innerHeight} fontSize="6" fill="#9CA3AF" textAnchor="end">0</text>
+                                    
+                                    {/* Horizontale Hilfslinien */}
+                                    <line x1={padding.left} y1={padding.top} x2={padding.left + innerWidth} y2={padding.top} stroke="#E5E7EB" strokeWidth="0.5" strokeDasharray="2,2" />
+                                    <line x1={padding.left} y1={padding.top + innerHeight} x2={padding.left + innerWidth} y2={padding.top + innerHeight} stroke="#E5E7EB" strokeWidth="0.5" />
+                                    
+                                    {/* Bestehensgrenze (4 Punkte) */}
+                                    <line 
+                                      x1={padding.left} 
+                                      y1={padding.top + innerHeight * (1 - 4/18)} 
+                                      x2={padding.left + innerWidth} 
+                                      y2={padding.top + innerHeight * (1 - 4/18)} 
+                                      stroke="#FCD34D" 
+                                      strokeWidth="0.5" 
+                                      strokeDasharray="2,1" 
+                                    />
+                                    
+                                    {/* Linie und Punkte */}
+                                    {(() => {
+                                      const points = areaKlausuren.map((k, i) => {
+                                        const x = padding.left + (i / Math.max(areaKlausuren.length - 1, 1)) * innerWidth;
+                                        const y = padding.top + innerHeight * (1 - (k.score || 0) / 18);
+                                        return { x, y, score: k.score, title: k.title, id: k.id };
+                                      });
+                                      
+                                      const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+                                      
+                                      return (
+                                        <g>
+                                          {points.length > 1 && (
+                                            <path d={linePath} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                          )}
+                                          {points.map((p, i) => (
+                                            <g 
+                                              key={i} 
+                                              onClick={() => setActiveTab('klausuren')}
+                                              style={{ cursor: 'pointer' }}
+                                            >
+                                              <circle cx={p.x} cy={p.y} r="4" fill={color} stroke="white" strokeWidth="1.5" />
+                                              <title>{p.title}: {p.score} Punkte - Klicken für Klausuren</title>
+                                            </g>
+                                          ))}
+                                        </g>
+                                      );
+                                    })()}
+                                  </svg>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                    
+                    {/* Gesamtstatistik */}
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">Gesamt</span>
+                        <span className="font-medium text-gray-900">
+                          {klausuren.filter(k => k.status === 'completed').length} / {klausuren.length} Klausuren
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -960,6 +1083,55 @@ export function EliteKleingruppeDashboard() {
                 </div>
               </div>
             </div>
+
+            {/* Kurszeiten mit Meeting-Links */}
+            {courseTimes.length > 0 && (
+              <div className="bg-white rounded-xl shadow p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Deine Kurszeiten</h3>
+                <div className="space-y-3">
+                  {['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'].map((dayName, dayIndex) => {
+                    const dayTimes = courseTimes.filter(ct => ct.weekday === dayIndex);
+                    if (dayTimes.length === 0) return null;
+                    return (
+                      <div key={dayIndex}>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">{dayName}</p>
+                        <div className="space-y-2">
+                          {dayTimes.map(ct => (
+                            <div key={ct.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                              <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2">
+                                  <Clock className="h-4 w-4 text-gray-400" />
+                                  <span className="font-medium text-gray-900">{ct.start_time.slice(0, 5)} - {ct.end_time.slice(0, 5)}</span>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  ct.legal_area === 'Zivilrecht' ? 'bg-blue-100 text-blue-700' :
+                                  ct.legal_area === 'Strafrecht' ? 'bg-red-100 text-red-700' :
+                                  'bg-green-100 text-green-700'
+                                }`}>
+                                  {ct.legal_area}
+                                </span>
+                                {ct.description && <span className="text-sm text-gray-500">{ct.description}</span>}
+                              </div>
+                              {ct.meeting_link && (
+                                <a
+                                  href={ct.meeting_link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                                  Meeting beitreten
+                                </a>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Deine Dozenten */}
             <div className="bg-white rounded-xl shadow p-6">

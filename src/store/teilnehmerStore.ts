@@ -9,6 +9,28 @@ export interface Teilnehmer {
   active_since: string;
   created_at: string;
   updated_at: string;
+  elite_kleingruppe?: boolean;
+  contract_start?: string;
+  contract_end?: string;
+  booked_hours?: number;
+  completed_hours?: number;
+  legal_areas?: string[];
+  first_name?: string;
+  last_name?: string;
+  study_goal?: string;
+  exam_date?: string;
+  state_law?: string;
+  package_id?: string;
+  source?: string;
+  street?: string;
+  house_number?: string;
+  postal_code?: string;
+  city?: string;
+  phone?: string;
+  dozent_id?: string;
+  dozent_zivilrecht_id?: string;
+  dozent_strafrecht_id?: string;
+  dozent_oeffentliches_recht_id?: string;
 }
 
 interface TeilnehmerState {

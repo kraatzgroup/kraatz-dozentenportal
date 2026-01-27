@@ -18,7 +18,6 @@ import { InvoiceManagement } from './InvoiceManagement';
 import { AvailabilitySection } from './AvailabilitySection';
 import { useSalesStore } from '../store/salesStore';
 import { DozentenDashboard } from './DozentenDashboard';
-import '../utils/testDatabase'; // This will run the database test
 
 interface DashboardProps {
   isAdmin?: boolean;
@@ -81,7 +80,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     hours: '',
     date: new Date().toISOString().split('T')[0],
     description: '',
-    legal_area: ''
+    legal_area: '',
+    lesson_type: 'einzelunterricht' as 'einzelunterricht' | 'elite_kleingruppe'
   });
   const [teilnehmerSearch, setTeilnehmerSearch] = useState('');
   const [teilnehmerSearchResults, setTeilnehmerSearchResults] = useState<any[]>([]);
@@ -387,7 +387,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
         hours: '',
         date: new Date().toISOString().split('T')[0],
         description: '',
-        legal_area: ''
+        legal_area: '',
+        lesson_type: 'einzelunterricht'
       });
       
       // Refresh the monthly summary to show updated hours
@@ -1218,6 +1219,36 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                     </div>
 
                     <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Unterrichtsart
+                      </label>
+                      <div className="flex items-center space-x-4">
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            name="lesson_type"
+                            value="einzelunterricht"
+                            checked={hoursFormData.lesson_type === 'einzelunterricht'}
+                            onChange={(e) => setHoursFormData({ ...hoursFormData, lesson_type: e.target.value as 'einzelunterricht' | 'elite_kleingruppe' })}
+                            className="h-4 w-4 text-primary focus:ring-primary border-gray-300"
+                          />
+                          <span className="ml-2 text-sm text-gray-700">Einzelunterricht</span>
+                        </label>
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            name="lesson_type"
+                            value="elite_kleingruppe"
+                            checked={hoursFormData.lesson_type === 'elite_kleingruppe'}
+                            onChange={(e) => setHoursFormData({ ...hoursFormData, lesson_type: e.target.value as 'einzelunterricht' | 'elite_kleingruppe' })}
+                            className="h-4 w-4 text-primary focus:ring-primary border-gray-300"
+                          />
+                          <span className="ml-2 text-sm text-gray-700">Elite-Kleingruppe</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Rechtsgebiet
                       </label>
@@ -1263,7 +1294,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                         hours: '',
                         date: new Date().toISOString().split('T')[0],
                         description: '',
-                        legal_area: ''
+                        legal_area: '',
+                        lesson_type: 'einzelunterricht'
                       });
                     }}
                     className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"

@@ -22,6 +22,10 @@ export interface MonthlyHoursSummary {
   teilnehmer_name: string;
   total_hours: number;
   days_worked: number;
+  contract_start?: string;
+  contract_end?: string;
+  booked_hours?: number;
+  completed_hours?: number;
 }
 
 export interface TeilnehmerDozent {
@@ -192,10 +196,10 @@ export const useHoursStore = create<HoursState>((set, get) => ({
         return;
       }
       
-      // Fetch teilnehmer names
+      // Fetch teilnehmer names and contract data
       const { data: teilnehmerData, error: teilnehmerError } = await supabase
         .from('teilnehmer')
-        .select('id, name')
+        .select('id, name, contract_start, contract_end, booked_hours, completed_hours')
         .in('id', teilnehmerIds);
       
       if (teilnehmerError) {
@@ -203,7 +207,15 @@ export const useHoursStore = create<HoursState>((set, get) => ({
         throw teilnehmerError;
       }
       
-      const teilnehmerMap = new Map(teilnehmerData?.map(t => [t.id, t.name]) || []);
+      const teilnehmerMap = new Map<string, { name: string; contract_start?: string; contract_end?: string; booked_hours?: number; completed_hours?: number }>(
+        teilnehmerData?.map(t => [t.id, {
+          name: t.name,
+          contract_start: t.contract_start,
+          contract_end: t.contract_end,
+          booked_hours: t.booked_hours,
+          completed_hours: t.completed_hours
+        }]) || []
+      );
       
       // Group hours by teilnehmer (skip entries with null teilnehmer_id)
       const hoursByTeilnehmer = new Map<string, { hours: number; dates: Set<string> }>();
@@ -216,12 +228,19 @@ export const useHoursStore = create<HoursState>((set, get) => ({
       });
       
       // Build summary data
-      const summaryData = Array.from(hoursByTeilnehmer.entries()).map(([teilnehmerId, data]) => ({
-        teilnehmer_id: teilnehmerId,
-        teilnehmer_name: teilnehmerMap.get(teilnehmerId) || 'Unbekannt',
-        total_hours: data.hours,
-        days_worked: data.dates.size
-      }));
+      const summaryData = Array.from(hoursByTeilnehmer.entries()).map(([teilnehmerId, data]) => {
+        const teilnehmerInfo = teilnehmerMap.get(teilnehmerId);
+        return {
+          teilnehmer_id: teilnehmerId,
+          teilnehmer_name: teilnehmerInfo?.name || 'Unbekannt',
+          total_hours: data.hours,
+          days_worked: data.dates.size,
+          contract_start: teilnehmerInfo?.contract_start,
+          contract_end: teilnehmerInfo?.contract_end,
+          booked_hours: teilnehmerInfo?.booked_hours,
+          completed_hours: teilnehmerInfo?.completed_hours
+        };
+      });
       
       console.log('Final monthly summary:', summaryData);
       set({ monthlySummary: summaryData, isLoading: false });
