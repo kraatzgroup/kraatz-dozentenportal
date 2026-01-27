@@ -527,6 +527,21 @@ export function EliteKleingruppeDashboard() {
       </div>
 
       {/* Tabs */}
+      {/* Zurück-Balken wenn nicht auf Dashboard */}
+      {activeTab !== 'dashboard' && (
+        <div className="bg-primary border-b border-primary">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className="py-3 flex items-center text-sm font-medium text-white hover:text-white/80 transition-colors"
+            >
+              <ChevronLeft className="h-5 w-5 mr-1" />
+              Zurück zum Dashboard
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <nav className="flex space-x-1">
@@ -557,13 +572,6 @@ export function EliteKleingruppeDashboard() {
             >
               <PenTool className="h-4 w-4 mr-2" />
               Meine Klausuren
-            </button>
-            <button
-              onClick={() => setActiveTab('kommunikation')}
-              className={`py-4 px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors ${activeTab === 'kommunikation' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
-            >
-              <MessageCircle className="h-4 w-4 mr-2" />
-              Kommunikation
             </button>
           </nav>
         </div>
@@ -1065,19 +1073,6 @@ export function EliteKleingruppeDashboard() {
                     <div className="ml-3 text-left">
                       <p className="text-sm font-medium text-gray-900">Klausur einreichen</p>
                       <p className="text-xs text-gray-500">Zur Korrektur hochladen</p>
-                    </div>
-                  </button>
-                  
-                  <button 
-                    onClick={() => setActiveTab('kommunikation')}
-                    className="w-full flex items-center p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
-                  >
-                    <div className="flex-shrink-0 p-2 bg-teal-100 rounded-lg">
-                      <MessageCircle className="h-5 w-5 text-teal-600" />
-                    </div>
-                    <div className="ml-3 text-left">
-                      <p className="text-sm font-medium text-gray-900">Nachricht schreiben</p>
-                      <p className="text-xs text-gray-500">Dozenten oder Gruppe kontaktieren</p>
                     </div>
                   </button>
                 </div>

@@ -27,6 +27,17 @@ import {
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 
+// Einheiten-Dauer nach Rechtsgebiet (in Stunden)
+export const UNIT_DURATION_HOURS: Record<string, number> = {
+  'Zivilrecht': 2.5,
+  'Öffentliches Recht': 2,
+  'Strafrecht': 2
+};
+
+export const getUnitDurationHours = (legalArea: string): number => {
+  return UNIT_DURATION_HOURS[legalArea] || 2;
+};
+
 interface TeachingMaterial {
   id: string;
   title: string;
