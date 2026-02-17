@@ -29,6 +29,9 @@ export interface Invoice {
     house_number?: string;
     postal_code?: string;
     city?: string;
+    hourly_rate_unterricht?: number;
+    hourly_rate_elite?: number;
+    hourly_rate_sonstige?: number;
   };
 }
 
@@ -85,7 +88,10 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
             street,
             house_number,
             postal_code,
-            city
+            city,
+            hourly_rate_unterricht,
+            hourly_rate_elite,
+            hourly_rate_sonstige
           )
         `)
         .order('created_at', { ascending: false });
@@ -98,7 +104,13 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
       const { data, error } = await query;
       if (error) throw error;
 
-      set({ invoices: data || [] });
+      // Supabase returns joined single relations as arrays, normalize to objects
+      const normalized = (data || []).map((inv: any) => ({
+        ...inv,
+        dozent: Array.isArray(inv.dozent) ? inv.dozent[0] : inv.dozent
+      }));
+
+      set({ invoices: normalized as Invoice[] });
     } catch (error: any) {
       console.error('Error fetching invoices:', error);
       set({ error: error.message });
@@ -121,33 +133,50 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
       const startDate = `${data.year}-${String(data.month).padStart(2, '0')}-01`;
       const endDate = `${data.year}-${String(data.month).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
 
-      // Fetch participant hours
+      // Fetch dozent's hourly rates
+      const { data: dozentProfile } = await supabase
+        .from('profiles')
+        .select('hourly_rate_unterricht, hourly_rate_elite, hourly_rate_sonstige')
+        .eq('id', targetDozentId)
+        .single();
+
+      const rateUnterricht = dozentProfile?.hourly_rate_unterricht || 0;
+      const rateElite = dozentProfile?.hourly_rate_elite || 0;
+      const rateSonstige = dozentProfile?.hourly_rate_sonstige || 0;
+
+      // Fetch participant hours with elite_kleingruppe flag
       const { data: participantHours, error: hoursError } = await supabase
         .from('participant_hours')
-        .select('hours')
+        .select('hours, teilnehmer:teilnehmer(elite_kleingruppe)')
         .eq('dozent_id', targetDozentId)
         .gte('date', startDate)
         .lte('date', endDate);
 
       if (hoursError) throw hoursError;
 
-      // Fetch dozent hours
+      // Fetch dozent hours with category
       const { data: dozentHours, error: dozentHoursError } = await supabase
         .from('dozent_hours')
-        .select('hours')
+        .select('hours, category')
         .eq('dozent_id', targetDozentId)
         .gte('date', startDate)
         .lte('date', endDate);
 
       if (dozentHoursError) throw dozentHoursError;
 
-      // Calculate total hours
-      const totalParticipantHours = participantHours?.reduce((sum, h) => sum + parseFloat(h.hours.toString()), 0) || 0;
-      const totalDozentHours = dozentHours?.reduce((sum, h) => sum + parseFloat(h.hours.toString()), 0) || 0;
-      const totalHours = totalParticipantHours + totalDozentHours;
+      // Calculate total hours per category
+      const regularHours = (participantHours || []).filter((h: any) => !h.teilnehmer?.elite_kleingruppe);
+      const eliteParticipantHours = (participantHours || []).filter((h: any) => h.teilnehmer?.elite_kleingruppe);
+      const eliteDozentHours = (dozentHours || []).filter((h: any) => h.category && h.category.toLowerCase().includes('elite'));
+      const sonstigeHours = (dozentHours || []).filter((h: any) => !h.category || !h.category.toLowerCase().includes('elite'));
 
-      // Set amount to 0 since it will be calculated based on agreed hourly rates
-      const totalAmount = 0;
+      const totalRegular = regularHours.reduce((sum: number, h: any) => sum + parseFloat(h.hours.toString()), 0);
+      const totalElite = eliteParticipantHours.reduce((sum: number, h: any) => sum + parseFloat(h.hours.toString()), 0)
+        + eliteDozentHours.reduce((sum: number, h: any) => sum + parseFloat(h.hours.toString()), 0);
+      const totalSonstige = sonstigeHours.reduce((sum: number, h: any) => sum + parseFloat(h.hours.toString()), 0);
+
+      // Calculate total amount based on hourly rates
+      const totalAmount = (totalRegular * rateUnterricht) + (totalElite * rateElite) + (totalSonstige * rateSonstige);
 
       // Use atomic stored procedure to create invoice with unique number
       const { data: newInvoice, error } = await supabase
@@ -264,7 +293,7 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
       const startDate = invoice.period_start;
       const endDate = invoice.period_end;
 
-      // Get participant hours
+      // Get participant hours with elite_kleingruppe flag
       const { data: participantHours, error: participantError } = await supabase
         .from('participant_hours')
         .select(`
@@ -272,7 +301,7 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
           hours,
           description,
           legal_area,
-          teilnehmer:teilnehmer(name)
+          teilnehmer:teilnehmer(name, elite_kleingruppe)
         `)
         .eq('dozent_id', invoice.dozent_id)
         .gte('date', startDate)
@@ -281,10 +310,10 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
 
       if (participantError) throw participantError;
 
-      // Get dozent hours
+      // Get dozent hours with category
       const { data: dozentHours, error: dozentError } = await supabase
         .from('dozent_hours')
-        .select('date, hours, description')
+        .select('date, hours, description, category')
         .eq('dozent_id', invoice.dozent_id)
         .gte('date', startDate)
         .lte('date', endDate)
@@ -292,11 +321,16 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
 
       if (dozentError) throw dozentError;
 
-      // Generate PDF
+      // Generate PDF - normalize Supabase join arrays to objects
+      const normalizedParticipantHours = (participantHours || []).map((h: any) => ({
+        ...h,
+        teilnehmer: Array.isArray(h.teilnehmer) ? h.teilnehmer[0] : h.teilnehmer
+      }));
+
       await generateInvoicePDF({
-        invoice,
-        participantHours: participantHours || [],
-        dozentHours: dozentHours || []
+        invoice: invoice as any,
+        participantHours: normalizedParticipantHours as any,
+        dozentHours: (dozentHours || []) as any
       });
 
     } catch (error: any) {

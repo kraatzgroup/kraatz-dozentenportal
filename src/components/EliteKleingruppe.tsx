@@ -22,12 +22,26 @@ import {
   FolderOpen,
   Download,
   Save,
-  X
+  X,
+  Edit2,
+  Trash2
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 
-// Einheiten-Dauer nach Rechtsgebiet (in Stunden)
+// Einheitstypen mit automatischer Dauer (in Minuten)
+export const UNIT_TYPES = {
+  'unterricht_zivilrecht': { label: 'Unterricht Zivilrecht', duration: 150, legalArea: 'Zivilrecht' },
+  'unterricht_strafrecht': { label: 'Unterricht Strafrecht', duration: 120, legalArea: 'Strafrecht' },
+  'unterricht_oeffentliches_recht': { label: 'Unterricht öffentliches Recht', duration: 120, legalArea: 'Öffentliches Recht' },
+  'wiederholung_zivilrecht': { label: 'Wiederholungseinheit Zivilrecht', duration: 150, legalArea: 'Zivilrecht' },
+  'wiederholung_strafrecht': { label: 'Wiederholungseinheit Strafrecht', duration: 100, legalArea: 'Strafrecht' },
+  'wiederholung_oeffentliches_recht': { label: 'Wiederholungseinheit öffentliches Recht', duration: 70, legalArea: 'Öffentliches Recht' },
+} as const;
+
+export type UnitType = keyof typeof UNIT_TYPES;
+
+// Einheiten-Dauer nach Rechtsgebiet (in Stunden) - Legacy
 export const UNIT_DURATION_HOURS: Record<string, number> = {
   'Zivilrecht': 2.5,
   'Öffentliches Recht': 2,
@@ -36,6 +50,22 @@ export const UNIT_DURATION_HOURS: Record<string, number> = {
 
 export const getUnitDurationHours = (legalArea: string): number => {
   return UNIT_DURATION_HOURS[legalArea] || 2;
+};
+
+export const formatDuration = (minutes: number): string => {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hours === 0) return `${mins} Min`;
+  if (mins === 0) return `${hours} Std`;
+  return `${hours} Std ${mins} Min`;
+};
+
+export const calculateEndTime = (startTime: string, durationMinutes: number): string => {
+  const [hours, minutes] = startTime.split(':').map(Number);
+  const totalMinutes = hours * 60 + minutes + durationMinutes;
+  const endHours = Math.floor(totalMinutes / 60) % 24;
+  const endMins = totalMinutes % 60;
+  return `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
 };
 
 interface TeachingMaterial {
@@ -66,6 +96,22 @@ interface ScheduledRelease {
   is_released: boolean;
   created_at: string;
   legal_area: string | null;
+  unit_type: UnitType | null;
+  duration_minutes: number | null;
+  start_time: string | null;
+  end_time: string | null;
+  zoom_link: string | null;
+  klausur_folder_id: string | null;
+  solution_material_ids: string[];
+  solutions_released: boolean;
+  solution_release_date: string | null;
+  solution_release_time: string | null;
+  is_recurring: boolean;
+  recurrence_type: 'weekly' | 'monthly' | null;
+  recurrence_end_date: string | null;
+  recurrence_count: number | null;
+  parent_release_id: string | null;
+  dozent_id: string | null;
 }
 
 interface Klausur {
@@ -92,6 +138,7 @@ interface DozentAssignment {
   dozent_id: string;
   dozent_name?: string;
   legal_area: string;
+  zoom_link?: string;
 }
 
 interface Message {
@@ -157,6 +204,26 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
   const [materialSearchTerm, setMaterialSearchTerm] = useState('');
   const [legalAreaFilter, setLegalAreaFilter] = useState<string>('alle');
   const [releaseLegalArea, setReleaseLegalArea] = useState<string>('');
+  const [releaseUnitType, setReleaseUnitType] = useState<UnitType | ''>('');
+  const [releaseStartTime, setReleaseStartTime] = useState<string>('09:00');
+  const [releaseEndTime, setReleaseEndTime] = useState<string>('11:30');
+  const [releaseZoomLink, setReleaseZoomLink] = useState<string>('');
+  const [releaseKlausurFolderId, setReleaseKlausurFolderId] = useState<string>('');
+  const [releaseSolutionMaterialIds, setReleaseSolutionMaterialIds] = useState<string[]>([]);
+  const [solutionReleaseMode, setSolutionReleaseMode] = useState<'auto' | 'custom'>('auto');
+  const [customSolutionReleaseDate, setCustomSolutionReleaseDate] = useState<string>('');
+  const [customSolutionReleaseTime, setCustomSolutionReleaseTime] = useState<string>('');
+  const [releaseIsRecurring, setReleaseIsRecurring] = useState<boolean>(false);
+  const [releaseRecurrenceType, setReleaseRecurrenceType] = useState<'weekly' | 'monthly'>('weekly');
+  const [releaseRecurrenceEndDate, setReleaseRecurrenceEndDate] = useState<string>('');
+  const [releaseRecurrenceCount, setReleaseRecurrenceCount] = useState<number>(4);
+  const [editingZoomLink, setEditingZoomLink] = useState<string | null>(null);
+  const [tempZoomLink, setTempZoomLink] = useState<string>('');
+  const [additionalDocument, setAdditionalDocument] = useState<File | null>(null);
+  const [additionalDocumentTitle, setAdditionalDocumentTitle] = useState<string>('');
+  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
+  const [editingRelease, setEditingRelease] = useState<ScheduledRelease | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [klausurenFilter, setKlausurenFilter] = useState<string>('alle');
   const [klausurenStatusFilter, setKlausurenStatusFilter] = useState<string>('alle');
   const [showKorrekturModal, setShowKorrekturModal] = useState(false);
@@ -273,15 +340,182 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
     setFolderSearchTerm('');
     setMaterialSearchTerm('');
     setReleaseLegalArea('');
+    setReleaseUnitType('');
+    setReleaseStartTime('09:00');
+    setReleaseEndTime('11:30');
+    setReleaseZoomLink('');
+    setReleaseKlausurFolderId('');
+    setReleaseSolutionMaterialIds([]);
+    setSolutionReleaseMode('auto');
+    setCustomSolutionReleaseDate('');
+    setCustomSolutionReleaseTime('');
+    setReleaseIsRecurring(false);
+    setReleaseRecurrenceType('weekly');
+    setReleaseRecurrenceEndDate('');
+    setReleaseRecurrenceCount(4);
+    setAdditionalDocument(null);
+    setAdditionalDocumentTitle('');
+  };
+
+  const handleUnitTypeChange = (unitType: UnitType | '') => {
+    setReleaseUnitType(unitType);
+    // Klausur-Ordner zurücksetzen wenn Einheitstyp geändert wird
+    setReleaseKlausurFolderId('');
+    setReleaseSolutionMaterialIds([]);
+    if (unitType && UNIT_TYPES[unitType]) {
+      const unitConfig = UNIT_TYPES[unitType];
+      setReleaseLegalArea(unitConfig.legalArea);
+      // Automatisch Endzeit berechnen
+      const endTime = calculateEndTime(releaseStartTime, unitConfig.duration);
+      setReleaseEndTime(endTime);
+      // Automatisch Zoom-Link des zugewiesenen Dozenten laden
+      const assignment = dozentAssignments.find(a => a.legal_area === unitConfig.legalArea);
+      if (assignment?.zoom_link) {
+        setReleaseZoomLink(assignment.zoom_link);
+      }
+    }
+  };
+
+  const handleStartTimeChange = (time: string) => {
+    setReleaseStartTime(time);
+    if (releaseUnitType && UNIT_TYPES[releaseUnitType]) {
+      const endTime = calculateEndTime(time, UNIT_TYPES[releaseUnitType].duration);
+      setReleaseEndTime(endTime);
+    }
+  };
+
+  const handleSaveZoomLink = async (assignmentId: string, zoomLink: string) => {
+    try {
+      await supabase.from('elite_kleingruppe_dozenten').update({ zoom_link: zoomLink }).eq('id', assignmentId);
+      setEditingZoomLink(null);
+      setTempZoomLink('');
+      fetchData();
+    } catch (error) {
+      console.error('Error saving zoom link:', error);
+    }
   };
 
   const handleCreateRelease = async () => {
-    if (!selectedDate || !releaseTitle.trim()) return;
+    if (!selectedDate || !releaseTitle.trim() || !releaseUnitType) return;
+    setIsUploadingDocument(true);
     try {
-      await supabase.from('elite_kleingruppe_releases').insert({ release_date: selectedDate.toISOString().split('T')[0], title: releaseTitle, description: releaseDescription || null, material_ids: selectedMaterials, folder_ids: selectedFolders, is_released: new Date() >= selectedDate, legal_area: releaseLegalArea || null });
+      let additionalMaterialId: string | null = null;
+
+      // Zusätzliches Dokument hochladen falls vorhanden
+      if (additionalDocument && additionalDocumentTitle.trim()) {
+        const fileExt = additionalDocument.name.split('.').pop();
+        const fileName = `${Date.now()}_${additionalDocumentTitle.replace(/[^a-zA-Z0-9]/g, '_')}.${fileExt}`;
+        const filePath = `elite-kleingruppe/zusatzmaterial/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('teaching-materials')
+          .upload(filePath, additionalDocument);
+
+        if (uploadError) throw uploadError;
+
+        const { data: urlData } = supabase.storage
+          .from('teaching-materials')
+          .getPublicUrl(filePath);
+
+        // Material in der Datenbank erstellen
+        const { data: newMaterial, error: materialError } = await supabase
+          .from('teaching_materials')
+          .insert({
+            title: additionalDocumentTitle,
+            description: `Zusatzmaterial für: ${releaseTitle}`,
+            file_url: urlData.publicUrl,
+            file_name: additionalDocument.name,
+            file_type: additionalDocument.type || 'application/octet-stream',
+            file_size: additionalDocument.size,
+            category: 'Elite-Kleingruppe Zusatzmaterial',
+            is_active: true
+          })
+          .select()
+          .single();
+
+        if (materialError) throw materialError;
+        additionalMaterialId = newMaterial.id;
+      }
+
+      // Material-IDs zusammenführen
+      const allMaterialIds = additionalMaterialId 
+        ? [...selectedMaterials, additionalMaterialId]
+        : selectedMaterials;
+
+      const baseRelease = {
+        release_date: selectedDate.toISOString().split('T')[0],
+        title: releaseTitle,
+        description: releaseDescription || null,
+        material_ids: allMaterialIds,
+        folder_ids: selectedFolders,
+        is_released: new Date() >= selectedDate,
+        legal_area: releaseLegalArea || null,
+        unit_type: releaseUnitType || null,
+        duration_minutes: releaseUnitType ? UNIT_TYPES[releaseUnitType].duration : null,
+        start_time: releaseStartTime || null,
+        end_time: releaseEndTime || null,
+        zoom_link: releaseZoomLink || null,
+        klausur_folder_id: releaseKlausurFolderId || null,
+        solution_material_ids: releaseSolutionMaterialIds,
+        solutions_released: false,
+        solution_release_date: solutionReleaseMode === 'custom' && customSolutionReleaseDate ? customSolutionReleaseDate : null,
+        solution_release_time: solutionReleaseMode === 'custom' && customSolutionReleaseTime ? customSolutionReleaseTime : null,
+        is_recurring: releaseIsRecurring,
+        recurrence_type: releaseIsRecurring ? releaseRecurrenceType : null,
+        recurrence_end_date: releaseIsRecurring && releaseRecurrenceEndDate ? releaseRecurrenceEndDate : null,
+        recurrence_count: releaseIsRecurring ? releaseRecurrenceCount : null,
+        dozent_id: user?.id || null
+      };
+
+      // Ersten Termin erstellen
+      const { data: firstRelease, error: firstError } = await supabase
+        .from('elite_kleingruppe_releases')
+        .insert(baseRelease)
+        .select()
+        .single();
+
+      if (firstError) throw firstError;
+
+      // Wiederkehrende Termine erstellen
+      if (releaseIsRecurring && firstRelease) {
+        const recurringReleases = [];
+        let currentDate = new Date(selectedDate);
+        
+        for (let i = 1; i < releaseRecurrenceCount; i++) {
+          if (releaseRecurrenceType === 'weekly') {
+            currentDate = new Date(currentDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+          } else {
+            currentDate = new Date(currentDate.setMonth(currentDate.getMonth() + 1));
+          }
+
+          // Prüfen ob Enddatum überschritten
+          if (releaseRecurrenceEndDate && currentDate > new Date(releaseRecurrenceEndDate)) {
+            break;
+          }
+
+          recurringReleases.push({
+            ...baseRelease,
+            release_date: currentDate.toISOString().split('T')[0],
+            title: `${releaseTitle} (${i + 1})`,
+            is_released: new Date() >= currentDate,
+            parent_release_id: firstRelease.id
+          });
+        }
+
+        if (recurringReleases.length > 0) {
+          await supabase.from('elite_kleingruppe_releases').insert(recurringReleases);
+        }
+      }
+
       setShowReleaseModal(false);
+      setAdditionalDocument(null);
+      setAdditionalDocumentTitle('');
       fetchData();
-    } catch (error) { console.error('Error creating release:', error); }
+    } catch (error) { 
+      console.error('Error creating release:', error); 
+    } finally {
+      setIsUploadingDocument(false);
+    }
   };
 
   const handleToggleRelease = async (release: ScheduledRelease) => {
@@ -289,6 +523,74 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
       await supabase.from('elite_kleingruppe_releases').update({ is_released: !release.is_released }).eq('id', release.id);
       fetchData();
     } catch (error) { console.error('Error toggling release:', error); }
+  };
+
+  const handleDeleteRelease = async (release: ScheduledRelease) => {
+    if (!confirm(`Möchten Sie die Einheit "${release.title}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) {
+      return;
+    }
+    try {
+      await supabase.from('elite_kleingruppe_releases').delete().eq('id', release.id);
+      setExpandedRelease(null);
+      fetchData();
+    } catch (error) { console.error('Error deleting release:', error); }
+  };
+
+  const openEditReleaseModal = (release: ScheduledRelease) => {
+    setEditingRelease(release);
+    setSelectedDate(new Date(release.release_date));
+    setReleaseTitle(release.title);
+    setReleaseDescription(release.description || '');
+    setReleaseLegalArea(release.legal_area || '');
+    setReleaseUnitType(release.unit_type || '');
+    setReleaseStartTime(release.start_time?.slice(0, 5) || '09:00');
+    setReleaseEndTime(release.end_time?.slice(0, 5) || '11:30');
+    setReleaseZoomLink(release.zoom_link || '');
+    setReleaseKlausurFolderId(release.klausur_folder_id || '');
+    setReleaseSolutionMaterialIds(release.solution_material_ids || []);
+    setSelectedMaterials(release.material_ids || []);
+    setSelectedFolders(release.folder_ids || []);
+    setSolutionReleaseMode(release.solution_release_date ? 'custom' : 'auto');
+    setCustomSolutionReleaseDate(release.solution_release_date || '');
+    setCustomSolutionReleaseTime(release.solution_release_time?.slice(0, 5) || '');
+    setShowEditModal(true);
+  };
+
+  const handleUpdateRelease = async () => {
+    if (!editingRelease || !selectedDate) return;
+    
+    try {
+      const updateData = {
+        release_date: selectedDate.toISOString().split('T')[0],
+        title: releaseTitle,
+        description: releaseDescription || null,
+        material_ids: selectedMaterials,
+        folder_ids: selectedFolders,
+        legal_area: releaseLegalArea || null,
+        unit_type: releaseUnitType || null,
+        duration_minutes: releaseUnitType ? UNIT_TYPES[releaseUnitType as UnitType]?.duration : null,
+        start_time: releaseStartTime || null,
+        end_time: releaseEndTime || null,
+        zoom_link: releaseZoomLink || null,
+        klausur_folder_id: releaseKlausurFolderId || null,
+        solution_material_ids: releaseSolutionMaterialIds,
+        solution_release_date: solutionReleaseMode === 'custom' && customSolutionReleaseDate ? customSolutionReleaseDate : null,
+        solution_release_time: solutionReleaseMode === 'custom' && customSolutionReleaseTime ? customSolutionReleaseTime : null,
+      };
+
+      const { error } = await supabase
+        .from('elite_kleingruppe_releases')
+        .update(updateData)
+        .eq('id', editingRelease.id);
+
+      if (error) throw error;
+
+      setShowEditModal(false);
+      setEditingRelease(null);
+      fetchData();
+    } catch (error) {
+      console.error('Error updating release:', error);
+    }
   };
 
   const openKorrekturModal = (klausur: Klausur) => {
@@ -512,7 +814,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                     <option value="alle">Alle</option>
                     <option value="Zivilrecht">Zivilrecht</option>
                     <option value="Strafrecht">Strafrecht</option>
-                    <option value="Oeffentliches Recht">Oeffentliches Recht</option>
+                    <option value="Öffentliches Recht">Öffentliches Recht</option>
                   </select>
                 </div>
               </div>
@@ -540,7 +842,15 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                           {release.material_ids.map(id => { const m = materials.find(x => x.id === id); return m ? <span key={id} className="inline-flex items-center px-2 py-1 bg-gray-100 rounded text-xs"><FileText className="h-3 w-3 mr-1" />{m.title}</span> : null; })}
                           {release.folder_ids.map(id => { const f = folders.find(x => x.id === id); return f ? <span key={id} className="inline-flex items-center px-2 py-1 bg-blue-100 rounded text-xs"><FolderOpen className="h-3 w-3 mr-1" />{f.name}</span> : null; })}
                         </div>
-                        <button onClick={(e) => { e.stopPropagation(); handleToggleRelease(release); }} className={"inline-flex items-center px-3 py-1.5 rounded text-sm " + (release.is_released ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200')}>{release.is_released ? <><Lock className="h-4 w-4 mr-1" />Sperren</> : <><Unlock className="h-4 w-4 mr-1" />Jetzt freigeben</>}</button>
+                        <div className="flex items-center gap-2">
+                          <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-blue-100 text-blue-700 hover:bg-blue-200">
+                            <Edit2 className="h-4 w-4 mr-1" />Bearbeiten
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); handleToggleRelease(release); }} className={"inline-flex items-center px-3 py-1.5 rounded text-sm " + (release.is_released ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200')}>{release.is_released ? <><Lock className="h-4 w-4 mr-1" />Sperren</> : <><Unlock className="h-4 w-4 mr-1" />Jetzt freigeben</>}</button>
+                          <button onClick={(e) => { e.stopPropagation(); handleDeleteRelease(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-red-100 text-red-700 hover:bg-red-200">
+                            <Trash2 className="h-4 w-4 mr-1" />Löschen
+                          </button>
+                        </div>
                       </div>
                     )}
                   </li>
@@ -560,7 +870,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-lg font-medium text-gray-900">Dozenten-Zuweisung nach Rechtsgebiet</h3>
-                    <p className="text-sm text-gray-500 mt-1">Klausuren werden automatisch dem zustaendigen Dozenten zugewiesen</p>
+                    <p className="text-sm text-gray-500 mt-1">Klausuren werden automatisch dem zuständigen Dozenten zugewiesen</p>
                   </div>
                   <button onClick={() => setShowDozentModal(true)} className="inline-flex items-center px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm">
                     <Plus className="h-4 w-4 mr-1" />Dozent zuweisen
@@ -569,23 +879,73 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
               </div>
               <div className="p-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {['Zivilrecht', 'Strafrecht', 'Oeffentliches Recht'].map(area => {
+                  {['Zivilrecht', 'Strafrecht', 'Öffentliches Recht'].map(area => {
                     const assignment = dozentAssignments.find(a => a.legal_area === area);
                     const dozent = assignment ? allDozenten.find(d => d.id === assignment.dozent_id) : null;
                     return (
                       <div key={area} className="border border-gray-200 rounded-lg p-4">
                         <h4 className="font-medium text-gray-900 mb-2">{area}</h4>
                         {dozent ? (
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center">
-                              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                                <Users className="h-4 w-4 text-primary" />
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center">
+                                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                  <Users className="h-4 w-4 text-primary" />
+                                </div>
+                                <span className="ml-2 text-sm text-gray-700">{dozent.name}</span>
                               </div>
-                              <span className="ml-2 text-sm text-gray-700">{dozent.name}</span>
+                              <button onClick={() => handleRemoveDozentAssignment(assignment!.id)} className="text-red-500 hover:text-red-700">
+                                <X className="h-4 w-4" />
+                              </button>
                             </div>
-                            <button onClick={() => handleRemoveDozentAssignment(assignment!.id)} className="text-red-500 hover:text-red-700">
-                              <X className="h-4 w-4" />
-                            </button>
+                            {/* Zoom-Link Bearbeitung */}
+                            <div className="pt-2 border-t border-gray-100">
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Zoom-Link</label>
+                              {editingZoomLink === assignment!.id ? (
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="url"
+                                    value={tempZoomLink}
+                                    onChange={(e) => setTempZoomLink(e.target.value)}
+                                    placeholder="https://zoom.us/j/..."
+                                    className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-primary focus:border-primary"
+                                  />
+                                  <button
+                                    onClick={() => handleSaveZoomLink(assignment!.id, tempZoomLink)}
+                                    className="p-1 text-green-600 hover:bg-green-50 rounded"
+                                  >
+                                    <Save className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => { setEditingZoomLink(null); setTempZoomLink(''); }}
+                                    className="p-1 text-gray-400 hover:bg-gray-100 rounded"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-between">
+                                  {assignment?.zoom_link ? (
+                                    <a 
+                                      href={assignment.zoom_link} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-primary hover:underline truncate max-w-[150px]"
+                                    >
+                                      {assignment.zoom_link}
+                                    </a>
+                                  ) : (
+                                    <span className="text-xs text-gray-400 italic">Nicht hinterlegt</span>
+                                  )}
+                                  <button
+                                    onClick={() => { setEditingZoomLink(assignment!.id); setTempZoomLink(assignment?.zoom_link || ''); }}
+                                    className="p-1 text-gray-400 hover:text-primary hover:bg-primary/10 rounded"
+                                  >
+                                    <PenTool className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         ) : (
                           <p className="text-sm text-gray-400 italic">Kein Dozent zugewiesen</p>
@@ -617,7 +977,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                   <option value="alle">Alle</option>
                   <option value="Zivilrecht">Zivilrecht</option>
                   <option value="Strafrecht">Strafrecht</option>
-                  <option value="Oeffentliches Recht">Oeffentliches Recht</option>
+                  <option value="Öffentliches Recht">Öffentliches Recht</option>
                 </select>
               </div>
               <div className="flex items-center space-x-2">
@@ -726,29 +1086,592 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                 </div>
                 <div className="p-4 border-t border-gray-200"><div className="flex items-center space-x-2"><button className="p-2 text-gray-400 hover:text-gray-600"><Paperclip className="h-5 w-5" /></button><input type="text" placeholder="Nachricht schreiben..." className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} /><button onClick={handleSendMessage} disabled={!newMessage.trim()} className="p-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"><Send className="h-5 w-5" /></button></div></div>
               </>
-            ) : <div className="flex-1 flex items-center justify-center text-gray-500"><div className="text-center"><MessageSquare className="h-12 w-12 mx-auto mb-4 text-gray-300" /><p>Waehlen Sie einen Teilnehmer aus, um die Kommunikation zu starten</p></div></div>}
+            ) : <div className="flex-1 flex items-center justify-center text-gray-500"><div className="text-center"><MessageSquare className="h-12 w-12 mx-auto mb-4 text-gray-300" /><p>Wählen Sie einen Teilnehmer aus, um die Kommunikation zu starten</p></div></div>}
           </div>
         </div>
       )}
 
       {showReleaseModal && selectedDate && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen px-4">
+          <div className="flex items-center justify-center min-h-screen px-4 py-8">
             <div className="fixed inset-0 bg-black/50" onClick={() => setShowReleaseModal(false)} />
-            <div className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Einheit planen fuer {formatDate(selectedDate.toISOString())}</h3>
-              <p className="text-sm text-gray-500 mb-4">Waehlen Sie Materialien und Ordner aus, die an diesem Datum fuer die Elite-Kleingruppe freigegeben werden sollen.</p>
-              <div className="space-y-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Titel der Einheit *</label><input type="text" value={releaseTitle} onChange={(e) => setReleaseTitle(e.target.value)} placeholder="z.B. Klausur 1 - Zivilrecht AT" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Beschreibung (optional)</label><textarea value={releaseDescription} onChange={(e) => setReleaseDescription(e.target.value)} placeholder="Zusaetzliche Informationen zur Einheit..." rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Rechtsgebiet</label><select value={releaseLegalArea} onChange={(e) => setReleaseLegalArea(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"><option value="">Bitte waehlen...</option><option value="Zivilrecht">Zivilrecht</option><option value="Strafrecht">Strafrecht</option><option value="Oeffentliches Recht">Oeffentliches Recht</option></select></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-2">Ordner auswaehlen</label><div className="relative mb-2"><Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" /><input type="text" placeholder="Ordner suchen..." className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary" value={folderSearchTerm} onChange={(e) => setFolderSearchTerm(e.target.value)} /></div><div className="border border-gray-200 rounded-lg max-h-40 overflow-y-auto">{folders.length === 0 ? <p className="p-3 text-sm text-gray-500">Keine Ordner vorhanden</p> : folders.filter(f => f.name.toLowerCase().includes(folderSearchTerm.toLowerCase())).length === 0 ? <p className="p-3 text-sm text-gray-500">Keine Ordner gefunden</p> : folders.filter(f => f.name.toLowerCase().includes(folderSearchTerm.toLowerCase())).map(folder => <label key={folder.id} className="flex items-center p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0"><input type="checkbox" checked={selectedFolders.includes(folder.id)} onChange={() => toggleFolderSelection(folder.id)} className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded" /><FolderOpen className="h-4 w-4 ml-3 text-blue-500" /><span className="ml-2 text-sm text-gray-900">{folder.name}</span></label>)}</div></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-2">Einzelne Materialien auswaehlen</label><div className="relative mb-2"><Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" /><input type="text" placeholder="Materialien suchen..." className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary" value={materialSearchTerm} onChange={(e) => setMaterialSearchTerm(e.target.value)} /></div><div className="border border-gray-200 rounded-lg max-h-60 overflow-y-auto">{materials.length === 0 ? <p className="p-3 text-sm text-gray-500">Keine Materialien vorhanden</p> : materials.filter(m => m.title.toLowerCase().includes(materialSearchTerm.toLowerCase()) || (m.category && m.category.toLowerCase().includes(materialSearchTerm.toLowerCase()))).length === 0 ? <p className="p-3 text-sm text-gray-500">Keine Materialien gefunden</p> : materials.filter(m => m.title.toLowerCase().includes(materialSearchTerm.toLowerCase()) || (m.category && m.category.toLowerCase().includes(materialSearchTerm.toLowerCase()))).map(material => <label key={material.id} className="flex items-center p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0"><input type="checkbox" checked={selectedMaterials.includes(material.id)} onChange={() => toggleMaterialSelection(material.id)} className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded" /><FileText className="h-4 w-4 ml-3 text-gray-400" /><div className="ml-2"><span className="text-sm text-gray-900">{material.title}</span>{material.category && <span className="ml-2 text-xs text-gray-500">({material.category})</span>}</div></label>)}</div></div>
-                <div className="bg-gray-50 rounded-lg p-3"><p className="text-sm text-gray-600"><strong>Ausgewaehlt:</strong> {selectedFolders.length} Ordner, {selectedMaterials.length} Materialien</p></div>
+            <div className="relative bg-white rounded-lg shadow-xl max-w-3xl w-full p-6 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">Einheit planen für {formatDate(selectedDate.toISOString())}</h3>
+                  <p className="text-sm text-gray-500 mt-1">Planen Sie eine Unterrichtseinheit mit automatischer Zeitberechnung</p>
+                </div>
+                <button onClick={() => setShowReleaseModal(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="h-5 w-5" />
+                </button>
               </div>
+              
+              <div className="space-y-6">
+                {/* Typ der Einheit - Wichtigste Auswahl zuerst */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <label className="block text-sm font-medium text-blue-900 mb-2">Typ der Einheit *</label>
+                  <select 
+                    value={releaseUnitType} 
+                    onChange={(e) => handleUnitTypeChange(e.target.value as UnitType | '')} 
+                    className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
+                  >
+                    <option value="">Bitte wählen...</option>
+                    <optgroup label="Unterricht">
+                      <option value="unterricht_zivilrecht">Unterricht Zivilrecht (2 Std 30 Min)</option>
+                      <option value="unterricht_strafrecht">Unterricht Strafrecht (2 Std)</option>
+                      <option value="unterricht_oeffentliches_recht">Unterricht öffentliches Recht (2 Std)</option>
+                    </optgroup>
+                    <optgroup label="Wiederholungseinheit">
+                      <option value="wiederholung_zivilrecht">Wiederholungseinheit Zivilrecht (2 Std 30 Min)</option>
+                      <option value="wiederholung_strafrecht">Wiederholungseinheit Strafrecht (1 Std 40 Min)</option>
+                      <option value="wiederholung_oeffentliches_recht">Wiederholungseinheit öffentliches Recht (1 Std 10 Min)</option>
+                    </optgroup>
+                  </select>
+                  {releaseUnitType && (
+                    <p className="text-xs text-blue-700 mt-2">
+                      Rechtsgebiet: <strong>{UNIT_TYPES[releaseUnitType].legalArea}</strong> | 
+                      Dauer: <strong>{formatDuration(UNIT_TYPES[releaseUnitType].duration)}</strong>
+                    </p>
+                  )}
+                </div>
+
+                {/* Titel und Beschreibung */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Titel der Einheit *</label>
+                    <input 
+                      type="text" 
+                      value={releaseTitle} 
+                      onChange={(e) => setReleaseTitle(e.target.value)} 
+                      placeholder="z.B. Einheit 1 - BGB AT" 
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Rechtsgebiet</label>
+                    <select 
+                      value={releaseLegalArea} 
+                      onChange={(e) => setReleaseLegalArea(e.target.value)} 
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      disabled={!!releaseUnitType}
+                    >
+                      <option value="">Bitte wählen...</option>
+                      <option value="Zivilrecht">Zivilrecht</option>
+                      <option value="Strafrecht">Strafrecht</option>
+                      <option value="Öffentliches Recht">Öffentliches Recht</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Uhrzeit */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Startzeit</label>
+                    <input 
+                      type="time" 
+                      value={releaseStartTime} 
+                      onChange={(e) => handleStartTimeChange(e.target.value)} 
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Endzeit (automatisch)</label>
+                    <input 
+                      type="time" 
+                      value={releaseEndTime} 
+                      readOnly
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Dauer</label>
+                    <div className="px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600">
+                      {releaseUnitType ? formatDuration(UNIT_TYPES[releaseUnitType].duration) : '-'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Zoom Link */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Zoom-Link</label>
+                  <input 
+                    type="url" 
+                    value={releaseZoomLink} 
+                    onChange={(e) => setReleaseZoomLink(e.target.value)} 
+                    placeholder="https://zoom.us/j/..." 
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                  />
+                  {releaseZoomLink && (
+                    <p className="text-xs text-green-600 mt-1">✓ Zoom-Link wird automatisch vom zugewiesenen Dozenten übernommen</p>
+                  )}
+                </div>
+
+                {/* Wiederkehrendes Meeting */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <label className="flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={releaseIsRecurring} 
+                      onChange={(e) => setReleaseIsRecurring(e.target.checked)} 
+                      className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded" 
+                    />
+                    <span className="ml-2 text-sm font-medium text-gray-700">Wiederkehrendes Meeting</span>
+                  </label>
+                  
+                  {releaseIsRecurring && (
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Wiederholung</label>
+                        <select 
+                          value={releaseRecurrenceType} 
+                          onChange={(e) => setReleaseRecurrenceType(e.target.value as 'weekly' | 'monthly')} 
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                        >
+                          <option value="weekly">Wöchentlich</option>
+                          <option value="monthly">Monatlich</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Anzahl Termine</label>
+                        <input 
+                          type="number" 
+                          min="2" 
+                          max="52" 
+                          value={releaseRecurrenceCount} 
+                          onChange={(e) => setReleaseRecurrenceCount(parseInt(e.target.value) || 4)} 
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Enddatum (optional)</label>
+                        <input 
+                          type="date" 
+                          value={releaseRecurrenceEndDate} 
+                          onChange={(e) => setReleaseRecurrenceEndDate(e.target.value)} 
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Klausur-Ordner Auswahl */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Welche Klausur wird besprochen?</label>
+                  <select 
+                    value={releaseKlausurFolderId} 
+                    onChange={(e) => setReleaseKlausurFolderId(e.target.value)} 
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    disabled={!releaseLegalArea}
+                  >
+                    <option value="">{releaseLegalArea ? 'Keine Klausur auswählen...' : 'Bitte zuerst Rechtsgebiet wählen...'}</option>
+                    {releaseLegalArea && (() => {
+                      // Finde den Rechtsgebiet-Ordner (z.B. "Zivilrecht")
+                      const legalAreaFolder = folders.find(f => 
+                        f.name.toLowerCase() === releaseLegalArea.toLowerCase() ||
+                        f.name.toLowerCase().includes(releaseLegalArea.toLowerCase())
+                      );
+                      
+                      // Finde Unterordner des Rechtsgebiets (z.B. "Examensklausuren")
+                      const level1Folders = legalAreaFolder 
+                        ? folders.filter(f => f.parent_id === legalAreaFolder.id)
+                        : [];
+                      
+                      // Kombiniere Level-1 und Level-2 Ordner mit Gruppierung
+                      const result: JSX.Element[] = [];
+                      
+                      level1Folders.forEach(l1Folder => {
+                        const l2Children = folders.filter(f => f.parent_id === l1Folder.id);
+                        
+                        if (l2Children.length > 0) {
+                          // Zeige als optgroup mit Unterordnern
+                          result.push(
+                            <optgroup key={l1Folder.id} label={l1Folder.name}>
+                              {l2Children.map(l2Folder => (
+                                <option key={l2Folder.id} value={l2Folder.id}>
+                                  {l2Folder.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          );
+                        } else {
+                          // Zeige als einzelne Option wenn keine Unterordner
+                          result.push(
+                            <option key={l1Folder.id} value={l1Folder.id}>{l1Folder.name}</option>
+                          );
+                        }
+                      });
+                      
+                      return result;
+                    })()}
+                  </select>
+                  {releaseLegalArea && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Zeigt Klausuren aus dem Bereich: {releaseLegalArea}
+                    </p>
+                  )}
+                </div>
+
+                {/* Dokumente aus Klausur-Ordner - nur wenn Klausur-Ordner gewählt */}
+                {releaseKlausurFolderId && (() => {
+                  // Materialien direkt im gewählten Ordner
+                  const directMaterials = materials.filter(m => m.folder_id === releaseKlausurFolderId);
+                  // Finde den Ordnernamen
+                  const selectedFolder = folders.find(f => f.id === releaseKlausurFolderId);
+                  
+                  // Finde Unterordner (z.B. "Zusatzmaterial") und deren Materialien
+                  const subFolders = folders.filter(f => f.parent_id === releaseKlausurFolderId);
+                  const subFolderMaterials = subFolders.flatMap(sf => 
+                    materials.filter(m => m.folder_id === sf.id).map(m => ({ ...m, folderName: sf.name }))
+                  );
+                  
+                  return (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <label className="block text-sm font-medium text-blue-800 mb-2">
+                        📁 Dokumente aus: {selectedFolder?.name || 'Gewählter Ordner'}
+                      </label>
+                      <p className="text-xs text-blue-600 mb-3">
+                        Wählen Sie die Dokumente aus, die Sie mit den Studenten teilen möchten.
+                      </p>
+                      
+                      {/* Direkte Materialien im Ordner */}
+                      {directMaterials.length > 0 && (
+                        <div className="border border-blue-200 rounded-lg max-h-48 overflow-y-auto bg-white mb-3">
+                          {directMaterials.map(material => {
+                            const isLoesung = material.title.toLowerCase().includes('lösung') || 
+                                             material.title.toLowerCase().includes('loesung') ||
+                                             material.title.toLowerCase().includes('musterlösung');
+                            return (
+                              <label key={material.id} className={`flex items-center p-3 hover:bg-blue-50 cursor-pointer border-b border-blue-100 last:border-0 ${isLoesung ? 'bg-yellow-50' : ''}`}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={releaseSolutionMaterialIds.includes(material.id)} 
+                                  onChange={() => setReleaseSolutionMaterialIds(prev => 
+                                    prev.includes(material.id) ? prev.filter(id => id !== material.id) : [...prev, material.id]
+                                  )} 
+                                  className={`h-4 w-4 ${isLoesung ? 'text-yellow-600 focus:ring-yellow-500' : 'text-blue-600 focus:ring-blue-500'} border-gray-300 rounded`}
+                                />
+                                <FileText className={`h-4 w-4 ml-3 ${isLoesung ? 'text-yellow-600' : 'text-blue-500'}`} />
+                                <span className="ml-2 text-sm text-gray-900 flex-1">{material.title}</span>
+                                {isLoesung && (
+                                  <span className="text-xs bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded">Lösung</span>
+                                )}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                      
+                      {/* Unterordner mit Materialien (z.B. Zusatzmaterial) */}
+                      {subFolders.length > 0 && (
+                        <div className="space-y-2">
+                          {subFolders.map(subFolder => {
+                            const folderMats = materials.filter(m => m.folder_id === subFolder.id);
+                            if (folderMats.length === 0) return null;
+                            return (
+                              <div key={subFolder.id} className="border border-green-200 rounded-lg bg-green-50">
+                                <div className="p-2 border-b border-green-200 bg-green-100 rounded-t-lg">
+                                  <div className="flex items-center">
+                                    <FolderOpen className="h-4 w-4 text-green-600 mr-2" />
+                                    <span className="text-sm font-medium text-green-800">{subFolder.name}</span>
+                                    <span className="ml-2 text-xs text-green-600">({folderMats.length} Dateien)</span>
+                                  </div>
+                                </div>
+                                <div className="max-h-32 overflow-y-auto">
+                                  {folderMats.map(material => (
+                                    <label key={material.id} className="flex items-center p-2 hover:bg-green-100 cursor-pointer border-b border-green-100 last:border-0">
+                                      <input 
+                                        type="checkbox" 
+                                        checked={releaseSolutionMaterialIds.includes(material.id)} 
+                                        onChange={() => setReleaseSolutionMaterialIds(prev => 
+                                          prev.includes(material.id) ? prev.filter(id => id !== material.id) : [...prev, material.id]
+                                        )} 
+                                        className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                                      />
+                                      <FileText className="h-4 w-4 ml-3 text-green-500" />
+                                      <span className="ml-2 text-sm text-gray-900">{material.title}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      
+                      {directMaterials.length === 0 && subFolderMaterials.length === 0 && (
+                        <p className="p-3 text-sm text-gray-500 bg-white rounded-lg border border-blue-200">
+                          Keine Dokumente in diesem Ordner vorhanden.
+                        </p>
+                      )}
+                      
+                      {releaseSolutionMaterialIds.length > 0 && (
+                        <p className="text-xs text-blue-700 mt-2">
+                          ✓ {releaseSolutionMaterialIds.length} Dokument(e) ausgewählt
+                        </p>
+                      )}
+                      
+                      {/* Freigabetermin für Lösungen */}
+                      {releaseSolutionMaterialIds.length > 0 && (
+                        <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                          <label className="block text-sm font-medium text-yellow-800 mb-2">
+                            Freigabetermin für Lösungen
+                          </label>
+                          <div className="space-y-2">
+                            <label className="flex items-center cursor-pointer">
+                              <input 
+                                type="radio" 
+                                name="solutionReleaseMode" 
+                                checked={solutionReleaseMode === 'auto'} 
+                                onChange={() => setSolutionReleaseMode('auto')} 
+                                className="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300"
+                              />
+                              <span className="ml-2 text-sm text-gray-700">
+                                Automatisch nach Ende der Einheit ({releaseEndTime} Uhr)
+                              </span>
+                            </label>
+                            <label className="flex items-center cursor-pointer">
+                              <input 
+                                type="radio" 
+                                name="solutionReleaseMode" 
+                                checked={solutionReleaseMode === 'custom'} 
+                                onChange={() => {
+                                  setSolutionReleaseMode('custom');
+                                  // Setze Standardwerte wenn noch nicht gesetzt
+                                  if (!customSolutionReleaseDate && selectedDate) {
+                                    setCustomSolutionReleaseDate(selectedDate.toISOString().split('T')[0]);
+                                  }
+                                  if (!customSolutionReleaseTime) {
+                                    setCustomSolutionReleaseTime(releaseEndTime);
+                                  }
+                                }} 
+                                className="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300"
+                              />
+                              <span className="ml-2 text-sm text-gray-700">
+                                Alternativer Freigabetermin
+                              </span>
+                            </label>
+                            
+                            {solutionReleaseMode === 'custom' && (
+                              <div className="ml-6 mt-2 grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-xs text-gray-600 mb-1">Datum</label>
+                                  <input 
+                                    type="date" 
+                                    value={customSolutionReleaseDate} 
+                                    onChange={(e) => setCustomSolutionReleaseDate(e.target.value)} 
+                                    className="w-full px-2 py-1.5 text-sm border border-yellow-300 rounded-lg focus:ring-2 focus:ring-yellow-500/20 focus:border-yellow-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-gray-600 mb-1">Uhrzeit</label>
+                                  <input 
+                                    type="time" 
+                                    value={customSolutionReleaseTime} 
+                                    onChange={(e) => setCustomSolutionReleaseTime(e.target.value)} 
+                                    className="w-full px-2 py-1.5 text-sm border border-yellow-300 rounded-lg focus:ring-2 focus:ring-yellow-500/20 focus:border-yellow-500"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {releaseSolutionMaterialIds.length === 0 && (
+                        <p className="text-xs text-gray-500 mt-2">
+                          Wählen Sie Dokumente aus, um einen Freigabetermin festzulegen.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Beschreibung */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Beschreibung (optional)</label>
+                  <textarea 
+                    value={releaseDescription} 
+                    onChange={(e) => setReleaseDescription(e.target.value)} 
+                    placeholder="Zusätzliche Informationen zur Einheit..." 
+                    rows={2} 
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                  />
+                </div>
+
+                {/* Ordner auswählen */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Ordner freigeben</label>
+                  <div className="relative mb-2">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input 
+                      type="text" 
+                      placeholder="Ordner suchen..." 
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                      value={folderSearchTerm} 
+                      onChange={(e) => setFolderSearchTerm(e.target.value)} 
+                    />
+                  </div>
+                  <div className="border border-gray-200 rounded-lg max-h-32 overflow-y-auto">
+                    {folders.length === 0 ? (
+                      <p className="p-3 text-sm text-gray-500">Keine Ordner vorhanden</p>
+                    ) : folders.filter(f => f.name.toLowerCase().includes(folderSearchTerm.toLowerCase())).length === 0 ? (
+                      <p className="p-3 text-sm text-gray-500">Keine Ordner gefunden</p>
+                    ) : (
+                      folders.filter(f => f.name.toLowerCase().includes(folderSearchTerm.toLowerCase())).map(folder => (
+                        <label key={folder.id} className="flex items-center p-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0">
+                          <input 
+                            type="checkbox" 
+                            checked={selectedFolders.includes(folder.id)} 
+                            onChange={() => toggleFolderSelection(folder.id)} 
+                            className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded" 
+                          />
+                          <FolderOpen className="h-4 w-4 ml-3 text-blue-500" />
+                          <span className="ml-2 text-sm text-gray-900">{folder.name}</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Materialien auswählen */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Einzelne Materialien freigeben</label>
+                  <div className="relative mb-2">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input 
+                      type="text" 
+                      placeholder="Materialien suchen..." 
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                      value={materialSearchTerm} 
+                      onChange={(e) => setMaterialSearchTerm(e.target.value)} 
+                    />
+                  </div>
+                  <div className="border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
+                    {materials.length === 0 ? (
+                      <p className="p-3 text-sm text-gray-500">Keine Materialien vorhanden</p>
+                    ) : materials.filter(m => m.title.toLowerCase().includes(materialSearchTerm.toLowerCase())).length === 0 ? (
+                      <p className="p-3 text-sm text-gray-500">Keine Materialien gefunden</p>
+                    ) : (
+                      materials.filter(m => m.title.toLowerCase().includes(materialSearchTerm.toLowerCase())).map(material => (
+                        <label key={material.id} className="flex items-center p-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0">
+                          <input 
+                            type="checkbox" 
+                            checked={selectedMaterials.includes(material.id)} 
+                            onChange={() => toggleMaterialSelection(material.id)} 
+                            className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded" 
+                          />
+                          <FileText className="h-4 w-4 ml-3 text-gray-400" />
+                          <span className="ml-2 text-sm text-gray-900">{material.title}</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Zusätzliches Dokument hochladen */}
+                <div className="border border-dashed border-gray-300 rounded-lg p-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Upload className="h-4 w-4 inline mr-1" />
+                    Zusätzliches Dokument hochladen (optional)
+                  </label>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Hier können Sie ein Dokument hochladen, das noch nicht im Materialkatalog enthalten ist.
+                  </p>
+                  
+                  {additionalDocument ? (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <FileText className="h-5 w-5 text-green-600 mr-2" />
+                          <div>
+                            <p className="text-sm font-medium text-green-800">{additionalDocument.name}</p>
+                            <p className="text-xs text-green-600">{(additionalDocument.size / 1024 / 1024).toFixed(2)} MB</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAdditionalDocument(null);
+                            setAdditionalDocumentTitle('');
+                          }}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <X className="h-5 w-5" />
+                        </button>
+                      </div>
+                      <div className="mt-3">
+                        <label className="block text-xs font-medium text-green-700 mb-1">Titel des Dokuments</label>
+                        <input
+                          type="text"
+                          value={additionalDocumentTitle}
+                          onChange={(e) => setAdditionalDocumentTitle(e.target.value)}
+                          placeholder="z.B. Zusatzmaterial zur Einheit"
+                          className="w-full px-3 py-2 text-sm border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-gray-200 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
+                      <div className="flex flex-col items-center justify-center pt-2 pb-3">
+                        <Upload className="h-6 w-6 text-gray-400 mb-1" />
+                        <p className="text-sm text-gray-500">Datei auswählen</p>
+                        <p className="text-xs text-gray-400">PDF, Word, Excel, etc.</p>
+                      </div>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setAdditionalDocument(file);
+                            setAdditionalDocumentTitle(file.name.replace(/\.[^/.]+$/, ''));
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+
+                {/* Zusammenfassung */}
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h4 className="text-sm font-medium text-gray-900 mb-2">Zusammenfassung</h4>
+                  <div className="grid grid-cols-2 gap-2 text-sm text-gray-600">
+                    <div>Typ: <strong>{releaseUnitType ? UNIT_TYPES[releaseUnitType].label : '-'}</strong></div>
+                    <div>Rechtsgebiet: <strong>{releaseLegalArea || '-'}</strong></div>
+                    <div>Zeit: <strong>{releaseStartTime} - {releaseEndTime}</strong></div>
+                    <div>Dauer: <strong>{releaseUnitType ? formatDuration(UNIT_TYPES[releaseUnitType].duration) : '-'}</strong></div>
+                    <div>Ordner: <strong>{selectedFolders.length}</strong></div>
+                    <div>Materialien: <strong>{selectedMaterials.length}{additionalDocument ? ' + 1 Upload' : ''}</strong></div>
+                    {releaseIsRecurring && <div className="col-span-2">Wiederholung: <strong>{releaseRecurrenceType === 'weekly' ? 'Wöchentlich' : 'Monatlich'}, {releaseRecurrenceCount} Termine</strong></div>}
+                    {releaseSolutionMaterialIds.length > 0 && <div className="col-span-2">Lösungen (nach Termin): <strong>{releaseSolutionMaterialIds.length} Dateien</strong></div>}
+                    {additionalDocument && <div className="col-span-2 text-green-700">Zusatzdokument: <strong>{additionalDocumentTitle || additionalDocument.name}</strong></div>}
+                  </div>
+                </div>
+              </div>
+
               <div className="mt-6 flex justify-end space-x-3">
-                <button onClick={() => setShowReleaseModal(false)} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Abbrechen</button>
-                <button onClick={handleCreateRelease} disabled={!releaseTitle.trim() || (selectedMaterials.length === 0 && selectedFolders.length === 0)} className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"><Plus className="h-4 w-4 inline mr-1" />Einheit planen</button>
+                <button onClick={() => setShowReleaseModal(false)} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
+                  Abbrechen
+                </button>
+                <button 
+                  onClick={handleCreateRelease} 
+                  disabled={!releaseTitle.trim() || !releaseUnitType || isUploadingDocument} 
+                  className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isUploadingDocument ? (
+                    <>
+                      <span className="inline-block h-4 w-4 mr-1 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Wird gespeichert...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4 inline mr-1" />
+                      {releaseIsRecurring ? `${releaseRecurrenceCount} Einheiten planen` : 'Einheit planen'}
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>
@@ -1105,16 +2028,16 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Rechtsgebiet</label>
                   <select value={newDozentLegalArea} onChange={(e) => setNewDozentLegalArea(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary">
-                    <option value="">Bitte waehlen...</option>
+                    <option value="">Bitte wählen...</option>
                     <option value="Zivilrecht">Zivilrecht</option>
                     <option value="Strafrecht">Strafrecht</option>
-                    <option value="Oeffentliches Recht">Oeffentliches Recht</option>
+                    <option value="Öffentliches Recht">Öffentliches Recht</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Dozent</label>
                   <select value={newDozentId} onChange={(e) => setNewDozentId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary">
-                    <option value="">Bitte waehlen...</option>
+                    <option value="">Bitte wählen...</option>
                     {allDozenten.map(d => (
                       <option key={d.id} value={d.id}>{d.name} ({d.email})</option>
                     ))}
@@ -1125,6 +2048,407 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                 <button onClick={() => setShowDozentModal(false)} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Abbrechen</button>
                 <button onClick={handleAddDozentAssignment} disabled={!newDozentId || !newDozentLegalArea} className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed">
                   <Plus className="h-4 w-4 inline mr-1" />Zuweisen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Einheit Bearbeiten Modal */}
+      {showEditModal && editingRelease && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 py-8">
+            <div className="fixed inset-0 bg-black/50" onClick={() => { setShowEditModal(false); setEditingRelease(null); }} />
+            <div className="relative bg-white rounded-lg shadow-xl max-w-3xl w-full p-6 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">Einheit bearbeiten</h3>
+                  <p className="text-sm text-gray-500 mt-1">Bearbeiten Sie die Unterrichtseinheit vom {selectedDate ? formatDate(selectedDate.toISOString()) : ''}</p>
+                </div>
+                <button onClick={() => { setShowEditModal(false); setEditingRelease(null); }} className="text-gray-400 hover:text-gray-600">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              
+              <div className="space-y-6">
+                {/* Typ der Einheit */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <label className="block text-sm font-medium text-blue-900 mb-2">Typ der Einheit *</label>
+                  <select 
+                    value={releaseUnitType} 
+                    onChange={(e) => handleUnitTypeChange(e.target.value as UnitType | '')} 
+                    className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
+                  >
+                    <option value="">Bitte wählen...</option>
+                    <optgroup label="Unterricht">
+                      <option value="unterricht_zivilrecht">Unterricht Zivilrecht (2 Std 30 Min)</option>
+                      <option value="unterricht_strafrecht">Unterricht Strafrecht (2 Std)</option>
+                      <option value="unterricht_oeffentliches_recht">Unterricht öffentliches Recht (2 Std)</option>
+                    </optgroup>
+                    <optgroup label="Wiederholungseinheit">
+                      <option value="wiederholung_zivilrecht">Wiederholungseinheit Zivilrecht (2 Std 30 Min)</option>
+                      <option value="wiederholung_strafrecht">Wiederholungseinheit Strafrecht (1 Std 40 Min)</option>
+                      <option value="wiederholung_oeffentliches_recht">Wiederholungseinheit öffentliches Recht (1 Std 10 Min)</option>
+                    </optgroup>
+                  </select>
+                  {releaseUnitType && (
+                    <p className="text-xs text-blue-700 mt-2">
+                      Rechtsgebiet: <strong>{UNIT_TYPES[releaseUnitType].legalArea}</strong> | 
+                      Dauer: <strong>{formatDuration(UNIT_TYPES[releaseUnitType].duration)}</strong>
+                    </p>
+                  )}
+                </div>
+
+                {/* Titel und Rechtsgebiet */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Titel der Einheit *</label>
+                    <input 
+                      type="text" 
+                      value={releaseTitle} 
+                      onChange={(e) => setReleaseTitle(e.target.value)} 
+                      placeholder="z.B. Einheit 1 - BGB AT" 
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Datum</label>
+                    <input 
+                      type="date" 
+                      value={selectedDate?.toISOString().split('T')[0] || ''} 
+                      onChange={(e) => setSelectedDate(new Date(e.target.value))} 
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                    />
+                  </div>
+                </div>
+
+                {/* Uhrzeit */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Startzeit</label>
+                    <input 
+                      type="time" 
+                      value={releaseStartTime} 
+                      onChange={(e) => handleStartTimeChange(e.target.value)} 
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Endzeit (automatisch)</label>
+                    <input 
+                      type="time" 
+                      value={releaseEndTime} 
+                      readOnly
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Dauer</label>
+                    <div className="px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600">
+                      {releaseUnitType ? formatDuration(UNIT_TYPES[releaseUnitType].duration) : '-'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Zoom Link */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Zoom-Link</label>
+                  <input 
+                    type="url" 
+                    value={releaseZoomLink} 
+                    onChange={(e) => setReleaseZoomLink(e.target.value)} 
+                    placeholder="https://zoom.us/j/..." 
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                  />
+                </div>
+
+                {/* Klausur-Ordner Auswahl */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Welche Klausur wird besprochen?</label>
+                  <select 
+                    value={releaseKlausurFolderId} 
+                    onChange={(e) => setReleaseKlausurFolderId(e.target.value)} 
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    disabled={!releaseLegalArea}
+                  >
+                    <option value="">{releaseLegalArea ? 'Keine Klausur auswählen...' : 'Bitte zuerst Einheitstyp wählen...'}</option>
+                    {releaseLegalArea && (() => {
+                      const legalAreaFolder = folders.find(f => 
+                        f.name.toLowerCase() === releaseLegalArea.toLowerCase() ||
+                        f.name.toLowerCase().includes(releaseLegalArea.toLowerCase())
+                      );
+                      const level1Folders = legalAreaFolder 
+                        ? folders.filter(f => f.parent_id === legalAreaFolder.id)
+                        : [];
+                      const result: JSX.Element[] = [];
+                      level1Folders.forEach(l1Folder => {
+                        const l2Children = folders.filter(f => f.parent_id === l1Folder.id);
+                        if (l2Children.length > 0) {
+                          result.push(
+                            <optgroup key={l1Folder.id} label={l1Folder.name}>
+                              {l2Children.map(l2Folder => (
+                                <option key={l2Folder.id} value={l2Folder.id}>{l2Folder.name}</option>
+                              ))}
+                            </optgroup>
+                          );
+                        } else {
+                          result.push(<option key={l1Folder.id} value={l1Folder.id}>{l1Folder.name}</option>);
+                        }
+                      });
+                      return result;
+                    })()}
+                  </select>
+                </div>
+
+                {/* Dokumente aus Klausur-Ordner */}
+                {releaseKlausurFolderId && (() => {
+                  const directMaterials = materials.filter(m => m.folder_id === releaseKlausurFolderId);
+                  const selectedFolder = folders.find(f => f.id === releaseKlausurFolderId);
+                  const subFolders = folders.filter(f => f.parent_id === releaseKlausurFolderId);
+                  const subFolderMaterials = subFolders.flatMap(sf => 
+                    materials.filter(m => m.folder_id === sf.id).map(m => ({ ...m, folderName: sf.name }))
+                  );
+                  
+                  return (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <label className="block text-sm font-medium text-blue-800 mb-2">
+                        📁 Dokumente aus: {selectedFolder?.name || 'Gewählter Ordner'}
+                      </label>
+                      <p className="text-xs text-blue-600 mb-3">
+                        Wählen Sie die Dokumente aus, die Sie mit den Studenten teilen möchten.
+                      </p>
+                      
+                      {directMaterials.length > 0 && (
+                        <div className="border border-blue-200 rounded-lg max-h-48 overflow-y-auto bg-white mb-3">
+                          {directMaterials.map(material => {
+                            const isLoesung = material.title.toLowerCase().includes('lösung') || 
+                                             material.title.toLowerCase().includes('loesung') ||
+                                             material.title.toLowerCase().includes('musterlösung');
+                            return (
+                              <label key={material.id} className={`flex items-center p-3 hover:bg-blue-50 cursor-pointer border-b border-blue-100 last:border-0 ${isLoesung ? 'bg-yellow-50' : ''}`}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={releaseSolutionMaterialIds.includes(material.id)} 
+                                  onChange={() => setReleaseSolutionMaterialIds(prev => 
+                                    prev.includes(material.id) ? prev.filter(id => id !== material.id) : [...prev, material.id]
+                                  )} 
+                                  className={`h-4 w-4 ${isLoesung ? 'text-yellow-600 focus:ring-yellow-500' : 'text-blue-600 focus:ring-blue-500'} border-gray-300 rounded`}
+                                />
+                                <FileText className={`h-4 w-4 ml-3 ${isLoesung ? 'text-yellow-600' : 'text-blue-500'}`} />
+                                <span className="ml-2 text-sm text-gray-900 flex-1">{material.title}</span>
+                                {isLoesung && <span className="text-xs bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded">Lösung</span>}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                      
+                      {subFolders.length > 0 && (
+                        <div className="space-y-2">
+                          {subFolders.map(subFolder => {
+                            const folderMats = materials.filter(m => m.folder_id === subFolder.id);
+                            if (folderMats.length === 0) return null;
+                            return (
+                              <div key={subFolder.id} className="border border-green-200 rounded-lg bg-green-50">
+                                <div className="p-2 border-b border-green-200 bg-green-100 rounded-t-lg">
+                                  <div className="flex items-center">
+                                    <FolderOpen className="h-4 w-4 text-green-600 mr-2" />
+                                    <span className="text-sm font-medium text-green-800">{subFolder.name}</span>
+                                    <span className="ml-2 text-xs text-green-600">({folderMats.length} Dateien)</span>
+                                  </div>
+                                </div>
+                                <div className="max-h-32 overflow-y-auto">
+                                  {folderMats.map(material => (
+                                    <label key={material.id} className="flex items-center p-2 hover:bg-green-100 cursor-pointer border-b border-green-100 last:border-0">
+                                      <input 
+                                        type="checkbox" 
+                                        checked={releaseSolutionMaterialIds.includes(material.id)} 
+                                        onChange={() => setReleaseSolutionMaterialIds(prev => 
+                                          prev.includes(material.id) ? prev.filter(id => id !== material.id) : [...prev, material.id]
+                                        )} 
+                                        className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                                      />
+                                      <FileText className="h-4 w-4 ml-3 text-green-500" />
+                                      <span className="ml-2 text-sm text-gray-900">{material.title}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      
+                      {directMaterials.length === 0 && subFolderMaterials.length === 0 && (
+                        <p className="p-3 text-sm text-gray-500 bg-white rounded-lg border border-blue-200">
+                          Keine Dokumente in diesem Ordner vorhanden.
+                        </p>
+                      )}
+                      
+                      {releaseSolutionMaterialIds.length > 0 && (
+                        <p className="text-xs text-blue-700 mt-2">✓ {releaseSolutionMaterialIds.length} Dokument(e) ausgewählt</p>
+                      )}
+                      
+                      {/* Freigabetermin für Lösungen */}
+                      {releaseSolutionMaterialIds.length > 0 && (
+                        <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                          <label className="block text-sm font-medium text-yellow-800 mb-2">Freigabetermin für Lösungen</label>
+                          <div className="space-y-2">
+                            <label className="flex items-center cursor-pointer">
+                              <input 
+                                type="radio" 
+                                name="editSolutionReleaseMode" 
+                                checked={solutionReleaseMode === 'auto'} 
+                                onChange={() => setSolutionReleaseMode('auto')} 
+                                className="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300"
+                              />
+                              <span className="ml-2 text-sm text-gray-700">Automatisch nach Ende der Einheit ({releaseEndTime} Uhr)</span>
+                            </label>
+                            <label className="flex items-center cursor-pointer">
+                              <input 
+                                type="radio" 
+                                name="editSolutionReleaseMode" 
+                                checked={solutionReleaseMode === 'custom'} 
+                                onChange={() => {
+                                  setSolutionReleaseMode('custom');
+                                  if (!customSolutionReleaseDate && selectedDate) {
+                                    setCustomSolutionReleaseDate(selectedDate.toISOString().split('T')[0]);
+                                  }
+                                  if (!customSolutionReleaseTime) {
+                                    setCustomSolutionReleaseTime(releaseEndTime);
+                                  }
+                                }} 
+                                className="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300"
+                              />
+                              <span className="ml-2 text-sm text-gray-700">Alternativer Freigabetermin</span>
+                            </label>
+                            
+                            {solutionReleaseMode === 'custom' && (
+                              <div className="ml-6 mt-2 grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-xs text-gray-600 mb-1">Datum</label>
+                                  <input 
+                                    type="date" 
+                                    value={customSolutionReleaseDate} 
+                                    onChange={(e) => setCustomSolutionReleaseDate(e.target.value)} 
+                                    className="w-full px-2 py-1.5 text-sm border border-yellow-300 rounded-lg focus:ring-2 focus:ring-yellow-500/20 focus:border-yellow-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-gray-600 mb-1">Uhrzeit</label>
+                                  <input 
+                                    type="time" 
+                                    value={customSolutionReleaseTime} 
+                                    onChange={(e) => setCustomSolutionReleaseTime(e.target.value)} 
+                                    className="w-full px-2 py-1.5 text-sm border border-yellow-300 rounded-lg focus:ring-2 focus:ring-yellow-500/20 focus:border-yellow-500"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Beschreibung */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Beschreibung (optional)</label>
+                  <textarea 
+                    value={releaseDescription} 
+                    onChange={(e) => setReleaseDescription(e.target.value)} 
+                    placeholder="Zusätzliche Informationen zur Einheit..." 
+                    rows={2} 
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                  />
+                </div>
+
+                {/* Ordner auswählen */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Ordner freigeben</label>
+                  <div className="relative mb-2">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input 
+                      type="text" 
+                      placeholder="Ordner suchen..." 
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                      value={folderSearchTerm} 
+                      onChange={(e) => setFolderSearchTerm(e.target.value)} 
+                    />
+                  </div>
+                  <div className="border border-gray-200 rounded-lg max-h-32 overflow-y-auto">
+                    {folders.filter(f => f.name.toLowerCase().includes(folderSearchTerm.toLowerCase())).map(folder => (
+                      <label key={folder.id} className="flex items-center p-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedFolders.includes(folder.id)} 
+                          onChange={() => toggleFolderSelection(folder.id)} 
+                          className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded" 
+                        />
+                        <FolderOpen className="h-4 w-4 ml-3 text-blue-500" />
+                        <span className="ml-2 text-sm text-gray-900">{folder.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Materialien auswählen */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Einzelne Materialien freigeben</label>
+                  <div className="relative mb-2">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input 
+                      type="text" 
+                      placeholder="Materialien suchen..." 
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                      value={materialSearchTerm} 
+                      onChange={(e) => setMaterialSearchTerm(e.target.value)} 
+                    />
+                  </div>
+                  <div className="border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
+                    {materials.filter(m => m.title.toLowerCase().includes(materialSearchTerm.toLowerCase())).map(material => (
+                      <label key={material.id} className="flex items-center p-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedMaterials.includes(material.id)} 
+                          onChange={() => toggleMaterialSelection(material.id)} 
+                          className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded" 
+                        />
+                        <FileText className="h-4 w-4 ml-3 text-gray-400" />
+                        <span className="ml-2 text-sm text-gray-900">{material.title}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Zusammenfassung */}
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h4 className="text-sm font-medium text-gray-900 mb-2">Zusammenfassung</h4>
+                  <div className="grid grid-cols-2 gap-2 text-sm text-gray-600">
+                    <div>Typ: <strong>{releaseUnitType ? UNIT_TYPES[releaseUnitType].label : '-'}</strong></div>
+                    <div>Rechtsgebiet: <strong>{releaseLegalArea || '-'}</strong></div>
+                    <div>Zeit: <strong>{releaseStartTime} - {releaseEndTime}</strong></div>
+                    <div>Dauer: <strong>{releaseUnitType ? formatDuration(UNIT_TYPES[releaseUnitType].duration) : '-'}</strong></div>
+                    <div>Ordner: <strong>{selectedFolders.length}</strong></div>
+                    <div>Materialien: <strong>{selectedMaterials.length}</strong></div>
+                    {releaseSolutionMaterialIds.length > 0 && <div className="col-span-2">Lösungen (nach Termin): <strong>{releaseSolutionMaterialIds.length} Dateien</strong></div>}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end space-x-3">
+                <button onClick={() => { setShowEditModal(false); setEditingRelease(null); }} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
+                  Abbrechen
+                </button>
+                <button 
+                  onClick={handleUpdateRelease} 
+                  disabled={!releaseTitle.trim() || !releaseUnitType} 
+                  className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Save className="h-4 w-4 inline mr-1" />
+                  Änderungen speichern
                 </button>
               </div>
             </div>

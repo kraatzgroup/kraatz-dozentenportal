@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, FolderIcon, Plus, Edit, Trash2, Users, FileText, Mail, User, Clock, Calendar, GraduationCap, Check, X } from 'lucide-react';
+import { ArrowLeft, FolderIcon, Plus, Edit, Trash2, Users, FileText, Mail, User, Clock, Calendar, GraduationCap, Check, X, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useFolderStore } from '../store/folderStore';
@@ -44,6 +44,7 @@ export function DozentDetail() {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [dozentInfo, setDozentInfo] = useState<{ full_name: string; email: string } | null>(null);
+  const [pendingInvoiceCount, setPendingInvoiceCount] = useState<number>(0);
   const [hoursFormData, setHoursFormData] = useState({
     teilnehmer_id: '',
     hours: '',
@@ -56,6 +57,9 @@ export function DozentDetail() {
     date: new Date().toISOString().split('T')[0],
     description: ''
   });
+  const [duplicateWarning, setDuplicateWarning] = useState<{ show: boolean; existingEntries: any[]; pendingData: any | null }>({
+    show: false, existingEntries: [], pendingData: null
+  });
 
   useEffect(() => {
     if (dozentId) {
@@ -64,6 +68,20 @@ export function DozentDetail() {
       fetchFolders(dozentId);
       fetchTeilnehmer();
       fetchMonthlySummary(dozentId, selectedYear, selectedMonth);
+
+      // Check for pending (draft) invoices for current month
+      const currentMonth = new Date().getMonth() + 1;
+      const currentYear = new Date().getFullYear();
+      supabase
+        .from('invoices')
+        .select('id', { count: 'exact', head: true })
+        .eq('dozent_id', dozentId)
+        .eq('status', 'draft')
+        .eq('month', currentMonth)
+        .eq('year', currentYear)
+        .then(({ count }) => {
+          setPendingInvoiceCount(count || 0);
+        });
       
       // Setup real-time subscriptions
       const { setupRealtimeSubscription: setupTeilnehmerSub, cleanupSubscription: cleanupTeilnehmerSub } = useTeilnehmerStore.getState();
@@ -247,43 +265,71 @@ export function DozentDetail() {
     }
   };
 
+  const saveHoursEntry = async (hoursData: { teilnehmer_id: string; hours: number; date: string; description: string; legal_area: string; dozent_id?: string }) => {
+    const { createHours } = useHoursStore.getState();
+    await createHours(hoursData);
+    
+    setShowHoursDialog(false);
+    setHoursFormData({
+      teilnehmer_id: '',
+      hours: '',
+      date: new Date().toISOString().split('T')[0],
+      description: '',
+      legal_area: ''
+    });
+    
+    await fetchMonthlySummary(dozentId);
+  };
+
   const handleHoursSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     try {
+      // Get a reliable dozent ID - fallback to authenticated user
+      let effectiveDozentId = dozentId || user?.id;
+      if (!effectiveDozentId) {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        effectiveDozentId = authUser?.id;
+      }
+      if (!effectiveDozentId) {
+        alert('Fehler: Kein Dozent identifiziert. Bitte neu einloggen.');
+        return;
+      }
+
       const hoursData = {
         teilnehmer_id: hoursFormData.teilnehmer_id,
         hours: parseFloat(hoursFormData.hours),
         date: hoursFormData.date,
         description: hoursFormData.description,
         legal_area: hoursFormData.legal_area,
-        dozent_id: dozentId
+        dozent_id: effectiveDozentId
       };
       
-      console.log('Creating hours with data:', hoursData);
+      // Check for duplicate entries (same teilnehmer + same date + same dozent)
+      const { data: existingEntries, error: checkError } = await supabase
+        .from('participant_hours')
+        .select('id, hours, date, description, legal_area, teilnehmer:teilnehmer!participant_hours_teilnehmer_id_fkey(name)')
+        .eq('dozent_id', effectiveDozentId)
+        .eq('teilnehmer_id', hoursFormData.teilnehmer_id)
+        .eq('date', hoursFormData.date);
       
-      // Use the hours store to create hours
-      const { createHours } = useHoursStore.getState();
-      await createHours(hoursData);
+      if (!checkError && existingEntries && existingEntries.length > 0) {
+        // Duplicate found — show confirmation modal
+        setDuplicateWarning({
+          show: true,
+          existingEntries: existingEntries.map((e: any) => ({
+            ...e,
+            teilnehmer_name: e.teilnehmer?.name || 'Unbekannt'
+          })),
+          pendingData: hoursData
+        });
+        return;
+      }
       
-      console.log('Hours created successfully, refreshing data...');
-      
-      // Close modal and reset form
-      setShowHoursDialog(false);
-      setHoursFormData({
-        teilnehmer_id: '',
-        hours: '',
-        date: new Date().toISOString().split('T')[0],
-        description: '',
-        legal_area: ''
-      });
-      
-      // Refresh the monthly summary to show updated hours
-      await fetchMonthlySummary(dozentId);
-      console.log('Monthly summary refreshed');
-    } catch (error) {
+      await saveHoursEntry(hoursData);
+    } catch (error: any) {
       console.error('Error creating hours:', error);
-      alert('Fehler beim Speichern der Stunden: ' + error.message);
+      alert('Fehler beim Speichern der Stunden: ' + (error?.message || 'Unbekannter Fehler'));
     }
   };
 
@@ -384,7 +430,7 @@ export function DozentDetail() {
             </div>
             <div className="flex items-center">
               <button
-                onClick={() => navigate('/')}
+                onClick={() => navigate('/admin?tab=uebersicht')}
                 className="p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 rounded-full"
               >
                 <ArrowLeft className="h-5 w-5" />
@@ -473,7 +519,14 @@ export function DozentDetail() {
                       onClick={() => setSelectedFolder(folder)}
                       className="w-full flex items-center text-left"
                     >
-                      <FolderIcon className="h-6 w-6 text-primary" />
+                      <div className="relative">
+                        <FolderIcon className="h-6 w-6 text-primary" />
+                        {folder.name === 'Rechnungen' && pendingInvoiceCount > 0 && (
+                          <span className="absolute -top-1.5 -right-1.5 h-4 w-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                            {pendingInvoiceCount}
+                          </span>
+                        )}
+                      </div>
                       <span className="ml-3 font-medium text-gray-900">{folder.name}</span>
                     </button>
                     {!folder.is_system && canManageAll && (
@@ -1024,6 +1077,86 @@ export function DozentDetail() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Warning Modal */}
+      {duplicateWarning.show && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => setDuplicateWarning({ show: false, existingEntries: [], pendingData: null })} />
+            <div className="relative inline-block bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6">
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center">
+                    <AlertTriangle className="h-5 w-5 text-amber-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-medium text-gray-900">Mögliches Duplikat erkannt</h3>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Für <strong>{duplicateWarning.existingEntries[0]?.teilnehmer_name}</strong> am{' '}
+                      <strong>{new Date(duplicateWarning.pendingData?.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong>{' '}
+                      {duplicateWarning.existingEntries.length === 1 ? 'existiert bereits ein Eintrag' : `existieren bereits ${duplicateWarning.existingEntries.length} Einträge`}:
+                    </p>
+                    <div className="mt-3 space-y-2">
+                      {duplicateWarning.existingEntries.map((entry: any, idx: number) => (
+                        <div key={entry.id || idx} className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                          <div className="text-sm">
+                            <span className="font-medium text-gray-900">{entry.hours} Std.</span>
+                            {entry.legal_area && (
+                              <span className="ml-2 text-xs text-gray-500">{entry.legal_area}</span>
+                            )}
+                            {entry.description && (
+                              <span className="ml-2 text-xs text-gray-400">— {entry.description}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-3 bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
+                      <p className="text-xs text-gray-500 mb-1">Neuer Eintrag:</p>
+                      <div className="text-sm">
+                        <span className="font-medium text-gray-900">{duplicateWarning.pendingData?.hours} Std.</span>
+                        {duplicateWarning.pendingData?.legal_area && (
+                          <span className="ml-2 text-xs text-gray-500">{duplicateWarning.pendingData.legal_area}</span>
+                        )}
+                        {duplicateWarning.pendingData?.description && (
+                          <span className="ml-2 text-xs text-gray-400">— {duplicateWarning.pendingData.description}</span>
+                        )}
+                      </div>
+                    </div>
+                    <p className="mt-3 text-sm text-gray-600">
+                      Möchten Sie den Eintrag trotzdem hinzufügen?
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await saveHoursEntry(duplicateWarning.pendingData);
+                      setDuplicateWarning({ show: false, existingEntries: [], pendingData: null });
+                    } catch (error) {
+                      console.error('Error saving duplicate hours:', error);
+                      alert('Fehler beim Speichern der Stunden');
+                    }
+                  }}
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-amber-600 text-base font-medium text-white hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 sm:w-auto sm:text-sm"
+                >
+                  Trotzdem eintragen
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDuplicateWarning({ show: false, existingEntries: [], pendingData: null })}
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"
+                >
+                  Abbrechen
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Phone, Calendar, Clock, Check, X, Plus, Edit2, Trash2, AlertCircle } from 'lucide-react';
+import { Phone, Calendar, Clock, Check, X, Plus, Edit2, Trash2, AlertCircle, ChevronLeft, ChevronRight, List, CalendarDays } from 'lucide-react';
 import { FollowUp } from '../../store/salesStore';
 
 interface FollowUpListProps {
@@ -12,6 +12,9 @@ interface FollowUpListProps {
 export function FollowUpList({ followUps, onUpdate, onCreate, onDelete }: FollowUpListProps) {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [calMonth, setCalMonth] = useState(new Date().getMonth());
+  const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [formData, setFormData] = useState({
     teilnehmer_name: '',
     teilnehmer_email: '',
@@ -124,6 +127,24 @@ export function FollowUpList({ followUps, onUpdate, onCreate, onDelete }: Follow
     });
   };
 
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const startDay = firstDay === 0 ? 6 : firstDay - 1;
+  const months = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+  const getDateFollowUps = (day: number) => {
+    const d = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return pendingFollowUps.filter(f => f.follow_up_date === d);
+  };
+  const navMonth = (dir: number) => {
+    let m = calMonth + dir, y = calYear;
+    if (m < 0) { m = 11; y--; } else if (m > 11) { m = 0; y++; }
+    setCalMonth(m); setCalYear(y);
+  };
+  const isTodayCal = (day: number) => {
+    const t = new Date();
+    return day === t.getDate() && calMonth === t.getMonth() && calYear === t.getFullYear();
+  };
+
   return (
     <div className="bg-white rounded-lg shadow">
       <div className="p-4 sm:p-6 border-b border-gray-200">
@@ -137,13 +158,13 @@ export function FollowUpList({ followUps, onUpdate, onCreate, onDelete }: Follow
               </span>
             )}
           </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 transition"
-          >
-            <Plus className="h-4 w-4 mr-1" />
-            Neu
-          </button>
+          <div className="flex items-center space-x-2">
+            <div className="flex bg-gray-100 rounded-lg p-1">
+              <button onClick={() => setViewMode('list')} className={`p-1.5 rounded ${viewMode === 'list' ? 'bg-white shadow text-primary' : 'text-gray-500'}`} title="Liste"><List className="h-4 w-4" /></button>
+              <button onClick={() => setViewMode('calendar')} className={`p-1.5 rounded ${viewMode === 'calendar' ? 'bg-white shadow text-primary' : 'text-gray-500'}`} title="Kalender"><CalendarDays className="h-4 w-4" /></button>
+            </div>
+            <button onClick={() => setShowForm(true)} className="flex items-center px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 transition"><Plus className="h-4 w-4 mr-1" />Neu</button>
+          </div>
         </div>
       </div>
 
@@ -196,12 +217,42 @@ export function FollowUpList({ followUps, onUpdate, onCreate, onDelete }: Follow
         </div>
       )}
 
-      <div className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
-        {pendingFollowUps.length === 0 ? (
-          <div className="p-6 text-center text-gray-500">Keine ausstehenden Follow-Ups</div>
-        ) : (
-          pendingFollowUps.map((followUp) => (
-            <div key={followUp.id} className={`p-4 hover:bg-gray-50 transition ${isOverdue(followUp.follow_up_date) ? 'bg-red-50' : isToday(followUp.follow_up_date) ? 'bg-yellow-50' : ''}`}>
+      {viewMode === 'calendar' ? (
+        <div className="p-4">
+          <div className="flex items-center justify-between mb-4">
+            <button onClick={() => navMonth(-1)} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronLeft className="h-5 w-5" /></button>
+            <h3 className="text-lg font-semibold">{months[calMonth]} {calYear}</h3>
+            <button onClick={() => navMonth(1)} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronRight className="h-5 w-5" /></button>
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {['Mo','Di','Mi','Do','Fr','Sa','So'].map(d => <div key={d} className="text-center text-xs font-medium text-gray-500 py-2">{d}</div>)}
+            {Array.from({length: startDay}).map((_,i) => <div key={`e${i}`} />)}
+            {Array.from({length: daysInMonth}).map((_,i) => {
+              const day = i + 1;
+              const fups = getDateFollowUps(day);
+              return (
+                <div key={day} className={`min-h-[60px] p-1 border rounded-lg ${isTodayCal(day) ? 'bg-primary/10 border-primary' : 'border-gray-200'}`}>
+                  <div className={`text-xs font-medium ${isTodayCal(day) ? 'text-primary' : 'text-gray-700'}`}>{day}</div>
+                  {fups.length > 0 && (
+                    <div className="mt-1 space-y-0.5">
+                      {fups.slice(0,2).map(f => (
+                        <div key={f.id} className={`text-xs px-1 py-0.5 rounded truncate ${f.priority === 'high' ? 'bg-red-100 text-red-800' : f.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>{f.teilnehmer_name}</div>
+                      ))}
+                      {fups.length > 2 && <div className="text-xs text-gray-500">+{fups.length - 2}</div>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
+          {pendingFollowUps.length === 0 ? (
+            <div className="p-6 text-center text-gray-500">Keine ausstehenden Follow-Ups</div>
+          ) : (
+            pendingFollowUps.map((followUp) => (
+              <div key={followUp.id} className={`p-4 hover:bg-gray-50 transition ${isOverdue(followUp.follow_up_date) ? 'bg-red-50' : isToday(followUp.follow_up_date) ? 'bg-yellow-50' : ''}`}>
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center space-x-2">
@@ -224,10 +275,11 @@ export function FollowUpList({ followUps, onUpdate, onCreate, onDelete }: Follow
                   <button onClick={() => onDelete(followUp.id)} className="p-1.5 text-red-600 hover:bg-red-100 rounded transition" title="Loeschen"><Trash2 className="h-4 w-4" /></button>
                 </div>
               </div>
-            </div>
-          ))
-        )}
-      </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }

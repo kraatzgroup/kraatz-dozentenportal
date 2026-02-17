@@ -219,7 +219,7 @@ export function IntegrationsTab() {
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center">
                 <button
-                  onClick={() => navigate('/')}
+                  onClick={() => navigate('/admin?tab=uebersicht')}
                   className="mr-3 p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded-full"
                 >
                   <ArrowLeft className="h-5 w-5" />
@@ -256,7 +256,7 @@ export function IntegrationsTab() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
               <button
-                onClick={() => navigate('/')}
+                onClick={() => navigate('/admin?tab=uebersicht')}
                 className="mr-3 p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded-full"
               >
                 <ArrowLeft className="h-5 w-5" />

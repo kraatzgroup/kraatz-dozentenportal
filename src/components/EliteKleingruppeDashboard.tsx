@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
-import { LogOut, Settings, Upload, FileText, PenTool, Calendar, CheckCircle, Clock, AlertCircle, Download, ChevronDown, ChevronUp, Users, ChevronLeft, ChevronRight, Lock, Unlock, BookOpen, Award, MessageCircle, Send } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { LogOut, Settings, Upload, FileText, PenTool, Calendar, CheckCircle, Clock, AlertCircle, Download, ChevronDown, ChevronUp, Users, ChevronLeft, ChevronRight, Lock, Unlock, BookOpen, Award, MessageCircle, Send, Video, FolderOpen } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { Logo } from './Logo';
@@ -14,6 +15,16 @@ interface ScheduledRelease {
   folder_ids: string[];
   is_released: boolean;
   legal_area: string | null;
+  unit_type: string | null;
+  duration_minutes: number | null;
+  start_time: string | null;
+  end_time: string | null;
+  zoom_link: string | null;
+  klausur_folder_id: string | null;
+  solution_material_ids: string[];
+  solutions_released: boolean;
+  solution_release_date: string | null;
+  solution_release_time: string | null;
 }
 
 interface TeachingMaterial {
@@ -22,11 +33,13 @@ interface TeachingMaterial {
   file_url: string;
   file_name: string;
   file_type: string;
+  folder_id?: string;
 }
 
 interface MaterialFolder {
   id: string;
   name: string;
+  parent_id: string | null;
 }
 
 interface Klausur {
@@ -65,9 +78,25 @@ type Tab = 'dashboard' | 'kalender' | 'materialien' | 'klausuren' | 'kommunikati
 
 export function EliteKleingruppeDashboard() {
   const { user, signOut } = useAuthStore();
-  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTabState] = useState<Tab>(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['dashboard', 'kalender', 'materialien', 'klausuren', 'kommunikation'].includes(tabParam)) {
+      return tabParam as Tab;
+    }
+    const saved = localStorage.getItem('eliteKleingruppeDashboardTab');
+    return (saved as Tab) || 'dashboard';
+  });
+  
+  // Helper function to change tab and update URL
+  const setActiveTab = useCallback((tab: Tab) => {
+    setActiveTabState(tab);
+    localStorage.setItem('eliteKleingruppeDashboardTab', tab);
+    setSearchParams({ tab });
+  }, [setSearchParams]);
+  
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
-  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
+  const [calendarYear] = useState(new Date().getFullYear());
   const [allReleases, setAllReleases] = useState<ScheduledRelease[]>([]);
   const [releases, setReleases] = useState<ScheduledRelease[]>([]);
   const [materials, setMaterials] = useState<TeachingMaterial[]>([]);
@@ -75,6 +104,7 @@ export function EliteKleingruppeDashboard() {
   const [klausuren, setKlausuren] = useState<Klausur[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedRelease, setExpandedRelease] = useState<string | null>(null);
+  const [selectedReleaseForDetail, setSelectedReleaseForDetail] = useState<ScheduledRelease | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadTitle, setUploadTitle] = useState('');
   const [uploadLegalArea, setUploadLegalArea] = useState('');
@@ -229,13 +259,13 @@ export function EliteKleingruppeDashboard() {
 
       const { data: materialsData } = await supabase
         .from('teaching_materials')
-        .select('id, title, file_url, file_name, file_type')
+        .select('id, title, file_url, file_name, file_type, folder_id')
         .eq('is_active', true);
       setMaterials(materialsData || []);
 
       const { data: foldersData } = await supabase
         .from('material_folders')
-        .select('id, name')
+        .select('id, name, parent_id')
         .eq('is_active', true);
       setFolders(foldersData || []);
     } catch (error) {
@@ -270,6 +300,55 @@ export function EliteKleingruppeDashboard() {
     return dozent ? dozent.name : 'Kontakt';
   };
 
+  const handleDownloadMaterial = async (material: TeachingMaterial) => {
+    if (!material.file_url) {
+      console.error('Keine Datei-URL vorhanden');
+      return;
+    }
+    
+    try {
+      // Extrahiere Bucket und Pfad aus der URL
+      // URL Format: https://xxx.supabase.co/storage/v1/object/public/bucket/path
+      const urlParts = material.file_url.split('/storage/v1/object/public/');
+      if (urlParts.length === 2) {
+        const pathParts = urlParts[1].split('/');
+        const bucket = pathParts[0];
+        const filePath = pathParts.slice(1).join('/');
+        
+        // Lade die Datei direkt über Supabase Storage
+        const { data, error } = await supabase.storage
+          .from(bucket)
+          .download(filePath);
+        
+        if (error) throw error;
+        
+        // Erstelle eine Blob-URL
+        const blobUrl = window.URL.createObjectURL(data);
+        
+        // Erstelle einen temporären Link zum Download
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = material.file_name || material.title || 'download.pdf';
+        
+        // Füge Link zum DOM hinzu, klicke und entferne ihn
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Bereinige die Blob-URL
+        window.URL.revokeObjectURL(blobUrl);
+        return;
+      }
+      
+      // Fallback für andere URLs
+      window.open(material.file_url, '_blank');
+    } catch (error) {
+      console.error('Download error:', error);
+      // Fallback: Öffne in neuem Tab
+      window.open(material.file_url, '_blank');
+    }
+  };
+
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !user || !teilnehmerId) return;
     
@@ -277,7 +356,7 @@ export function EliteKleingruppeDashboard() {
     const recipientId = isGroupMessage ? null : selectedRecipient;
     const legalArea = selectedRecipient === 'gruppe_zivilrecht' ? 'Zivilrecht' 
       : selectedRecipient === 'gruppe_strafrecht' ? 'Strafrecht'
-      : selectedRecipient === 'gruppe_oeffentliches_recht' ? 'Oeffentliches Recht'
+      : selectedRecipient === 'gruppe_oeffentliches_recht' ? 'Öffentliches Recht'
       : null;
     
     const { error } = await supabase.from('elite_kleingruppe_messages').insert({
@@ -1230,14 +1309,15 @@ export function EliteKleingruppeDashboard() {
                           <div className={`text-sm font-medium ${isToday ? 'text-primary' : isPast ? 'text-gray-400' : 'text-gray-900'}`}>{day}</div>
                           <div className="mt-1 space-y-1 overflow-y-auto max-h-16">
                             {dayReleases.map(release => (
-                              <div 
+                              <button 
                                 key={release.id} 
-                                className={`text-xs p-1 rounded truncate flex items-center ${release.is_released ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}
-                                title={release.title}
+                                onClick={() => setSelectedReleaseForDetail(release)}
+                                className={`text-xs p-1 rounded truncate flex items-center w-full text-left cursor-pointer hover:opacity-80 transition-opacity ${release.is_released ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                                title={`${release.title} - Klicken für Details`}
                               >
                                 {release.is_released ? <Unlock className="h-3 w-3 mr-1 flex-shrink-0" /> : <Lock className="h-3 w-3 mr-1 flex-shrink-0" />}
                                 <span className="truncate">{release.title}</span>
-                              </div>
+                              </button>
                             ))}
                           </div>
                         </div>
@@ -1270,25 +1350,78 @@ export function EliteKleingruppeDashboard() {
                 <h3 className="text-lg font-medium text-gray-900">Kommende Einheiten</h3>
               </div>
               <ul className="divide-y divide-gray-200">
-                {allReleases.filter(r => new Date(r.release_date) >= new Date()).slice(0, 5).map(release => (
-                  <li key={release.id} className="p-4 flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className={`h-10 w-10 rounded-full flex items-center justify-center ${release.is_released ? 'bg-green-100' : 'bg-gray-100'}`}>
-                        {release.is_released ? <Unlock className="h-5 w-5 text-green-600" /> : <Lock className="h-5 w-5 text-gray-400" />}
+                {(() => {
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const upcomingReleases = allReleases.filter(r => new Date(r.release_date) >= today);
+                  
+                  if (upcomingReleases.length === 0) {
+                    return <li className="p-8 text-center text-gray-500">Keine kommenden Einheiten geplant</li>;
+                  }
+                  
+                  return upcomingReleases.slice(0, 10).map(release => (
+                    <li 
+                      key={release.id} 
+                      className="p-4 hover:bg-gray-50 cursor-pointer transition-colors"
+                      onClick={() => setSelectedReleaseForDetail(release)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center flex-1">
+                          <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${release.is_released ? 'bg-green-100' : 'bg-gray-100'}`}>
+                            {release.is_released ? <Unlock className="h-6 w-6 text-green-600" /> : <Lock className="h-6 w-6 text-gray-400" />}
+                          </div>
+                          <div className="ml-4 flex-1">
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-medium text-gray-900">{release.title}</h4>
+                              {release.legal_area && (
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  release.legal_area === 'Zivilrecht' ? 'bg-blue-100 text-blue-700' :
+                                  release.legal_area === 'Strafrecht' ? 'bg-red-100 text-red-700' :
+                                  'bg-green-100 text-green-700'
+                                }`}>
+                                  {release.legal_area}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3 mt-1">
+                              <p className="text-xs text-gray-500">
+                                {formatDate(release.release_date)}
+                                {release.start_time && release.end_time && (
+                                  <span className="ml-2">
+                                    <Clock className="h-3 w-3 inline mr-1" />
+                                    {release.start_time.slice(0, 5)} - {release.end_time.slice(0, 5)} Uhr
+                                  </span>
+                                )}
+                              </p>
+                              {release.duration_minutes && (
+                                <span className="text-xs text-gray-400">
+                                  ({Math.floor(release.duration_minutes / 60)} Std {release.duration_minutes % 60 > 0 ? `${release.duration_minutes % 60} Min` : ''})
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {release.zoom_link && release.is_released && (
+                            <a
+                              href={release.zoom_link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-medium transition-colors"
+                            >
+                              <Video className="h-3.5 w-3.5 mr-1.5" />
+                              Zoom beitreten
+                            </a>
+                          )}
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${release.is_released ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                            {release.is_released ? 'Verfügbar' : 'Geplant'}
+                          </span>
+                        </div>
                       </div>
-                      <div className="ml-4">
-                        <h4 className="text-sm font-medium text-gray-900">{release.title}</h4>
-                        <p className="text-xs text-gray-500">{formatDate(release.release_date)}</p>
-                      </div>
-                    </div>
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${release.is_released ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                      {release.is_released ? 'Verfügbar' : 'Geplant'}
-                    </span>
-                  </li>
-                ))}
-                {allReleases.filter(r => new Date(r.release_date) >= new Date()).length === 0 && (
-                  <li className="p-8 text-center text-gray-500">Keine kommenden Einheiten geplant</li>
-                )}
+                    </li>
+                  ));
+                })()}
               </ul>
             </div>
           </div>
@@ -1333,9 +1466,40 @@ export function EliteKleingruppeDashboard() {
                         </div>
                       </div>
                       {expandedRelease === release.id && (
-                        <div className="mt-4 pl-14 space-y-3">
+                        <div className="mt-4 pl-14 space-y-4">
+                          {/* Termin-Infos */}
+                          {(release.start_time || release.zoom_link) && (
+                            <div className="flex flex-wrap items-center gap-3 p-3 bg-blue-50 rounded-lg">
+                              {release.start_time && release.end_time && (
+                                <div className="flex items-center text-sm text-blue-800">
+                                  <Clock className="h-4 w-4 mr-1.5" />
+                                  {release.start_time.slice(0, 5)} - {release.end_time.slice(0, 5)} Uhr
+                                  {release.duration_minutes && (
+                                    <span className="ml-1 text-blue-600">
+                                      ({Math.floor(release.duration_minutes / 60)} Std {release.duration_minutes % 60 > 0 ? `${release.duration_minutes % 60} Min` : ''})
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              {release.zoom_link && (
+                                <a
+                                  href={release.zoom_link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-medium transition-colors"
+                                >
+                                  <Video className="h-3.5 w-3.5 mr-1.5" />
+                                  Zoom beitreten
+                                </a>
+                              )}
+                            </div>
+                          )}
+
                           {release.description && <p className="text-sm text-gray-600">{release.description}</p>}
+                          
+                          {/* Materialien */}
                           <div className="space-y-2">
+                            <h5 className="text-xs font-medium text-gray-500 uppercase tracking-wider">Materialien</h5>
                             {release.material_ids.map(id => {
                               const material = materials.find(m => m.id === id);
                               if (!material) return null;
@@ -1358,12 +1522,46 @@ export function EliteKleingruppeDashboard() {
                               if (!folder) return null;
                               return (
                                 <div key={id} className="flex items-center p-3 bg-blue-50 rounded-lg">
-                                  <Users className="h-5 w-5 text-blue-500 mr-3" />
+                                  <FolderOpen className="h-5 w-5 text-blue-500 mr-3" />
                                   <span className="text-sm text-gray-900">{folder.name}</span>
                                 </div>
                               );
                             })}
                           </div>
+
+                          {/* Lösungen - nur wenn freigegeben */}
+                          {release.solution_material_ids && release.solution_material_ids.length > 0 && (
+                            <div className="space-y-2">
+                              <h5 className="text-xs font-medium text-yellow-700 uppercase tracking-wider flex items-center">
+                                <Award className="h-3.5 w-3.5 mr-1" />
+                                Lösungen
+                              </h5>
+                              {release.solutions_released ? (
+                                release.solution_material_ids.map(id => {
+                                  const material = materials.find(m => m.id === id);
+                                  if (!material) return null;
+                                  return (
+                                    <a
+                                      key={id}
+                                      href={material.file_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="flex items-center p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors border border-yellow-200"
+                                    >
+                                      <FileText className="h-5 w-5 text-yellow-600 mr-3" />
+                                      <span className="text-sm text-gray-900 flex-1">{material.title}</span>
+                                      <Download className="h-4 w-4 text-yellow-600" />
+                                    </a>
+                                  );
+                                })
+                              ) : (
+                                <div className="flex items-center p-3 bg-gray-100 rounded-lg text-gray-500">
+                                  <Lock className="h-5 w-5 mr-3" />
+                                  <span className="text-sm">Lösungen werden nach Ende des Termins freigeschaltet</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </li>
@@ -1617,7 +1815,7 @@ export function EliteKleingruppeDashboard() {
                     <option value="">Bitte wähle...</option>
                     <option value="Zivilrecht">Zivilrecht</option>
                     <option value="Strafrecht">Strafrecht</option>
-                    <option value="Oeffentliches Recht">Öffentliches Recht</option>
+                    <option value="Öffentliches Recht">Öffentliches Recht</option>
                   </select>
                 </div>
                 <div>
@@ -1733,6 +1931,285 @@ export function EliteKleingruppeDashboard() {
                 <button
                   onClick={() => setShowSettingsModal(false)}
                   className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                >
+                  Schließen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Einheit Detail Modal */}
+      {selectedReleaseForDetail && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div className="fixed inset-0 bg-black/50 transition-opacity" onClick={() => setSelectedReleaseForDetail(null)} />
+            <div className="relative bg-white rounded-xl shadow-xl max-w-2xl w-full mx-auto p-6 max-h-[90vh] overflow-y-auto">
+              {/* Header */}
+              <div className="flex items-start justify-between mb-6">
+                <div>
+                  <div className="flex items-center gap-3">
+                    <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${selectedReleaseForDetail.is_released ? 'bg-green-100' : 'bg-gray-100'}`}>
+                      {selectedReleaseForDetail.is_released ? <Unlock className="h-6 w-6 text-green-600" /> : <Lock className="h-6 w-6 text-gray-400" />}
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-semibold text-gray-900">{selectedReleaseForDetail.title}</h2>
+                      <p className="text-sm text-gray-500">{formatDate(selectedReleaseForDetail.release_date)}</p>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedReleaseForDetail(null)}
+                  className="text-gray-400 hover:text-gray-600 p-1"
+                >
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Status & Rechtsgebiet */}
+              <div className="flex flex-wrap items-center gap-2 mb-6">
+                <span className={`px-3 py-1 rounded-full text-sm font-medium ${selectedReleaseForDetail.is_released ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                  {selectedReleaseForDetail.is_released ? '✓ Freigegeben' : '🔒 Noch nicht freigegeben'}
+                </span>
+                {selectedReleaseForDetail.legal_area && (
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                    selectedReleaseForDetail.legal_area === 'Zivilrecht' ? 'bg-blue-100 text-blue-700' :
+                    selectedReleaseForDetail.legal_area === 'Strafrecht' ? 'bg-red-100 text-red-700' :
+                    'bg-green-100 text-green-700'
+                  }`}>
+                    {selectedReleaseForDetail.legal_area}
+                  </span>
+                )}
+                {selectedReleaseForDetail.unit_type && (
+                  <span className="px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-700">
+                    {selectedReleaseForDetail.unit_type.includes('wiederholung') ? 'Wiederholungseinheit' : 'Unterricht'}
+                  </span>
+                )}
+              </div>
+
+              {/* Zeit & Zoom */}
+              {(selectedReleaseForDetail.start_time || selectedReleaseForDetail.zoom_link) && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                  <h3 className="text-sm font-medium text-blue-800 mb-3 flex items-center">
+                    <Clock className="h-4 w-4 mr-2" />
+                    Termin-Informationen
+                  </h3>
+                  <div className="space-y-3">
+                    {selectedReleaseForDetail.start_time && selectedReleaseForDetail.end_time && (
+                      <div className="flex items-center text-blue-800">
+                        <span className="font-medium">Zeit:</span>
+                        <span className="ml-2">{selectedReleaseForDetail.start_time.slice(0, 5)} - {selectedReleaseForDetail.end_time.slice(0, 5)} Uhr</span>
+                        {selectedReleaseForDetail.duration_minutes && (
+                          <span className="ml-2 text-blue-600">
+                            ({Math.floor(selectedReleaseForDetail.duration_minutes / 60)} Std {selectedReleaseForDetail.duration_minutes % 60 > 0 ? `${selectedReleaseForDetail.duration_minutes % 60} Min` : ''})
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {selectedReleaseForDetail.zoom_link && (
+                      <a
+                        href={selectedReleaseForDetail.zoom_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors"
+                      >
+                        <Video className="h-4 w-4 mr-2" />
+                        Zoom-Meeting beitreten
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Beschreibung */}
+              {selectedReleaseForDetail.description && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">Beschreibung</h3>
+                  <p className="text-gray-600 bg-gray-50 rounded-lg p-3">{selectedReleaseForDetail.description}</p>
+                </div>
+              )}
+
+              {/* Materialien - sofort verfügbar wenn Einheit freigegeben */}
+              {selectedReleaseForDetail.is_released && (() => {
+                // Hilfsfunktion um zu prüfen ob ein Material eine Lösung ist (nur nach Titel)
+                const isLoesungMaterial = (m: TeachingMaterial) => {
+                  const title = m.title.toLowerCase();
+                  return title.includes('lösung') || 
+                         title.includes('loesung') || 
+                         title.includes('musterlösung') ||
+                         title.includes('musterlosung');
+                };
+                
+                // Nur Materialien verwenden, die der Dozent explizit ausgewählt hat:
+                // 1. material_ids - direkt ausgewählte Materialien
+                // 2. solution_material_ids - vom Dozenten ausgewählte Dokumente aus dem Klausur-Ordner
+                const directMaterials = selectedReleaseForDetail.material_ids || [];
+                const selectedKlausurMaterials = selectedReleaseForDetail.solution_material_ids || [];
+                
+                const allSelectedMaterialIds = [...new Set([...directMaterials, ...selectedKlausurMaterials])];
+                
+                // Filtere Lösungen heraus - NUR nach Titel
+                const nonSolutionMaterialIds = allSelectedMaterialIds.filter(id => {
+                  const material = materials.find(m => m.id === id);
+                  if (!material) return false;
+                  return !isLoesungMaterial(material);
+                });
+                
+                if (nonSolutionMaterialIds.length === 0) return null;
+                
+                return (
+                  <div className="mb-6">
+                    <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+                      <FileText className="h-4 w-4 mr-2" />
+                      Materialien ({nonSolutionMaterialIds.length})
+                    </h3>
+                    <div className="space-y-2">
+                      {nonSolutionMaterialIds.map(id => {
+                        const material = materials.find(m => m.id === id);
+                        if (!material) return null;
+                        return (
+                          <button
+                            key={id}
+                            onClick={() => handleDownloadMaterial(material)}
+                            className="flex items-center w-full p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200 text-left"
+                          >
+                            <FileText className="h-5 w-5 text-gray-400 mr-3 flex-shrink-0" />
+                            <span className="text-sm text-gray-900 flex-1">{material.title}</span>
+                            <Download className="h-4 w-4 text-primary flex-shrink-0" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Ordner - sofort verfügbar wenn Einheit freigegeben */}
+              {selectedReleaseForDetail.is_released && selectedReleaseForDetail.folder_ids.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+                    <FolderOpen className="h-4 w-4 mr-2" />
+                    Freigegebene Ordner
+                  </h3>
+                  <div className="space-y-2">
+                    {selectedReleaseForDetail.folder_ids.map(id => {
+                      const folder = folders.find(f => f.id === id);
+                      if (!folder) return null;
+                      return (
+                        <div key={id} className="flex items-center p-3 bg-blue-50 rounded-lg border border-blue-200">
+                          <FolderOpen className="h-5 w-5 text-blue-500 mr-3 flex-shrink-0" />
+                          <span className="text-sm text-gray-900">{folder.name}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Lösungen - zeitverzögert freigegeben */}
+              {selectedReleaseForDetail.is_released && (() => {
+                // Hilfsfunktion um zu prüfen ob ein Material eine Lösung ist (nur nach Titel)
+                const isLoesungMaterial = (m: TeachingMaterial) => {
+                  const title = m.title.toLowerCase();
+                  return title.includes('lösung') || 
+                         title.includes('loesung') || 
+                         title.includes('musterlösung') ||
+                         title.includes('musterlosung');
+                };
+                
+                // Nur Materialien verwenden, die der Dozent explizit ausgewählt hat:
+                // 1. material_ids - direkt ausgewählte Materialien
+                // 2. solution_material_ids - vom Dozenten ausgewählte Dokumente aus dem Klausur-Ordner
+                const directMaterials = selectedReleaseForDetail.material_ids || [];
+                const selectedKlausurMaterials = selectedReleaseForDetail.solution_material_ids || [];
+                
+                const allSelectedMaterialIds = [...new Set([...directMaterials, ...selectedKlausurMaterials])];
+                
+                // Finde alle Lösungen NUR nach Titel aus den ausgewählten Materialien
+                const solutionIds = allSelectedMaterialIds.filter(id => {
+                  const material = materials.find(m => m.id === id);
+                  if (!material) return false;
+                  return isLoesungMaterial(material);
+                });
+                
+                if (solutionIds.length === 0) return null;
+                
+                return (
+                  <div className="mb-6">
+                    <h3 className="text-sm font-medium text-yellow-700 mb-3 flex items-center">
+                      <Award className="h-4 w-4 mr-2" />
+                      Lösungen ({solutionIds.length})
+                    </h3>
+                    {selectedReleaseForDetail.solutions_released ? (
+                      <div className="space-y-2">
+                        {solutionIds.map(id => {
+                          const material = materials.find(m => m.id === id);
+                          if (!material) return null;
+                          return (
+                            <button
+                              key={id}
+                              onClick={() => handleDownloadMaterial(material)}
+                              className="flex items-center w-full p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors border border-yellow-200 text-left"
+                            >
+                              <FileText className="h-5 w-5 text-yellow-600 mr-3 flex-shrink-0" />
+                              <span className="text-sm text-gray-900 flex-1">{material.title}</span>
+                              <Download className="h-4 w-4 text-yellow-600 flex-shrink-0" />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <div className="flex items-start">
+                          <Lock className="h-6 w-6 text-yellow-500 mr-3 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-medium text-yellow-800 mb-1">
+                              Lösungen noch nicht verfügbar
+                            </p>
+                            <p className="text-sm text-yellow-700">
+                              {selectedReleaseForDetail.solution_release_date ? (
+                                <>
+                                  Die Lösungen werden am <strong>{formatDate(selectedReleaseForDetail.solution_release_date)}</strong>
+                                  {selectedReleaseForDetail.solution_release_time && <> um <strong>{selectedReleaseForDetail.solution_release_time.slice(0, 5)} Uhr</strong></>} freigegeben.
+                                </>
+                              ) : selectedReleaseForDetail.end_time ? (
+                                <>
+                                  Die Lösungen werden nach Ende der Einheit um <strong>{selectedReleaseForDetail.end_time.slice(0, 5)} Uhr</strong> freigegeben.
+                                </>
+                              ) : (
+                                <>Die Lösungen werden nach Ende der Einheit freigegeben.</>
+                              )}
+                            </p>
+                            <div className="mt-2 text-xs text-yellow-600">
+                              {solutionIds.length} Lösung(en) werden verfügbar sein
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Nicht freigegeben Hinweis - nur wenn Einheit noch nicht freigegeben */}
+              {!selectedReleaseForDetail.is_released && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center">
+                  <Lock className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                  <h4 className="text-lg font-medium text-gray-900 mb-2">Diese Einheit ist noch nicht freigegeben</h4>
+                  <p className="text-gray-500">
+                    Die Materialien werden am {formatDate(selectedReleaseForDetail.release_date)} verfügbar sein.
+                  </p>
+                </div>
+              )}
+
+              {/* Schließen Button */}
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={() => setSelectedReleaseForDetail(null)}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
                 >
                   Schließen
                 </button>

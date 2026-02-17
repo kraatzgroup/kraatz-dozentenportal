@@ -16,6 +16,13 @@ interface Dozent {
   postal_code: string;
   city: string;
   profile_picture_url?: string;
+  iban: string;
+  bic: string;
+  bank_name: string;
+  tax_id: string;
+  hourly_rate_unterricht: number | null;
+  hourly_rate_elite: number | null;
+  hourly_rate_sonstige: number | null;
 }
 
 interface DozentFormProps {
@@ -40,7 +47,14 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
     house_number: '',
     postal_code: '',
     city: '',
-    profile_picture_url: ''
+    profile_picture_url: '',
+    iban: '',
+    bic: '',
+    bank_name: '',
+    tax_id: '',
+    hourly_rate_unterricht: null,
+    hourly_rate_elite: null,
+    hourly_rate_sonstige: null
   });
   const [profilePictureFile, setProfilePictureFile] = useState<File | null>(null);
   const [profilePicturePreview, setProfilePicturePreview] = useState<string>('');
@@ -61,7 +75,14 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         house_number: dozent.house_number || '',
         postal_code: dozent.postal_code || '',
         city: dozent.city || '',
-        profile_picture_url: dozent.profile_picture_url || ''
+        profile_picture_url: dozent.profile_picture_url || '',
+        iban: (dozent as any).iban || '',
+        bic: (dozent as any).bic || '',
+        bank_name: (dozent as any).bank_name || '',
+        tax_id: (dozent as any).tax_id || '',
+        hourly_rate_unterricht: (dozent as any).hourly_rate_unterricht ?? null,
+        hourly_rate_elite: (dozent as any).hourly_rate_elite ?? null,
+        hourly_rate_sonstige: (dozent as any).hourly_rate_sonstige ?? null
       });
       if (dozent.profile_picture_url) {
         setProfilePicturePreview(dozent.profile_picture_url);
@@ -163,6 +184,13 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         postal_code: formData.postal_code.trim() || null,
         city: formData.city.trim() || null,
         profile_picture_url: profilePictureUrl,
+        iban: formData.iban.trim() || null,
+        bic: formData.bic.trim() || null,
+        bank_name: formData.bank_name.trim() || null,
+        tax_id: formData.tax_id.trim() || null,
+        hourly_rate_unterricht: formData.hourly_rate_unterricht,
+        hourly_rate_elite: formData.hourly_rate_elite,
+        hourly_rate_sonstige: formData.hourly_rate_sonstige,
         role: 'dozent'
       };
 
@@ -449,6 +477,114 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                   placeholder="Ort"
                 />
+              </div>
+            </div>
+          </div>
+
+          {/* Bank Details Section */}
+          <div className="border-t pt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Bankverbindung
+            </label>
+            
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Bankname</label>
+                <input
+                  type="text"
+                  value={formData.bank_name}
+                  onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  placeholder="z.B. Deutsche Bank"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">IBAN</label>
+                <input
+                  type="text"
+                  value={formData.iban}
+                  onChange={(e) => setFormData({ ...formData, iban: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-mono text-sm"
+                  placeholder="DE89 3704 0044 0532 0130 00"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">BIC</label>
+                <input
+                  type="text"
+                  value={formData.bic}
+                  onChange={(e) => setFormData({ ...formData, bic: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-mono text-sm"
+                  placeholder="COBADEFFXXX"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Tax ID */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Steuernummer / USt-IdNr.
+            </label>
+            <input
+              type="text"
+              value={formData.tax_id}
+              onChange={(e) => setFormData({ ...formData, tax_id: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+              placeholder="z.B. 12/345/67890 oder DE123456789"
+            />
+          </div>
+
+          {/* Hourly Rates Section */}
+          <div className="border-t pt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Stundensatz (€/Std.)
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Unterricht</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.hourly_rate_unterricht ?? ''}
+                    onChange={(e) => setFormData({ ...formData, hourly_rate_unterricht: e.target.value ? parseFloat(e.target.value) : null })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent pr-8"
+                    placeholder="0.00"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">€</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Elite-Kleingruppe</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.hourly_rate_elite ?? ''}
+                    onChange={(e) => setFormData({ ...formData, hourly_rate_elite: e.target.value ? parseFloat(e.target.value) : null })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent pr-8"
+                    placeholder="0.00"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">€</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Sonstige Tätigkeiten</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.hourly_rate_sonstige ?? ''}
+                    onChange={(e) => setFormData({ ...formData, hourly_rate_sonstige: e.target.value ? parseFloat(e.target.value) : null })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent pr-8"
+                    placeholder="0.00"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">€</span>
+                </div>
               </div>
             </div>
           </div>

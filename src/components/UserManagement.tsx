@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useUserStore, User } from '../store/userStore';
 import { ProfilePicture } from './ProfilePicture';
 import { Logo } from './Logo';
+import { DozentForm } from './DozentForm';
 import { supabase } from '../lib/supabase';
 
 interface DialogState {
@@ -49,6 +50,8 @@ export function UserManagement() {
   const [isBackupLoading, setIsBackupLoading] = useState(false);
   const [isCheckingDocuments, setIsCheckingDocuments] = useState(false);
   const [checkResult, setCheckResult] = useState<any>(null);
+  const [showDozentForm, setShowDozentForm] = useState(false);
+  const [selectedDozentForEdit, setSelectedDozentForEdit] = useState<any>(null);
   const [confirmation, setConfirmation] = useState<ConfirmationState>({
     show: false,
     title: '',
@@ -348,7 +351,7 @@ export function UserManagement() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
             <div className="flex items-center">
               <button
-                onClick={() => navigate('/admin')}
+                onClick={() => navigate('/admin?tab=uebersicht')}
                 className="mr-3 sm:mr-4 p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded-full">
                 <ArrowLeft className="h-5 w-5" />
               </button>
@@ -511,14 +514,22 @@ export function UserManagement() {
                         {user.role !== 'admin' && (
                           <>
                             <button
-                              onClick={() => setDialog({
-                                type: 'edit',
-                                userData: {
-                                  id: user.id,
-                                  email: user.email,
-                                  fullName: user.full_name
+                              onClick={() => {
+                                if (user.role === 'dozent') {
+                                  setSelectedDozentForEdit(user);
+                                  setShowDozentForm(true);
+                                } else {
+                                  setDialog({
+                                    type: 'edit',
+                                    userData: {
+                                      id: user.id,
+                                      email: user.email,
+                                      fullName: user.full_name,
+                                      role: user.role
+                                    }
+                                  });
                                 }
-                              })}
+                              }}
                               className="inline-flex items-center justify-center px-2 sm:px-3 py-2 border border-gray-300 shadow-sm text-xs sm:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                               <Pencil className="h-4 w-4 sm:mr-2" />
                               <span className="hidden sm:inline">Bearbeiten</span>
@@ -776,6 +787,19 @@ export function UserManagement() {
                 </div>
               </div>
             </div>
+          )}
+
+          {showDozentForm && selectedDozentForEdit && (
+            <DozentForm
+              dozent={selectedDozentForEdit}
+              onClose={() => {
+                setShowDozentForm(false);
+                setSelectedDozentForEdit(null);
+              }}
+              onSaved={() => {
+                fetchUsers();
+              }}
+            />
           )}
         </div>
       </div>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, Clock, Calendar, User, BookOpen, GraduationCap, FileText, Edit, Trash2 } from 'lucide-react';
+import { ArrowLeft, Clock, Calendar, User, BookOpen, FileText, Edit, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useHoursStore } from '../store/hoursStore';
@@ -18,6 +18,7 @@ interface TeilnehmerHours {
   description: string;
   legal_area: string;
   created_at: string;
+  dozent_id: string;
   dozent_name: string;
   dozent_email: string;
 }
@@ -39,6 +40,16 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
   });
   const [editingHours, setEditingHours] = useState<TeilnehmerHours | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [teilnehmerInfo, setTeilnehmerInfo] = useState<{
+    booked_hours?: number;
+    hours_zivilrecht?: number;
+    hours_strafrecht?: number;
+    hours_oeffentliches_recht?: number;
+    frequency_type?: string;
+    frequency_hours_zivilrecht?: number;
+    frequency_hours_strafrecht?: number;
+    frequency_hours_oeffentliches_recht?: number;
+  }>({});
   const { user } = useAuthStore();
 
   useEffect(() => {
@@ -68,6 +79,17 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
     
     try {
       console.log('🔍 Fetching ALL hours for teilnehmer:', teilnehmerId);
+
+      // Fetch teilnehmer info (booked hours per subject)
+      const { data: tData } = await supabase
+        .from('teilnehmer')
+        .select('booked_hours, hours_zivilrecht, hours_strafrecht, hours_oeffentliches_recht, frequency_type, frequency_hours_zivilrecht, frequency_hours_strafrecht, frequency_hours_oeffentliches_recht')
+        .eq('id', teilnehmerId)
+        .single();
+      if (tData) {
+        setTeilnehmerInfo(tData);
+      }
+
       // Fetch hours using regular client - RLS policies handle access
       const { data, error } = await supabase
         .from('participant_hours')
@@ -110,13 +132,14 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
         description: item.description || '',
         legal_area: item.legal_area || '',
         created_at: item.created_at,
+        dozent_id: item.dozent_id,
         dozent_name: (item.dozent as any)?.full_name || 'Unbekannt',
         dozent_email: (item.dozent as any)?.email || ''
       })) || [];
 
       setHours(transformedData);
 
-      // Calculate totals
+      // Calculate totals (all hours for this teilnehmer)
       const total = transformedData.reduce((sum, h) => sum + h.hours, 0);
       setTotalHours(total);
 
@@ -380,218 +403,322 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <Clock className="h-8 w-8 text-primary" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
-                    Gesamtstunden
-                  </dt>
-                  <dd className="text-lg font-medium text-gray-900">
-                    {totalHours.toFixed(2)}h
-                  </dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <Calendar className="h-8 w-8 text-green-600" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
-                    Einträge
-                  </dt>
-                  <dd className="text-lg font-medium text-gray-900">
-                    {hours.length}
-                  </dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <GraduationCap className="h-8 w-8 text-blue-600" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
-                    Dozenten
-                  </dt>
-                  <dd className="text-lg font-medium text-gray-900">
-                    {uniqueDozenten.length}
-                  </dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Hours List */}
-      <div className="bg-white shadow overflow-hidden sm:rounded-md">
-        <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900">
-            Stundeneinträge (chronologisch)
-          </h3>
-          <p className="mt-1 text-sm text-gray-500">
-            Alle Stunden für {teilnehmerName} von allen Dozenten
-          </p>
-        </div>
-
-        {hours.length === 0 ? (
-          <div className="text-center py-8">
-            <Clock className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">Keine Stunden eingetragen</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Für diesen Teilnehmer wurden noch keine Stunden eingetragen.
-            </p>
-          </div>
-        ) : (
-          <ul className="divide-y divide-gray-200">
-            {hours.map((hoursEntry) => (
-              <li key={hoursEntry.id} className="px-4 py-6 sm:px-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0">
-                          <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                            <Clock className="h-5 w-5 text-primary" />
-                          </div>
-                        </div>
-                        <div className="ml-4">
-                          <div className="flex items-center space-x-3">
-                            <span className="text-lg font-semibold text-primary">
-                              {hoursEntry.hours}h
-                            </span>
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getLegalAreaColor(hoursEntry.legal_area)}`}>
-                              {hoursEntry.legal_area || 'Nicht angegeben'}
-                            </span>
-                          </div>
-                          <div className="flex items-center mt-1 text-sm text-gray-500 space-x-4">
-                            <div className="flex items-center">
-                              <Calendar className="h-4 w-4 mr-1" />
-                              <span>{formatDate(hoursEntry.date)}</span>
-                            </div>
-                            <div className="flex items-center">
-                              <User className="h-4 w-4 mr-1" />
-                              <span>{hoursEntry.dozent_name}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-right flex items-center space-x-3">
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() => handleEditHours(hoursEntry)}
-                            className="text-gray-400 hover:text-primary transition-colors"
-                            title="Stunden bearbeiten"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteHours(hoursEntry)}
-                            className="text-gray-400 hover:text-red-500 transition-colors"
-                            title="Stunden löschen"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          Eingetragen am
-                        </div>
-                        <div className="text-sm text-gray-900">
-                          {formatDateTime(hoursEntry.created_at)}
-                        </div>
-                      </div>
-                    </div>
+      {(() => {
+        const myHours = isAdmin ? hours : hours.filter(h => h.dozent_id === user?.id);
+        const myTotal = myHours.reduce((sum, h) => sum + h.hours, 0);
+        const uniqueAreas = [...new Set(hours.map(h => h.legal_area).filter(Boolean))];
+        return (
+          <div className={`grid grid-cols-1 gap-4 ${isAdmin ? 'sm:grid-cols-3' : 'sm:grid-cols-3'}`}>
+            <div className="bg-white overflow-hidden shadow rounded-lg">
+              <div className="p-5">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <Clock className="h-8 w-8 text-primary" />
+                  </div>
+                  <div className="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt className="text-sm font-medium text-gray-500 truncate">
+                        {isAdmin ? 'Gesamtstunden' : 'Meine Stunden'}
+                      </dt>
+                      <dd className="text-lg font-medium text-gray-900">
+                        {isAdmin ? totalHours.toFixed(2) : myTotal.toFixed(2)}h
+                      </dd>
+                    </dl>
                   </div>
                 </div>
-                    
-                    {hoursEntry.description && (
-                      <div className="mt-3 ml-14">
-                        <div className="flex items-start">
-                          <BookOpen className="h-4 w-4 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
-                          <div className="text-sm text-gray-700 bg-gray-50 rounded-md p-3 flex-1">
-                            <div className="font-medium text-gray-900 mb-1">Inhalt:</div>
-                            {hoursEntry.description}
+              </div>
+            </div>
+
+            <div className="bg-white overflow-hidden shadow rounded-lg">
+              <div className="p-5">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <Calendar className="h-8 w-8 text-green-600" />
+                  </div>
+                  <div className="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt className="text-sm font-medium text-gray-500 truncate">
+                        {isAdmin ? 'Einträge' : 'Meine Einträge'}
+                      </dt>
+                      <dd className="text-lg font-medium text-gray-900">
+                        {isAdmin ? hours.length : myHours.length}
+                      </dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white overflow-hidden shadow rounded-lg">
+              <div className="p-5">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <BookOpen className="h-8 w-8 text-blue-600" />
+                  </div>
+                  <div className="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt className="text-sm font-medium text-gray-500 truncate">
+                        Rechtsgebiete
+                      </dt>
+                      <dd className="text-lg font-medium text-gray-900">
+                        {uniqueAreas.length}
+                      </dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Hours List */}
+      {(() => {
+        // For dozent: only show own entries. For admin: show all.
+        const displayHours = isAdmin ? hours : hours.filter(h => h.dozent_id === user?.id);
+        return (
+          <div className="bg-white shadow overflow-hidden sm:rounded-md">
+            <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
+              <h3 className="text-lg font-medium text-gray-900">
+                {isAdmin ? 'Stundeneinträge (chronologisch)' : 'Meine Stundeneinträge'}
+              </h3>
+              <p className="mt-1 text-sm text-gray-500">
+                {isAdmin 
+                  ? `Alle Stunden für ${teilnehmerName} von allen Dozenten`
+                  : `Ihre eingetragenen Stunden für ${teilnehmerName}`
+                }
+              </p>
+            </div>
+
+            {displayHours.length === 0 ? (
+              <div className="text-center py-8">
+                <Clock className="mx-auto h-12 w-12 text-gray-400" />
+                <h3 className="mt-2 text-sm font-medium text-gray-900">Keine Stunden eingetragen</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  {isAdmin 
+                    ? 'Für diesen Teilnehmer wurden noch keine Stunden eingetragen.'
+                    : 'Sie haben noch keine Stunden für diesen Teilnehmer eingetragen.'
+                  }
+                </p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-gray-200">
+                {displayHours.map((hoursEntry) => (
+                  <li key={hoursEntry.id} className="px-4 py-6 sm:px-6">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            <div className="flex-shrink-0">
+                              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                                <Clock className="h-5 w-5 text-primary" />
+                              </div>
+                            </div>
+                            <div className="ml-4">
+                              <div className="flex items-center space-x-3">
+                                <span className="text-lg font-semibold text-primary">
+                                  {hoursEntry.hours}h
+                                </span>
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getLegalAreaColor(hoursEntry.legal_area)}`}>
+                                  {hoursEntry.legal_area || 'Nicht angegeben'}
+                                </span>
+                              </div>
+                              <div className="flex items-center mt-1 text-sm text-gray-500 space-x-4">
+                                <div className="flex items-center">
+                                  <Calendar className="h-4 w-4 mr-1" />
+                                  <span>{formatDate(hoursEntry.date)}</span>
+                                </div>
+                                {isAdmin && (
+                                  <div className="flex items-center">
+                                    <User className="h-4 w-4 mr-1" />
+                                    <span>{hoursEntry.dozent_name}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right flex items-center space-x-3">
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={() => handleEditHours(hoursEntry)}
+                                className="text-gray-400 hover:text-primary transition-colors"
+                                title="Stunden bearbeiten"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteHours(hoursEntry)}
+                                className="text-gray-400 hover:text-red-500 transition-colors"
+                                title="Stunden löschen"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              Eingetragen am
+                            </div>
+                            <div className="text-sm text-gray-900">
+                              {formatDateTime(hoursEntry.created_at)}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {/* Dozenten Summary */}
-      {uniqueDozenten.length > 1 && (
-        <div className="bg-white shadow overflow-hidden sm:rounded-md">
-          <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
-            <h3 className="text-lg font-medium text-gray-900">
-              Stunden nach Dozent
-            </h3>
-            <p className="mt-1 text-sm text-gray-500">
-              {isAdmin 
-                ? `Alle Stunden für ${teilnehmerName} von allen Dozenten`
-                : `Ihre Stunden für ${teilnehmerName}`
-              }
-            </p>
+                    </div>
+                        
+                        {hoursEntry.description && (
+                          <div className="mt-3 ml-14">
+                            <div className="flex items-start">
+                              <BookOpen className="h-4 w-4 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
+                              <div className="text-sm text-gray-700 bg-gray-50 rounded-md p-3 flex-1">
+                                <div className="font-medium text-gray-900 mb-1">Inhalt:</div>
+                                {hoursEntry.description}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-          <ul className="divide-y divide-gray-200">
-            {uniqueDozenten.map((dozentName) => {
-              const dozentHours = hours.filter(h => h.dozent_name === dozentName);
-              const dozentTotal = dozentHours.reduce((sum, h) => sum + h.hours, 0);
-              
-              return (
-                <li key={dozentName} className="px-4 py-4 sm:px-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className="flex-shrink-0">
-                        <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
-                          <GraduationCap className="h-4 w-4 text-blue-600" />
+        );
+      })()}
+
+      {/* Stunden nach Rechtsgebiet */}
+      {(() => {
+        // For the per-subject breakdown, always use ALL hours (from all dozenten)
+        // to show the real total completed per subject
+        const allSubjectHours = hours;
+        const sourceHours = isAdmin ? hours : hours.filter(h => h.dozent_id === user?.id);
+        const uniqueAreas = [...new Set(allSubjectHours.map(h => h.legal_area).filter(Boolean))];
+        if (uniqueAreas.length === 0) return null;
+
+        const getAreaColor = (area: string) => {
+          switch (area) {
+            case 'Zivilrecht': return { bg: 'bg-blue-100', text: 'text-blue-800', icon: 'text-blue-600', ring: 'bg-blue-50' };
+            case 'Strafrecht': return { bg: 'bg-red-100', text: 'text-red-800', icon: 'text-red-600', ring: 'bg-red-50' };
+            case 'Öffentliches Recht': return { bg: 'bg-green-100', text: 'text-green-800', icon: 'text-green-600', ring: 'bg-green-50' };
+            default: return { bg: 'bg-gray-100', text: 'text-gray-800', icon: 'text-gray-600', ring: 'bg-gray-50' };
+          }
+        };
+
+        const getBookedForArea = (area: string): number | null => {
+          switch (area) {
+            case 'Zivilrecht': return teilnehmerInfo.hours_zivilrecht ?? null;
+            case 'Strafrecht': return teilnehmerInfo.hours_strafrecht ?? null;
+            case 'Öffentliches Recht': return teilnehmerInfo.hours_oeffentliches_recht ?? null;
+            default: return null;
+          }
+        };
+
+        const getFrequencyForArea = (area: string): number | null => {
+          switch (area) {
+            case 'Zivilrecht': return teilnehmerInfo.frequency_hours_zivilrecht ?? null;
+            case 'Strafrecht': return teilnehmerInfo.frequency_hours_strafrecht ?? null;
+            case 'Öffentliches Recht': return teilnehmerInfo.frequency_hours_oeffentliches_recht ?? null;
+            default: return null;
+          }
+        };
+
+        const frequencyLabel = teilnehmerInfo.frequency_type === 'weekly' ? 'Std./Woche' : teilnehmerInfo.frequency_type === 'monthly' ? 'Std./Monat' : null;
+
+        return (
+          <div className="bg-white shadow overflow-hidden sm:rounded-md">
+            <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
+              <h3 className="text-lg font-medium text-gray-900">
+                Stunden nach Rechtsgebiet
+              </h3>
+              <p className="mt-1 text-sm text-gray-500">
+                {isAdmin 
+                  ? `Aufschlüsselung aller Stunden für ${teilnehmerName}`
+                  : `Stundenübersicht für ${teilnehmerName} nach Rechtsgebiet`
+                }
+              </p>
+            </div>
+            <ul className="divide-y divide-gray-200">
+              {uniqueAreas.map((area) => {
+                const allAreaHours = allSubjectHours.filter(h => h.legal_area === area);
+                const totalCompleted = allAreaHours.reduce((sum, h) => sum + h.hours, 0);
+                const myAreaHours = sourceHours.filter(h => h.legal_area === area);
+                const myTotal = myAreaHours.reduce((sum, h) => sum + h.hours, 0);
+                const booked = getBookedForArea(area);
+                const frequency = getFrequencyForArea(area);
+                const remaining = booked !== null ? Math.max(0, booked - totalCompleted) : null;
+                const pct = booked && booked > 0 ? Math.min(100, Math.round((totalCompleted / booked) * 100)) : 0;
+                const colors = getAreaColor(area);
+                
+                return (
+                  <li key={area} className="px-4 py-4 sm:px-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center flex-1 min-w-0">
+                        <div className="flex-shrink-0">
+                          <div className={`h-8 w-8 rounded-full ${colors.ring} flex items-center justify-center`}>
+                            <BookOpen className={`h-4 w-4 ${colors.icon}`} />
+                          </div>
+                        </div>
+                        <div className="ml-3 flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-gray-900">{area}</span>
+                            {frequency !== null && frequencyLabel && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700">
+                                Soll: {frequency} {frequencyLabel}
+                              </span>
+                            )}
+                          </div>
+                          {booked !== null && booked > 0 && (
+                            <div className="mt-1">
+                              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                <div
+                                  className={`h-1.5 rounded-full transition-all ${
+                                    pct >= 100 ? 'bg-green-500' : pct >= 75 ? 'bg-orange-400' : colors.icon.replace('text-', 'bg-')
+                                  }`}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+                          {!isAdmin && myTotal !== totalCompleted && (
+                            <div className="text-xs text-gray-400 mt-0.5">
+                              Davon von Ihnen: <span className="font-medium text-primary">{myTotal.toFixed(2)}h</span>
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <div className="ml-3">
-                        <div className="text-sm font-medium text-gray-900">
-                          {dozentName}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {dozentHours.length} {dozentHours.length === 1 ? 'Eintrag' : 'Einträge'}
-                        </div>
+                      <div className="text-right ml-4">
+                        {booked !== null ? (
+                          <>
+                            <div className="text-lg font-semibold text-primary">
+                              {totalCompleted.toFixed(2)} / {booked}h
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {remaining !== null && remaining > 0 ? (
+                                <span className="text-green-600">{remaining} Std. offen</span>
+                              ) : remaining === 0 ? (
+                                <span className="text-gray-400">abgeschlossen</span>
+                              ) : (
+                                'gebucht'
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-lg font-semibold text-primary">
+                              {totalCompleted.toFixed(2)}h
+                            </div>
+                            <div className="text-xs text-gray-400 italic">
+                              keine Verteilung
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-lg font-semibold text-primary">
-                        {dozentTotal.toFixed(2)}h
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        Gesamt
-                      </div>
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })()}
       </div>
 
       {/* Add Hours Dialog (Admin only) */}

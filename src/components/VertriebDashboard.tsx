@@ -1,4 +1,5 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Settings, Calendar, ChevronDown } from 'lucide-react';
 import { useSalesStore } from '../store/salesStore';
 import { Logo } from './Logo';
@@ -13,13 +14,25 @@ import { AfterSalesList } from './vertrieb/AfterSalesList';
 type TabType = 'overview' | 'calendar' | 'calls' | 'leads' | 'trials' | 'finalgespraech' | 'aftersales';
 
 export function VertriebDashboard() {
-  const [activeTab, setActiveTab] = useState<TabType>(() => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTabState] = useState<TabType>(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['overview', 'calendar', 'calls', 'leads', 'trials', 'finalgespraech', 'aftersales'].includes(tabParam)) {
+      return tabParam as TabType;
+    }
     const saved = localStorage.getItem('vertriebDashboardTab');
     return (saved as TabType) || 'overview';
   });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [dateRange, setDateRange] = useState<'maximum' | 'today' | 'week' | 'month' | 'lastWeek' | 'lastMonth' | 'year' | 'lastYear'>('maximum');
   const [showDateDropdown, setShowDateDropdown] = useState(false);
+  
+  // Helper function to change tab and update URL
+  const setActiveTab = useCallback((tab: TabType) => {
+    setActiveTabState(tab);
+    localStorage.setItem('vertriebDashboardTab', tab);
+    setSearchParams({ tab });
+  }, [setSearchParams]);
 
   const {
     followUps,
@@ -72,11 +85,6 @@ export function VertriebDashboard() {
     } finally {
       setIsRefreshing(false);
     }
-  };
-
-  const handleTabChange = (tab: TabType) => {
-    setActiveTab(tab);
-    localStorage.setItem('vertriebDashboardTab', tab);
   };
 
   // Date range calculations
@@ -190,7 +198,7 @@ export function VertriebDashboard() {
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => handleTabChange(tab.id)}
+                onClick={() => setActiveTab(tab.id)}
                 className={`${
                   activeTab === tab.id
                     ? 'border-primary text-primary'

@@ -25,6 +25,13 @@ interface Teilnehmer {
   postal_code: string;
   city: string;
   elite_kleingruppe?: boolean;
+  hours_zivilrecht: number | null;
+  hours_strafrecht: number | null;
+  hours_oeffentliches_recht: number | null;
+  frequency_type: string;
+  frequency_hours_zivilrecht: number | null;
+  frequency_hours_strafrecht: number | null;
+  frequency_hours_oeffentliches_recht: number | null;
 }
 
 const GERMAN_STATES = [
@@ -76,7 +83,14 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
     house_number: '',
     postal_code: '',
     city: '',
-    elite_kleingruppe: false
+    elite_kleingruppe: false,
+    hours_zivilrecht: null,
+    hours_strafrecht: null,
+    hours_oeffentliches_recht: null,
+    frequency_type: '',
+    frequency_hours_zivilrecht: null,
+    frequency_hours_strafrecht: null,
+    frequency_hours_oeffentliches_recht: null
   });
 
   const isEditing = !!teilnehmer?.id;
@@ -103,7 +117,14 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
         house_number: (teilnehmer as any).house_number || '',
         postal_code: (teilnehmer as any).postal_code || '',
         city: (teilnehmer as any).city || '',
-        elite_kleingruppe: (teilnehmer as any).elite_kleingruppe || false
+        elite_kleingruppe: (teilnehmer as any).elite_kleingruppe || false,
+        hours_zivilrecht: (teilnehmer as any).hours_zivilrecht || null,
+        hours_strafrecht: (teilnehmer as any).hours_strafrecht || null,
+        hours_oeffentliches_recht: (teilnehmer as any).hours_oeffentliches_recht || null,
+        frequency_type: (teilnehmer as any).frequency_type || '',
+        frequency_hours_zivilrecht: (teilnehmer as any).frequency_hours_zivilrecht || null,
+        frequency_hours_strafrecht: (teilnehmer as any).frequency_hours_strafrecht || null,
+        frequency_hours_oeffentliches_recht: (teilnehmer as any).frequency_hours_oeffentliches_recht || null
       });
     }
   }, [teilnehmer]);
@@ -114,6 +135,18 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
     if (!formData.first_name.trim() || !formData.last_name.trim()) {
       addToast('Bitte Vor- und Nachname eingeben', 'error');
       return;
+    }
+
+    // Validate per-subject hours don't exceed total
+    if (formData.booked_hours && formData.legal_areas.length > 0) {
+      const sumHours = 
+        (formData.legal_areas.includes('Zivilrecht') ? (formData.hours_zivilrecht || 0) : 0) +
+        (formData.legal_areas.includes('Strafrecht') ? (formData.hours_strafrecht || 0) : 0) +
+        (formData.legal_areas.includes('Öffentliches Recht') ? (formData.hours_oeffentliches_recht || 0) : 0);
+      if (sumHours > formData.booked_hours) {
+        addToast(`Die Summe der Stunden pro Rechtsgebiet (${sumHours}) übersteigt das gebuchte Stundenpaket (${formData.booked_hours})`, 'error');
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -156,6 +189,13 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
         postal_code: formData.postal_code.trim() || null,
         city: formData.city.trim() || null,
         elite_kleingruppe: formData.elite_kleingruppe || false,
+        hours_zivilrecht: formData.legal_areas.includes('Zivilrecht') ? (formData.hours_zivilrecht || null) : null,
+        hours_strafrecht: formData.legal_areas.includes('Strafrecht') ? (formData.hours_strafrecht || null) : null,
+        hours_oeffentliches_recht: formData.legal_areas.includes('Öffentliches Recht') ? (formData.hours_oeffentliches_recht || null) : null,
+        frequency_type: formData.frequency_type || null,
+        frequency_hours_zivilrecht: formData.legal_areas.includes('Zivilrecht') ? (formData.frequency_hours_zivilrecht || null) : null,
+        frequency_hours_strafrecht: formData.legal_areas.includes('Strafrecht') ? (formData.frequency_hours_strafrecht || null) : null,
+        frequency_hours_oeffentliches_recht: formData.legal_areas.includes('Öffentliches Recht') ? (formData.frequency_hours_oeffentliches_recht || null) : null,
         updated_at: new Date().toISOString()
       };
 
@@ -416,6 +456,148 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
               ))}
             </div>
           </div>
+
+          {/* Per-Subject Hours - shown when booked_hours is set and legal areas are selected */}
+          {formData.booked_hours && formData.legal_areas.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-medium text-blue-800">
+                  Stundenverteilung pro Rechtsgebiet
+                </label>
+                <span className={`text-xs font-medium ${
+                  (() => {
+                    const sum = 
+                      (formData.legal_areas.includes('Zivilrecht') ? (formData.hours_zivilrecht || 0) : 0) +
+                      (formData.legal_areas.includes('Strafrecht') ? (formData.hours_strafrecht || 0) : 0) +
+                      (formData.legal_areas.includes('Öffentliches Recht') ? (formData.hours_oeffentliches_recht || 0) : 0);
+                    return sum > formData.booked_hours! ? 'text-red-600' : sum === formData.booked_hours! ? 'text-green-600' : 'text-blue-600';
+                  })()
+                }`}>
+                  {(
+                    (formData.legal_areas.includes('Zivilrecht') ? (formData.hours_zivilrecht || 0) : 0) +
+                    (formData.legal_areas.includes('Strafrecht') ? (formData.hours_strafrecht || 0) : 0) +
+                    (formData.legal_areas.includes('Öffentliches Recht') ? (formData.hours_oeffentliches_recht || 0) : 0)
+                  )} / {formData.booked_hours} Std. verteilt
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {formData.legal_areas.includes('Zivilrecht') && (
+                  <div>
+                    <label className="block text-xs text-blue-700 mb-1">Zivilrecht</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        max={formData.booked_hours || undefined}
+                        value={formData.hours_zivilrecht ?? ''}
+                        onChange={(e) => setFormData({ ...formData, hours_zivilrecht: e.target.value ? parseFloat(e.target.value) : null })}
+                        className="w-full px-3 py-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"
+                        placeholder="Std."
+                      />
+                    </div>
+                  </div>
+                )}
+                {formData.legal_areas.includes('Strafrecht') && (
+                  <div>
+                    <label className="block text-xs text-blue-700 mb-1">Strafrecht</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        max={formData.booked_hours || undefined}
+                        value={formData.hours_strafrecht ?? ''}
+                        onChange={(e) => setFormData({ ...formData, hours_strafrecht: e.target.value ? parseFloat(e.target.value) : null })}
+                        className="w-full px-3 py-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"
+                        placeholder="Std."
+                      />
+                    </div>
+                  </div>
+                )}
+                {formData.legal_areas.includes('Öffentliches Recht') && (
+                  <div>
+                    <label className="block text-xs text-blue-700 mb-1">Öff. Recht</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        max={formData.booked_hours || undefined}
+                        value={formData.hours_oeffentliches_recht ?? ''}
+                        onChange={(e) => setFormData({ ...formData, hours_oeffentliches_recht: e.target.value ? parseFloat(e.target.value) : null })}
+                        className="w-full px-3 py-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"
+                        placeholder="Std."
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Frequency Hours per Subject - shown when legal areas are selected */}
+          {formData.legal_areas.length > 0 && (
+            <div className="bg-purple-50 border border-purple-200 rounded-md p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-medium text-purple-800">
+                  Regelmäßige Stunden pro Rechtsgebiet
+                </label>
+                <select
+                  value={formData.frequency_type}
+                  onChange={(e) => setFormData({ ...formData, frequency_type: e.target.value })}
+                  className="text-xs border border-purple-300 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                >
+                  <option value="">Bitte wählen</option>
+                  <option value="weekly">Wochenstunden</option>
+                  <option value="monthly">Monatsstunden</option>
+                </select>
+              </div>
+              {formData.frequency_type && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {formData.legal_areas.includes('Zivilrecht') && (
+                    <div>
+                      <label className="block text-xs text-purple-700 mb-1">Zivilrecht</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={formData.frequency_hours_zivilrecht ?? ''}
+                        onChange={(e) => setFormData({ ...formData, frequency_hours_zivilrecht: e.target.value ? parseFloat(e.target.value) : null })}
+                        className="w-full px-3 py-2 border border-purple-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm bg-white"
+                        placeholder={formData.frequency_type === 'weekly' ? 'Std./Woche' : 'Std./Monat'}
+                      />
+                    </div>
+                  )}
+                  {formData.legal_areas.includes('Strafrecht') && (
+                    <div>
+                      <label className="block text-xs text-purple-700 mb-1">Strafrecht</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={formData.frequency_hours_strafrecht ?? ''}
+                        onChange={(e) => setFormData({ ...formData, frequency_hours_strafrecht: e.target.value ? parseFloat(e.target.value) : null })}
+                        className="w-full px-3 py-2 border border-purple-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm bg-white"
+                        placeholder={formData.frequency_type === 'weekly' ? 'Std./Woche' : 'Std./Monat'}
+                      />
+                    </div>
+                  )}
+                  {formData.legal_areas.includes('Öffentliches Recht') && (
+                    <div>
+                      <label className="block text-xs text-purple-700 mb-1">Öff. Recht</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={formData.frequency_hours_oeffentliches_recht ?? ''}
+                        onChange={(e) => setFormData({ ...formData, frequency_hours_oeffentliches_recht: e.target.value ? parseFloat(e.target.value) : null })}
+                        className="w-full px-3 py-2 border border-purple-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm bg-white"
+                        placeholder={formData.frequency_type === 'weekly' ? 'Std./Woche' : 'Std./Monat'}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Contract Period */}
           <div>

@@ -5,6 +5,7 @@ interface ParticipantHour {
   legal_area: string;
   teilnehmer: {
     name: string;
+    elite_kleingruppe?: boolean;
   };
 }
 
@@ -12,6 +13,7 @@ interface DozentHour {
   date: string;
   hours: number;
   description: string;
+  category?: string;
 }
 
 interface Invoice {
@@ -34,6 +36,9 @@ interface Invoice {
     house_number?: string;
     postal_code?: string;
     city?: string;
+    hourly_rate_unterricht?: number;
+    hourly_rate_elite?: number;
+    hourly_rate_sonstige?: number;
   };
 }
 
@@ -188,31 +193,80 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
   addText('Leistungsübersicht:', margin, yPosition);
   yPosition += 10;
 
-  // Calculate totals
-  const totalParticipantHours = data.participantHours.reduce((sum, h) => sum + h.hours, 0);
-  const totalDozentHours = data.dozentHours.reduce((sum, h) => sum + h.hours, 0);
-  const totalHours = totalParticipantHours + totalDozentHours;
+  // Calculate totals per category
+  const regularHours = data.participantHours.filter(h => !h.teilnehmer?.elite_kleingruppe);
+  const eliteParticipantHours = data.participantHours.filter(h => h.teilnehmer?.elite_kleingruppe);
+  const eliteDozentHours = data.dozentHours.filter(h => h.category && h.category.toLowerCase().includes('elite'));
+  const sonstigeHours = data.dozentHours.filter(h => !h.category || !h.category.toLowerCase().includes('elite'));
 
-  // Simple hours summary
+  const totalRegular = regularHours.reduce((sum, h) => sum + h.hours, 0);
+  const totalElite = eliteParticipantHours.reduce((sum, h) => sum + h.hours, 0) + eliteDozentHours.reduce((sum, h) => sum + h.hours, 0);
+  const totalSonstige = sonstigeHours.reduce((sum, h) => sum + h.hours, 0);
+  const totalHours = totalRegular + totalElite + totalSonstige;
+
+  const rateUnterricht = data.invoice.dozent.hourly_rate_unterricht || 0;
+  const rateElite = data.invoice.dozent.hourly_rate_elite || 0;
+  const rateSonstige = data.invoice.dozent.hourly_rate_sonstige || 0;
+
+  const amountRegular = totalRegular * rateUnterricht;
+  const amountElite = totalElite * rateElite;
+  const amountSonstige = totalSonstige * rateSonstige;
+  const totalAmount = amountRegular + amountElite + amountSonstige;
+
+  // Summary table
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  
-  if (totalParticipantHours > 0) {
-    addText(`Unterrichtsstunden: ${totalParticipantHours.toFixed(2)} Stunden`, margin, yPosition);
-    yPosition += 5;
-  }
-  
-  if (totalDozentHours > 0) {
-    addText(`Sonstige Tätigkeiten: ${totalDozentHours.toFixed(2)} Stunden`, margin, yPosition);
+
+  // Table header
+  doc.setFillColor(240, 240, 240);
+  doc.rect(margin, yPosition - 3, contentWidth, 7, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  addText('Leistung', margin + 2, yPosition + 1);
+  addText('Stunden', margin + 90, yPosition + 1);
+  addText('Satz', margin + 120, yPosition + 1);
+  addText('Betrag', pageWidth - margin - 2, yPosition + 1, { align: 'right' });
+  yPosition += 8;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+
+  if (totalRegular > 0) {
+    addText('Unterrichtsstunden', margin + 2, yPosition);
+    addText(`${totalRegular.toFixed(2)} Std.`, margin + 90, yPosition);
+    addText(rateUnterricht > 0 ? `${rateUnterricht.toFixed(2)} \u20ac` : '-', margin + 120, yPosition);
+    addText(rateUnterricht > 0 ? `${amountRegular.toFixed(2)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
     yPosition += 5;
   }
 
+  if (totalElite > 0) {
+    addText('Elite-Kleingruppe', margin + 2, yPosition);
+    addText(`${totalElite.toFixed(2)} Std.`, margin + 90, yPosition);
+    addText(rateElite > 0 ? `${rateElite.toFixed(2)} \u20ac` : '-', margin + 120, yPosition);
+    addText(rateElite > 0 ? `${amountElite.toFixed(2)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
+    yPosition += 5;
+  }
+
+  if (totalSonstige > 0) {
+    addText('Sonstige Taetigkeiten', margin + 2, yPosition);
+    addText(`${totalSonstige.toFixed(2)} Std.`, margin + 90, yPosition);
+    addText(rateSonstige > 0 ? `${rateSonstige.toFixed(2)} \u20ac` : '-', margin + 120, yPosition);
+    addText(rateSonstige > 0 ? `${amountSonstige.toFixed(2)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
+    yPosition += 5;
+  }
+
+  // Total line
+  yPosition += 2;
+  doc.setDrawColor(0);
+  doc.line(margin, yPosition, pageWidth - margin, yPosition);
   yPosition += 6;
 
-  // Total amount
-  doc.setFontSize(12);
+  doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   addText(`Gesamt: ${totalHours.toFixed(2)} Stunden`, margin, yPosition);
+  if (totalAmount > 0) {
+    addText(`${totalAmount.toFixed(2)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
+  }
   yPosition += 15;
 
   // Tax notice
@@ -446,27 +500,76 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   doc.line(margin, yPosition, pageWidth - margin, yPosition);
   yPosition += 8;
 
-  // Hours summary
+  // Calculate totals per category
+  const regularHours = data.participantHours.filter(h => !h.teilnehmer?.elite_kleingruppe);
+  const eliteParticipantHours2 = data.participantHours.filter(h => h.teilnehmer?.elite_kleingruppe);
+  const eliteDozentHours2 = data.dozentHours.filter(h => h.category && h.category.toLowerCase().includes('elite'));
+  const sonstigeHours2 = data.dozentHours.filter(h => !h.category || !h.category.toLowerCase().includes('elite'));
+
+  const totalRegular = regularHours.reduce((sum, h) => sum + h.hours, 0);
+  const totalElite = eliteParticipantHours2.reduce((sum, h) => sum + h.hours, 0) + eliteDozentHours2.reduce((sum, h) => sum + h.hours, 0);
+  const totalSonstige = sonstigeHours2.reduce((sum, h) => sum + h.hours, 0);
+  const totalHours = totalRegular + totalElite + totalSonstige;
+
+  const rateUnterricht = data.invoice.dozent.hourly_rate_unterricht || 0;
+  const rateElite = data.invoice.dozent.hourly_rate_elite || 0;
+  const rateSonstige = data.invoice.dozent.hourly_rate_sonstige || 0;
+
+  const amountRegular = totalRegular * rateUnterricht;
+  const amountElite = totalElite * rateElite;
+  const amountSonstige = totalSonstige * rateSonstige;
+  const totalAmount = amountRegular + amountElite + amountSonstige;
+
+  // Summary table
+  doc.setFillColor(240, 240, 240);
+  doc.rect(margin, yPosition - 3, contentWidth, 7, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  addText('Leistung', margin + 2, yPosition + 1);
+  addText('Stunden', margin + 90, yPosition + 1);
+  addText('Satz', margin + 120, yPosition + 1);
+  addText('Betrag', pageWidth - margin - 2, yPosition + 1, { align: 'right' });
+  yPosition += 8;
+
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  
-  if (totalParticipantHours > 0) {
-    addText(`Unterrichtsstunden: ${totalParticipantHours.toFixed(2)} Stunden`, margin, yPosition);
-    yPosition += 5;
-  }
-  
-  if (totalDozentHours > 0) {
-    addText(`Sonstige Tätigkeiten: ${totalDozentHours.toFixed(2)} Stunden`, margin, yPosition);
+  doc.setFontSize(9);
+
+  if (totalRegular > 0) {
+    addText('Unterrichtsstunden', margin + 2, yPosition);
+    addText(`${totalRegular.toFixed(2)} Std.`, margin + 90, yPosition);
+    addText(rateUnterricht > 0 ? `${rateUnterricht.toFixed(2)} \u20ac` : '-', margin + 120, yPosition);
+    addText(rateUnterricht > 0 ? `${amountRegular.toFixed(2)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
     yPosition += 5;
   }
 
+  if (totalElite > 0) {
+    addText('Elite-Kleingruppe', margin + 2, yPosition);
+    addText(`${totalElite.toFixed(2)} Std.`, margin + 90, yPosition);
+    addText(rateElite > 0 ? `${rateElite.toFixed(2)} \u20ac` : '-', margin + 120, yPosition);
+    addText(rateElite > 0 ? `${amountElite.toFixed(2)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
+    yPosition += 5;
+  }
+
+  if (totalSonstige > 0) {
+    addText('Sonstige Taetigkeiten', margin + 2, yPosition);
+    addText(`${totalSonstige.toFixed(2)} Std.`, margin + 90, yPosition);
+    addText(rateSonstige > 0 ? `${rateSonstige.toFixed(2)} \u20ac` : '-', margin + 120, yPosition);
+    addText(rateSonstige > 0 ? `${amountSonstige.toFixed(2)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
+    yPosition += 5;
+  }
+
+  // Total line
+  yPosition += 2;
+  doc.setDrawColor(0);
+  doc.line(margin, yPosition, pageWidth - margin, yPosition);
   yPosition += 6;
 
-  // Total
-  const totalHours = totalParticipantHours + totalDozentHours;
+  doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
   addText(`Gesamt: ${totalHours.toFixed(2)} Stunden`, margin, yPosition);
+  if (totalAmount > 0) {
+    addText(`${totalAmount.toFixed(2)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
+  }
   yPosition += 15;
 
   // Tax notice

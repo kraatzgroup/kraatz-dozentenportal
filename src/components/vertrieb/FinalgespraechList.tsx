@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, Phone, Mail, ChevronDown, Calendar, Plus, Clock, MessageSquare, FileDown } from 'lucide-react';
+import { FileText, Phone, Mail, ChevronDown, Calendar, Plus, Clock, MessageSquare, FileDown, Edit2, Trash2, X } from 'lucide-react';
 import { Lead, LeadNote, useSalesStore } from '../../store/salesStore';
 import { RequestContractModal } from './RequestContractModal';
 import { ContractTemplateEditor } from './ContractTemplateEditor';
@@ -26,8 +26,11 @@ export function FinalgespraechList({ leads, onUpdateStatus, onUpdateLead, onRefr
   const [selectedLeadForGenerate, setSelectedLeadForGenerate] = useState<Lead | null>(null);
   const [showUpcoming, setShowUpcoming] = useState(false);
   const [newNote, setNewNote] = useState('');
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   
-  const { leadNotes, fetchLeadNotes, addLeadNote } = useSalesStore();
+  const { leadNotes, fetchLeadNotes, addLeadNote, deleteLead } = useSalesStore();
   
   useEffect(() => {
     fetchLeadNotes();
@@ -555,19 +558,66 @@ export function FinalgespraechList({ leads, onUpdateStatus, onUpdateLead, onRefr
                 {leads.filter(l => l.status === 'vertrag_versendet').map(lead => (
                   <div key={lead.id} className="p-3 bg-emerald-50 rounded-lg border border-emerald-100">
                     <div className="flex items-start justify-between">
-                      <div>
-                        <h4 className="font-medium text-gray-900">{lead.name}</h4>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium text-gray-900">{lead.name}</h4>
+                          <button
+                            onClick={() => { setEditingLead(lead); setShowEditModal(true); }}
+                            className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                            title="Bearbeiten"
+                          >
+                            <Edit2 className="h-3 w-3" />
+                          </button>
+                          {deleteConfirmId === lead.id ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={async () => { await deleteLead(lead.id); setDeleteConfirmId(null); if (onRefresh) onRefresh(); }}
+                                className="px-2 py-0.5 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                              >
+                                Löschen
+                              </button>
+                              <button
+                                onClick={() => setDeleteConfirmId(null)}
+                                className="p-1 text-gray-400 hover:text-gray-600"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setDeleteConfirmId(lead.id)}
+                              className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                              title="Löschen"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
                         <div className="mt-1 text-xs text-gray-500 space-y-0.5">
                           {lead.email && <div><Mail className="h-3 w-3 inline mr-1" />{lead.email}</div>}
                           {lead.phone && <div><Phone className="h-3 w-3 inline mr-1" />{lead.phone}</div>}
                         </div>
                       </div>
-                      <button
-                        onClick={() => onUpdateStatus(lead.id, 'contract_closed')}
-                        className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
-                      >
-                        Vertragsabschluss
-                      </button>
+                      <div className="flex flex-col sm:flex-row gap-1">
+                        <button
+                          onClick={() => { setDeleteConfirmId(null); onUpdateStatus(lead.id, 'contract_closed'); }}
+                          className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+                        >
+                          Vertragsabschluss
+                        </button>
+                        <button
+                          onClick={() => { setDeleteConfirmId(null); onUpdateStatus(lead.id, 'downsell'); }}
+                          className="px-3 py-1.5 text-xs bg-yellow-500 text-white rounded-lg hover:bg-yellow-600"
+                        >
+                          Downsell
+                        </button>
+                        <button
+                          onClick={() => { setDeleteConfirmId(null); onUpdateStatus(lead.id, 'unqualified'); }}
+                          className="px-3 py-1.5 text-xs bg-red-500 text-white rounded-lg hover:bg-red-600"
+                        >
+                          Unqualifiziert
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -590,10 +640,61 @@ export function FinalgespraechList({ leads, onUpdateStatus, onUpdateLead, onRefr
               <div className="space-y-2 pl-4">
                 {leads.filter(l => l.status === 'contract_closed').map(lead => (
                   <div key={lead.id} className="p-3 bg-green-50 rounded-lg border border-green-200">
-                    <h4 className="font-medium text-gray-900">{lead.name}</h4>
-                    <div className="mt-1 text-xs text-gray-500 space-y-0.5">
-                      {lead.email && <div><Mail className="h-3 w-3 inline mr-1" />{lead.email}</div>}
-                      {lead.phone && <div><Phone className="h-3 w-3 inline mr-1" />{lead.phone}</div>}
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium text-gray-900">{lead.name}</h4>
+                          <button
+                            onClick={() => { setEditingLead(lead); setShowEditModal(true); }}
+                            className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                            title="Bearbeiten"
+                          >
+                            <Edit2 className="h-3 w-3" />
+                          </button>
+                          {deleteConfirmId === lead.id ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={async () => { await deleteLead(lead.id); setDeleteConfirmId(null); if (onRefresh) onRefresh(); }}
+                                className="px-2 py-0.5 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                              >
+                                Löschen
+                              </button>
+                              <button
+                                onClick={() => setDeleteConfirmId(null)}
+                                className="p-1 text-gray-400 hover:text-gray-600"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setDeleteConfirmId(lead.id)}
+                              className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                              title="Löschen"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                        <div className="mt-1 text-xs text-gray-500 space-y-0.5">
+                          {lead.email && <div><Mail className="h-3 w-3 inline mr-1" />{lead.email}</div>}
+                          {lead.phone && <div><Phone className="h-3 w-3 inline mr-1" />{lead.phone}</div>}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <button
+                          onClick={() => { setDeleteConfirmId(null); onUpdateStatus(lead.id, 'downsell'); }}
+                          className="px-2 py-1 text-xs bg-yellow-500 text-white rounded hover:bg-yellow-600"
+                        >
+                          → Downsell
+                        </button>
+                        <button
+                          onClick={() => { setDeleteConfirmId(null); onUpdateStatus(lead.id, 'unqualified'); }}
+                          className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
+                        >
+                          → Unqualifiziert
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -619,11 +720,62 @@ export function FinalgespraechList({ leads, onUpdateStatus, onUpdateLead, onRefr
           ) : (
             <div className="space-y-2">
               {leads.filter(l => l.status === 'downsell').map(lead => (
-                <div key={lead.id} className="p-3 bg-gray-50 rounded-lg">
-                  <h4 className="font-medium text-gray-900">{lead.name}</h4>
-                  <div className="mt-1 text-xs text-gray-500 space-y-0.5">
-                    {lead.email && <div><Mail className="h-3 w-3 inline mr-1" />{lead.email}</div>}
-                    {lead.phone && <div><Phone className="h-3 w-3 inline mr-1" />{lead.phone}</div>}
+                <div key={lead.id} className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium text-gray-900">{lead.name}</h4>
+                        <button
+                          onClick={() => { setEditingLead(lead); setShowEditModal(true); }}
+                          className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                          title="Bearbeiten"
+                        >
+                          <Edit2 className="h-3 w-3" />
+                        </button>
+                        {deleteConfirmId === lead.id ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={async () => { await deleteLead(lead.id); setDeleteConfirmId(null); if (onRefresh) onRefresh(); }}
+                              className="px-2 py-0.5 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                            >
+                              Löschen
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirmId(null)}
+                              className="p-1 text-gray-400 hover:text-gray-600"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setDeleteConfirmId(lead.id)}
+                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                            title="Löschen"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                      <div className="mt-1 text-xs text-gray-500 space-y-0.5">
+                        {lead.email && <div><Mail className="h-3 w-3 inline mr-1" />{lead.email}</div>}
+                        {lead.phone && <div><Phone className="h-3 w-3 inline mr-1" />{lead.phone}</div>}
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <button
+                        onClick={() => { setDeleteConfirmId(null); onUpdateStatus(lead.id, 'contract_closed'); }}
+                        className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+                      >
+                        → Abgeschlossen
+                      </button>
+                      <button
+                        onClick={() => { setDeleteConfirmId(null); onUpdateStatus(lead.id, 'unqualified'); }}
+                        className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
+                      >
+                        → Unqualifiziert
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -648,11 +800,62 @@ export function FinalgespraechList({ leads, onUpdateStatus, onUpdateLead, onRefr
           ) : (
             <div className="space-y-2">
               {leads.filter(l => l.status === 'unqualified').map(lead => (
-                <div key={lead.id} className="p-3 bg-gray-50 rounded-lg">
-                  <h4 className="font-medium text-gray-900">{lead.name}</h4>
-                  <div className="mt-1 text-xs text-gray-500 space-y-0.5">
-                    {lead.email && <div><Mail className="h-3 w-3 inline mr-1" />{lead.email}</div>}
-                    {lead.phone && <div><Phone className="h-3 w-3 inline mr-1" />{lead.phone}</div>}
+                <div key={lead.id} className="p-3 bg-red-50 rounded-lg border border-red-200">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium text-gray-900">{lead.name}</h4>
+                        <button
+                          onClick={() => { setEditingLead(lead); setShowEditModal(true); }}
+                          className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                          title="Bearbeiten"
+                        >
+                          <Edit2 className="h-3 w-3" />
+                        </button>
+                        {deleteConfirmId === lead.id ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={async () => { await deleteLead(lead.id); setDeleteConfirmId(null); if (onRefresh) onRefresh(); }}
+                              className="px-2 py-0.5 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                            >
+                              Löschen
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirmId(null)}
+                              className="p-1 text-gray-400 hover:text-gray-600"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setDeleteConfirmId(lead.id)}
+                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                            title="Löschen"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                      <div className="mt-1 text-xs text-gray-500 space-y-0.5">
+                        {lead.email && <div><Mail className="h-3 w-3 inline mr-1" />{lead.email}</div>}
+                        {lead.phone && <div><Phone className="h-3 w-3 inline mr-1" />{lead.phone}</div>}
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <button
+                        onClick={() => { setDeleteConfirmId(null); onUpdateStatus(lead.id, 'contract_closed'); }}
+                        className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+                      >
+                        → Abgeschlossen
+                      </button>
+                      <button
+                        onClick={() => { setDeleteConfirmId(null); onUpdateStatus(lead.id, 'downsell'); }}
+                        className="px-2 py-1 text-xs bg-yellow-500 text-white rounded hover:bg-yellow-600"
+                      >
+                        → Downsell
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -699,6 +902,148 @@ export function FinalgespraechList({ leads, onUpdateStatus, onUpdateLead, onRefr
             setSelectedLeadForGenerate(null);
           }}
         />
+      )}
+
+      {/* Edit Lead Modal */}
+      {showEditModal && editingLead && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Lead bearbeiten</h3>
+              <button
+                onClick={() => { setShowEditModal(false); setEditingLead(null); }}
+                className="p-1 text-gray-400 hover:text-gray-600 rounded"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                await onUpdateLead(editingLead.id, {
+                  name: formData.get('name') as string,
+                  email: (formData.get('email') as string) || undefined,
+                  phone: (formData.get('phone') as string) || undefined,
+                  first_name: (formData.get('first_name') as string) || undefined,
+                  last_name: (formData.get('last_name') as string) || undefined,
+                  street: (formData.get('street') as string) || undefined,
+                  house_number: (formData.get('house_number') as string) || undefined,
+                  postal_code: (formData.get('postal_code') as string) || undefined,
+                  city: (formData.get('city') as string) || undefined,
+                });
+                setShowEditModal(false);
+                setEditingLead(null);
+                if (onRefresh) onRefresh();
+              }}
+              className="p-4 space-y-4"
+            >
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                <input
+                  type="text"
+                  name="name"
+                  defaultValue={editingLead.name}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Vorname</label>
+                  <input
+                    type="text"
+                    name="first_name"
+                    defaultValue={editingLead.first_name || ''}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nachname</label>
+                  <input
+                    type="text"
+                    name="last_name"
+                    defaultValue={editingLead.last_name || ''}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">E-Mail</label>
+                <input
+                  type="email"
+                  name="email"
+                  defaultValue={editingLead.email || ''}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Telefon</label>
+                <input
+                  type="tel"
+                  name="phone"
+                  defaultValue={editingLead.phone || ''}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Straße</label>
+                  <input
+                    type="text"
+                    name="street"
+                    defaultValue={editingLead.street || ''}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nr.</label>
+                  <input
+                    type="text"
+                    name="house_number"
+                    defaultValue={editingLead.house_number || ''}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">PLZ</label>
+                  <input
+                    type="text"
+                    name="postal_code"
+                    defaultValue={editingLead.postal_code || ''}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Stadt</label>
+                  <input
+                    type="text"
+                    name="city"
+                    defaultValue={editingLead.city || ''}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <button
+                  type="button"
+                  onClick={() => { setShowEditModal(false); setEditingLead(null); }}
+                  className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90"
+                >
+                  Speichern
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

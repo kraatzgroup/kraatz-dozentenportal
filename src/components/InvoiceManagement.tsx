@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, FileText, Download, Trash2, Calendar, Eye, Send, CheckCircle, Clock, X, User } from 'lucide-react';
+import { Plus, FileText, Download, Trash2, Calendar, Eye, Send, CheckCircle, Clock, X, User, AlertTriangle } from 'lucide-react';
 import { useInvoiceStore, Invoice } from '../store/invoiceStore';
 import { useAuthStore } from '../store/authStore';
 import { useToastStore } from '../store/toastStore';
@@ -49,6 +49,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
   const [createPreviewHours, setCreatePreviewHours] = useState<HourEntry[]>([]);
   const [createPreviewLoading, setCreatePreviewLoading] = useState(false);
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
+  const [invoiceDeadlineDay, setInvoiceDeadlineDay] = useState<number>(5);
 
   // Suppress unused variable warnings
   void onBack;
@@ -61,6 +62,15 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
 
   useEffect(() => {
     fetchInvoices(dozentId);
+    // Fetch invoice deadline setting
+    supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'invoice_deadline')
+      .single()
+      .then(({ data }) => {
+        if (data?.value?.day) setInvoiceDeadlineDay(data.value.day);
+      });
   }, [dozentId, fetchInvoices]);
 
   // Track if we've already checked for auto-create
@@ -221,7 +231,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         .from('invoices')
         .select(`
           *,
-          dozent:profiles!invoices_dozent_id_fkey(full_name, email, phone, tax_id, bank_name, iban, bic, street, house_number, postal_code, city)
+          dozent:profiles!invoices_dozent_id_fkey(full_name, email, phone, tax_id, bank_name, iban, bic, street, house_number, postal_code, city, hourly_rate_unterricht, hourly_rate_elite, hourly_rate_sonstige)
         `)
         .eq('id', invoice.id)
         .single();
@@ -233,22 +243,22 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       // Use the invoice_number from the database - it's already set by the trigger
       const finalInvoiceNumber = invoiceData.invoice_number;
 
-      // Fetch participant hours
+      // Fetch participant hours with elite_kleingruppe flag
       const { data: participantHours } = await supabase
         .from('participant_hours')
         .select(`
           date, hours, description, legal_area,
-          teilnehmer:teilnehmer(name)
+          teilnehmer:teilnehmer(name, elite_kleingruppe)
         `)
         .eq('dozent_id', invoiceData.dozent_id)
         .gte('date', invoiceData.period_start)
         .lte('date', invoiceData.period_end)
         .order('date', { ascending: true });
 
-      // Fetch dozent hours
+      // Fetch dozent hours with category
       const { data: dozentHours } = await supabase
         .from('dozent_hours')
-        .select('date, hours, description')
+        .select('date, hours, description, category')
         .eq('dozent_id', invoiceData.dozent_id)
         .gte('date', invoiceData.period_start)
         .lte('date', invoiceData.period_end)
@@ -407,7 +417,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         .from('invoices')
         .select(`
           *,
-          dozent:profiles!invoices_dozent_id_fkey(full_name, email, phone, tax_id, bank_name, iban, bic, street, house_number, postal_code, city)
+          dozent:profiles!invoices_dozent_id_fkey(full_name, email, phone, tax_id, bank_name, iban, bic, street, house_number, postal_code, city, hourly_rate_unterricht, hourly_rate_elite, hourly_rate_sonstige)
         `)
         .eq('id', uploadInvoice.id)
         .single();
@@ -416,22 +426,22 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         throw new Error('Rechnung nicht gefunden');
       }
 
-      // Fetch participant hours for this invoice period
+      // Fetch participant hours with elite_kleingruppe flag
       const { data: participantHours } = await supabase
         .from('participant_hours')
         .select(`
           date, hours, description, legal_area,
-          teilnehmer:teilnehmer(name)
+          teilnehmer:teilnehmer(name, elite_kleingruppe)
         `)
         .eq('dozent_id', invoiceData.dozent_id)
         .gte('date', invoiceData.period_start)
         .lte('date', invoiceData.period_end)
         .order('date', { ascending: true });
 
-      // Fetch dozent hours
+      // Fetch dozent hours with category
       const { data: dozentHours } = await supabase
         .from('dozent_hours')
-        .select('date, hours, description')
+        .select('date, hours, description, category')
         .eq('dozent_id', invoiceData.dozent_id)
         .gte('date', invoiceData.period_start)
         .lte('date', invoiceData.period_end)
@@ -613,6 +623,36 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
             Rechnung erstellen
           </button>
         </div>
+        {!isAdmin && currentMonthInvoices.length > 0 && (() => {
+          const now = new Date();
+          const deadlineDate = new Date(now.getFullYear(), now.getMonth() + 1, invoiceDeadlineDay);
+          const daysLeft = Math.ceil((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          const isUrgent = daysLeft <= 5;
+          const deadlineMonthName = deadlineDate.toLocaleDateString('de-DE', { month: 'long' });
+          return (
+            <div className={`mt-3 flex items-start gap-2 rounded-md p-3 text-sm ${
+              isUrgent
+                ? 'bg-red-50 border border-red-200 text-red-800'
+                : 'bg-amber-50 border border-amber-200 text-amber-800'
+            }`}>
+              <AlertTriangle className={`h-4 w-4 mt-0.5 flex-shrink-0 ${isUrgent ? 'text-red-500' : 'text-amber-500'}`} />
+              <div>
+                <span className="font-medium">
+                  Rechnungsfrist: {invoiceDeadlineDay}. {deadlineMonthName}
+                </span>
+                <span className="ml-1">
+                  — Bitte reichen Sie Ihre Rechnung bis zum <strong>{invoiceDeadlineDay}.</strong> des Folgemonats ein, da sie sonst erst im darauffolgenden Monat berücksichtigt werden kann.
+                </span>
+                {isUrgent && daysLeft > 0 && (
+                  <span className="ml-1 font-semibold">Noch {daysLeft} {daysLeft === 1 ? 'Tag' : 'Tage'}!</span>
+                )}
+                {daysLeft <= 0 && (
+                  <span className="ml-1 font-semibold">Frist abgelaufen!</span>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </div>
       
       <div className="p-6 space-y-6">
@@ -625,7 +665,12 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         </div>
       ) : currentMonthInvoices.length === 0 ? (
         <div className="p-4 text-center text-gray-500">
-          Keine offenen Rechnungen für {getMonthName(currentMonth)} {currentYear}
+          <p>Keine offenen Rechnungen für {getMonthName(currentMonth)} {currentYear}</p>
+          {!isAdmin && (
+            <p className="mt-1 text-xs text-gray-400">
+              Rechnungsfrist: bis zum <span className="font-medium">{invoiceDeadlineDay}.</span> des Folgemonats einreichen, sonst wird sie erst im darauffolgenden Monat berücksichtigt.
+            </p>
+          )}
         </div>
       ) : (
         /* Current Month Invoices List */

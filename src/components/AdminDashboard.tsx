@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { MessageSquare, LogOut, Users, Clock, FileText, Calendar, Edit2, X, Check, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Receipt, Search, Download, Eye, Mail, Send, Trash2, Settings, TrendingUp, GraduationCap } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { MessageSquare, LogOut, Users, Clock, FileText, Calendar, Edit2, X, Check, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Receipt, Search, Download, Eye, Mail, Send, Trash2, Settings, TrendingUp, GraduationCap, LayoutDashboard, Zap, Bell, Upload, UserPlus } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
 import { useFileStore } from '../store/fileStore';
@@ -97,16 +97,23 @@ export function AdminDashboard() {
   const [isCheckingDocuments, setIsCheckingDocuments] = useReactState(false);
   const [checkResult, setCheckResult] = useReactState<any>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard' | 'elite-kleingruppe'>(() => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTabState] = useState<'uebersicht' | 'dozenten' | 'teilnehmer' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard' | 'elite-kleingruppe'>(() => {
     // Check URL parameter first
-    const urlParams = new URLSearchParams(window.location.search);
-    const tabParam = urlParams.get('tab');
-    if (tabParam && ['dozenten', 'teilnehmer', 'nachrichten', 'rechnungen', 'kalender', 'emails', 'vertrieb', 'integrationen', 'dozenten-dashboard', 'elite-kleingruppe'].includes(tabParam)) {
-      return tabParam as 'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard' | 'elite-kleingruppe';
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['uebersicht', 'dozenten', 'teilnehmer', 'rechnungen', 'kalender', 'emails', 'vertrieb', 'integrationen', 'dozenten-dashboard', 'elite-kleingruppe'].includes(tabParam)) {
+      return tabParam as 'uebersicht' | 'dozenten' | 'teilnehmer' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard' | 'elite-kleingruppe';
     }
     const saved = localStorage.getItem('adminDashboardTab');
-    return (saved as 'dozenten' | 'teilnehmer' | 'nachrichten' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard' | 'elite-kleingruppe') || 'dozenten';
+    return (saved as 'uebersicht' | 'dozenten' | 'teilnehmer' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard' | 'elite-kleingruppe') || 'uebersicht';
   });
+  
+  // Helper function to change tab and update URL
+  const setActiveTab = useCallback((tab: typeof activeTab) => {
+    setActiveTabState(tab);
+    localStorage.setItem('adminDashboardTab', tab);
+    setSearchParams({ tab });
+  }, [setSearchParams]);
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [calendarEntries, setCalendarEntries] = useState<any[]>([]);
@@ -167,9 +174,15 @@ export function AdminDashboard() {
   });
   const [eventListFilter, setEventListFilter] = useState<'alle' | '25' | '75' | 'end' | 'exam' | 'custom'>('alle');
   const [deleteInvoiceModal, setDeleteInvoiceModal] = useState<{ show: boolean; invoice: any | null }>({ show: false, invoice: null });
+  const [showDeadlineModal, setShowDeadlineModal] = useState(false);
+  const [invoiceDeadlineDay, setInvoiceDeadlineDay] = useState<number>(5);
+  const [invoiceDeadlineTemp, setInvoiceDeadlineTemp] = useState<number>(5);
   const tabNavRef = useRef<HTMLDivElement>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(false);
+  const [showActivityDropdown, setShowActivityDropdown] = useState(false);
+  const [recentActivities, setRecentActivities] = useState<any[]>([]);
+  const activityDropdownRef = useRef<HTMLDivElement>(null);
 
   const checkScrollArrows = () => {
     if (tabNavRef.current) {
@@ -195,10 +208,120 @@ export function AdminDashboard() {
     return () => window.removeEventListener('resize', checkScrollArrows);
   }, []);
 
-  
+  // Close activity dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (activityDropdownRef.current && !activityDropdownRef.current.contains(event.target as Node)) {
+        setShowActivityDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Fetch recent activities
+  const fetchRecentActivities = async () => {
+    try {
+      // Fetch recent file uploads
+      const { data: filesData } = await supabase
+        .from('files')
+        .select(`
+          id, name, created_at,
+          folder:folders(name),
+          uploaded_by_profile:profiles!files_uploaded_by_fkey(full_name)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      // Fetch recent invoices
+      const { data: invoicesData } = await supabase
+        .from('invoices')
+        .select('id, month, year, status, submitted_at, dozent_id, total_amount')
+        .in('status', ['submitted', 'sent', 'paid'])
+        .order('submitted_at', { ascending: false })
+        .limit(10);
+
+      // Get dozent names for invoices
+      const dozentIds = [...new Set((invoicesData || []).map(inv => inv.dozent_id))];
+      const { data: dozentProfiles } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', dozentIds);
+      
+      const dozentMap = new Map((dozentProfiles || []).map(p => [p.id, p.full_name]));
+
+      // Fetch recent teilnehmer additions
+      const { data: teilnehmerData } = await supabase
+        .from('teilnehmer')
+        .select('id, name, created_at')
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+
+      const activities: any[] = [];
+
+      // Add file activities
+      (filesData || []).forEach(f => {
+        activities.push({
+          id: `file-${f.id}`,
+          type: 'file',
+          title: f.name,
+          subtitle: `Hochgeladen von ${(f.uploaded_by_profile as any)?.full_name || 'Unbekannt'}`,
+          timestamp: f.created_at,
+          icon: 'upload'
+        });
+      });
+
+      // Add invoice activities
+      (invoicesData || []).forEach(inv => {
+        const dozentName = dozentMap.get(inv.dozent_id) || 'Unbekannt';
+        activities.push({
+          id: `invoice-${inv.id}`,
+          type: 'invoice',
+          title: `Rechnung ${monthNames[inv.month - 1]} ${inv.year}`,
+          subtitle: `${dozentName} - ${inv.total_amount?.toFixed(2)} €`,
+          timestamp: inv.submitted_at,
+          icon: 'receipt',
+          status: inv.status
+        });
+      });
+
+      // Add teilnehmer activities
+      (teilnehmerData || []).forEach(t => {
+        activities.push({
+          id: `teilnehmer-${t.id}`,
+          type: 'teilnehmer',
+          title: t.name,
+          subtitle: 'Neuer Teilnehmer',
+          timestamp: t.created_at,
+          icon: 'user'
+        });
+      });
+
+      // Sort by timestamp and take top 15
+      activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setRecentActivities(activities.slice(0, 15));
+    } catch (error) {
+      console.error('Error fetching recent activities:', error);
+    }
+  };
+
+  // Load activities when dropdown opens
+  useEffect(() => {
+    if (showActivityDropdown) {
+      fetchRecentActivities();
+    }
+  }, [showActivityDropdown]);
+
   // Load data for the active tab - always reload to ensure fresh data
   const loadTabData = useCallback((tab: string) => {
     switch (tab) {
+      case 'uebersicht':
+        fetchDozenten();
+        fetchTeilnehmer();
+        fetchSubmittedInvoices();
+        break;
       case 'dozenten':
         fetchDozenten();
         break;
@@ -215,13 +338,16 @@ export function AdminDashboard() {
       case 'rechnungen':
         fetchAllRechnungen();
         fetchSubmittedInvoices();
+        fetchInvoiceDeadline();
         break;
     }
   }, []);
 
   // Initial load - only essential data
   useEffect(() => {
-    fetchDozenten(); // Default tab
+    fetchDozenten();
+    fetchTeilnehmer();
+    fetchSubmittedInvoices(); // For overview KPIs
     fetchUnreadCount();
     fetchUndownloadedCount();
     
@@ -486,6 +612,42 @@ export function AdminDashboard() {
     }
   };
 
+  const fetchInvoiceDeadline = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'invoice_deadline')
+        .single();
+      if (!error && data) {
+        const day = data.value?.day || 5;
+        setInvoiceDeadlineDay(day);
+        setInvoiceDeadlineTemp(day);
+      }
+    } catch (error) {
+      console.error('Error fetching invoice deadline:', error);
+    }
+  };
+
+  const saveInvoiceDeadline = async () => {
+    try {
+      const { error } = await supabase
+        .from('settings')
+        .upsert({
+          key: 'invoice_deadline',
+          value: { day: invoiceDeadlineTemp, description: 'Tag des Folgemonats, bis zu dem die Rechnung eingereicht werden muss' },
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'key' });
+      if (error) throw error;
+      setInvoiceDeadlineDay(invoiceDeadlineTemp);
+      setShowDeadlineModal(false);
+      addToast('Rechnungsfrist wurde gespeichert', 'success');
+    } catch (error) {
+      console.error('Error saving invoice deadline:', error);
+      addToast('Fehler beim Speichern der Frist', 'error');
+    }
+  };
+
   const fetchDozenten = async () => {
     try {
       // Fetch dozenten profiles
@@ -743,7 +905,7 @@ export function AdminDashboard() {
           <div className="flex justify-between items-center h-16">
             <div className="flex">
               <div className="flex-shrink-0 flex items-center">
-                <Logo />
+                <Logo onClick={() => { setActiveTab('uebersicht'); }} />
                 <span className="ml-2 text-lg sm:text-xl font-semibold text-gray-900 hidden sm:block">Admin Dashboard</span>
                 <span className="ml-2 text-sm font-semibold text-gray-900 sm:hidden">Admin</span>
               </div>
@@ -770,6 +932,81 @@ export function AdminDashboard() {
             
             {/* Desktop menu */}
             <div className="hidden sm:flex items-center space-x-2 lg:space-x-4">
+              {/* Activity Bell */}
+              <div className="relative" ref={activityDropdownRef}>
+                <button
+                  onClick={() => setShowActivityDropdown(!showActivityDropdown)}
+                  className="inline-flex items-center px-2 lg:px-3 py-2 border border-transparent text-xs lg:text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition relative"
+                >
+                  <Bell className="h-4 w-4 lg:h-5 lg:w-5" />
+                </button>
+                
+                {showActivityDropdown && (
+                  <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-96 overflow-hidden">
+                    <div className="p-3 border-b border-gray-200 bg-gray-50">
+                      <h3 className="font-semibold text-gray-900 text-sm">Letzte Aktivitäten</h3>
+                    </div>
+                    <div className="overflow-y-auto max-h-80">
+                      {recentActivities.length === 0 ? (
+                        <div className="p-4 text-center text-gray-500 text-sm">
+                          Keine Aktivitäten
+                        </div>
+                      ) : (
+                        recentActivities.map((activity) => (
+                          <div key={activity.id} className="p-3 border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                            <div className="flex items-start space-x-3">
+                              <div className={`p-2 rounded-lg flex-shrink-0 ${
+                                activity.icon === 'upload' ? 'bg-blue-100' :
+                                activity.icon === 'receipt' ? 'bg-orange-100' :
+                                'bg-green-100'
+                              }`}>
+                                {activity.icon === 'upload' && <Upload className="h-4 w-4 text-blue-600" />}
+                                {activity.icon === 'receipt' && <Receipt className="h-4 w-4 text-orange-600" />}
+                                {activity.icon === 'user' && <UserPlus className="h-4 w-4 text-green-600" />}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">{activity.title}</p>
+                                <p className="text-xs text-gray-500 truncate">{activity.subtitle}</p>
+                                <p className="text-xs text-gray-400 mt-1">
+                                  {new Date(activity.timestamp).toLocaleDateString('de-DE', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </p>
+                              </div>
+                              {activity.status && (
+                                <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${
+                                  activity.status === 'submitted' ? 'bg-yellow-100 text-yellow-800' :
+                                  activity.status === 'sent' ? 'bg-blue-100 text-blue-800' :
+                                  'bg-green-100 text-green-800'
+                                }`}>
+                                  {activity.status === 'submitted' ? 'Neu' : activity.status === 'sent' ? 'Versendet' : 'Bezahlt'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              <button
+                onClick={() => navigate('/messages')}
+                className="inline-flex items-center px-2 lg:px-3 py-2 border border-transparent text-xs lg:text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition relative"
+              >
+                <MessageSquare className="h-4 w-4 lg:h-5 lg:w-5 mr-1 lg:mr-2" />
+                <span className="hidden sm:inline">Nachrichten</span>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </button>
+              
               {(isAdmin || isBuchhaltung) && (
               <button
                 onClick={() => navigate('/users')}
@@ -779,6 +1016,7 @@ export function AdminDashboard() {
                 <span className="hidden lg:inline">Benutzerverwaltung</span>
               </button>
               )}
+              
               <button
                 onClick={handleSignOut}
                 className="inline-flex items-center px-2 lg:px-3 py-2 border border-transparent text-xs lg:text-sm leading-4 font-medium rounded-md text-red-500 hover:text-red-700 focus:outline-none transition"
@@ -866,7 +1104,18 @@ export function AdminDashboard() {
               style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
               <button
-                onClick={() => { setActiveTab('dozenten'); localStorage.setItem('adminDashboardTab', 'dozenten'); }}
+                onClick={() => { setActiveTab('uebersicht'); }}
+                className={`${
+                  activeTab === 'uebersicht'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm sm:text-base flex items-center`}
+              >
+                <LayoutDashboard className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
+                <span className="hidden sm:inline">Übersicht</span>
+              </button>
+              <button
+                onClick={() => { setActiveTab('dozenten'); }}
                 className={`${
                   activeTab === 'dozenten'
                     ? 'border-primary text-primary'
@@ -877,7 +1126,7 @@ export function AdminDashboard() {
                 <span className="hidden sm:inline">Dozenten</span>
               </button>
               <button
-                onClick={() => { setActiveTab('teilnehmer'); localStorage.setItem('adminDashboardTab', 'teilnehmer'); }}
+                onClick={() => { setActiveTab('teilnehmer'); }}
                 className={`${
                   activeTab === 'teilnehmer'
                     ? 'border-primary text-primary'
@@ -902,7 +1151,7 @@ export function AdminDashboard() {
                 })()}
               </button>
               <button
-                onClick={() => { setActiveTab('rechnungen'); localStorage.setItem('adminDashboardTab', 'rechnungen'); }}
+                onClick={() => { setActiveTab('rechnungen'); }}
                 className={`${
                   activeTab === 'rechnungen'
                     ? 'border-primary text-primary'
@@ -918,23 +1167,7 @@ export function AdminDashboard() {
                 )}
               </button>
               <button
-                onClick={() => { setActiveTab('nachrichten'); localStorage.setItem('adminDashboardTab', 'nachrichten'); }}
-                className={`${
-                  activeTab === 'nachrichten'
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                } whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm sm:text-base flex items-center relative`}
-              >
-                <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
-                <span className="hidden sm:inline">Nachrichten</span>
-                {unreadCount > 0 && (
-                  <span className="ml-1 sm:ml-2 bg-red-500 text-white py-0.5 px-2 rounded-full text-xs">
-                    {unreadCount}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={() => { setActiveTab('kalender'); localStorage.setItem('adminDashboardTab', 'kalender'); }}
+                onClick={() => { setActiveTab('kalender'); }}
                 className={`${
                   activeTab === 'kalender'
                     ? 'border-primary text-primary'
@@ -945,7 +1178,7 @@ export function AdminDashboard() {
                 <span className="hidden sm:inline">Kalender</span>
               </button>
               <button
-                onClick={() => { setActiveTab('emails'); localStorage.setItem('adminDashboardTab', 'emails'); }}
+                onClick={() => { setActiveTab('emails'); }}
                 className={`${
                   activeTab === 'emails'
                     ? 'border-primary text-primary'
@@ -956,7 +1189,7 @@ export function AdminDashboard() {
                 <span className="hidden sm:inline">E-Mails</span>
               </button>
               <button
-                onClick={() => { setActiveTab('vertrieb'); localStorage.setItem('adminDashboardTab', 'vertrieb'); }}
+                onClick={() => { setActiveTab('vertrieb'); }}
                 className={`${
                   activeTab === 'vertrieb'
                     ? 'border-primary text-primary'
@@ -967,7 +1200,7 @@ export function AdminDashboard() {
                 <span className="hidden sm:inline">Vertrieb</span>
               </button>
               <button
-                onClick={() => { setActiveTab('dozenten-dashboard'); localStorage.setItem('adminDashboardTab', 'dozenten-dashboard'); }}
+                onClick={() => { setActiveTab('dozenten-dashboard'); }}
                 className={`${
                   activeTab === 'dozenten-dashboard'
                     ? 'border-primary text-primary'
@@ -978,7 +1211,7 @@ export function AdminDashboard() {
                 <span className="hidden sm:inline">Dozenten Dashboard</span>
               </button>
               <button
-                onClick={() => { setActiveTab('elite-kleingruppe'); localStorage.setItem('adminDashboardTab', 'elite-kleingruppe'); }}
+                onClick={() => { setActiveTab('elite-kleingruppe'); }}
                 className={`${
                   activeTab === 'elite-kleingruppe'
                     ? 'border-primary text-primary'
@@ -993,6 +1226,307 @@ export function AdminDashboard() {
         </div>
 
         {/* Tab Content */}
+        {activeTab === 'uebersicht' && (
+          <div className="space-y-6">
+            {/* KPI Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs sm:text-sm font-medium text-gray-500">Dozenten</p>
+                    <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">{dozenten.length}</p>
+                  </div>
+                  <div className="p-2 sm:p-3 bg-blue-100 rounded-lg">
+                    <FileText className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600" />
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs sm:text-sm font-medium text-gray-500">Teilnehmer</p>
+                    <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">{teilnehmer.filter(t => isContractActive(t)).length}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">aktiv</p>
+                  </div>
+                  <div className="p-2 sm:p-3 bg-green-100 rounded-lg">
+                    <Users className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs sm:text-sm font-medium text-gray-500">Offene Rechnungen</p>
+                    <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">{submittedInvoices.filter(i => i.status === 'submitted' || i.status === 'sent').length}</p>
+                  </div>
+                  <div className="p-2 sm:p-3 bg-orange-100 rounded-lg">
+                    <Receipt className="h-5 w-5 sm:h-6 sm:w-6 text-orange-600" />
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs sm:text-sm font-medium text-gray-500">Nachrichten</p>
+                    <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">{unreadCount}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">ungelesen</p>
+                  </div>
+                  <div className="p-2 sm:p-3 bg-purple-100 rounded-lg">
+                    <MessageSquare className="h-5 w-5 sm:h-6 sm:w-6 text-purple-600" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Actions - Kategorisiert */}
+            <div className="space-y-6">
+              {/* Dozenten */}
+              <div>
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                  <FileText className="h-5 w-5 text-blue-500 mr-2" />
+                  Dozenten
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                  <button
+                    onClick={() => { setActiveTab('dozenten'); }}
+                    className="flex flex-col items-center p-4 sm:p-6 bg-white rounded-xl shadow-sm border border-gray-100 hover:border-primary hover:shadow-md transition-all group"
+                  >
+                    <div className="p-3 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-colors mb-3">
+                      <FileText className="h-6 w-6 text-blue-600" />
+                    </div>
+                    <span className="text-sm font-medium text-gray-700 text-center">Dozenten</span>
+                    <span className="text-xs text-gray-400 mt-1">{dozenten.length} gesamt</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setActiveTab('rechnungen'); }}
+                    className="flex flex-col items-center p-4 sm:p-6 bg-white rounded-xl shadow-sm border border-gray-100 hover:border-primary hover:shadow-md transition-all group"
+                  >
+                    <div className="p-3 bg-orange-50 rounded-lg group-hover:bg-orange-100 transition-colors mb-3 relative">
+                      <Receipt className="h-6 w-6 text-orange-600" />
+                      {submittedInvoices.filter(i => i.status === 'submitted' || i.status === 'sent').length > 0 && (
+                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                          {submittedInvoices.filter(i => i.status === 'submitted' || i.status === 'sent').length}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-sm font-medium text-gray-700 text-center">Rechnungen</span>
+                    <span className="text-xs text-gray-400 mt-1">{submittedInvoices.filter(i => i.status === 'submitted' || i.status === 'sent').length} offen</span>
+                  </button>
+
+                  <button
+                    onClick={() => navigate('/messages')}
+                    className="flex flex-col items-center p-4 sm:p-6 bg-white rounded-xl shadow-sm border border-gray-100 hover:border-primary hover:shadow-md transition-all group"
+                  >
+                    <div className="p-3 bg-purple-50 rounded-lg group-hover:bg-purple-100 transition-colors mb-3 relative">
+                      <MessageSquare className="h-6 w-6 text-purple-600" />
+                      {unreadCount > 0 && (
+                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                          {unreadCount > 99 ? '99+' : unreadCount}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-sm font-medium text-gray-700 text-center">Nachrichten</span>
+                    <span className="text-xs text-gray-400 mt-1">{unreadCount} ungelesen</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setActiveTab('emails'); }}
+                    className="flex flex-col items-center p-4 sm:p-6 bg-white rounded-xl shadow-sm border border-gray-100 hover:border-primary hover:shadow-md transition-all group"
+                  >
+                    <div className="p-3 bg-cyan-50 rounded-lg group-hover:bg-cyan-100 transition-colors mb-3">
+                      <Mail className="h-6 w-6 text-cyan-600" />
+                    </div>
+                    <span className="text-sm font-medium text-gray-700 text-center">E-Mail Vorlagen</span>
+                    <span className="text-xs text-gray-400 mt-1">Vorlagen</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Teilnehmer */}
+              <div>
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                  <Users className="h-5 w-5 text-green-500 mr-2" />
+                  Teilnehmer
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                  <button
+                    onClick={() => { setActiveTab('teilnehmer'); }}
+                    className="flex flex-col items-center p-4 sm:p-6 bg-white rounded-xl shadow-sm border border-gray-100 hover:border-primary hover:shadow-md transition-all group"
+                  >
+                    <div className="p-3 bg-green-50 rounded-lg group-hover:bg-green-100 transition-colors mb-3 relative">
+                      <Users className="h-6 w-6 text-green-600" />
+                      {(() => {
+                        const urgentCount = teilnehmer.filter(t => {
+                          const isActive = isContractActive(t);
+                          const hasHoursLeft = t.booked_hours && (t.booked_hours - (t.completed_hours || 0)) > 0;
+                          return (!isActive && hasHoursLeft) || (isActive && !hasHoursLeft && t.booked_hours);
+                        }).length;
+                        return urgentCount > 0 ? (
+                          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                            {urgentCount}
+                          </span>
+                        ) : null;
+                      })()}
+                    </div>
+                    <span className="text-sm font-medium text-gray-700 text-center">Teilnehmer</span>
+                    <span className="text-xs text-gray-400 mt-1">{teilnehmer.filter(t => isContractActive(t)).length} aktiv</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setActiveTab('kalender'); }}
+                    className="flex flex-col items-center p-4 sm:p-6 bg-white rounded-xl shadow-sm border border-gray-100 hover:border-primary hover:shadow-md transition-all group"
+                  >
+                    <div className="p-3 bg-red-50 rounded-lg group-hover:bg-red-100 transition-colors mb-3">
+                      <Calendar className="h-6 w-6 text-red-600" />
+                    </div>
+                    <span className="text-sm font-medium text-gray-700 text-center">Kalender</span>
+                    <span className="text-xs text-gray-400 mt-1">Termine</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setActiveTab('elite-kleingruppe'); }}
+                    className="flex flex-col items-center p-4 sm:p-6 bg-white rounded-xl shadow-sm border border-gray-100 hover:border-primary hover:shadow-md transition-all group"
+                  >
+                    <div className="p-3 bg-amber-50 rounded-lg group-hover:bg-amber-100 transition-colors mb-3">
+                      <Users className="h-6 w-6 text-amber-600" />
+                    </div>
+                    <span className="text-sm font-medium text-gray-700 text-center">Elite-Kleingruppe</span>
+                    <span className="text-xs text-gray-400 mt-1">{eliteReleases.released}/{eliteReleases.total} freigegeben</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Vertrieb */}
+              <div>
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                  <TrendingUp className="h-5 w-5 text-emerald-500 mr-2" />
+                  Vertrieb
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                  <button
+                    onClick={() => { setActiveTab('vertrieb'); }}
+                    className="flex flex-col items-center p-4 sm:p-6 bg-white rounded-xl shadow-sm border border-gray-100 hover:border-primary hover:shadow-md transition-all group"
+                  >
+                    <div className="p-3 bg-emerald-50 rounded-lg group-hover:bg-emerald-100 transition-colors mb-3">
+                      <TrendingUp className="h-6 w-6 text-emerald-600" />
+                    </div>
+                    <span className="text-sm font-medium text-gray-700 text-center">Vertrieb Dashboard</span>
+                    <span className="text-xs text-gray-400 mt-1">Sales & Leads</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Dozenten-Dashboard */}
+              <div>
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                  <GraduationCap className="h-5 w-5 text-indigo-500 mr-2" />
+                  Dozenten-Dashboard
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                  <button
+                    onClick={() => { setActiveTab('dozenten-dashboard'); }}
+                    className="flex flex-col items-center p-4 sm:p-6 bg-white rounded-xl shadow-sm border border-gray-100 hover:border-primary hover:shadow-md transition-all group"
+                  >
+                    <div className="p-3 bg-indigo-50 rounded-lg group-hover:bg-indigo-100 transition-colors mb-3">
+                      <GraduationCap className="h-6 w-6 text-indigo-600" />
+                    </div>
+                    <span className="text-sm font-medium text-gray-700 text-center">Dozenten Ansicht</span>
+                    <span className="text-xs text-gray-400 mt-1">Dashboard</span>
+                  </button>
+
+                  {(isAdmin || isBuchhaltung) && (
+                    <button
+                      onClick={() => navigate('/users')}
+                      className="flex flex-col items-center p-4 sm:p-6 bg-white rounded-xl shadow-sm border border-gray-100 hover:border-primary hover:shadow-md transition-all group"
+                    >
+                      <div className="p-3 bg-gray-100 rounded-lg group-hover:bg-gray-200 transition-colors mb-3">
+                        <Settings className="h-6 w-6 text-gray-600" />
+                      </div>
+                      <span className="text-sm font-medium text-gray-700 text-center">Benutzerverwaltung</span>
+                      <span className="text-xs text-gray-400 mt-1">Verwaltung</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Recent Activity / Alerts */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+              {/* Urgent Teilnehmer */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+                <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center">
+                  <Users className="h-5 w-5 text-red-500 mr-2" />
+                  Handlungsbedarf Teilnehmer
+                </h3>
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {teilnehmer.filter(t => {
+                    const isActive = isContractActive(t);
+                    const hasHoursLeft = t.booked_hours && (t.booked_hours - (t.completed_hours || 0)) > 0;
+                    return (!isActive && hasHoursLeft) || (isActive && !hasHoursLeft && t.booked_hours);
+                  }).slice(0, 5).map(t => {
+                    const isActive = isContractActive(t);
+                    const hasHoursLeft = t.booked_hours && (t.booked_hours - (t.completed_hours || 0)) > 0;
+                    const isExpired = !isActive && hasHoursLeft;
+                    return (
+                      <div key={t.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div>
+                          <p className="font-medium text-gray-900 text-sm">{t.name}</p>
+                          <p className={`text-xs ${isExpired ? 'text-red-600' : 'text-orange-600'}`}>
+                            {isExpired ? 'Vertrag abgelaufen - Stunden offen' : 'Stunden aufgebraucht'}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => { setActiveTab('teilnehmer'); }}
+                          className="text-xs text-primary hover:underline"
+                        >
+                          Ansehen
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {teilnehmer.filter(t => {
+                    const isActive = isContractActive(t);
+                    const hasHoursLeft = t.booked_hours && (t.booked_hours - (t.completed_hours || 0)) > 0;
+                    return (!isActive && hasHoursLeft) || (isActive && !hasHoursLeft && t.booked_hours);
+                  }).length === 0 && (
+                    <p className="text-sm text-gray-500 text-center py-4">Keine dringenden Fälle</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Pending Invoices */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+                <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center">
+                  <Receipt className="h-5 w-5 text-orange-500 mr-2" />
+                  Offene Rechnungen
+                </h3>
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {submittedInvoices.filter(i => i.status === 'submitted' || i.status === 'sent').slice(0, 5).map(inv => (
+                    <div key={inv.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="font-medium text-gray-900 text-sm">{inv.dozent_name}</p>
+                        <p className="text-xs text-gray-500">
+                          {['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'][inv.month - 1]} {inv.year}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium text-gray-900 text-sm">{inv.total_amount?.toFixed(2)} €</p>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${inv.status === 'submitted' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'}`}>
+                          {inv.status === 'submitted' ? 'Eingereicht' : 'Versendet'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {submittedInvoices.filter(i => i.status === 'submitted' || i.status === 'sent').length === 0 && (
+                    <p className="text-sm text-gray-500 text-center py-4">Keine offenen Rechnungen</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'dozenten' && (
           <>
             <div className="mb-8">
@@ -1882,6 +2416,18 @@ export function AdminDashboard() {
                   )}
                 </h3>
                 <div className="flex-shrink-0 flex gap-2">
+                  <button
+                    onClick={() => {
+                      setInvoiceDeadlineTemp(invoiceDeadlineDay);
+                      setShowDeadlineModal(true);
+                    }}
+                    className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    title="Rechnungsfrist einstellen"
+                  >
+                    <Clock className="h-4 w-4 mr-1.5 text-gray-500" />
+                    <span className="hidden sm:inline">Frist:</span>
+                    <span className="sm:ml-1 font-semibold text-primary">{invoiceDeadlineDay}.</span>
+                  </button>
                   <select
                     value={invoiceFilterMonth}
                     onChange={(e) => setInvoiceFilterMonth(e.target.value === 'alle' ? 'alle' : parseInt(e.target.value))}
@@ -2309,12 +2855,6 @@ export function AdminDashboard() {
                 );
               })()}
             </div>
-          </div>
-        )}
-
-        {activeTab === 'nachrichten' && (
-          <div className="mb-8">
-            <Chat />
           </div>
         )}
 
@@ -3752,6 +4292,67 @@ export function AdminDashboard() {
                 <button
                   type="button"
                   onClick={() => setDeleteInvoiceModal({ show: false, invoice: null })}
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"
+                >
+                  Abbrechen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rechnungsfrist Modal */}
+      {showDeadlineModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => setShowDeadlineModal(false)} />
+            <div className="relative inline-block bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-md sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6">
+                <div className="flex items-center mb-4">
+                  <div className="flex-shrink-0 h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Clock className="h-5 w-5 text-primary" />
+                  </div>
+                  <h3 className="ml-3 text-lg font-medium text-gray-900">Rechnungsfrist einstellen</h3>
+                </div>
+                <p className="text-sm text-gray-500 mb-4">
+                  Legen Sie fest, bis zu welchem Tag des Folgemonats die Dozenten ihre Rechnung einreichen müssen.
+                </p>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Frist: Tag des Folgemonats
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={1}
+                        max={28}
+                        value={invoiceDeadlineTemp}
+                        onChange={(e) => setInvoiceDeadlineTemp(Math.min(28, Math.max(1, parseInt(e.target.value) || 1)))}
+                        className="w-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-center text-lg font-semibold"
+                      />
+                      <span className="text-sm text-gray-600">des Folgemonats</span>
+                    </div>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                    <p className="text-sm text-blue-800">
+                      <strong>Beispiel:</strong> Bei Frist am <strong>{invoiceDeadlineTemp}.</strong> müssen Dozenten ihre Rechnung für Januar bis zum <strong>{invoiceDeadlineTemp}. Februar</strong> einreichen.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse gap-2">
+                <button
+                  type="button"
+                  onClick={saveInvoiceDeadline}
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary text-base font-medium text-white hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:w-auto sm:text-sm"
+                >
+                  Speichern
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDeadlineModal(false)}
                   className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"
                 >
                   Abbrechen

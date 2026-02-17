@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageSquare, LogOut, Settings, FolderIcon, Plus, Edit, Trash2, Users, FileText, User, Clock, Calendar, X, GraduationCap, Check } from 'lucide-react';
+import { MessageSquare, LogOut, Settings, FolderIcon, Plus, Edit, Trash2, Users, FileText, User, Clock, Calendar, X, GraduationCap, Check, AlertTriangle } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useMessageStore } from '../store/messageStore';
 import { useFolderStore } from '../store/folderStore';
@@ -93,6 +93,9 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     description: ''
   });
   const [activityRefreshKey, setActivityRefreshKey] = useState(0);
+  const [duplicateWarning, setDuplicateWarning] = useState<{ show: boolean; existingEntries: any[]; pendingData: any | null }>({
+    show: false, existingEntries: [], pendingData: null
+  });
 
   const unreadMessages = messages.filter(message => !message.read);
 
@@ -356,6 +359,26 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     }
   };
 
+  const saveDashboardHoursEntry = async (hoursData: any) => {
+    const { createHours } = useHoursStore.getState();
+    await createHours(hoursData);
+    
+    setShowHoursDialog(false);
+    setHoursFormData({
+      teilnehmer_id: '',
+      hours: '',
+      date: new Date().toISOString().split('T')[0],
+      description: '',
+      legal_area: '',
+      lesson_type: 'einzelunterricht'
+    });
+    setSelectedTeilnehmerName('');
+    setTeilnehmerSearch('');
+    
+    await fetchMonthlySummary();
+    setActivityRefreshKey(prev => prev + 1);
+  };
+
   const handleHoursSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -372,33 +395,30 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
         dozent_id: user.id
       };
       
-      console.log('Creating hours with data:', hoursData);
+      // Check for duplicate entries (same teilnehmer + same date + same dozent)
+      const { data: existingEntries, error: checkError } = await supabase
+        .from('participant_hours')
+        .select('id, hours, date, description, legal_area, teilnehmer:teilnehmer!participant_hours_teilnehmer_id_fkey(name)')
+        .eq('dozent_id', user.id)
+        .eq('teilnehmer_id', hoursFormData.teilnehmer_id)
+        .eq('date', hoursFormData.date);
       
-      // Use the hours store to create hours
-      const { createHours } = useHoursStore.getState();
-      await createHours(hoursData);
+      if (!checkError && existingEntries && existingEntries.length > 0) {
+        setDuplicateWarning({
+          show: true,
+          existingEntries: existingEntries.map((e: any) => ({
+            ...e,
+            teilnehmer_name: e.teilnehmer?.name || 'Unbekannt'
+          })),
+          pendingData: hoursData
+        });
+        return;
+      }
       
-      console.log('Hours created successfully, refreshing data...');
-      
-      // Close modal and reset form
-      setShowHoursDialog(false);
-      setHoursFormData({
-        teilnehmer_id: '',
-        hours: '',
-        date: new Date().toISOString().split('T')[0],
-        description: '',
-        legal_area: '',
-        lesson_type: 'einzelunterricht'
-      });
-      
-      // Refresh the monthly summary to show updated hours
-      await fetchMonthlySummary();
-      // Trigger ActivitySection refresh
-      setActivityRefreshKey(prev => prev + 1);
-      console.log('Monthly summary refreshed');
-    } catch (error) {
+      await saveDashboardHoursEntry(hoursData);
+    } catch (error: any) {
       console.error('Error creating hours:', error);
-      alert('Fehler beim Speichern der Stunden: ' + error.message);
+      alert('Fehler beim Speichern der Stunden: ' + (error?.message || 'Unbekannter Fehler'));
     }
   };
 
@@ -1397,6 +1417,86 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Warning Modal */}
+      {duplicateWarning.show && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => setDuplicateWarning({ show: false, existingEntries: [], pendingData: null })} />
+            <div className="relative inline-block bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6">
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center">
+                    <AlertTriangle className="h-5 w-5 text-amber-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-medium text-gray-900">Mögliches Duplikat erkannt</h3>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Für <strong>{duplicateWarning.existingEntries[0]?.teilnehmer_name}</strong> am{' '}
+                      <strong>{new Date(duplicateWarning.pendingData?.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong>{' '}
+                      {duplicateWarning.existingEntries.length === 1 ? 'existiert bereits ein Eintrag' : `existieren bereits ${duplicateWarning.existingEntries.length} Einträge`}:
+                    </p>
+                    <div className="mt-3 space-y-2">
+                      {duplicateWarning.existingEntries.map((entry: any, idx: number) => (
+                        <div key={entry.id || idx} className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                          <div className="text-sm">
+                            <span className="font-medium text-gray-900">{entry.hours} Std.</span>
+                            {entry.legal_area && (
+                              <span className="ml-2 text-xs text-gray-500">{entry.legal_area}</span>
+                            )}
+                            {entry.description && (
+                              <span className="ml-2 text-xs text-gray-400">— {entry.description}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-3 bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
+                      <p className="text-xs text-gray-500 mb-1">Neuer Eintrag:</p>
+                      <div className="text-sm">
+                        <span className="font-medium text-gray-900">{duplicateWarning.pendingData?.hours} Std.</span>
+                        {duplicateWarning.pendingData?.legal_area && (
+                          <span className="ml-2 text-xs text-gray-500">{duplicateWarning.pendingData.legal_area}</span>
+                        )}
+                        {duplicateWarning.pendingData?.description && (
+                          <span className="ml-2 text-xs text-gray-400">— {duplicateWarning.pendingData.description}</span>
+                        )}
+                      </div>
+                    </div>
+                    <p className="mt-3 text-sm text-gray-600">
+                      Möchten Sie den Eintrag trotzdem hinzufügen?
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await saveDashboardHoursEntry(duplicateWarning.pendingData);
+                      setDuplicateWarning({ show: false, existingEntries: [], pendingData: null });
+                    } catch (error) {
+                      console.error('Error saving duplicate hours:', error);
+                      alert('Fehler beim Speichern der Stunden');
+                    }
+                  }}
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-amber-600 text-base font-medium text-white hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 sm:w-auto sm:text-sm"
+                >
+                  Trotzdem eintragen
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDuplicateWarning({ show: false, existingEntries: [], pendingData: null })}
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"
+                >
+                  Abbrechen
+                </button>
+              </div>
             </div>
           </div>
         </div>

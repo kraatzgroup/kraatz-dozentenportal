@@ -31,6 +31,13 @@ export interface Teilnehmer {
   dozent_zivilrecht_id?: string;
   dozent_strafrecht_id?: string;
   dozent_oeffentliches_recht_id?: string;
+  hours_zivilrecht?: number;
+  hours_strafrecht?: number;
+  hours_oeffentliches_recht?: number;
+  frequency_type?: string;
+  frequency_hours_zivilrecht?: number;
+  frequency_hours_strafrecht?: number;
+  frequency_hours_oeffentliches_recht?: number;
 }
 
 interface TeilnehmerState {

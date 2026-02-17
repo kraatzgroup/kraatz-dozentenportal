@@ -45,7 +45,7 @@ interface HoursState {
   fetchHours: (dozentId?: string, startDate?: string, endDate?: string) => Promise<void>;
   fetchMonthlySummary: (dozentId?: string, year?: number, month?: number) => Promise<void>;
   fetchTeilnehmerDozenten: (teilnehmerId: string, startDate?: string, endDate?: string) => Promise<void>;
-  createHours: (data: { teilnehmer_id: string; hours: number; date: string; description?: string; dozent_id?: string }) => Promise<void>;
+  createHours: (data: { teilnehmer_id: string; hours: number; date: string; description?: string; legal_area?: string; dozent_id?: string }) => Promise<void>;
   updateHours: (id: string, data: { hours: number; date: string; description?: string }) => Promise<void>;
   deleteHours: (id: string) => Promise<void>;
   getTotalHours: (teilnehmerId: string, startDate?: string, endDate?: string) => Promise<number>;
@@ -199,13 +199,26 @@ export const useHoursStore = create<HoursState>((set, get) => ({
       // Fetch teilnehmer names and contract data
       const { data: teilnehmerData, error: teilnehmerError } = await supabase
         .from('teilnehmer')
-        .select('id, name, contract_start, contract_end, booked_hours, completed_hours')
+        .select('id, name, contract_start, contract_end, booked_hours')
         .in('id', teilnehmerIds);
       
       if (teilnehmerError) {
         console.error('Error fetching teilnehmer:', teilnehmerError);
         throw teilnehmerError;
       }
+
+      // Fetch ALL participant_hours for these teilnehmer (from all dozenten) to calculate real completed_hours
+      const { data: allHoursForTeilnehmer } = await supabase
+        .from('participant_hours')
+        .select('teilnehmer_id, hours')
+        .in('teilnehmer_id', teilnehmerIds);
+
+      // Sum up total completed hours per teilnehmer
+      const completedHoursMap = new Map<string, number>();
+      (allHoursForTeilnehmer || []).forEach(h => {
+        const current = completedHoursMap.get(h.teilnehmer_id) || 0;
+        completedHoursMap.set(h.teilnehmer_id, current + parseFloat(h.hours.toString()));
+      });
       
       const teilnehmerMap = new Map<string, { name: string; contract_start?: string; contract_end?: string; booked_hours?: number; completed_hours?: number }>(
         teilnehmerData?.map(t => [t.id, {
@@ -213,7 +226,7 @@ export const useHoursStore = create<HoursState>((set, get) => ({
           contract_start: t.contract_start,
           contract_end: t.contract_end,
           booked_hours: t.booked_hours,
-          completed_hours: t.completed_hours
+          completed_hours: completedHoursMap.get(t.id) || 0
         }]) || []
       );
       
@@ -314,10 +327,7 @@ export const useHoursStore = create<HoursState>((set, get) => ({
       
       const { data: newHours, error } = await supabase
         .from('participant_hours')
-        .upsert(hoursData, { 
-          onConflict: 'teilnehmer_id,dozent_id,date',
-          ignoreDuplicates: false 
-        })
+        .insert(hoursData)
         .select()
         .single();
 

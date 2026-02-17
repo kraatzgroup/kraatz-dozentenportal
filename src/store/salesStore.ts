@@ -227,6 +227,7 @@ interface SalesState {
   createUpsell: (data: Partial<Upsell>) => Promise<void>;
   createLead: (data: Partial<Lead>) => Promise<void>;
   updateLead: (id: string, data: Partial<Lead>) => Promise<void>;
+  deleteLead: (id: string) => Promise<void>;
   updateContractRequest: (id: string, data: Partial<ContractRequest>) => Promise<void>;
 
   // Update methods
@@ -569,6 +570,25 @@ export const useSalesStore = create<SalesState>((set, get) => ({
       });
     } catch (error: any) {
       console.error('Error updating lead:', error);
+      set({ error: error.message });
+    }
+  },
+
+  deleteLead: async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('leads')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      
+      const { leads } = get();
+      set({
+        leads: leads.filter(l => l.id !== id)
+      });
+    } catch (error: any) {
+      console.error('Error deleting lead:', error);
       set({ error: error.message });
     }
   },
