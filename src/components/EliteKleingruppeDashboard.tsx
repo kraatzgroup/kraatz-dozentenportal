@@ -25,6 +25,8 @@ interface ScheduledRelease {
   solutions_released: boolean;
   solution_release_date: string | null;
   solution_release_time: string | null;
+  event_type: string;
+  end_date: string | null;
 }
 
 interface TeachingMaterial {
@@ -1097,26 +1099,57 @@ export function EliteKleingruppeDashboard() {
               {/* Nächste Einheiten */}
               <div className="bg-white rounded-xl shadow p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Nächste Einheiten</h3>
-                {allReleases.filter(r => !r.is_released).slice(0, 3).length > 0 ? (
-                  <div className="space-y-3">
-                    {allReleases.filter(r => !r.is_released).slice(0, 3).map(release => (
-                      <div key={release.id} className="flex items-center p-3 bg-gray-50 rounded-lg">
-                        <div className="flex-shrink-0 p-2 bg-blue-100 rounded-lg">
-                          <Calendar className="h-5 w-5 text-blue-600" />
-                        </div>
-                        <div className="ml-3 flex-1">
-                          <p className="text-sm font-medium text-gray-900">{release.title}</p>
-                          <p className="text-xs text-gray-500">
-                            {new Date(release.release_date).toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' })}
-                          </p>
-                        </div>
-                        <Lock className="h-4 w-4 text-gray-400" />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500">Alle Einheiten wurden bereits für dich freigeschaltet!</p>
-                )}
+                {(() => {
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const upcomingEinheiten = allReleases
+                    .filter(r => r.event_type === 'einheit' && new Date(r.release_date) >= today)
+                    .sort((a, b) => new Date(a.release_date).getTime() - new Date(b.release_date).getTime())
+                    .slice(0, 3);
+                  
+                  if (upcomingEinheiten.length === 0) {
+                    return <p className="text-sm text-gray-500">Keine weiteren Einheiten geplant</p>;
+                  }
+                  
+                  return (
+                    <div className="space-y-3">
+                      {upcomingEinheiten.map(release => {
+                        const legalAreaColor = release.legal_area === 'Zivilrecht' ? 'bg-blue-100 text-blue-700' :
+                                              release.legal_area === 'Strafrecht' ? 'bg-red-100 text-red-700' :
+                                              release.legal_area === 'Öffentliches Recht' ? 'bg-green-100 text-green-700' :
+                                              'bg-gray-100 text-gray-700';
+                        return (
+                          <div 
+                            key={release.id} 
+                            className="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
+                            onClick={() => setSelectedReleaseForDetail(release)}
+                          >
+                            <div className={`flex-shrink-0 p-2 rounded-lg ${release.is_released ? 'bg-green-100' : 'bg-yellow-100'}`}>
+                              {release.is_released ? <Unlock className="h-5 w-5 text-green-600" /> : <Lock className="h-5 w-5 text-yellow-600" />}
+                            </div>
+                            <div className="ml-3 flex-1">
+                              <p className="text-sm font-medium text-gray-900">{release.title}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <p className="text-xs text-gray-500">
+                                  {formatDate(release.release_date)}
+                                  {release.start_time && ` • ${release.start_time.slice(0, 5)} Uhr`}
+                                </p>
+                                {release.legal_area && (
+                                  <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${legalAreaColor}`}>
+                                    {release.legal_area}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${release.is_released ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                              {release.is_released ? 'Verfügbar' : 'Geplant'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
                 <button 
                   onClick={() => setActiveTab('kalender')}
                   className="mt-4 w-full py-2 text-sm text-primary hover:text-primary/80 font-medium"
@@ -1299,8 +1332,20 @@ export function EliteKleingruppeDashboard() {
                     
                     for (let day = 1; day <= daysInMonth; day++) {
                       const date = new Date(calendarYear, calendarMonth, day);
-                      const dateStr = date.toISOString().split('T')[0];
-                      const dayReleases = allReleases.filter(r => r.release_date === dateStr);
+                      // Use local date string to avoid timezone issues
+                      const year = date.getFullYear();
+                      const month = String(date.getMonth() + 1).padStart(2, '0');
+                      const dayStr = String(date.getDate()).padStart(2, '0');
+                      const dateStr = `${year}-${month}-${dayStr}`;
+                      
+                      const dayReleases = allReleases.filter(r => {
+                        // Exact match for single-day entries
+                        if (!r.end_date) {
+                          return r.release_date === dateStr;
+                        }
+                        // For date ranges, check if date falls within the range (inclusive)
+                        return dateStr >= r.release_date && dateStr <= r.end_date;
+                      });
                       const isToday = date.getTime() === today.getTime();
                       const isPast = date < today;
                       
@@ -1308,17 +1353,63 @@ export function EliteKleingruppeDashboard() {
                         <div key={day} className={`bg-white h-24 p-2 ${isToday ? 'ring-2 ring-primary ring-inset' : ''}`}>
                           <div className={`text-sm font-medium ${isToday ? 'text-primary' : isPast ? 'text-gray-400' : 'text-gray-900'}`}>{day}</div>
                           <div className="mt-1 space-y-1 overflow-y-auto max-h-16">
-                            {dayReleases.map(release => (
-                              <button 
-                                key={release.id} 
-                                onClick={() => setSelectedReleaseForDetail(release)}
-                                className={`text-xs p-1 rounded truncate flex items-center w-full text-left cursor-pointer hover:opacity-80 transition-opacity ${release.is_released ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                                title={`${release.title} - Klicken für Details`}
-                              >
-                                {release.is_released ? <Unlock className="h-3 w-3 mr-1 flex-shrink-0" /> : <Lock className="h-3 w-3 mr-1 flex-shrink-0" />}
-                                <span className="truncate">{release.title}</span>
-                              </button>
-                            ))}
+                            {dayReleases.map(release => {
+                              const legalAreaAbbr = release.legal_area === 'Zivilrecht' ? 'ZR' : 
+                                                   release.legal_area === 'Strafrecht' ? 'StR' : 
+                                                   release.legal_area === 'Öffentliches Recht' ? 'ÖR' : '';
+                              
+                              // Color based on legal area for einheiten, otherwise use event type colors
+                              let bgColor, textColor, hoverColor;
+                              if (release.event_type === 'einheit') {
+                                if (release.legal_area === 'Zivilrecht') {
+                                  bgColor = release.is_released ? 'bg-blue-100' : 'bg-blue-50';
+                                  textColor = 'text-blue-800';
+                                  hoverColor = 'hover:bg-blue-200';
+                                } else if (release.legal_area === 'Strafrecht') {
+                                  bgColor = release.is_released ? 'bg-red-100' : 'bg-red-50';
+                                  textColor = 'text-red-800';
+                                  hoverColor = 'hover:bg-red-200';
+                                } else if (release.legal_area === 'Öffentliches Recht') {
+                                  bgColor = release.is_released ? 'bg-green-100' : 'bg-green-50';
+                                  textColor = 'text-green-800';
+                                  hoverColor = 'hover:bg-green-200';
+                                } else {
+                                  bgColor = release.is_released ? 'bg-gray-100' : 'bg-gray-50';
+                                  textColor = 'text-gray-800';
+                                  hoverColor = 'hover:bg-gray-200';
+                                }
+                              } else {
+                                // Non-einheit events (ferien, etc.)
+                                if (release.event_type === 'ferien') {
+                                  bgColor = 'bg-orange-100';
+                                  textColor = 'text-orange-800';
+                                  hoverColor = 'hover:bg-orange-200';
+                                } else if (release.event_type === 'dozent_verhinderung') {
+                                  bgColor = 'bg-red-100';
+                                  textColor = 'text-red-800';
+                                  hoverColor = 'hover:bg-red-200';
+                                } else {
+                                  bgColor = 'bg-gray-100';
+                                  textColor = 'text-gray-800';
+                                  hoverColor = 'hover:bg-gray-200';
+                                }
+                              }
+                              
+                              return (
+                                <button 
+                                  key={release.id} 
+                                  onClick={() => setSelectedReleaseForDetail(release)}
+                                  className={`text-xs p-1 rounded truncate flex items-center w-full text-left cursor-pointer hover:opacity-80 transition-opacity ${bgColor} ${textColor} ${hoverColor}`}
+                                  title={`${release.title} - Klicken für Details`}
+                                >
+                                  {release.is_released ? <Unlock className="h-3 w-3 mr-1 flex-shrink-0" /> : <Lock className="h-3 w-3 mr-1 flex-shrink-0" />}
+                                  <span className="truncate">
+                                    {release.event_type === 'einheit' && legalAreaAbbr && <span className="font-semibold">[{legalAreaAbbr}] </span>}
+                                    {release.title}
+                                  </span>
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       );
@@ -1354,12 +1445,13 @@ export function EliteKleingruppeDashboard() {
                   const today = new Date();
                   today.setHours(0, 0, 0, 0);
                   const upcomingReleases = allReleases.filter(r => new Date(r.release_date) >= today);
+                  const upcomingEinheiten = upcomingReleases.filter(r => r.event_type === 'einheit');
                   
-                  if (upcomingReleases.length === 0) {
+                  if (upcomingEinheiten.length === 0) {
                     return <li className="p-8 text-center text-gray-500">Keine kommenden Einheiten geplant</li>;
                   }
                   
-                  return upcomingReleases.slice(0, 10).map(release => (
+                  return upcomingEinheiten.slice(0, 10).map(release => (
                     <li 
                       key={release.id} 
                       className="p-4 hover:bg-gray-50 cursor-pointer transition-colors"
@@ -1424,6 +1516,76 @@ export function EliteKleingruppeDashboard() {
                 })()}
               </ul>
             </div>
+
+            {/* Sonstiges (Ferien, Verhinderungen, etc.) */}
+            <div className="bg-white rounded-lg shadow">
+              <div className="p-4 border-b border-gray-200">
+                <h3 className="text-lg font-medium text-gray-900">Sonstiges</h3>
+                <p className="text-sm text-gray-500 mt-1">Ferien, Verhinderungen und andere Ereignisse</p>
+              </div>
+              <ul className="divide-y divide-gray-200">
+                {(() => {
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const upcomingReleases = allReleases.filter(r => new Date(r.release_date) >= today);
+                  const upcomingSonstiges = upcomingReleases.filter(r => r.event_type !== 'einheit');
+                  
+                  if (upcomingSonstiges.length === 0) {
+                    return <li className="p-8 text-center text-gray-500">Keine weiteren Ereignisse geplant</li>;
+                  }
+                  
+                  return upcomingSonstiges.slice(0, 10).map(release => {
+                    const eventTypeConfig = {
+                      'ferien': { icon: '🌞', label: 'Ferien', color: 'bg-orange-100 text-orange-800' },
+                      'dozent_verhinderung': { icon: '🚫', label: 'Dozent verhindert', color: 'bg-red-100 text-red-800' },
+                      'sonstiges': { icon: '📝', label: 'Sonstiges', color: 'bg-gray-100 text-gray-800' }
+                    };
+                    const config = eventTypeConfig[release.event_type as keyof typeof eventTypeConfig] || eventTypeConfig['sonstiges'];
+                    
+                    return (
+                      <li 
+                        key={release.id} 
+                        className="p-4 hover:bg-gray-50 cursor-pointer transition-colors"
+                        onClick={() => setSelectedReleaseForDetail(release)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center flex-1">
+                            <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${config.color}`}>
+                              <span className="text-2xl">{config.icon}</span>
+                            </div>
+                            <div className="ml-4 flex-1">
+                              <div className="flex items-center gap-2">
+                                <h4 className="text-sm font-medium text-gray-900">{release.title}</h4>
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
+                                  {config.label}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-3 mt-1">
+                                <p className="text-xs text-gray-500">
+                                  {release.end_date && release.end_date !== release.release_date ? (
+                                    <>
+                                      {formatDate(release.release_date)} - {formatDate(release.end_date)}
+                                    </>
+                                  ) : (
+                                    formatDate(release.release_date)
+                                  )}
+                                </p>
+                              </div>
+                              {release.description && (
+                                <p className="text-xs text-gray-500 mt-1 line-clamp-1">{release.description}</p>
+                              )}
+                            </div>
+                          </div>
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${release.is_released ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                            {release.is_released ? 'Aktiv' : 'Geplant'}
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  });
+                })()}
+              </ul>
+            </div>
           </div>
         )}
 
@@ -1434,15 +1596,20 @@ export function EliteKleingruppeDashboard() {
                 <h2 className="text-lg font-medium text-gray-900">Freigegebene Einheiten</h2>
                 <p className="text-sm text-gray-500 mt-1">Hier findest du alle für dich freigegebenen Materialien</p>
               </div>
-              {releases.length === 0 ? (
-                <div className="p-8 text-center">
-                  <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Keine Materialien verfügbar</h3>
-                  <p className="text-gray-500">Sobald Materialien für dich freigegeben werden, erscheinen sie hier.</p>
-                </div>
-              ) : (
-                <ul className="divide-y divide-gray-200">
-                  {releases.map(release => (
+              {(() => {
+                const einheitenReleases = releases.filter(r => r.event_type === 'einheit');
+                if (einheitenReleases.length === 0) {
+                  return (
+                    <div className="p-8 text-center">
+                      <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">Keine Materialien verfügbar</h3>
+                      <p className="text-gray-500">Sobald Materialien für dich freigegeben werden, erscheinen sie hier.</p>
+                    </div>
+                  );
+                }
+                return (
+                  <ul className="divide-y divide-gray-200">
+                    {einheitenReleases.map(release => (
                     <li key={release.id} className="p-4">
                       <div 
                         className="flex items-center justify-between cursor-pointer"
@@ -1461,7 +1628,18 @@ export function EliteKleingruppeDashboard() {
                           </div>
                         </div>
                         <div className="flex items-center space-x-2">
-                          <span className="text-xs text-gray-500">{release.material_ids.length} Materialien</span>
+                          <span className="text-xs text-gray-500">
+                            {(() => {
+                              const allMaterialIds = [...new Set([...(release.material_ids || []), ...(release.solution_material_ids || [])])];
+                              const nonSolutionCount = allMaterialIds.filter(id => {
+                                const material = materials.find(m => m.id === id);
+                                if (!material) return false;
+                                const title = material.title.toLowerCase();
+                                return !(title.includes('lösung') || title.includes('loesung') || title.includes('musterlösung') || title.includes('musterlosung'));
+                              }).length;
+                              return nonSolutionCount;
+                            })()} Materialien
+                          </span>
                           {expandedRelease === release.id ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
                         </div>
                       </div>
@@ -1500,23 +1678,33 @@ export function EliteKleingruppeDashboard() {
                           {/* Materialien */}
                           <div className="space-y-2">
                             <h5 className="text-xs font-medium text-gray-500 uppercase tracking-wider">Materialien</h5>
-                            {release.material_ids.map(id => {
-                              const material = materials.find(m => m.id === id);
-                              if (!material) return null;
-                              return (
-                                <a
-                                  key={id}
-                                  href={material.file_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                                >
-                                  <FileText className="h-5 w-5 text-gray-400 mr-3" />
-                                  <span className="text-sm text-gray-900 flex-1">{material.title}</span>
-                                  <Download className="h-4 w-4 text-primary" />
-                                </a>
-                              );
-                            })}
+                            {(() => {
+                              const allMaterialIds = [...new Set([...(release.material_ids || []), ...(release.solution_material_ids || [])])];
+                              const nonSolutionIds = allMaterialIds.filter(id => {
+                                const material = materials.find(m => m.id === id);
+                                if (!material) return false;
+                                const title = material.title.toLowerCase();
+                                return !(title.includes('lösung') || title.includes('loesung') || title.includes('musterlösung') || title.includes('musterlosung'));
+                              });
+                              
+                              return nonSolutionIds.map(id => {
+                                const material = materials.find(m => m.id === id);
+                                if (!material) return null;
+                                return (
+                                  <a
+                                    key={id}
+                                    href={material.file_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                                  >
+                                    <FileText className="h-5 w-5 text-gray-400 mr-3" />
+                                    <span className="text-sm text-gray-900 flex-1">{material.title}</span>
+                                    <Download className="h-4 w-4 text-primary" />
+                                  </a>
+                                );
+                              });
+                            })()}
                             {release.folder_ids.map(id => {
                               const folder = folders.find(f => f.id === id);
                               if (!folder) return null;
@@ -1565,9 +1753,10 @@ export function EliteKleingruppeDashboard() {
                         </div>
                       )}
                     </li>
-                  ))}
-                </ul>
-              )}
+                    ))}
+                  </ul>
+                );
+              })()}
             </div>
           </div>
         )}

@@ -41,6 +41,16 @@ export const UNIT_TYPES = {
 
 export type UnitType = keyof typeof UNIT_TYPES;
 
+// Event-Typen für Kalendereinträge
+export const EVENT_TYPES = {
+  'einheit': { label: 'Einheit', color: 'green', icon: 'calendar' },
+  'ferien': { label: 'Ferien', color: 'orange', icon: 'sun' },
+  'dozent_verhinderung': { label: 'Dozent verhindert', color: 'red', icon: 'alert' },
+  'sonstiges': { label: 'Sonstiges', color: 'gray', icon: 'info' },
+} as const;
+
+export type EventType = keyof typeof EVENT_TYPES;
+
 // Einheiten-Dauer nach Rechtsgebiet (in Stunden) - Legacy
 export const UNIT_DURATION_HOURS: Record<string, number> = {
   'Zivilrecht': 2.5,
@@ -112,6 +122,8 @@ interface ScheduledRelease {
   recurrence_count: number | null;
   parent_release_id: string | null;
   dozent_id: string | null;
+  event_type: EventType;
+  end_date: string | null;
 }
 
 interface Klausur {
@@ -211,6 +223,10 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
   const [releaseKlausurFolderId, setReleaseKlausurFolderId] = useState<string>('');
   const [releaseSolutionMaterialIds, setReleaseSolutionMaterialIds] = useState<string[]>([]);
   const [solutionReleaseMode, setSolutionReleaseMode] = useState<'auto' | 'custom'>('auto');
+  const [releaseEventType, setReleaseEventType] = useState<EventType>('einheit');
+  const [isAllDay, setIsAllDay] = useState<boolean>(false);
+  const [releaseEndDate, setReleaseEndDate] = useState<string>('');
+  const [isDateRange, setIsDateRange] = useState<boolean>(false);
   const [customSolutionReleaseDate, setCustomSolutionReleaseDate] = useState<string>('');
   const [customSolutionReleaseTime, setCustomSolutionReleaseTime] = useState<string>('');
   const [releaseIsRecurring, setReleaseIsRecurring] = useState<boolean>(false);
@@ -328,10 +344,27 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
   const dayNames = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year: number, month: number) => { const day = new Date(year, month, 1).getDay(); return day === 0 ? 6 : day - 1; };
-  const getReleasesForDate = (date: Date) => { const dateStr = date.toISOString().split('T')[0]; return scheduledReleases.filter(r => r.release_date === dateStr); };
+  const getReleasesForDate = (date: Date) => { 
+    // Use local date string to avoid timezone issues
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    
+    return scheduledReleases.filter(r => {
+      // Exact match for single-day entries
+      if (!r.end_date) {
+        return r.release_date === dateStr;
+      }
+      // For date ranges, check if date falls within the range (inclusive)
+      return dateStr >= r.release_date && dateStr <= r.end_date;
+    }); 
+  };
 
   const handleDateClick = (day: number) => {
-    setSelectedDate(new Date(calendarYear, calendarMonth, day));
+    // Set time to noon to avoid timezone issues when converting to ISO string
+    const date = new Date(calendarYear, calendarMonth, day, 12, 0, 0);
+    setSelectedDate(date);
     setShowReleaseModal(true);
     setReleaseTitle('');
     setReleaseDescription('');
@@ -355,6 +388,10 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
     setReleaseRecurrenceCount(4);
     setAdditionalDocument(null);
     setAdditionalDocumentTitle('');
+    setReleaseEventType('einheit');
+    setIsAllDay(false);
+    setReleaseEndDate('');
+    setIsDateRange(false);
   };
 
   const handleUnitTypeChange = (unitType: UnitType | '') => {
@@ -396,7 +433,9 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
   };
 
   const handleCreateRelease = async () => {
-    if (!selectedDate || !releaseTitle.trim() || !releaseUnitType) return;
+    // Validation: title is always required, unit_type only for 'einheit' events
+    if (!selectedDate || !releaseTitle.trim()) return;
+    if (releaseEventType === 'einheit' && !releaseUnitType) return;
     setIsUploadingDocument(true);
     try {
       let additionalMaterialId: string | null = null;
@@ -452,8 +491,8 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
         legal_area: releaseLegalArea || null,
         unit_type: releaseUnitType || null,
         duration_minutes: releaseUnitType ? UNIT_TYPES[releaseUnitType].duration : null,
-        start_time: releaseStartTime || null,
-        end_time: releaseEndTime || null,
+        start_time: (releaseEventType === 'einheit' || !isAllDay) ? (releaseStartTime || null) : null,
+        end_time: (releaseEventType === 'einheit' || !isAllDay) ? (releaseEndTime || null) : null,
         zoom_link: releaseZoomLink || null,
         klausur_folder_id: releaseKlausurFolderId || null,
         solution_material_ids: releaseSolutionMaterialIds,
@@ -464,7 +503,9 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
         recurrence_type: releaseIsRecurring ? releaseRecurrenceType : null,
         recurrence_end_date: releaseIsRecurring && releaseRecurrenceEndDate ? releaseRecurrenceEndDate : null,
         recurrence_count: releaseIsRecurring ? releaseRecurrenceCount : null,
-        dozent_id: user?.id || null
+        dozent_id: user?.id || null,
+        event_type: releaseEventType,
+        end_date: isDateRange && releaseEndDate ? releaseEndDate : null
       };
 
       // Ersten Termin erstellen
@@ -746,11 +787,49 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
         <div key={day} onClick={() => handleDateClick(day)} className={"h-24 p-2 border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors " + (isToday ? 'bg-primary/5 border-primary' : '')}>
           <div className={"text-sm font-medium " + (isToday ? 'text-primary' : isPast ? 'text-gray-400' : 'text-gray-900')}>{day}</div>
           <div className="mt-1 space-y-1 overflow-y-auto max-h-16">
-            {releases.map(release => (
-              <div key={release.id} className={"text-xs px-1.5 py-0.5 rounded truncate " + (release.is_released ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800')} title={release.title}>
-                {release.is_released ? <Unlock className="h-3 w-3 inline mr-1" /> : <Lock className="h-3 w-3 inline mr-1" />}{release.title}
-              </div>
-            ))}
+            {releases.map(release => {
+              const legalAreaAbbr = release.legal_area === 'Zivilrecht' ? 'ZR' : 
+                                   release.legal_area === 'Strafrecht' ? 'StR' : 
+                                   release.legal_area === 'Öffentliches Recht' ? 'ÖR' : '';
+              
+              // Color based on legal area for einheiten, otherwise use event type colors
+              let bgColor, textColor;
+              if (release.event_type === 'einheit') {
+                if (release.legal_area === 'Zivilrecht') {
+                  bgColor = release.is_released ? 'bg-blue-100' : 'bg-blue-50';
+                  textColor = 'text-blue-800';
+                } else if (release.legal_area === 'Strafrecht') {
+                  bgColor = release.is_released ? 'bg-red-100' : 'bg-red-50';
+                  textColor = 'text-red-800';
+                } else if (release.legal_area === 'Öffentliches Recht') {
+                  bgColor = release.is_released ? 'bg-green-100' : 'bg-green-50';
+                  textColor = 'text-green-800';
+                } else {
+                  bgColor = release.is_released ? 'bg-gray-100' : 'bg-gray-50';
+                  textColor = 'text-gray-800';
+                }
+              } else {
+                // Non-einheit events (ferien, etc.)
+                if (release.event_type === 'ferien') {
+                  bgColor = 'bg-orange-100';
+                  textColor = 'text-orange-800';
+                } else if (release.event_type === 'dozent_verhinderung') {
+                  bgColor = 'bg-red-100';
+                  textColor = 'text-red-800';
+                } else {
+                  bgColor = 'bg-gray-100';
+                  textColor = 'text-gray-800';
+                }
+              }
+              
+              return (
+                <div key={release.id} className={`text-xs px-1.5 py-0.5 rounded truncate ${bgColor} ${textColor}`} title={release.title}>
+                  {release.is_released ? <Unlock className="h-3 w-3 inline mr-1" /> : <Lock className="h-3 w-3 inline mr-1" />}
+                  {release.event_type === 'einheit' && legalAreaAbbr && <span className="font-semibold">[{legalAreaAbbr}] </span>}
+                  {release.title}
+                </div>
+              );
+            })}
           </div>
         </div>
       );
@@ -801,12 +880,13 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
               {renderCalendar()}
             </div>
           </div>
+          {/* Geplante Einheiten */}
           <div className="bg-white rounded-lg shadow">
             <div className="p-4 border-b border-gray-200">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-medium text-gray-900">Geplante Einheiten</h3>
-                  <p className="text-sm text-gray-500 mt-1">Klicken Sie auf ein Datum im Kalender, um eine neue Einheit mit Materialien zu planen</p>
+                  <p className="text-sm text-gray-500 mt-1">Unterrichts- und Wiederholungseinheiten mit Materialien</p>
                 </div>
                 <div className="flex items-center space-x-2">
                   <span className="text-sm text-gray-500">Rechtsgebiet:</span>
@@ -819,16 +899,45 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                 </div>
               </div>
             </div>
-            {scheduledReleases.length === 0 ? (
-              <div className="p-8 text-center"><Calendar className="h-12 w-12 text-gray-300 mx-auto mb-4" /><h4 className="text-lg font-medium text-gray-900 mb-2">Keine Einheiten geplant</h4><p className="text-gray-500">Klicken Sie auf ein Datum im Kalender, um Materialien für eine Einheit freizugeben.</p></div>
-            ) : (
-              <ul className="divide-y divide-gray-200">
-                {scheduledReleases.filter(r => legalAreaFilter === 'alle' || r.legal_area === legalAreaFilter).map(release => (
+            {(() => {
+              const einheitenReleases = scheduledReleases.filter(r => r.event_type === 'einheit' && (legalAreaFilter === 'alle' || r.legal_area === legalAreaFilter));
+              if (einheitenReleases.length === 0) {
+                return <div className="p-8 text-center"><Calendar className="h-12 w-12 text-gray-300 mx-auto mb-4" /><h4 className="text-lg font-medium text-gray-900 mb-2">Keine Einheiten geplant</h4><p className="text-gray-500">Klicken Sie auf ein Datum im Kalender, um Materialien für eine Einheit freizugeben.</p></div>;
+              }
+              return (
+                <ul className="divide-y divide-gray-200">
+                  {einheitenReleases.map(release => (
                   <li key={release.id} className="p-4">
                     <div className="flex items-center justify-between cursor-pointer" onClick={() => setExpandedRelease(expandedRelease === release.id ? null : release.id)}>
                       <div className="flex items-center">
-                        <div className={"h-10 w-10 rounded-full flex items-center justify-center " + (release.is_released ? 'bg-green-100' : 'bg-yellow-100')}>{release.is_released ? <Unlock className="h-5 w-5 text-green-600" /> : <Lock className="h-5 w-5 text-yellow-600" />}</div>
-                        <div className="ml-4"><h4 className="text-sm font-medium text-gray-900">{release.title}</h4><p className="text-xs text-gray-500">{formatDate(release.release_date)} - {release.material_ids.length} Materialien, {release.folder_ids.length} Ordner{release.legal_area && <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{release.legal_area}</span>}</p></div>
+                        <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
+                          release.legal_area === 'Zivilrecht' ? (release.is_released ? 'bg-blue-100' : 'bg-blue-50') :
+                          release.legal_area === 'Strafrecht' ? (release.is_released ? 'bg-red-100' : 'bg-red-50') :
+                          release.legal_area === 'Öffentliches Recht' ? (release.is_released ? 'bg-green-100' : 'bg-green-50') :
+                          (release.is_released ? 'bg-gray-100' : 'bg-gray-50')
+                        }`}>
+                          {release.is_released ? (
+                            <Unlock className={`h-5 w-5 ${
+                              release.legal_area === 'Zivilrecht' ? 'text-blue-600' :
+                              release.legal_area === 'Strafrecht' ? 'text-red-600' :
+                              release.legal_area === 'Öffentliches Recht' ? 'text-green-600' :
+                              'text-gray-600'
+                            }`} />
+                          ) : (
+                            <Lock className={`h-5 w-5 ${
+                              release.legal_area === 'Zivilrecht' ? 'text-blue-600' :
+                              release.legal_area === 'Strafrecht' ? 'text-red-600' :
+                              release.legal_area === 'Öffentliches Recht' ? 'text-green-600' :
+                              'text-gray-600'
+                            }`} />
+                          )}
+                        </div>
+                        <div className="ml-4"><h4 className="text-sm font-medium text-gray-900">{release.title}</h4><p className="text-xs text-gray-500">{formatDate(release.release_date)} - {release.material_ids.length} Materialien, {release.folder_ids.length} Ordner{release.legal_area && <span className={`ml-2 px-1.5 py-0.5 rounded text-xs ${
+                          release.legal_area === 'Zivilrecht' ? 'bg-blue-100 text-blue-700' :
+                          release.legal_area === 'Strafrecht' ? 'bg-red-100 text-red-700' :
+                          release.legal_area === 'Öffentliches Recht' ? 'bg-green-100 text-green-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>{release.legal_area}</span>}</p></div>
                       </div>
                       <div className="flex items-center space-x-4">
                         <span className={"inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium " + (release.is_released ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800')}>{release.is_released ? 'Freigegeben' : 'Geplant'}</span>
@@ -854,9 +963,85 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                       </div>
                     )}
                   </li>
-                ))}
-              </ul>
-            )}
+                  ))}
+                </ul>
+              );
+            })()}
+          </div>
+
+          {/* Sonstiges (Ferien, Verhinderungen, etc.) */}
+          <div className="bg-white rounded-lg shadow">
+            <div className="p-4 border-b border-gray-200">
+              <h3 className="text-lg font-medium text-gray-900">Sonstiges</h3>
+              <p className="text-sm text-gray-500 mt-1">Ferien, Verhinderungen und andere Ereignisse</p>
+            </div>
+            {(() => {
+              const sonstigesReleases = scheduledReleases.filter(r => r.event_type !== 'einheit');
+              if (sonstigesReleases.length === 0) {
+                return <div className="p-8 text-center text-gray-500">Keine weiteren Ereignisse geplant</div>;
+              }
+              return (
+                <ul className="divide-y divide-gray-200">
+                  {sonstigesReleases.map(release => {
+                    const eventTypeConfig = {
+                      'ferien': { icon: '🌞', label: 'Ferien', color: 'bg-orange-100 text-orange-800' },
+                      'dozent_verhinderung': { icon: '🚫', label: 'Dozent verhindert', color: 'bg-red-100 text-red-800' },
+                      'sonstiges': { icon: '📝', label: 'Sonstiges', color: 'bg-gray-100 text-gray-800' }
+                    };
+                    const config = eventTypeConfig[release.event_type as keyof typeof eventTypeConfig] || eventTypeConfig['sonstiges'];
+                    
+                    return (
+                      <li key={release.id} className="p-4">
+                        <div className="flex items-center justify-between cursor-pointer" onClick={() => setExpandedRelease(expandedRelease === release.id ? null : release.id)}>
+                          <div className="flex items-center">
+                            <div className={`h-10 w-10 rounded-full flex items-center justify-center ${config.color}`}>
+                              <span className="text-xl">{config.icon}</span>
+                            </div>
+                            <div className="ml-4">
+                              <div className="flex items-center gap-2">
+                                <h4 className="text-sm font-medium text-gray-900">{release.title}</h4>
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
+                                  {config.label}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-500">
+                                {release.end_date && release.end_date !== release.release_date ? (
+                                  <>{formatDate(release.release_date)} - {formatDate(release.end_date)}</>
+                                ) : (
+                                  formatDate(release.release_date)
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-4">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${release.is_released ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                              {release.is_released ? 'Aktiv' : 'Geplant'}
+                            </span>
+                            {expandedRelease === release.id ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                          </div>
+                        </div>
+                        {expandedRelease === release.id && (
+                          <div className="mt-4 pl-14 space-y-4">
+                            {release.description && <p className="text-sm text-gray-600">{release.description}</p>}
+                            <div className="flex items-center gap-2">
+                              <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-blue-100 text-blue-700 hover:bg-blue-200">
+                                <Edit2 className="h-4 w-4 mr-1" />Bearbeiten
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); handleToggleRelease(release); }} className={`inline-flex items-center px-3 py-1.5 rounded text-sm ${release.is_released ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}>
+                                {release.is_released ? <><Lock className="h-4 w-4 mr-1" />Deaktivieren</> : <><Unlock className="h-4 w-4 mr-1" />Aktivieren</>}
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); handleDeleteRelease(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-red-100 text-red-700 hover:bg-red-200">
+                                <Trash2 className="h-4 w-4 mr-1" />Löschen
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -1098,8 +1283,8 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
             <div className="relative bg-white rounded-lg shadow-xl max-w-3xl w-full p-6 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="text-lg font-medium text-gray-900">Einheit planen für {formatDate(selectedDate.toISOString())}</h3>
-                  <p className="text-sm text-gray-500 mt-1">Planen Sie eine Unterrichtseinheit mit automatischer Zeitberechnung</p>
+                  <h3 className="text-lg font-medium text-gray-900">Kalendereintrag erstellen</h3>
+                  <p className="text-sm text-gray-500 mt-1">Erstellen Sie einen Eintrag für Einheiten, Ferien oder andere Ereignisse</p>
                 </div>
                 <button onClick={() => setShowReleaseModal(false)} className="text-gray-400 hover:text-gray-600">
                   <X className="h-5 w-5" />
@@ -1107,8 +1292,88 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
               </div>
               
               <div className="space-y-6">
-                {/* Typ der Einheit - Wichtigste Auswahl zuerst */}
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                {/* Art des Eintrags - Wichtigste Auswahl zuerst */}
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <label className="block text-sm font-medium text-purple-900 mb-2">Art des Eintrags *</label>
+                  <select 
+                    value={releaseEventType} 
+                    onChange={(e) => {
+                      setReleaseEventType(e.target.value as EventType);
+                      // Reset unit-specific fields when changing event type
+                      if (e.target.value !== 'einheit') {
+                        setReleaseUnitType('');
+                        setReleaseLegalArea('');
+                        setReleaseZoomLink('');
+                        setReleaseKlausurFolderId('');
+                        setReleaseSolutionMaterialIds([]);
+                      }
+                    }} 
+                    className="w-full px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 bg-white"
+                  >
+                    <option value="einheit">📚 Einheit (Unterricht/Wiederholung)</option>
+                    <option value="ferien">🌞 Ferien</option>
+                    <option value="dozent_verhinderung">🚫 Dozent verhindert</option>
+                    <option value="sonstiges">📝 Sonstiges</option>
+                  </select>
+                  <p className="text-xs text-purple-700 mt-2">
+                    {releaseEventType === 'einheit' && '📚 Unterrichtseinheit mit Materialien und Zeitplan'}
+                    {releaseEventType === 'ferien' && '🌞 Ferienzeit - keine Einheiten'}
+                    {releaseEventType === 'dozent_verhinderung' && '🚫 Dozent ist verhindert'}
+                    {releaseEventType === 'sonstiges' && '📝 Sonstiger Kalendereintrag'}
+                  </p>
+                </div>
+
+                {/* Datum und Zeitspanne */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="space-y-4">
+                    {/* Zeitspannen-Checkbox */}
+                    <label className="flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={isDateRange} 
+                        onChange={(e) => {
+                          setIsDateRange(e.target.checked);
+                          if (!e.target.checked) {
+                            setReleaseEndDate('');
+                          }
+                        }} 
+                        className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded" 
+                      />
+                      <span className="ml-2 text-sm font-medium text-gray-700">Zeitspanne (Von/Bis)</span>
+                    </label>
+
+                    {/* Datumsfelder */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          {isDateRange ? 'Von Datum' : 'Datum'} *
+                        </label>
+                        <input 
+                          type="date" 
+                          value={selectedDate.toISOString().split('T')[0]} 
+                          onChange={(e) => setSelectedDate(new Date(e.target.value))} 
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                        />
+                      </div>
+                      {isDateRange && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Bis Datum *</label>
+                          <input 
+                            type="date" 
+                            value={releaseEndDate} 
+                            onChange={(e) => setReleaseEndDate(e.target.value)} 
+                            min={selectedDate.toISOString().split('T')[0]}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Typ der Einheit - nur bei Event-Typ "Einheit" */}
+                {releaseEventType === 'einheit' && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <label className="block text-sm font-medium text-blue-900 mb-2">Typ der Einheit *</label>
                   <select 
                     value={releaseUnitType} 
@@ -1133,22 +1398,24 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                       Dauer: <strong>{formatDuration(UNIT_TYPES[releaseUnitType].duration)}</strong>
                     </p>
                   )}
-                </div>
+                  </div>
+                )}
 
                 {/* Titel und Beschreibung */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Titel der Einheit *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{releaseEventType === 'einheit' ? 'Titel der Einheit' : 'Titel'} *</label>
                     <input 
                       type="text" 
                       value={releaseTitle} 
                       onChange={(e) => setReleaseTitle(e.target.value)} 
-                      placeholder="z.B. Einheit 1 - BGB AT" 
+                      placeholder={releaseEventType === 'einheit' ? 'z.B. Einheit 1 - BGB AT' : releaseEventType === 'ferien' ? 'z.B. Sommerferien 2025' : 'Titel des Eintrags'} 
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Rechtsgebiet</label>
+                  {releaseEventType === 'einheit' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Rechtsgebiet</label>
                     <select 
                       value={releaseLegalArea} 
                       onChange={(e) => setReleaseLegalArea(e.target.value)} 
@@ -1160,13 +1427,29 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                       <option value="Strafrecht">Strafrecht</option>
                       <option value="Öffentliches Recht">Öffentliches Recht</option>
                     </select>
-                  </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Uhrzeit */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Startzeit</label>
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="space-y-4">
+                    {/* Ganztägig-Checkbox */}
+                    <label className="flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={isAllDay} 
+                        onChange={(e) => setIsAllDay(e.target.checked)} 
+                        className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded" 
+                      />
+                      <span className="ml-2 text-sm font-medium text-gray-700">Ganztägig</span>
+                    </label>
+
+                    {/* Zeitfelder - nur wenn nicht ganztägig */}
+                    {!isAllDay && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Startzeit</label>
                     <input 
                       type="time" 
                       value={releaseStartTime} 
@@ -1188,26 +1471,44 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                     <div className="px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600">
                       {releaseUnitType ? formatDuration(UNIT_TYPES[releaseUnitType].duration) : '-'}
                     </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Zoom Link */}
+                {/* Beschreibung */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Zoom-Link</label>
-                  <input 
-                    type="url" 
-                    value={releaseZoomLink} 
-                    onChange={(e) => setReleaseZoomLink(e.target.value)} 
-                    placeholder="https://zoom.us/j/..." 
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Beschreibung (optional)</label>
+                  <textarea 
+                    value={releaseDescription} 
+                    onChange={(e) => setReleaseDescription(e.target.value)} 
+                    placeholder={releaseEventType === 'einheit' ? 'Zusätzliche Informationen zur Einheit...' : 'Zusätzliche Informationen...'} 
+                    rows={2} 
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
                   />
-                  {releaseZoomLink && (
-                    <p className="text-xs text-green-600 mt-1">✓ Zoom-Link wird automatisch vom zugewiesenen Dozenten übernommen</p>
-                  )}
                 </div>
 
-                {/* Wiederkehrendes Meeting */}
-                <div className="border border-gray-200 rounded-lg p-4">
+                {/* Alle folgenden Felder nur bei Einheiten */}
+                {releaseEventType === 'einheit' && (
+                  <>
+                    {/* Zoom Link */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Zoom-Link</label>
+                      <input 
+                        type="url" 
+                        value={releaseZoomLink} 
+                        onChange={(e) => setReleaseZoomLink(e.target.value)} 
+                        placeholder="https://zoom.us/j/..." 
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                      />
+                      {releaseZoomLink && (
+                        <p className="text-xs text-green-600 mt-1">✓ Zoom-Link wird automatisch vom zugewiesenen Dozenten übernommen</p>
+                      )}
+                    </div>
+
+                    {/* Wiederkehrendes Meeting */}
+                    <div className="border border-gray-200 rounded-lg p-4">
                   <label className="flex items-center cursor-pointer">
                     <input 
                       type="checkbox" 
@@ -1649,6 +1950,8 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                     {additionalDocument && <div className="col-span-2 text-green-700">Zusatzdokument: <strong>{additionalDocumentTitle || additionalDocument.name}</strong></div>}
                   </div>
                 </div>
+                  </>
+                )}
               </div>
 
               <div className="mt-6 flex justify-end space-x-3">
@@ -1657,7 +1960,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                 </button>
                 <button 
                   onClick={handleCreateRelease} 
-                  disabled={!releaseTitle.trim() || !releaseUnitType || isUploadingDocument} 
+                  disabled={!releaseTitle.trim() || (releaseEventType === 'einheit' && !releaseUnitType) || isUploadingDocument} 
                   className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isUploadingDocument ? (
@@ -1668,7 +1971,10 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                   ) : (
                     <>
                       <Plus className="h-4 w-4 inline mr-1" />
-                      {releaseIsRecurring ? `${releaseRecurrenceCount} Einheiten planen` : 'Einheit planen'}
+                      {releaseEventType === 'einheit' 
+                        ? (releaseIsRecurring ? `${releaseRecurrenceCount} Einheiten planen` : 'Einheit planen')
+                        : 'Eintrag erstellen'
+                      }
                     </>
                   )}
                 </button>
