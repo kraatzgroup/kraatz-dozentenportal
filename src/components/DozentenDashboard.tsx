@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useToastStore } from '../store/toastStore';
-import { GraduationCap, Plus, Edit2, Trash2, ChevronDown, ChevronUp, X, Play, FileText, ExternalLink, Info, Pin, AlertTriangle, Clock, Upload, Eye, GripVertical, LayoutGrid, Download, Search, Users } from 'lucide-react';
+import { GraduationCap, Plus, Edit2, Trash2, ChevronDown, ChevronUp, X, Play, FileText, ExternalLink, Info, Pin, AlertTriangle, Clock, Upload, Eye, GripVertical, LayoutGrid, Download, Search, Users, Copy } from 'lucide-react';
 import { EliteKleingruppe } from './EliteKleingruppe';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
@@ -486,6 +486,82 @@ export function DozentenDashboard() {
     addToast('Gelöscht', 'success');
   };
 
+  const duplicateFolder = async (folderId: string) => {
+    try {
+      const folderToDuplicate = folders.find(f => f.id === folderId);
+      if (!folderToDuplicate) return;
+
+      // Map to track old folder IDs to new folder IDs
+      const folderIdMap = new Map<string, string>();
+
+      // Recursive function to duplicate folder and its contents
+      const duplicateFolderRecursive = async (sourceFolderId: string, newParentId: string | null): Promise<string | null> => {
+        const sourceFolder = folders.find(f => f.id === sourceFolderId);
+        if (!sourceFolder) return null;
+
+        // Create new folder with "Kopie von" prefix
+        const newFolderName = `Kopie von ${sourceFolder.name}`;
+        const siblingFolders = folders.filter(f => f.parent_id === newParentId);
+        
+        const { data: newFolder, error: folderError } = await supabase
+          .from('material_folders')
+          .insert({
+            name: newFolderName,
+            parent_id: newParentId,
+            position: siblingFolders.length,
+            is_active: true
+          })
+          .select()
+          .single();
+
+        if (folderError || !newFolder) {
+          console.error('Error creating folder:', folderError);
+          return null;
+        }
+
+        folderIdMap.set(sourceFolderId, newFolder.id);
+
+        // Duplicate all materials in this folder
+        const folderMaterials = materials.filter(m => m.folder_id === sourceFolderId);
+        for (let i = 0; i < folderMaterials.length; i++) {
+          const material = folderMaterials[i];
+          await supabase.from('teaching_materials').insert({
+            title: material.title,
+            description: material.description,
+            file_url: material.file_url,
+            file_name: material.file_name,
+            file_type: material.file_type,
+            file_size: material.file_size,
+            category: material.category,
+            folder_id: newFolder.id,
+            position: i,
+            is_active: true
+          });
+        }
+
+        // Duplicate all subfolders recursively
+        const subFolders = folders.filter(f => f.parent_id === sourceFolderId);
+        for (const subFolder of subFolders) {
+          await duplicateFolderRecursive(subFolder.id, newFolder.id);
+        }
+
+        return newFolder.id;
+      };
+
+      // Start duplication
+      await duplicateFolderRecursive(folderId, folderToDuplicate.parent_id);
+      
+      // Refresh data
+      await fetchFolders();
+      await fetchMaterials();
+      
+      addToast('Ordner erfolgreich dupliziert', 'success');
+    } catch (error) {
+      console.error('Error duplicating folder:', error);
+      addToast('Fehler beim Duplizieren des Ordners', 'error');
+    }
+  };
+
   const getBreadcrumbs = () => {
     const crumbs: { id: string | null; name: string }[] = [{ id: null, name: 'Materialien' }];
     let current = currentFolderId;
@@ -912,6 +988,13 @@ export function DozentenDashboard() {
                       </button>
                       {canEdit && (
                         <>
+                          <button 
+                            onClick={e => { e.stopPropagation(); duplicateFolder(f.id); }} 
+                            className="p-1 bg-purple-100 rounded hover:bg-purple-200"
+                            title="Ordner duplizieren"
+                          >
+                            <Copy className="h-3 w-3 text-purple-600" />
+                          </button>
                           <button onClick={e => { e.stopPropagation(); openFolderModal(f); }} className="p-1 bg-gray-100 rounded hover:bg-gray-200"><Edit2 className="h-3 w-3 text-gray-600" /></button>
                           <button onClick={e => { e.stopPropagation(); deleteFolder(f.id); }} className="p-1 bg-gray-100 rounded hover:bg-red-100"><Trash2 className="h-3 w-3 text-red-500" /></button>
                         </>
