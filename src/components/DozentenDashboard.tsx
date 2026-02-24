@@ -320,6 +320,7 @@ export function DozentenDashboard() {
   const [isDownloadingZip, setIsDownloadingZip] = useState(false);
   const [previewMaterial, setPreviewMaterial] = useState<TeachingMaterial | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedMaterials, setSelectedMaterials] = useState<Set<string>>(new Set());
   const canEdit = isAdmin || isBuchhaltung;
 
   const sensors = useSensors(
@@ -701,6 +702,37 @@ export function DozentenDashboard() {
     addToast('Gelöscht', 'success');
   };
 
+  const deleteBulkMaterials = async () => {
+    if (selectedMaterials.size === 0) return;
+    if (!confirm(`${selectedMaterials.size} Material(ien) löschen?`)) return;
+    
+    const ids = Array.from(selectedMaterials);
+    await supabase.from('teaching_materials').delete().in('id', ids);
+    setSelectedMaterials(new Set());
+    fetchMaterials();
+    addToast(`${ids.length} Material(ien) gelöscht`, 'success');
+  };
+
+  const toggleMaterialSelection = (id: string) => {
+    setSelectedMaterials(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = (materialsToSelect: TeachingMaterial[]) => {
+    if (selectedMaterials.size === materialsToSelect.length) {
+      setSelectedMaterials(new Set());
+    } else {
+      setSelectedMaterials(new Set(materialsToSelect.map((m: TeachingMaterial) => m.id)));
+    }
+  };
+
   const openFilePreview = async (material: TeachingMaterial) => {
     try {
       const response = await fetch(material.file_url);
@@ -1009,15 +1041,49 @@ export function DozentenDashboard() {
           {/* Upload-Bereich / Materialien */}
           {currentMaterials.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                <Upload className="h-4 w-4" />
-                Upload
-              </h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                  <Upload className="h-4 w-4" />
+                  Upload
+                </h3>
+                {canEdit && (
+                  <div className="flex items-center gap-2">
+                    {selectedMaterials.size > 0 && (
+                      <button
+                        onClick={deleteBulkMaterials}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        {selectedMaterials.size} löschen
+                      </button>
+                    )}
+                    <button
+                      onClick={() => toggleSelectAll(currentMaterials)}
+                      className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50"
+                    >
+                      {selectedMaterials.size === currentMaterials.length ? 'Alle abwählen' : 'Alle auswählen'}
+                    </button>
+                  </div>
+                )}
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {currentMaterials.map(m => (
-                <div key={m.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow flex flex-col h-full">
+                <div key={m.id} className={`bg-white rounded-xl shadow-sm border p-4 hover:shadow-md transition-shadow flex flex-col h-full relative ${
+                  selectedMaterials.has(m.id) ? 'border-primary border-2 bg-primary/5' : 'border-gray-100'
+                }`}>
+                  {canEdit && (
+                    <div className="absolute top-3 left-3 z-10">
+                      <input
+                        type="checkbox"
+                        checked={selectedMaterials.has(m.id)}
+                        onChange={() => toggleMaterialSelection(m.id)}
+                        className="w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                  )}
                   <div className="flex items-start gap-3 flex-1">
-                    <div className="text-3xl flex-shrink-0">{getFileIcon(m.file_type)}</div>
+                    <div className={`text-3xl flex-shrink-0 ${canEdit ? 'ml-7' : ''}`}>{getFileIcon(m.file_type)}</div>
                     <div className="flex-1 min-w-0">
                       <h3 className="font-medium text-gray-900 truncate">{m.title}</h3>
                       {m.description && <p className="text-sm text-gray-500 mt-1">{m.description}</p>}

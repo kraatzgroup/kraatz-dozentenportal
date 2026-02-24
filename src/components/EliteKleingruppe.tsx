@@ -29,7 +29,22 @@ import {
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 
-// Einheitstypen mit automatischer Dauer (in Minuten)
+// Helper function to get unit duration from settings
+export const getUnitDurationFromSettings = (unitDurations: any, unitType: string): number => {
+  const mapping: Record<string, string> = {
+    'unterricht_zivilrecht': 'zivilrecht_unterricht',
+    'unterricht_strafrecht': 'strafrecht_unterricht',
+    'unterricht_oeffentliches_recht': 'oeffentliches_recht_unterricht',
+    'wiederholung_zivilrecht': 'zivilrecht_wiederholung',
+    'wiederholung_strafrecht': 'strafrecht_wiederholung',
+    'wiederholung_oeffentliches_recht': 'oeffentliches_recht_wiederholung',
+  };
+  
+  const settingsKey = mapping[unitType];
+  return settingsKey && unitDurations ? unitDurations[settingsKey] || 120 : 120;
+};
+
+// Einheitstypen mit automatischer Dauer (in Minuten) - Default values
 export const UNIT_TYPES = {
   'unterricht_zivilrecht': { label: 'Unterricht Zivilrecht', duration: 150, legalArea: 'Zivilrecht' },
   'unterricht_strafrecht': { label: 'Unterricht Strafrecht', duration: 120, legalArea: 'Strafrecht' },
@@ -268,6 +283,17 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
     description: '',
     meeting_link: ''
   });
+  
+  // Unit duration settings state
+  const [unitDurations, setUnitDurations] = useState({
+    zivilrecht_unterricht: 150,
+    oeffentliches_recht_unterricht: 120,
+    strafrecht_unterricht: 120,
+    zivilrecht_wiederholung: 150,
+    oeffentliches_recht_wiederholung: 70,
+    strafrecht_wiederholung: 100
+  });
+  const [showDurationSettings, setShowDurationSettings] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -316,6 +342,12 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
       const { data: courseTimesData } = await supabase.from('elite_course_times').select('*').eq('is_active', true).order('weekday').order('start_time');
       setCourseTimes(courseTimesData || []);
       
+      // Fetch unit duration settings
+      const { data: settingsData } = await supabase.from('elite_kleingruppe_settings').select('setting_value').eq('setting_key', 'unit_durations').single();
+      if (settingsData?.setting_value) {
+        setUnitDurations(settingsData.setting_value as any);
+      }
+      
       setMessages([]);
     } catch (error) {
       console.error('Error fetching Elite-Kleingruppe data:', error);
@@ -327,6 +359,25 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedTeilnehmer) return;
     setNewMessage('');
+  };
+
+  const handleSaveUnitDurations = async () => {
+    try {
+      const { error } = await supabase
+        .from('elite_kleingruppe_settings')
+        .upsert({
+          setting_key: 'unit_durations',
+          setting_value: unitDurations,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'setting_key' });
+      
+      if (error) throw error;
+      alert('Einheitenlängen erfolgreich gespeichert!');
+      setShowDurationSettings(false);
+    } catch (error) {
+      console.error('Error saving unit durations:', error);
+      alert('Fehler beim Speichern der Einheitenlängen');
+    }
   };
 
   const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -402,8 +453,9 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
     if (unitType && UNIT_TYPES[unitType]) {
       const unitConfig = UNIT_TYPES[unitType];
       setReleaseLegalArea(unitConfig.legalArea);
-      // Automatisch Endzeit berechnen
-      const endTime = calculateEndTime(releaseStartTime, unitConfig.duration);
+      // Automatisch Endzeit berechnen mit konfigurierbarer Dauer
+      const duration = getUnitDurationFromSettings(unitDurations, unitType);
+      const endTime = calculateEndTime(releaseStartTime, duration);
       setReleaseEndTime(endTime);
       // Automatisch Zoom-Link des zugewiesenen Dozenten laden
       const assignment = dozentAssignments.find(a => a.legal_area === unitConfig.legalArea);
@@ -416,7 +468,8 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
   const handleStartTimeChange = (time: string) => {
     setReleaseStartTime(time);
     if (releaseUnitType && UNIT_TYPES[releaseUnitType]) {
-      const endTime = calculateEndTime(time, UNIT_TYPES[releaseUnitType].duration);
+      const duration = getUnitDurationFromSettings(unitDurations, releaseUnitType);
+      const endTime = calculateEndTime(time, duration);
       setReleaseEndTime(endTime);
     }
   };
@@ -490,7 +543,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
         is_released: new Date() >= selectedDate,
         legal_area: releaseLegalArea || null,
         unit_type: releaseUnitType || null,
-        duration_minutes: releaseUnitType ? UNIT_TYPES[releaseUnitType].duration : null,
+        duration_minutes: releaseUnitType ? getUnitDurationFromSettings(unitDurations, releaseUnitType) : null,
         start_time: (releaseEventType === 'einheit' || !isAllDay) ? (releaseStartTime || null) : null,
         end_time: (releaseEventType === 'einheit' || !isAllDay) ? (releaseEndTime || null) : null,
         zoom_link: releaseZoomLink || null,
@@ -609,7 +662,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
         folder_ids: selectedFolders,
         legal_area: releaseLegalArea || null,
         unit_type: releaseUnitType || null,
-        duration_minutes: releaseUnitType ? UNIT_TYPES[releaseUnitType as UnitType]?.duration : null,
+        duration_minutes: releaseUnitType ? getUnitDurationFromSettings(unitDurations, releaseUnitType) : null,
         start_time: releaseStartTime || null,
         end_time: releaseEndTime || null,
         zoom_link: releaseZoomLink || null,
@@ -1382,20 +1435,20 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                   >
                     <option value="">Bitte wählen...</option>
                     <optgroup label="Unterricht">
-                      <option value="unterricht_zivilrecht">Unterricht Zivilrecht (2 Std 30 Min)</option>
-                      <option value="unterricht_strafrecht">Unterricht Strafrecht (2 Std)</option>
-                      <option value="unterricht_oeffentliches_recht">Unterricht öffentliches Recht (2 Std)</option>
+                      <option value="unterricht_zivilrecht">Unterricht Zivilrecht ({formatDuration(unitDurations.zivilrecht_unterricht)})</option>
+                      <option value="unterricht_strafrecht">Unterricht Strafrecht ({formatDuration(unitDurations.strafrecht_unterricht)})</option>
+                      <option value="unterricht_oeffentliches_recht">Unterricht öffentliches Recht ({formatDuration(unitDurations.oeffentliches_recht_unterricht)})</option>
                     </optgroup>
                     <optgroup label="Wiederholungseinheit">
-                      <option value="wiederholung_zivilrecht">Wiederholungseinheit Zivilrecht (2 Std 30 Min)</option>
-                      <option value="wiederholung_strafrecht">Wiederholungseinheit Strafrecht (1 Std 40 Min)</option>
-                      <option value="wiederholung_oeffentliches_recht">Wiederholungseinheit öffentliches Recht (1 Std 10 Min)</option>
+                      <option value="wiederholung_zivilrecht">Wiederholungseinheit Zivilrecht ({formatDuration(unitDurations.zivilrecht_wiederholung)})</option>
+                      <option value="wiederholung_strafrecht">Wiederholungseinheit Strafrecht ({formatDuration(unitDurations.strafrecht_wiederholung)})</option>
+                      <option value="wiederholung_oeffentliches_recht">Wiederholungseinheit öffentliches Recht ({formatDuration(unitDurations.oeffentliches_recht_wiederholung)})</option>
                     </optgroup>
                   </select>
                   {releaseUnitType && (
                     <p className="text-xs text-blue-700 mt-2">
                       Rechtsgebiet: <strong>{UNIT_TYPES[releaseUnitType].legalArea}</strong> | 
-                      Dauer: <strong>{formatDuration(UNIT_TYPES[releaseUnitType].duration)}</strong>
+                      Dauer: <strong>{formatDuration(getUnitDurationFromSettings(unitDurations, releaseUnitType))}</strong>
                     </p>
                   )}
                   </div>
@@ -1469,7 +1522,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Dauer</label>
                     <div className="px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600">
-                      {releaseUnitType ? formatDuration(UNIT_TYPES[releaseUnitType].duration) : '-'}
+                      {releaseUnitType ? formatDuration(getUnitDurationFromSettings(unitDurations, releaseUnitType)) : '-'}
                     </div>
                         </div>
                       </div>
@@ -1942,7 +1995,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                     <div>Typ: <strong>{releaseUnitType ? UNIT_TYPES[releaseUnitType].label : '-'}</strong></div>
                     <div>Rechtsgebiet: <strong>{releaseLegalArea || '-'}</strong></div>
                     <div>Zeit: <strong>{releaseStartTime} - {releaseEndTime}</strong></div>
-                    <div>Dauer: <strong>{releaseUnitType ? formatDuration(UNIT_TYPES[releaseUnitType].duration) : '-'}</strong></div>
+                    <div>Dauer: <strong>{releaseUnitType ? formatDuration(getUnitDurationFromSettings(unitDurations, releaseUnitType)) : '-'}</strong></div>
                     <div>Ordner: <strong>{selectedFolders.length}</strong></div>
                     <div>Materialien: <strong>{selectedMaterials.length}{additionalDocument ? ' + 1 Upload' : ''}</strong></div>
                     {releaseIsRecurring && <div className="col-span-2">Wiederholung: <strong>{releaseRecurrenceType === 'weekly' ? 'Wöchentlich' : 'Monatlich'}, {releaseRecurrenceCount} Termine</strong></div>}
@@ -2198,6 +2251,216 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
               </div>
             )}
           </div>
+
+          {/* Unit Duration Settings */}
+          <div className="bg-white rounded-lg shadow">
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">Einheitenlängen</h3>
+                <p className="text-sm text-gray-500 mt-1">Standard-Dauern für Unterrichts- und Wiederholungseinheiten</p>
+              </div>
+              <button
+                onClick={() => setShowDurationSettings(!showDurationSettings)}
+                className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+              >
+                <Edit2 className="h-4 w-4 mr-2" />
+                {showDurationSettings ? 'Schließen' : 'Bearbeiten'}
+              </button>
+            </div>
+            
+            {showDurationSettings ? (
+              <div className="p-6">
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-4">Unterrichtseinheiten</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <span className="inline-flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full bg-blue-500"></span>
+                            Zivilrecht
+                          </span>
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={unitDurations.zivilrecht_unterricht}
+                            onChange={(e) => setUnitDurations({ ...unitDurations, zivilrecht_unterricht: parseInt(e.target.value) || 0 })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                            min="0"
+                            step="5"
+                          />
+                          <span className="text-sm text-gray-500 whitespace-nowrap">Min</span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{formatDuration(unitDurations.zivilrecht_unterricht)}</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <span className="inline-flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full bg-red-500"></span>
+                            Strafrecht
+                          </span>
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={unitDurations.strafrecht_unterricht}
+                            onChange={(e) => setUnitDurations({ ...unitDurations, strafrecht_unterricht: parseInt(e.target.value) || 0 })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                            min="0"
+                            step="5"
+                          />
+                          <span className="text-sm text-gray-500 whitespace-nowrap">Min</span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{formatDuration(unitDurations.strafrecht_unterricht)}</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <span className="inline-flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full bg-green-500"></span>
+                            Öffentliches Recht
+                          </span>
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={unitDurations.oeffentliches_recht_unterricht}
+                            onChange={(e) => setUnitDurations({ ...unitDurations, oeffentliches_recht_unterricht: parseInt(e.target.value) || 0 })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                            min="0"
+                            step="5"
+                          />
+                          <span className="text-sm text-gray-500 whitespace-nowrap">Min</span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{formatDuration(unitDurations.oeffentliches_recht_unterricht)}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t pt-6">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-4">Wiederholungseinheiten</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <span className="inline-flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full bg-blue-500"></span>
+                            Zivilrecht
+                          </span>
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={unitDurations.zivilrecht_wiederholung}
+                            onChange={(e) => setUnitDurations({ ...unitDurations, zivilrecht_wiederholung: parseInt(e.target.value) || 0 })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                            min="0"
+                            step="5"
+                          />
+                          <span className="text-sm text-gray-500 whitespace-nowrap">Min</span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{formatDuration(unitDurations.zivilrecht_wiederholung)}</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <span className="inline-flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full bg-red-500"></span>
+                            Strafrecht
+                          </span>
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={unitDurations.strafrecht_wiederholung}
+                            onChange={(e) => setUnitDurations({ ...unitDurations, strafrecht_wiederholung: parseInt(e.target.value) || 0 })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                            min="0"
+                            step="5"
+                          />
+                          <span className="text-sm text-gray-500 whitespace-nowrap">Min</span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{formatDuration(unitDurations.strafrecht_wiederholung)}</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <span className="inline-flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full bg-green-500"></span>
+                            Öffentliches Recht
+                          </span>
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={unitDurations.oeffentliches_recht_wiederholung}
+                            onChange={(e) => setUnitDurations({ ...unitDurations, oeffentliches_recht_wiederholung: parseInt(e.target.value) || 0 })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                            min="0"
+                            step="5"
+                          />
+                          <span className="text-sm text-gray-500 whitespace-nowrap">Min</span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{formatDuration(unitDurations.oeffentliches_recht_wiederholung)}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-4 border-t">
+                    <button
+                      onClick={() => setShowDurationSettings(false)}
+                      className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                    >
+                      Abbrechen
+                    </button>
+                    <button
+                      onClick={handleSaveUnitDurations}
+                      className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      Speichern
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="p-6">
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Unterrichtseinheiten</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="flex items-center justify-between bg-blue-50 rounded-lg p-3">
+                        <span className="text-sm font-medium text-gray-900">Zivilrecht</span>
+                        <span className="text-sm text-gray-600">{formatDuration(unitDurations.zivilrecht_unterricht)}</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-red-50 rounded-lg p-3">
+                        <span className="text-sm font-medium text-gray-900">Strafrecht</span>
+                        <span className="text-sm text-gray-600">{formatDuration(unitDurations.strafrecht_unterricht)}</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-green-50 rounded-lg p-3">
+                        <span className="text-sm font-medium text-gray-900">Öffentliches Recht</span>
+                        <span className="text-sm text-gray-600">{formatDuration(unitDurations.oeffentliches_recht_unterricht)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Wiederholungseinheiten</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="flex items-center justify-between bg-blue-50 rounded-lg p-3">
+                        <span className="text-sm font-medium text-gray-900">Zivilrecht</span>
+                        <span className="text-sm text-gray-600">{formatDuration(unitDurations.zivilrecht_wiederholung)}</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-red-50 rounded-lg p-3">
+                        <span className="text-sm font-medium text-gray-900">Strafrecht</span>
+                        <span className="text-sm text-gray-600">{formatDuration(unitDurations.strafrecht_wiederholung)}</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-green-50 rounded-lg p-3">
+                        <span className="text-sm font-medium text-gray-900">Öffentliches Recht</span>
+                        <span className="text-sm text-gray-600">{formatDuration(unitDurations.oeffentliches_recht_wiederholung)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -2388,20 +2651,20 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                   >
                     <option value="">Bitte wählen...</option>
                     <optgroup label="Unterricht">
-                      <option value="unterricht_zivilrecht">Unterricht Zivilrecht (2 Std 30 Min)</option>
-                      <option value="unterricht_strafrecht">Unterricht Strafrecht (2 Std)</option>
-                      <option value="unterricht_oeffentliches_recht">Unterricht öffentliches Recht (2 Std)</option>
+                      <option value="unterricht_zivilrecht">Unterricht Zivilrecht ({formatDuration(unitDurations.zivilrecht_unterricht)})</option>
+                      <option value="unterricht_strafrecht">Unterricht Strafrecht ({formatDuration(unitDurations.strafrecht_unterricht)})</option>
+                      <option value="unterricht_oeffentliches_recht">Unterricht öffentliches Recht ({formatDuration(unitDurations.oeffentliches_recht_unterricht)})</option>
                     </optgroup>
                     <optgroup label="Wiederholungseinheit">
-                      <option value="wiederholung_zivilrecht">Wiederholungseinheit Zivilrecht (2 Std 30 Min)</option>
-                      <option value="wiederholung_strafrecht">Wiederholungseinheit Strafrecht (1 Std 40 Min)</option>
-                      <option value="wiederholung_oeffentliches_recht">Wiederholungseinheit öffentliches Recht (1 Std 10 Min)</option>
+                      <option value="wiederholung_zivilrecht">Wiederholungseinheit Zivilrecht ({formatDuration(unitDurations.zivilrecht_wiederholung)})</option>
+                      <option value="wiederholung_strafrecht">Wiederholungseinheit Strafrecht ({formatDuration(unitDurations.strafrecht_wiederholung)})</option>
+                      <option value="wiederholung_oeffentliches_recht">Wiederholungseinheit öffentliches Recht ({formatDuration(unitDurations.oeffentliches_recht_wiederholung)})</option>
                     </optgroup>
                   </select>
                   {releaseUnitType && (
                     <p className="text-xs text-blue-700 mt-2">
                       Rechtsgebiet: <strong>{UNIT_TYPES[releaseUnitType].legalArea}</strong> | 
-                      Dauer: <strong>{formatDuration(UNIT_TYPES[releaseUnitType].duration)}</strong>
+                      Dauer: <strong>{formatDuration(getUnitDurationFromSettings(unitDurations, releaseUnitType))}</strong>
                     </p>
                   )}
                 </div>
@@ -2452,7 +2715,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Dauer</label>
                     <div className="px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600">
-                      {releaseUnitType ? formatDuration(UNIT_TYPES[releaseUnitType].duration) : '-'}
+                      {releaseUnitType ? formatDuration(getUnitDurationFromSettings(unitDurations, releaseUnitType)) : '-'}
                     </div>
                   </div>
                 </div>
@@ -2736,7 +2999,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                     <div>Typ: <strong>{releaseUnitType ? UNIT_TYPES[releaseUnitType].label : '-'}</strong></div>
                     <div>Rechtsgebiet: <strong>{releaseLegalArea || '-'}</strong></div>
                     <div>Zeit: <strong>{releaseStartTime} - {releaseEndTime}</strong></div>
-                    <div>Dauer: <strong>{releaseUnitType ? formatDuration(UNIT_TYPES[releaseUnitType].duration) : '-'}</strong></div>
+                    <div>Dauer: <strong>{releaseUnitType ? formatDuration(getUnitDurationFromSettings(unitDurations, releaseUnitType)) : '-'}</strong></div>
                     <div>Ordner: <strong>{selectedFolders.length}</strong></div>
                     <div>Materialien: <strong>{selectedMaterials.length}</strong></div>
                     {releaseSolutionMaterialIds.length > 0 && <div className="col-span-2">Lösungen (nach Termin): <strong>{releaseSolutionMaterialIds.length} Dateien</strong></div>}
