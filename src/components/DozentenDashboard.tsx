@@ -1339,7 +1339,13 @@ export function DozentenDashboard() {
                     </div>
                   )}
                   <DroppableSection id={`section-${section.id}`} isOver={activeOverSection === section.id}>
-                    <div className="grid gap-4 items-stretch" style={{ gridTemplateColumns: `repeat(${section.columns}, minmax(0, 1fr))` }}>
+                    <div className={`grid gap-4 items-stretch ${
+                      section.columns === 1 ? 'grid-cols-1' :
+                      section.columns === 2 ? 'grid-cols-1 md:grid-cols-2' :
+                      section.columns === 3 ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' :
+                      section.columns === 4 ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4' :
+                      'grid-cols-1 md:grid-cols-2 lg:grid-cols-5'
+                    }`}>
                     {sectionWidgets.map(w => {
                       const isOnboarding = w.title.toLowerCase().includes('onboarding');
                       const isHtmlWidget = w.widget_type === 'html';

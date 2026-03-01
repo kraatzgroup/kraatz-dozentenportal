@@ -25,6 +25,8 @@ interface Teilnehmer {
   postal_code: string;
   city: string;
   elite_kleingruppe?: boolean;
+  is_elite_kleingruppe?: boolean;
+  elite_kleingruppe_id?: string | null;
   hours_zivilrecht: number | null;
   hours_strafrecht: number | null;
   hours_oeffentliches_recht: number | null;
@@ -60,9 +62,15 @@ interface TeilnehmerFormProps {
   dozenten: { id: string; full_name: string }[];
 }
 
+interface EliteKleingruppe {
+  id: string;
+  name: string;
+}
+
 export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: TeilnehmerFormProps) {
   const { addToast } = useToastStore();
   const [isLoading, setIsLoading] = useState(false);
+  const [eliteKleingruppen, setEliteKleingruppen] = useState<EliteKleingruppe[]>([]);
   const [formData, setFormData] = useState<Teilnehmer>({
     first_name: '',
     last_name: '',
@@ -84,6 +92,8 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
     postal_code: '',
     city: '',
     elite_kleingruppe: false,
+    is_elite_kleingruppe: false,
+    elite_kleingruppe_id: null,
     hours_zivilrecht: null,
     hours_strafrecht: null,
     hours_oeffentliches_recht: null,
@@ -94,6 +104,22 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
   });
 
   const isEditing = !!teilnehmer?.id;
+
+  useEffect(() => {
+    const fetchEliteKleingruppen = async () => {
+      const { data, error } = await supabase
+        .from('elite_kleingruppen')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name');
+      
+      if (!error && data) {
+        setEliteKleingruppen(data);
+      }
+    };
+    
+    fetchEliteKleingruppen();
+  }, []);
 
   useEffect(() => {
     if (teilnehmer) {
@@ -118,6 +144,8 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
         postal_code: (teilnehmer as any).postal_code || '',
         city: (teilnehmer as any).city || '',
         elite_kleingruppe: (teilnehmer as any).elite_kleingruppe || false,
+        is_elite_kleingruppe: (teilnehmer as any).is_elite_kleingruppe || false,
+        elite_kleingruppe_id: (teilnehmer as any).elite_kleingruppe_id || null,
         hours_zivilrecht: (teilnehmer as any).hours_zivilrecht || null,
         hours_strafrecht: (teilnehmer as any).hours_strafrecht || null,
         hours_oeffentliches_recht: (teilnehmer as any).hours_oeffentliches_recht || null,
@@ -189,6 +217,8 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
         postal_code: formData.postal_code.trim() || null,
         city: formData.city.trim() || null,
         elite_kleingruppe: formData.elite_kleingruppe || false,
+        is_elite_kleingruppe: formData.is_elite_kleingruppe || false,
+        elite_kleingruppe_id: formData.is_elite_kleingruppe ? (formData.elite_kleingruppe_id || null) : null,
         hours_zivilrecht: formData.legal_areas.includes('Zivilrecht') ? (formData.hours_zivilrecht || null) : null,
         hours_strafrecht: formData.legal_areas.includes('Strafrecht') ? (formData.hours_strafrecht || null) : null,
         hours_oeffentliches_recht: formData.legal_areas.includes('Öffentliches Recht') ? (formData.hours_oeffentliches_recht || null) : null,
@@ -418,17 +448,46 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
             </select>
           </div>
 
-          {/* Elite-Kleingruppe Checkbox */}
-          <div>
+          {/* Elite-Kleingruppe Section */}
+          <div className="space-y-3 p-4 bg-purple-50 rounded-lg border border-purple-200">
             <label className="flex items-center cursor-pointer">
               <input
                 type="checkbox"
-                checked={formData.elite_kleingruppe || false}
-                onChange={(e) => setFormData({ ...formData, elite_kleingruppe: e.target.checked })}
+                checked={formData.is_elite_kleingruppe || false}
+                onChange={(e) => {
+                  const isChecked = e.target.checked;
+                  setFormData({ 
+                    ...formData, 
+                    is_elite_kleingruppe: isChecked,
+                    elite_kleingruppe: isChecked,
+                    elite_kleingruppe_id: isChecked ? formData.elite_kleingruppe_id : null
+                  });
+                }}
                 className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
               />
-              <span className="ml-2 text-sm font-medium text-gray-700">Elite-Kleingruppe</span>
+              <span className="ml-2 text-sm font-medium text-gray-700">Elite-Kleingruppe Teilnehmer</span>
             </label>
+            
+            {formData.is_elite_kleingruppe && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Elite-Kleingruppe zuordnen
+                </label>
+                <select
+                  value={formData.elite_kleingruppe_id || ''}
+                  onChange={(e) => setFormData({ ...formData, elite_kleingruppe_id: e.target.value || null })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                  required={formData.is_elite_kleingruppe}
+                >
+                  <option value="">Bitte wählen...</option>
+                  {eliteKleingruppen.map((gruppe) => (
+                    <option key={gruppe.id} value={gruppe.id}>
+                      {gruppe.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Legal Areas - Checkboxes */}

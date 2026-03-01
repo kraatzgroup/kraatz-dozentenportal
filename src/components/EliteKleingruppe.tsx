@@ -697,6 +697,24 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
     setShowKorrekturModal(true);
   };
 
+  const downloadKlausur = async (klausur: Klausur) => {
+    try {
+      const response = await fetch(klausur.file_url);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = klausur.file_name || `klausur_${klausur.title}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      alert('Fehler beim Herunterladen der Datei');
+    }
+  };
+
   const handleStartKorrektur = async (klausur: Klausur) => {
     try {
       await supabase.from('elite_kleingruppe_klausuren').update({ status: 'in_review' }).eq('id', klausur.id);
@@ -905,8 +923,8 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
         </div>
       </div>
 
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
+      <div className="border-b border-gray-200 overflow-x-auto">
+        <nav className="-mb-px flex space-x-4 md:space-x-8 min-w-max md:min-w-0">
           <button onClick={() => setActiveSubTab('einheiten')} className={(activeSubTab === 'einheiten' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><Calendar className="h-4 w-4 mr-2" />Einheiten & Materialfreigabe</button>
           <button onClick={() => setActiveSubTab('klausuren')} className={(activeSubTab === 'klausuren' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><PenTool className="h-4 w-4 mr-2" />Klausurenkorrekturen</button>
           <button onClick={() => setActiveSubTab('kommunikation')} className={(activeSubTab === 'kommunikation' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><MessageSquare className="h-4 w-4 mr-2" />Kommunikation</button>
@@ -1268,9 +1286,9 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                     {expandedKlausur === klausur.id && (
                       <div className="mt-4 pl-14 space-y-4">
                         <div className="flex items-center space-x-4">
-                          <a href={klausur.file_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-3 py-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm">
+                          <button onClick={() => downloadKlausur(klausur)} className="inline-flex items-center px-3 py-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm">
                             <Download className="h-4 w-4 mr-1" />Klausur herunterladen
-                          </a>
+                          </button>
                           {klausur.status === 'pending' && (
                             <button onClick={() => handleStartKorrektur(klausur)} className="inline-flex items-center px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 text-sm">
                               <Clock className="h-4 w-4 mr-1" />Korrektur starten

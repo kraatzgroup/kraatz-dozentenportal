@@ -90,6 +90,7 @@ export function AdminDashboard() {
   const { addToast } = useToastStore();
   const [dozenten, setDozenten] = useState<Profile[]>([]);
   const [teilnehmer, setTeilnehmer] = useState<any[]>([]);
+  const [eliteKleingruppen, setEliteKleingruppen] = useState<{id: string; name: string}[]>([]);
   const [eliteReleases, setEliteReleases] = useState<{ total: number; released: number }>({ total: 0, released: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDozent, setSelectedDozent] = useState<Profile | null>(null);
@@ -327,6 +328,7 @@ export function AdminDashboard() {
         break;
       case 'teilnehmer':
         fetchTeilnehmer();
+        fetchEliteKleingruppen();
         break;
       case 'kalender':
         fetchCalendarEntries();
@@ -347,6 +349,7 @@ export function AdminDashboard() {
   useEffect(() => {
     fetchDozenten();
     fetchTeilnehmer();
+    fetchEliteKleingruppen();
     fetchSubmittedInvoices(); // For overview KPIs
     fetchUnreadCount();
     fetchUndownloadedCount();
@@ -479,10 +482,13 @@ export function AdminDashboard() {
 
   const fetchTeilnehmer = async () => {
     try {
-      // Fetch teilnehmer with limit for better performance
+      // Fetch teilnehmer with elite_kleingruppe info
       const { data: teilnehmerData, error: teilnehmerError } = await supabase
         .from('teilnehmer')
-        .select('*')
+        .select(`
+          *,
+          elite_kleingruppe:elite_kleingruppen(id, name)
+        `)
         .order('name')
         .limit(500);
       
@@ -645,6 +651,21 @@ export function AdminDashboard() {
     } catch (error) {
       console.error('Error saving invoice deadline:', error);
       addToast('Fehler beim Speichern der Frist', 'error');
+    }
+  };
+
+  const fetchEliteKleingruppen = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('elite_kleingruppen')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name');
+
+      if (error) throw error;
+      setEliteKleingruppen(data || []);
+    } catch (error) {
+      console.error('Error fetching elite kleingruppen:', error);
     }
   };
 
@@ -1628,9 +1649,10 @@ export function AdminDashboard() {
                   onClick={() => setTeilnehmerFilter('alle')}
                   className={`px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                     teilnehmerFilter === 'alle'
-                      ? 'bg-primary text-white'
+                      ? 'text-white'
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
+                  style={teilnehmerFilter === 'alle' ? { backgroundColor: '#2d84c1' } : undefined}
                 >
                   Alle ({teilnehmer.length})
                 </button>
@@ -1638,9 +1660,10 @@ export function AdminDashboard() {
                   onClick={() => setTeilnehmerFilter('aktiv')}
                   className={`px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                     teilnehmerFilter === 'aktiv'
-                      ? 'bg-green-600 text-white'
+                      ? 'text-white'
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
+                  style={teilnehmerFilter === 'aktiv' ? { backgroundColor: '#2d84c1' } : undefined}
                 >
                   Aktiv ({teilnehmer.filter(t => isContractActive(t)).length})
                 </button>
@@ -1648,9 +1671,10 @@ export function AdminDashboard() {
                   onClick={() => setTeilnehmerFilter('abgeschlossen')}
                   className={`px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                     teilnehmerFilter === 'abgeschlossen'
-                      ? 'bg-gray-600 text-white'
+                      ? 'text-white'
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
+                  style={teilnehmerFilter === 'abgeschlossen' ? { backgroundColor: '#2d84c1' } : undefined}
                 >
                   Abgeschl. ({teilnehmer.filter(t => !isContractActive(t)).length})
                 </button>
@@ -1659,9 +1683,10 @@ export function AdminDashboard() {
                   onClick={() => setTeilnehmerFilter('25')}
                   className={`px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                     teilnehmerFilter === '25'
-                      ? 'bg-yellow-500 text-white'
+                      ? 'text-white'
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
+                  style={teilnehmerFilter === '25' ? { backgroundColor: '#2d84c1' } : undefined}
                 >
                   25% ({teilnehmer.filter(t => {
                     const progress = getContractProgress(t);
@@ -1672,9 +1697,10 @@ export function AdminDashboard() {
                   onClick={() => setTeilnehmerFilter('75')}
                   className={`px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                     teilnehmerFilter === '75'
-                      ? 'bg-orange-500 text-white'
+                      ? 'text-white'
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
+                  style={teilnehmerFilter === '75' ? { backgroundColor: '#2d84c1' } : undefined}
                 >
                   75% ({teilnehmer.filter(t => {
                     const progress = getContractProgress(t);
@@ -1686,11 +1712,12 @@ export function AdminDashboard() {
                   onClick={() => setTeilnehmerFilter('elite')}
                   className={`px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                     teilnehmerFilter === 'elite'
-                      ? 'bg-purple-600 text-white'
+                      ? 'text-white'
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
+                  style={teilnehmerFilter === 'elite' ? { backgroundColor: '#2d84c1' } : undefined}
                 >
-                  Elite ({teilnehmer.filter(t => t.elite_kleingruppe).length})
+                  Elite ({teilnehmer.filter(t => t.is_elite_kleingruppe).length})
                 </button>
               </div>
             </div>
@@ -1716,7 +1743,7 @@ export function AdminDashboard() {
                         const progress = getContractProgress(t);
                         return progress.percent >= 70 && progress.percent <= 80 && isContractActive(t);
                       }
-                      if (teilnehmerFilter === 'elite') return t.elite_kleingruppe === true;
+                      if (teilnehmerFilter === 'elite') return t.is_elite_kleingruppe === true;
                       return true;
                     })
                     .map((t) => (
@@ -1732,9 +1759,16 @@ export function AdminDashboard() {
                           <div className="ml-3">
                             <div className="text-sm font-medium text-gray-900">{t.name}</div>
                             <div className="text-xs text-gray-500">{t.email}</div>
+                            {t.is_elite_kleingruppe && t.elite_kleingruppe && (
+                              <div className="mt-1">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-blue-100 text-blue-800">
+                                  {t.elite_kleingruppe.name}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
-                        {t.elite_kleingruppe ? (
+                        {t.elite_kleingruppe || t.is_elite_kleingruppe ? (
                           (() => {
                             const progressPercent = eliteReleases.total > 0 
                               ? Math.round((eliteReleases.released / eliteReleases.total) * 100) 
@@ -1934,6 +1968,9 @@ export function AdminDashboard() {
                           <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
                             Stunden
                           </th>
+                          <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden xl:table-cell">
+                            Elite-KG
+                          </th>
                           <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Status
                           </th>
@@ -1956,7 +1993,7 @@ export function AdminDashboard() {
                               const progress = getContractProgress(t);
                               return progress.percent >= 70 && progress.percent <= 80 && isContractActive(t);
                             }
-                            if (teilnehmerFilter === 'elite') return t.elite_kleingruppe === true;
+                            if (teilnehmerFilter === 'elite') return t.is_elite_kleingruppe === true;
                             return true;
                           })
                           .map((t) => (
@@ -1977,6 +2014,13 @@ export function AdminDashboard() {
                                 <div className="ml-3">
                                   <div className="text-sm font-medium text-gray-900 hover:text-primary">{t.name}</div>
                                   <div className="text-xs text-gray-500">{t.email}</div>
+                                  {t.is_elite_kleingruppe && t.elite_kleingruppe && (
+                                    <div className="mt-1">
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-blue-100 text-blue-800">
+                                        {t.elite_kleingruppe.name}
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
                               </button>
                             </td>
@@ -2109,10 +2153,21 @@ export function AdminDashboard() {
                                 <span className="text-gray-400 text-xs">-</span>
                               )}
                             </td>
+                            <td className="px-4 sm:px-6 py-4 whitespace-nowrap hidden xl:table-cell">
+                              {t.is_elite_kleingruppe && t.elite_kleingruppe ? (
+                                <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-purple-100 text-purple-800">
+                                  {t.elite_kleingruppe.name}
+                                </span>
+                              ) : t.is_elite_kleingruppe ? (
+                                <span className="text-xs text-gray-400">Nicht zugeordnet</span>
+                              ) : (
+                                <span className="text-xs text-gray-400">-</span>
+                              )}
+                            </td>
                             <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
                               {(() => {
                                 // For Elite-Kleingruppe participants, show progress based on released units
-                                if (t.elite_kleingruppe) {
+                                if (t.elite_kleingruppe || t.is_elite_kleingruppe) {
                                   const progressPercent = eliteReleases.total > 0 
                                     ? Math.round((eliteReleases.released / eliteReleases.total) * 100) 
                                     : 0;

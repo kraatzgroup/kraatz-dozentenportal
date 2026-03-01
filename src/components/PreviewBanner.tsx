@@ -3,9 +3,9 @@ import { Eye, EyeOff } from 'lucide-react';
 
 interface PreviewBannerProps {
   isPreviewMode: boolean;
-  previewedRole: 'admin' | 'buchhaltung' | 'verwaltung' | 'vertrieb' | 'dozent' | null;
+  previewedRole: 'admin' | 'buchhaltung' | 'verwaltung' | 'vertrieb' | 'dozent' | 'teilnehmer' | null;
   onTogglePreview: () => void;
-  onChangeRole: (role: 'admin' | 'buchhaltung' | 'verwaltung' | 'vertrieb' | 'dozent') => void;
+  onChangeRole: (role: 'admin' | 'buchhaltung' | 'verwaltung' | 'vertrieb' | 'dozent' | 'teilnehmer') => void;
 }
 
 export function PreviewBanner({ isPreviewMode, previewedRole, onTogglePreview, onChangeRole }: PreviewBannerProps) {
@@ -18,7 +18,7 @@ export function PreviewBanner({ isPreviewMode, previewedRole, onTogglePreview, o
           <span className="font-medium">Vorschau-Modus:</span>
           <select
             value={previewedRole || ''}
-            onChange={(e) => onChangeRole(e.target.value as 'admin' | 'buchhaltung' | 'verwaltung' | 'vertrieb' | 'dozent')}
+            onChange={(e) => onChangeRole(e.target.value as 'admin' | 'buchhaltung' | 'verwaltung' | 'vertrieb' | 'dozent' | 'teilnehmer')}
             className="bg-blue-700 text-white border border-blue-400 rounded px-2 py-1"
           >
             <option value="admin">Administrator</option>
@@ -26,6 +26,7 @@ export function PreviewBanner({ isPreviewMode, previewedRole, onTogglePreview, o
             <option value="verwaltung">Verwaltung</option>
             <option value="vertrieb">Vertrieb</option>
             <option value="dozent">Dozent</option>
+            <option value="teilnehmer">Teilnehmer</option>
           </select>
         </div>
         <button

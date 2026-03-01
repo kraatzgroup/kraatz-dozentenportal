@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { LogOut, Settings, Upload, FileText, PenTool, Calendar, CheckCircle, Clock, AlertCircle, Download, ChevronDown, ChevronUp, Users, ChevronLeft, ChevronRight, Lock, Unlock, BookOpen, Award, MessageCircle, Send, Video, FolderOpen } from 'lucide-react';
+import { LogOut, Settings, Upload, FileText, PenTool, Calendar, CheckCircle, Clock, AlertCircle, Download, ChevronDown, ChevronUp, Users, ChevronLeft, ChevronRight, Lock, Unlock, BookOpen, Award, MessageCircle, Send, Video, FolderOpen, Menu } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { Logo } from './Logo';
@@ -130,6 +130,7 @@ export function EliteKleingruppeDashboard() {
   const [showExamDateInput, setShowExamDateInput] = useState(false);
   const [tempExamDate, setTempExamDate] = useState('');
   const [courseTimes, setCourseTimes] = useState<CourseTime[]>([]);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -351,6 +352,24 @@ export function EliteKleingruppeDashboard() {
     }
   };
 
+  const downloadKlausur = async (klausur: Klausur) => {
+    try {
+      const response = await fetch(klausur.file_url);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = klausur.file_name || `klausur_${klausur.title}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      alert('Fehler beim Herunterladen der Datei');
+    }
+  };
+
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !user || !teilnehmerId) return;
     
@@ -384,16 +403,18 @@ export function EliteKleingruppeDashboard() {
     setIsUploadingProfilePic(true);
     setSettingsMessage(null);
     try {
-      const fileName = `${user.id}_${Date.now()}.${file.name.split('.').pop()}`;
-      const filePath = `profile-pictures/${fileName}`;
+      const fileName = `${user.id}/profile.${file.name.split('.').pop()}`;
       
       const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file, { upsert: true });
+        .from('profile-pictures')
+        .upload(fileName, file, { 
+          upsert: true,
+          contentType: file.type
+        });
       
       if (uploadError) throw uploadError;
       
-      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(filePath);
+      const { data: urlData } = supabase.storage.from('profile-pictures').getPublicUrl(fileName);
       
       const { error: updateError } = await supabase
         .from('profiles')
@@ -532,7 +553,7 @@ export function EliteKleingruppeDashboard() {
                 <span className="ml-2 text-xl font-semibold text-gray-900">Elite-Kleingruppe</span>
               </div>
             </div>
-            <div className="flex items-center space-x-2 sm:space-x-4">
+            <div className="hidden md:flex items-center space-x-2 sm:space-x-4">
               {/* Nächste Einheit Badge */}
               {allReleases.filter(r => !r.is_released).length > 0 && (
                 <button 
@@ -568,12 +589,69 @@ export function EliteKleingruppeDashboard() {
                 <span className="hidden sm:inline">Abmelden</span>
               </button>
             </div>
+            <div className="md:hidden flex items-center">
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
+              >
+                <Menu className="h-6 w-6" />
+              </button>
+            </div>
           </div>
         </div>
+        {/* Mobile menu */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-gray-200">
+            <div className="px-2 pt-2 pb-3 space-y-1">
+              {allReleases.filter(r => !r.is_released).length > 0 && (
+                <button
+                  onClick={() => {
+                    setActiveTab('kalender');
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-md text-sm font-medium bg-blue-100 text-blue-800 flex items-center"
+                >
+                  <Calendar className="h-4 w-4 mr-2" />
+                  {allReleases.filter(r => !r.is_released).length} Einheiten geplant
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setActiveTab('kommunikation');
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 flex items-center"
+              >
+                <MessageCircle className="h-5 w-5 mr-2" />
+                Nachrichten
+              </button>
+              <button
+                onClick={() => {
+                  setShowSettingsModal(true);
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 flex items-center"
+              >
+                <Settings className="h-5 w-5 mr-2" />
+                Einstellungen
+              </button>
+              <button
+                onClick={() => {
+                  signOut();
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 rounded-md text-sm font-medium text-red-500 hover:bg-red-100 flex items-center"
+              >
+                <LogOut className="h-5 w-5 mr-2" />
+                Abmelden
+              </button>
+            </div>
+          </div>
+        )}
       </nav>
 
-      {/* Welcome Banner */}
-      <div className="bg-gradient-to-r from-primary/5 to-blue-500/5 border-b border-primary/10">
+      {/* Welcome Banner - Hidden since content appears in dashboard below */}
+      <div className="hidden bg-gradient-to-r from-primary/5 to-blue-500/5 border-b border-primary/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
             <div>
@@ -608,8 +686,8 @@ export function EliteKleingruppeDashboard() {
       </div>
 
       {/* Tabs */}
-      {/* Zurück-Balken wenn nicht auf Dashboard */}
-      {activeTab !== 'dashboard' && (
+      {/* Zurück-Balken wenn nicht auf Dashboard - Hidden */}
+      {false && activeTab !== 'dashboard' && (
         <div className="bg-primary border-b border-primary">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <button
@@ -623,9 +701,19 @@ export function EliteKleingruppeDashboard() {
         </div>
       )}
 
-      <div className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-10">
+      {/* Willkommen & Motivation - Above Tabs */}
+      <div className="bg-white/80 backdrop-blur-sm pt-6 pb-4">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <nav className="flex space-x-1">
+          <div className="bg-[#2e83c2] rounded-2xl p-6 text-white shadow-lg">
+            <h2 className="text-2xl font-bold">Willkommen zurück{firstName ? `, ${firstName}` : ''}!</h2>
+            <p className="text-white/80 mt-1">Dein Weg zum Examen – Schritt für Schritt zum Erfolg.</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white/80 backdrop-blur-sm border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <nav className="flex flex-col md:flex-row md:space-x-1 overflow-x-auto">
             <button
               onClick={() => setActiveTab('dashboard')}
               className={`py-4 px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors ${activeTab === 'dashboard' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
@@ -662,12 +750,6 @@ export function EliteKleingruppeDashboard() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
-            {/* Willkommen & Motivation */}
-            <div className="bg-[#2e83c2] rounded-2xl p-6 text-white shadow-lg">
-              <h2 className="text-2xl font-bold">Willkommen zurück{firstName ? `, ${firstName}` : ''}!</h2>
-              <p className="text-white/80 mt-1">Dein Weg zum Examen – Schritt für Schritt zum Erfolg.</p>
-            </div>
-
             {/* Staatsexamen Countdown */}
             {examDate ? (
               <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl p-6 text-white shadow-xl">
@@ -1805,9 +1887,9 @@ export function EliteKleingruppeDashboard() {
                         </div>
                         <div className="flex items-center space-x-4">
                           {getStatusBadge(klausur.status)}
-                          <a href={klausur.file_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:text-primary/80">
+                          <button onClick={() => downloadKlausur(klausur)} className="text-primary hover:text-primary/80">
                             <Download className="h-4 w-4" />
-                          </a>
+                          </button>
                         </div>
                       </div>
                       {klausur.status === 'completed' && (klausur.score !== undefined || klausur.feedback) && (

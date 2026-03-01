@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageSquare, LogOut, Settings, FolderIcon, Plus, Edit, Trash2, Users, FileText, User, Clock, Calendar, X, GraduationCap, Check, AlertTriangle } from 'lucide-react';
+import { MessageSquare, LogOut, Settings, FolderIcon, Plus, Edit, Trash2, Users, FileText, User, Clock, Calendar, X, GraduationCap, Check, AlertTriangle, Menu } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useMessageStore } from '../store/messageStore';
 import { useFolderStore } from '../store/folderStore';
@@ -42,21 +42,20 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const { trialLessons, fetchTrialLessons, updateTrialLesson } = useSalesStore();
   const [selectedFolder, setSelectedFolder] = useState<Folder | null>(null);
   
-  // Persist selected folder to localStorage and lazy load data
+  // Handle folder selection - always clear localStorage to ensure dashboard loads on page refresh
   const handleSelectFolder = (folder: Folder | null) => {
     setSelectedFolder(folder);
+    // Always remove from localStorage so page reload shows dashboard
+    localStorage.removeItem('dozentSelectedFolder');
+    
     if (folder) {
-      localStorage.setItem('dozentSelectedFolder', folder.name);
       // Lazy load data based on folder type
       if (folder.name === 'Aktive Teilnehmer' && teilnehmer.length === 0) {
         fetchTeilnehmer();
-        fetchMonthlySummary(undefined, selectedYear, selectedMonth);
       }
-      if (folder.id && folder.id !== 'probestunden') {
+      if (folder.id && files.length === 0) {
         fetchFiles(folder.id);
       }
-    } else {
-      localStorage.removeItem('dozentSelectedFolder');
     }
   };
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
@@ -75,6 +74,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [showAvailabilityPopup, setShowAvailabilityPopup] = useState(false);
   const [currentAvailability, setCurrentAvailability] = useState<{status: string; notes?: string} | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [hoursFormData, setHoursFormData] = useState({
     teilnehmer_id: '',
     hours: '',
@@ -99,16 +99,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
 
   const unreadMessages = messages.filter(message => !message.read);
 
-  // Restore selected folder from localStorage after folders are loaded
-  useEffect(() => {
-    const savedFolderName = localStorage.getItem('dozentSelectedFolder');
-    if (savedFolderName && folders.length > 0 && !selectedFolder) {
-      const folder = folders.find(f => f.name === savedFolderName);
-      if (folder) {
-        setSelectedFolder(folder);
-      }
-    }
-  }, [folders]);
+  // Don't restore selected folder automatically - Dozenten should always start at main dashboard
+  // The folder selection is only persisted during the session, not across page reloads
 
   useEffect(() => {
     // Nur laden wenn Benutzer authentifiziert ist
@@ -487,7 +479,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                 <span className="ml-2 text-xl font-semibold text-gray-900">Dozenten-Portal</span>
               </div>
             </div>
-            <div className="flex items-center space-x-2 sm:space-x-4">
+            <div className="hidden md:flex items-center space-x-2 sm:space-x-4">
               {/* Availability Badge */}
               <button
                 onClick={() => setShowAvailabilityPopup(true)}
@@ -537,8 +529,81 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                 <span className="hidden sm:inline">Abmelden</span>
               </button>
             </div>
+            <div className="md:hidden flex items-center">
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
+              >
+                <Menu className="h-6 w-6" />
+              </button>
+            </div>
           </div>
         </div>
+        {/* Mobile menu */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-gray-200">
+            <div className="px-2 pt-2 pb-3 space-y-1">
+              {currentAvailability && (
+                <button
+                  onClick={() => {
+                    setShowAvailabilityPopup(true);
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium ${
+                    currentAvailability?.status === 'available' 
+                      ? 'bg-green-100 text-green-800'
+                      : currentAvailability?.status === 'limited'
+                      ? 'bg-yellow-100 text-yellow-800'
+                      : currentAvailability?.status === 'full'
+                      ? 'bg-red-100 text-red-800'
+                      : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  <Calendar className="h-4 w-4 inline mr-2" />
+                  {currentAvailability?.status === 'available' ? 'Verfügbar' 
+                    : currentAvailability?.status === 'limited' ? 'Begrenzt'
+                    : currentAvailability?.status === 'full' ? 'Ausgelastet'
+                    : 'Verfügbarkeit'}
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  navigate('/messages');
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 flex items-center"
+              >
+                <MessageSquare className="h-5 w-5 mr-2" />
+                Nachrichten
+                {unreadMessages.length > 0 && (
+                  <span className="ml-auto bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                    {unreadMessages.length > 99 ? '99+' : unreadMessages.length}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  navigate('/settings');
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 flex items-center"
+              >
+                <Settings className="h-5 w-5 mr-2" />
+                Einstellungen
+              </button>
+              <button
+                onClick={() => {
+                  handleSignOut();
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 rounded-md text-sm font-medium text-red-500 hover:bg-red-100 flex items-center"
+              >
+                <LogOut className="h-5 w-5 mr-2" />
+                Abmelden
+              </button>
+            </div>
+          </div>
+        )}
       </nav>
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">

@@ -26,7 +26,7 @@ import { ToastContainer } from './components/Toast';
 import { useState } from 'react';
 
 function App() {
-  const { setUser, user, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isEliteKleingruppe, userRole } = useAuthStore();
+  const { setUser, user, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isTeilnehmer, userRole } = useAuthStore();
   const { isPreviewMode, previewedRole, togglePreview, setPreviewedRole } = usePreviewStore();
   const [appLoading, setAppLoading] = useState(true);
 
@@ -100,9 +100,9 @@ function App() {
   const showAdminView = showPreview ? previewedRole === 'admin' : (isAdmin || isBuchhaltung);
   const showVerwaltungView = showPreview ? previewedRole === 'verwaltung' : isVerwaltung;
   const showVertriebView = showPreview ? previewedRole === 'vertrieb' : isVertrieb;
-  const showEliteKleingruppeView = showPreview ? previewedRole === 'elite_kleingruppe' : isEliteKleingruppe;
+  const showTeilnehmerView = showPreview ? previewedRole === 'teilnehmer' : isTeilnehmer;
 
-  console.log('App: Rendering with views:', { showAdminView, showVerwaltungView, showVertriebView, showEliteKleingruppeView, userRole });
+  console.log('App: Rendering with views:', { showAdminView, showVerwaltungView, showVertriebView, showTeilnehmerView, userRole });
 
   return (
     <Router>
@@ -125,7 +125,7 @@ function App() {
           <Route 
             path="/" 
             element={
-              showEliteKleingruppeView ?
+              showTeilnehmerView ?
                 <Navigate to="/elite-kleingruppe" replace /> :
               showVertriebView ? 
                 <Navigate to="/vertrieb" replace /> :
@@ -139,7 +139,7 @@ function App() {
           <Route 
             path="/elite-kleingruppe" 
             element={
-              showEliteKleingruppeView ? 
+              showTeilnehmerView ? 
                 <EliteKleingruppeDashboard /> : 
                 <Navigate to="/" replace />
             } 
