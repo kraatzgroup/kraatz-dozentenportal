@@ -68,17 +68,54 @@ export const useChatStore = create<ChatState>((set, get) => ({
           sender:profiles!messages_sender_id_fkey(full_name)
         `);
 
+      let data;
+      let error;
+
       if (contactId) {
-        // Fetch messages for specific contact
-        query = query.or(`and(sender_id.eq.${user.id},receiver_id.eq.${contactId}),and(sender_id.eq.${contactId},receiver_id.eq.${user.id})`);
+        // Fetch messages for specific contact - messages sent by user to contact OR sent by contact to user
+        // Fetch in two queries to avoid template literals, then merge
+        const [sentMessages, receivedMessages] = await Promise.all([
+          // Messages sent by user to contact
+          supabase
+            .from('messages')
+            .select(`
+              *,
+              sender:profiles!messages_sender_id_fkey(full_name)
+            `)
+            .eq('sender_id', user.id)
+            .eq('receiver_id', contactId)
+            .order('created_at', { ascending: true }),
+          // Messages sent by contact to user
+          supabase
+            .from('messages')
+            .select(`
+              *,
+              sender:profiles!messages_sender_id_fkey(full_name)
+            `)
+            .eq('sender_id', contactId)
+            .eq('receiver_id', user.id)
+            .order('created_at', { ascending: true })
+        ]);
+
+        if (sentMessages.error) throw sentMessages.error;
+        if (receivedMessages.error) throw receivedMessages.error;
+
+        // Merge and sort by created_at
+        const allMessages = [...(sentMessages.data || []), ...(receivedMessages.data || [])]
+          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+        data = allMessages;
+        error = null;
       } else {
         // Fetch only unread messages for notifications
-        query = query
+        const result = await query
           .eq('receiver_id', user.id)
-          .is('read_at', null);
+          .is('read_at', null)
+          .order('created_at', { ascending: true });
+        
+        data = result.data;
+        error = result.error;
       }
-
-      const { data, error } = await query.order('created_at', { ascending: true });
 
       if (error) throw error;
 
@@ -114,7 +151,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         throw new Error('No authenticated user');
       }
 
-      const { data: newMessage, error } = await supabase
+      const { error } = await supabase
         .from('messages')
         .insert([{
           content: message.content,

@@ -255,15 +255,27 @@ export function AuthComponent() {
     }
   };
 
-  if (loading || processingAuth) {
+  // Always show loading screen during initial auth check to prevent login form flash
+  if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="bg-white p-8 rounded-lg shadow-md">
           <div className="flex flex-col items-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
-            <p className="text-gray-600">
-              {processingAuth ? 'Benutzerprofil wird verarbeitet...' : 'Lade Anwendung...'}
-            </p>
+            <p className="text-gray-600">Lade Anwendung...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (processingAuth) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="bg-white p-8 rounded-lg shadow-md">
+          <div className="flex flex-col items-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
+            <p className="text-gray-600">Benutzerprofil wird verarbeitet...</p>
           </div>
         </div>
       </div>

@@ -75,6 +75,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const [showAvailabilityPopup, setShowAvailabilityPopup] = useState(false);
   const [currentAvailability, setCurrentAvailability] = useState<{status: string; notes?: string} | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showBundeslaenderModal, setShowBundeslaenderModal] = useState(false);
+  const [selectedBundeslaender, setSelectedBundeslaender] = useState<string[]>([]);
   const [hoursFormData, setHoursFormData] = useState({
     teilnehmer_id: '',
     hours: '',
@@ -274,6 +276,60 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       } catch (error) {
         console.error('Failed to delete folder:', error);
       }
+    }
+  };
+
+  const bundeslaenderList = [
+    'Baden-Württemberg',
+    'Bayern',
+    'Berlin',
+    'Brandenburg',
+    'Bremen',
+    'Hamburg',
+    'Hessen',
+    'Mecklenburg-Vorpommern',
+    'Niedersachsen',
+    'Nordrhein-Westfalen',
+    'Rheinland-Pfalz',
+    'Saarland',
+    'Sachsen',
+    'Sachsen-Anhalt',
+    'Schleswig-Holstein',
+    'Thüringen'
+  ];
+
+  const handleToggleBundesland = (bundesland: string) => {
+    setSelectedBundeslaender(prev => 
+      prev.includes(bundesland)
+        ? prev.filter(b => b !== bundesland)
+        : [...prev, bundesland]
+    );
+  };
+
+  const handleToggleAllBundeslaender = () => {
+    if (selectedBundeslaender.length === bundeslaenderList.length) {
+      setSelectedBundeslaender([]);
+    } else {
+      setSelectedBundeslaender([...bundeslaenderList]);
+    }
+  };
+
+  const handleCreateBundeslaenderFolders = async () => {
+    if (selectedBundeslaender.length === 0) {
+      alert('Bitte wählen Sie mindestens ein Bundesland aus.');
+      return;
+    }
+
+    try {
+      for (const bundesland of selectedBundeslaender) {
+        await createFolder(bundesland);
+      }
+      alert(`${selectedBundeslaender.length} Bundesländer-Ordner wurden erfolgreich erstellt!`);
+      setShowBundeslaenderModal(false);
+      setSelectedBundeslaender([]);
+    } catch (error) {
+      console.error('Failed to create Bundesländer folders:', error);
+      alert('Fehler beim Erstellen der Ordner. Bitte versuchen Sie es erneut.');
     }
   };
 
@@ -625,15 +681,29 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                 )}
                 <h2 className="text-lg font-medium text-gray-900">Ordner</h2>
               </div>
-              {selectedFolder?.name === 'Aktive Teilnehmer' && canManageAll && (
-                <button
-                  onClick={() => setShowTeilnehmerManagement(true)}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-primary/90"
-                >
-                  <Users className="h-4 w-4 mr-2" />
-                  Teilnehmer verwalten
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {canManageAll && (
+                  <button
+                    onClick={() => setShowBundeslaenderModal(true)}
+                    className="flex items-center px-3 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg text-sm"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 mr-1">
+                      <path d="M5 12h14"></path>
+                      <path d="M12 5v14"></path>
+                    </svg>
+                    Ordner Bundesländer
+                  </button>
+                )}
+                {selectedFolder?.name === 'Aktive Teilnehmer' && canManageAll && (
+                  <button
+                    onClick={() => setShowTeilnehmerManagement(true)}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-primary/90"
+                  >
+                    <Users className="h-4 w-4 mr-2" />
+                    Teilnehmer verwalten
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -1557,6 +1627,76 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                 <button
                   type="button"
                   onClick={() => setDuplicateWarning({ show: false, existingEntries: [], pendingData: null })}
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"
+                >
+                  Abbrechen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bundesländer Modal */}
+      {showBundeslaenderModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => setShowBundeslaenderModal(false)} />
+            <div className="relative inline-block bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-2xl sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium text-gray-900">Bundesländer-Ordner erstellen</h3>
+                  <button
+                    onClick={() => setShowBundeslaenderModal(false)}
+                    className="text-gray-400 hover:text-gray-500"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <p className="text-sm text-gray-500 mb-4">
+                  Wählen Sie die Bundesländer aus, für die Ordner erstellt werden sollen.
+                </p>
+                <div className="mb-4">
+                  <button
+                    onClick={handleToggleAllBundeslaender}
+                    className="text-sm text-primary hover:text-primary/80 font-medium"
+                  >
+                    {selectedBundeslaender.length === bundeslaenderList.length ? 'Alle abwählen' : 'Alle auswählen'}
+                  </button>
+                  <span className="ml-3 text-sm text-gray-500">
+                    ({selectedBundeslaender.length} von {bundeslaenderList.length} ausgewählt)
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-96 overflow-y-auto">
+                  {bundeslaenderList.map((bundesland) => (
+                    <label
+                      key={bundesland}
+                      className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedBundeslaender.includes(bundesland)}
+                        onChange={() => handleToggleBundesland(bundesland)}
+                        className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded"
+                      />
+                      <span className="ml-3 text-sm text-gray-700">{bundesland}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse gap-2">
+                <button
+                  onClick={handleCreateBundeslaenderFolders}
+                  disabled={selectedBundeslaender.length === 0}
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary text-base font-medium text-white hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {selectedBundeslaender.length > 0 
+                    ? `${selectedBundeslaender.length} Ordner erstellen` 
+                    : 'Ordner erstellen'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowBundeslaenderModal(false)}
                   className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"
                 >
                   Abbrechen

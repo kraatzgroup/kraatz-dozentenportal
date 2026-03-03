@@ -1019,8 +1019,7 @@ export function AdminDashboard() {
                 onClick={() => navigate('/messages')}
                 className="inline-flex items-center px-2 lg:px-3 py-2 border border-transparent text-xs lg:text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition relative"
               >
-                <MessageSquare className="h-4 w-4 lg:h-5 lg:w-5 mr-1 lg:mr-2" />
-                <span className="hidden sm:inline">Nachrichten</span>
+                <MessageSquare className="h-4 w-4 lg:h-5 lg:w-5" />
                 {unreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
                     {unreadCount > 99 ? '99+' : unreadCount}
@@ -1033,8 +1032,7 @@ export function AdminDashboard() {
                 onClick={() => navigate('/users')}
                 className="inline-flex items-center px-2 lg:px-3 py-2 border border-transparent text-xs lg:text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition"
               >
-                <Settings className="h-4 w-4 lg:h-5 lg:w-5 mr-1 lg:mr-2" />
-                <span className="hidden lg:inline">Benutzerverwaltung</span>
+                <Settings className="h-4 w-4 lg:h-5 lg:w-5" />
               </button>
               )}
               
@@ -1042,8 +1040,7 @@ export function AdminDashboard() {
                 onClick={handleSignOut}
                 className="inline-flex items-center px-2 lg:px-3 py-2 border border-transparent text-xs lg:text-sm leading-4 font-medium rounded-md text-red-500 hover:text-red-700 focus:outline-none transition"
               >
-                <LogOut className="h-4 w-4 lg:h-5 lg:w-5 mr-1 lg:mr-2" />
-                <span className="hidden lg:inline">Abmelden</span>
+                <LogOut className="h-4 w-4 lg:h-5 lg:w-5" />
               </button>
             </div>
           </div>
