@@ -29,4 +29,4 @@ USING (
     SELECT id FROM public.profiles WHERE role = 'admin'
   ) AND
   id != auth.uid() -- Prevent admin from deleting themselves
-);
+);ich h
