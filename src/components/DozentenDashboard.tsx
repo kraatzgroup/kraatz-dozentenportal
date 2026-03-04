@@ -1206,25 +1206,66 @@ export function DozentenDashboard() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     
-    setBulkUploadProgress({ current: 0, total: files.length });
+    // Deduplicate files by name within the selected batch
+    const uniqueFiles = new Map<string, File>();
+    for (const file of files) {
+      const lowerName = file.name.toLowerCase();
+      if (!uniqueFiles.has(lowerName)) {
+        uniqueFiles.set(lowerName, file);
+      }
+    }
+    const filesToUpload = Array.from(uniqueFiles.values());
+    
+    setBulkUploadProgress({ current: 0, total: filesToUpload.length });
     const currentPosition = materials.filter(m => m.folder_id === currentFolderId).length;
     
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      setBulkUploadProgress({ current: i + 1, total: files.length });
+    // Get existing file names in current folder to prevent duplicates
+    const existingFileNames = new Set(
+      materials
+        .filter(m => m.folder_id === currentFolderId)
+        .map(m => m.file_name.toLowerCase())
+    );
+    
+    let successCount = 0;
+    let failedFiles: string[] = [];
+    let skippedFiles: string[] = [];
+    
+    for (let i = 0; i < filesToUpload.length; i++) {
+      const file = filesToUpload[i];
+      setBulkUploadProgress({ current: i + 1, total: filesToUpload.length });
       
-      const fileExt = file.name.split('.').pop();
-      const storageFileName = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}.${fileExt}`;
-      const { error } = await supabase.storage.from('masterclass').upload(`materials/${storageFileName}`, file, {
-        contentType: file.type,
-        cacheControl: '3600'
-      });
+      // Check if file with same name already exists in database
+      if (existingFileNames.has(file.name.toLowerCase())) {
+        skippedFiles.push(file.name);
+        continue;
+      }
       
-      if (!error) {
-        const { data: urlData } = supabase.storage.from('masterclass').getPublicUrl(`materials/${storageFileName}`);
-        const titleFromFile = file.name.replace(/\.[^/.]+$/, '');
+      try {
+        const fileExt = file.name.split('.').pop();
+        const storageFileName = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage.from('masterclass').upload(`materials/${storageFileName}`, file, {
+          contentType: file.type,
+          cacheControl: '3600'
+        });
         
-        await supabase.from('teaching_materials').insert({
+        if (uploadError) {
+          console.error(`Upload error for ${file.name}:`, uploadError);
+          failedFiles.push(file.name);
+          continue;
+        }
+        
+        const { data: urlData } = supabase.storage.from('masterclass').getPublicUrl(`materials/${storageFileName}`);
+        
+        // Auto-detect title based on filename
+        const lowerFileName = file.name.toLowerCase();
+        let titleFromFile = file.name.replace(/\.[^/.]+$/, '');
+        if (lowerFileName.includes('lösung') || lowerFileName.includes('loesung') || lowerFileName.includes('lsung')) {
+          titleFromFile = 'Lösung';
+        } else if (lowerFileName.includes('sachverhalt') || lowerFileName.includes('sachverhal')) {
+          titleFromFile = 'Sachverhalt';
+        }
+        
+        const { error: insertError } = await supabase.from('teaching_materials').insert({
           title: titleFromFile,
           description: null,
           file_url: urlData.publicUrl,
@@ -1234,12 +1275,38 @@ export function DozentenDashboard() {
           folder_id: currentFolderId,
           position: currentPosition + i
         });
+        
+        if (insertError) {
+          console.error(`Database insert error for ${file.name}:`, insertError);
+          failedFiles.push(file.name);
+        } else {
+          successCount++;
+          // Add to existing files set to prevent duplicates within the same batch
+          existingFileNames.add(file.name.toLowerCase());
+        }
+      } catch (error) {
+        console.error(`Unexpected error uploading ${file.name}:`, error);
+        failedFiles.push(file.name);
       }
     }
     
     setBulkUploadProgress(null);
     fetchMaterials();
-    addToast(`${files.length} Dateien hochgeladen`, 'success');
+    
+    // Build status message
+    const messages: string[] = [];
+    if (successCount > 0) messages.push(`${successCount} Dateien hochgeladen`);
+    if (skippedFiles.length > 0) messages.push(`${skippedFiles.length} übersprungen (bereits vorhanden)`);
+    if (failedFiles.length > 0) messages.push(`${failedFiles.length} fehlgeschlagen: ${failedFiles.join(', ')}`);
+    
+    if (failedFiles.length > 0) {
+      addToast(messages.join('. '), 'error');
+    } else if (skippedFiles.length > 0) {
+      addToast(messages.join('. '), 'warning');
+    } else {
+      addToast(messages.join('. '), 'success');
+    }
+    
     e.target.value = '';
   };
 
@@ -1286,11 +1353,29 @@ export function DozentenDashboard() {
 
   const saveMaterial = async () => {
     if (!materialTitle.trim() || !materialFile) return addToast('Titel und Datei erforderlich', 'error');
-    const data = { title: materialTitle, description: materialDescription || null, file_url: materialFile, file_name: materialFileName, file_type: materialFileType, category: materialCategory || null, folder_id: materialFolderId };
+    
+    // Build data object - only include folder_id for new materials
+    // For existing materials, preserve the original folder_id to prevent files from moving folders unexpectedly
+    const data = { 
+      title: materialTitle, 
+      description: materialDescription || null, 
+      file_url: materialFile, 
+      file_name: materialFileName, 
+      file_type: materialFileType, 
+      category: materialCategory || null
+    };
+    
     if (editingMaterial) {
+      // When editing, preserve the original folder_id - don't update it
+      // This prevents files from disappearing when renamed
       await supabase.from('teaching_materials').update(data).eq('id', editingMaterial.id);
     } else {
-      await supabase.from('teaching_materials').insert({ ...data, position: materials.filter(m => m.folder_id === materialFolderId).length });
+      // Only set folder_id for new materials
+      await supabase.from('teaching_materials').insert({ 
+        ...data, 
+        folder_id: materialFolderId,
+        position: materials.filter(m => m.folder_id === materialFolderId).length 
+      });
     }
     setShowMaterialModal(false);
     fetchMaterials();
@@ -1624,10 +1709,26 @@ export function DozentenDashboard() {
   }
 
   if (showMaterialsView) {
-    const currentFolders = searchQuery ? [] : folders.filter(f => f.parent_id === currentFolderId);
-    const currentMaterials = searchQuery 
+    const currentFolders = searchQuery 
+      ? [] 
+      : folders
+          .filter(f => f.parent_id === currentFolderId)
+          .sort((a, b) => a.name.localeCompare(b.name, 'de', { sensitivity: 'base', numeric: true }));
+    
+    // Get materials for current folder and deduplicate by ID
+    const rawMaterials = searchQuery 
       ? materials.filter(m => m.file_name.toLowerCase().includes(searchQuery.toLowerCase()) || m.title.toLowerCase().includes(searchQuery.toLowerCase()))
       : materials.filter(m => m.folder_id === currentFolderId);
+    
+    // Deduplicate materials by ID to prevent rendering issues
+    const uniqueMaterials = new Map<string, TeachingMaterial>();
+    for (const m of rawMaterials) {
+      if (!uniqueMaterials.has(m.id)) {
+        uniqueMaterials.set(m.id, m);
+      }
+    }
+    const currentMaterials = Array.from(uniqueMaterials.values());
+    
     const breadcrumbs = getBreadcrumbs();
     
     return (
