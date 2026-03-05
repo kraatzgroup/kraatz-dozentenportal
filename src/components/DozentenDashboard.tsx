@@ -1740,14 +1740,24 @@ export function DozentenDashboard() {
       ? materials.filter(m => m.file_name.toLowerCase().includes(searchQuery.toLowerCase()) || m.title.toLowerCase().includes(searchQuery.toLowerCase()))
       : materials.filter(m => m.folder_id === currentFolderId);
     
+    console.log('=== Materials filtering ===');
+    console.log('Total materials in state:', materials.length);
+    console.log('currentFolderId:', currentFolderId);
+    console.log('rawMaterials count:', rawMaterials.length);
+    console.log('rawMaterials IDs:', rawMaterials.map(m => m.id));
+    
     // Deduplicate materials by ID to prevent rendering issues
     const uniqueMaterials = new Map<string, TeachingMaterial>();
     for (const m of rawMaterials) {
       if (!uniqueMaterials.has(m.id)) {
         uniqueMaterials.set(m.id, m);
+      } else {
+        console.warn('Duplicate material ID found:', m.id);
       }
     }
     const currentMaterials = Array.from(uniqueMaterials.values());
+    
+    console.log('currentMaterials count after dedup:', currentMaterials.length);
     
     const breadcrumbs = getBreadcrumbs();
     
