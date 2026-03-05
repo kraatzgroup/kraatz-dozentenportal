@@ -993,19 +993,16 @@ export function DozentenDashboard() {
   };
 
   const fetchMaterials = async () => {
-    console.log('=== fetchMaterials called ===');
     const { data, error } = await supabase
       .from('teaching_materials')
       .select('*')
       .eq('is_active', true)
       .order('position')
-      .limit(10000); // Increased from default 1000 to 10000
+      .limit(10000);
     if (error) {
       console.error('Error fetching materials:', error);
       return;
     }
-    console.log('Materials fetched:', data?.length || 0, 'items');
-    console.log('Materials with currentFolderId:', data?.filter((m: any) => m.folder_id === currentFolderId).length || 0);
     setMaterials(data || []);
   };
 
@@ -1015,9 +1012,6 @@ export function DozentenDashboard() {
   };
 
   const openMaterialModal = (m?: TeachingMaterial) => {
-    console.log('=== openMaterialModal called ===');
-    console.log('Material:', m);
-    console.log('currentFolderId:', currentFolderId);
     setEditingMaterial(m || null);
     setMaterialTitle(m?.title || '');
     setMaterialDescription(m?.description || '');
@@ -1025,9 +1019,7 @@ export function DozentenDashboard() {
     setMaterialFileName(m?.file_name || '');
     setMaterialFileType(m?.file_type || '');
     setMaterialCategory(m?.category || '');
-    // Preserve original folder_id or use currentFolderId for new materials
     const targetFolderId = m?.folder_id !== undefined ? m.folder_id : currentFolderId;
-    console.log('Setting materialFolderId to:', targetFolderId);
     setMaterialFolderId(targetFolderId);
     setShowMaterialModal(true);
   };
@@ -1224,10 +1216,6 @@ export function DozentenDashboard() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     
-    console.log('=== handleBulkUpload called ===');
-    console.log('currentFolderId:', currentFolderId);
-    console.log('Files to upload:', files.length);
-    
     // Deduplicate files by name within the selected batch
     const uniqueFiles = new Map<string, File>();
     for (const file of files) {
@@ -1240,8 +1228,6 @@ export function DozentenDashboard() {
     
     setBulkUploadProgress({ current: 0, total: filesToUpload.length });
     const currentPosition = materials.filter(m => m.folder_id === currentFolderId).length;
-    
-    console.log('currentPosition:', currentPosition);
     
     // Get existing file names in current folder to prevent duplicates
     const existingFileNames = new Set(
@@ -1280,8 +1266,6 @@ export function DozentenDashboard() {
         
         const { data: urlData } = supabase.storage.from('masterclass').getPublicUrl(`materials/${storageFileName}`);
         const titleFromFile = file.name.replace(/\.[^/.]+$/, '');
-        
-        console.log(`Inserting file: ${file.name}, folder_id: ${currentFolderId}`);
         
         const { error: insertError } = await supabase.from('teaching_materials').insert({
           title: titleFromFile,
@@ -1370,15 +1354,8 @@ export function DozentenDashboard() {
   };
 
   const saveMaterial = async () => {
-    console.log('=== saveMaterial called ===');
-    console.log('editingMaterial:', editingMaterial);
-    console.log('currentFolderId:', currentFolderId);
-    console.log('materialFolderId:', materialFolderId);
-    
     if (!materialTitle.trim() || !materialFile) return addToast('Titel und Datei erforderlich', 'error');
     
-    // Build data object - only include folder_id for new materials
-    // For existing materials, preserve the original folder_id to prevent files from moving folders unexpectedly
     const data = { 
       title: materialTitle, 
       description: materialDescription || null, 
@@ -1389,13 +1366,8 @@ export function DozentenDashboard() {
     };
     
     if (editingMaterial) {
-      // When editing, preserve the original folder_id - don't update it
-      // This prevents files from disappearing when renamed
-      console.log('Updating existing material, preserving folder_id:', editingMaterial.folder_id);
       await supabase.from('teaching_materials').update(data).eq('id', editingMaterial.id);
     } else {
-      // Only set folder_id for new materials
-      console.log('Inserting new material with folder_id:', materialFolderId);
       await supabase.from('teaching_materials').insert({ 
         ...data, 
         folder_id: materialFolderId,
@@ -1745,15 +1717,7 @@ export function DozentenDashboard() {
       ? materials.filter(m => m.file_name.toLowerCase().includes(searchQuery.toLowerCase()) || m.title.toLowerCase().includes(searchQuery.toLowerCase()))
       : materials.filter(m => m.folder_id === currentFolderId);
     
-    console.log('=== Materials filtering ===');
-    console.log('Total materials in state:', materials.length);
-    console.log('currentFolderId:', currentFolderId);
-    console.log('rawMaterials count:', rawMaterials.length);
-    console.log('rawMaterials:', rawMaterials.map(m => ({ id: m.id, title: m.title, folder_id: m.folder_id })));
-    
     const currentMaterials = rawMaterials;
-    
-    console.log('currentMaterials count:', currentMaterials.length);
     
     const breadcrumbs = getBreadcrumbs();
     
