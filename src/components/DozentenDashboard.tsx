@@ -993,7 +993,14 @@ export function DozentenDashboard() {
   };
 
   const fetchMaterials = async () => {
-    const { data } = await supabase.from('teaching_materials').select('*').eq('is_active', true).order('position');
+    console.log('=== fetchMaterials called ===');
+    const { data, error } = await supabase.from('teaching_materials').select('*').eq('is_active', true).order('position');
+    if (error) {
+      console.error('Error fetching materials:', error);
+      return;
+    }
+    console.log('Materials fetched:', data?.length || 0, 'items');
+    console.log('Materials with currentFolderId:', data?.filter((m: any) => m.folder_id === currentFolderId).length || 0);
     setMaterials(data || []);
   };
 
