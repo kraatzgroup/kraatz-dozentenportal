@@ -1743,9 +1743,22 @@ export function DozentenDashboard() {
     console.log('Materials matching folder:', rawMaterials.length);
     console.log('Matching materials:', rawMaterials.map(m => ({ id: m.id, title: m.title, folder_id: m.folder_id })));
     console.log('All materials with this folder_id:', materials.filter(m => m.folder_id === currentFolderId).map(m => ({ id: m.id, title: m.title })));
-    console.log('========================');
+    
+    // Check for duplicate IDs
+    const idCounts = new Map<string, number>();
+    rawMaterials.forEach(m => {
+      idCounts.set(m.id, (idCounts.get(m.id) || 0) + 1);
+    });
+    const duplicates = Array.from(idCounts.entries()).filter(([id, count]) => count > 1);
+    if (duplicates.length > 0) {
+      console.error('DUPLICATE IDs found:', duplicates);
+    }
     
     const currentMaterials = rawMaterials;
+    
+    console.log('currentMaterials count:', currentMaterials.length);
+    console.log('currentMaterials IDs:', currentMaterials.map(m => m.id));
+    console.log('========================');
     
     const breadcrumbs = getBreadcrumbs();
     
