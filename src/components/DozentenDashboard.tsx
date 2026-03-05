@@ -858,19 +858,47 @@ export function DozentenDashboard() {
     }
 
     try {
+      let createdCount = 0;
+      let skippedCount = 0;
+      
+      // Get existing folders in current directory
+      const existingFolders = folders.filter(f => f.parent_id === currentFolderId);
+      const existingNames = new Set(existingFolders.map(f => f.name.toLowerCase()));
+      
       for (const bundesland of selectedBundeslaender) {
+        // Skip if folder already exists
+        if (existingNames.has(bundesland.toLowerCase())) {
+          console.log(`Skipping ${bundesland} - already exists`);
+          skippedCount++;
+          continue;
+        }
+        
         const { error } = await supabase.from('material_folders').insert({
           name: bundesland,
           parent_id: currentFolderId,
-          position: folders.length,
+          position: existingFolders.length + createdCount,
           is_active: true
         });
-        if (error) throw error;
+        
+        if (error) {
+          console.error(`Error creating folder ${bundesland}:`, error);
+          throw error;
+        }
+        
+        createdCount++;
       }
-      addToast(`${selectedBundeslaender.length} Bundesländer-Ordner wurden erfolgreich erstellt!`, 'success');
+      
+      let message = '';
+      if (createdCount > 0) message += `${createdCount} Bundesländer-Ordner erstellt`;
+      if (skippedCount > 0) {
+        if (message) message += ', ';
+        message += `${skippedCount} übersprungen (bereits vorhanden)`;
+      }
+      
+      addToast(message, 'success');
       setShowBundeslaenderModal(false);
       setSelectedBundeslaender([]);
-      fetchFolders();
+      await fetchFolders();
     } catch (error) {
       console.error('Failed to create Bundesländer folders:', error);
       addToast('Fehler beim Erstellen der Ordner. Bitte versuchen Sie es erneut.', 'error');
@@ -1750,7 +1778,7 @@ export function DozentenDashboard() {
     rawMaterials.forEach(m => {
       idCounts.set(m.id, (idCounts.get(m.id) || 0) + 1);
     });
-    const duplicates = Array.from(idCounts.entries()).filter(([id, count]) => count > 1);
+    const duplicates = Array.from(idCounts.entries()).filter(([_, count]) => count > 1);
     if (duplicates.length > 0) {
       console.error('DUPLICATE IDs found:', duplicates);
     }
