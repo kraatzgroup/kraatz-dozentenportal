@@ -1719,7 +1719,13 @@ export function DozentenDashboard() {
       ? materials.filter(m => m.file_name.toLowerCase().includes(searchQuery.toLowerCase()) || m.title.toLowerCase().includes(searchQuery.toLowerCase()))
       : materials.filter(m => m.folder_id === currentFolderId);
     
-    console.log('Rendering - currentFolderId:', currentFolderId, 'materials count:', materials.length, 'rawMaterials:', rawMaterials.length);
+    console.log('=== MATERIALS DEBUG ===');
+    console.log('currentFolderId:', currentFolderId);
+    console.log('Total materials in state:', materials.length);
+    console.log('Materials matching folder:', rawMaterials.length);
+    console.log('Matching materials:', rawMaterials.map(m => ({ id: m.id, title: m.title, folder_id: m.folder_id })));
+    console.log('All materials with this folder_id:', materials.filter(m => m.folder_id === currentFolderId).map(m => ({ id: m.id, title: m.title })));
+    console.log('========================');
     
     const currentMaterials = rawMaterials;
     
