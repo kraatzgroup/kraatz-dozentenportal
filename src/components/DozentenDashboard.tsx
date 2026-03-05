@@ -1735,7 +1735,7 @@ export function DozentenDashboard() {
           .filter(f => f.parent_id === currentFolderId)
           .sort((a, b) => a.name.localeCompare(b.name, 'de', { sensitivity: 'base', numeric: true }));
     
-    // Get materials for current folder and deduplicate by ID
+    // Get materials for current folder
     const rawMaterials = searchQuery 
       ? materials.filter(m => m.file_name.toLowerCase().includes(searchQuery.toLowerCase()) || m.title.toLowerCase().includes(searchQuery.toLowerCase()))
       : materials.filter(m => m.folder_id === currentFolderId);
@@ -1744,20 +1744,11 @@ export function DozentenDashboard() {
     console.log('Total materials in state:', materials.length);
     console.log('currentFolderId:', currentFolderId);
     console.log('rawMaterials count:', rawMaterials.length);
-    console.log('rawMaterials IDs:', rawMaterials.map(m => m.id));
+    console.log('rawMaterials:', rawMaterials.map(m => ({ id: m.id, title: m.title, folder_id: m.folder_id })));
     
-    // Deduplicate materials by ID to prevent rendering issues
-    const uniqueMaterials = new Map<string, TeachingMaterial>();
-    for (const m of rawMaterials) {
-      if (!uniqueMaterials.has(m.id)) {
-        uniqueMaterials.set(m.id, m);
-      } else {
-        console.warn('Duplicate material ID found:', m.id);
-      }
-    }
-    const currentMaterials = Array.from(uniqueMaterials.values());
+    const currentMaterials = rawMaterials;
     
-    console.log('currentMaterials count after dedup:', currentMaterials.length);
+    console.log('currentMaterials count:', currentMaterials.length);
     
     const breadcrumbs = getBreadcrumbs();
     
