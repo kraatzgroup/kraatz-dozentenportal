@@ -993,9 +993,10 @@ export function DozentenDashboard() {
   };
 
   const fetchMaterials = async () => {
-    console.log('Fetching materials with high limit...');
+    console.log('Fetching materials...');
     // Use range to get all materials - Supabase has a max of 1000 per query
     // So we need to fetch in batches
+    // Order by created_at DESC to ensure newest materials are loaded first
     let allMaterials: any[] = [];
     let from = 0;
     const batchSize = 1000;
@@ -1005,7 +1006,7 @@ export function DozentenDashboard() {
         .from('teaching_materials')
         .select('*')
         .eq('is_active', true)
-        .order('position')
+        .order('created_at', { ascending: false }) // Newest first
         .range(from, from + batchSize - 1);
       
       if (error) {
