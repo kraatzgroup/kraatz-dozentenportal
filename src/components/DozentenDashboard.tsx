@@ -993,16 +993,18 @@ export function DozentenDashboard() {
   };
 
   const fetchMaterials = async () => {
+    console.log('Fetching materials...');
     const { data, error } = await supabase
       .from('teaching_materials')
       .select('*')
       .eq('is_active', true)
       .order('position')
-      .limit(10000);
+      .limit(100000);
     if (error) {
       console.error('Error fetching materials:', error);
       return;
     }
+    console.log('Materials loaded:', data?.length || 0);
     setMaterials(data || []);
   };
 
@@ -1716,6 +1718,8 @@ export function DozentenDashboard() {
     const rawMaterials = searchQuery 
       ? materials.filter(m => m.file_name.toLowerCase().includes(searchQuery.toLowerCase()) || m.title.toLowerCase().includes(searchQuery.toLowerCase()))
       : materials.filter(m => m.folder_id === currentFolderId);
+    
+    console.log('Rendering - currentFolderId:', currentFolderId, 'materials count:', materials.length, 'rawMaterials:', rawMaterials.length);
     
     const currentMaterials = rawMaterials;
     
