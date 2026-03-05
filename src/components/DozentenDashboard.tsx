@@ -994,7 +994,12 @@ export function DozentenDashboard() {
 
   const fetchMaterials = async () => {
     console.log('=== fetchMaterials called ===');
-    const { data, error } = await supabase.from('teaching_materials').select('*').eq('is_active', true).order('position');
+    const { data, error } = await supabase
+      .from('teaching_materials')
+      .select('*')
+      .eq('is_active', true)
+      .order('position')
+      .limit(10000); // Increased from default 1000 to 10000
     if (error) {
       console.error('Error fetching materials:', error);
       return;
