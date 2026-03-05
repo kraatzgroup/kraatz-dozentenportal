@@ -993,19 +993,37 @@ export function DozentenDashboard() {
   };
 
   const fetchMaterials = async () => {
-    console.log('Fetching materials...');
-    const { data, error } = await supabase
-      .from('teaching_materials')
-      .select('*')
-      .eq('is_active', true)
-      .order('position')
-      .limit(100000);
-    if (error) {
-      console.error('Error fetching materials:', error);
-      return;
+    console.log('Fetching materials with high limit...');
+    // Use range to get all materials - Supabase has a max of 1000 per query
+    // So we need to fetch in batches
+    let allMaterials: any[] = [];
+    let from = 0;
+    const batchSize = 1000;
+    
+    while (true) {
+      const { data, error } = await supabase
+        .from('teaching_materials')
+        .select('*')
+        .eq('is_active', true)
+        .order('position')
+        .range(from, from + batchSize - 1);
+      
+      if (error) {
+        console.error('Error fetching materials:', error);
+        break;
+      }
+      
+      if (!data || data.length === 0) break;
+      
+      allMaterials = [...allMaterials, ...data];
+      console.log(`Fetched batch ${from}-${from + data.length - 1}, total: ${allMaterials.length}`);
+      
+      if (data.length < batchSize) break;
+      from += batchSize;
     }
-    console.log('Materials loaded:', data?.length || 0);
-    setMaterials(data || []);
+    
+    console.log('Total materials loaded:', allMaterials.length);
+    setMaterials(allMaterials);
   };
 
   const fetchFolders = async () => {
