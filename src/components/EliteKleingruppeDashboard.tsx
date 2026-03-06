@@ -2465,47 +2465,40 @@ export function EliteKleingruppeDashboard() {
                 // Debug-Log für Lösungsfreigabe
                 const now = new Date();
                 
-                // Hilfsfunktion: Erstelle UTC Date aus lokaler Berlin-Zeit
-                const getBerlinUTCDate = (dateStr: string, timeStr: string): Date => {
-                  // Erstelle einen String im Format "YYYY-MM-DD HH:MM" in Europe/Berlin
-                  const berlinDateStr = `${dateStr}T${timeStr}:00`;
-                  // Parse mit toLocaleString in Europe/Berlin Zeitzone
-                  const d = new Date(berlinDateStr);
-                  // JavaScript erstellt das Date als lokale Zeit, wir müssen es korrekt interpretieren
-                  // Als ISO String mit Zeitzone Europe/Berlin
-                  const options: Intl.DateTimeFormatOptions = {
-                    timeZone: 'Europe/Berlin',
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                    hour12: false
-                  };
-                  const berlinTime = new Intl.DateTimeFormat('en-US', options).format(d);
-                  // Parsen: "03/06/2026, 18:30:00" → Date
-                  const [datePart, timePart] = berlinTime.split(', ');
-                  const [month, day, year] = datePart.split('/');
-                  const [hours, minutes, seconds] = timePart.split(':');
-                  return new Date(`${year}-${month}-${day}T${hours}:${minutes}:${seconds}Z`);
+                // Hilfsfunktion: Prüfe ob aktuelle Zeit (Berlin) nach der Release-Zeit ist
+                const isReleaseTimeReached = (dateStr: string, timeStr: string): boolean => {
+                  // Aktuelle Zeit in Berlin
+                  const berlinNow = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Berlin' }));
+                  // Release-Zeit als Berlin-Zeit
+                  const releaseDate = new Date(`${dateStr}T${timeStr}:00`);
+                  // Beide in ms vergleichen
+                  return berlinNow.getTime() >= releaseDate.getTime();
                 };
                 
-                let releaseDateTime: Date | null = null;
-                if (selectedReleaseForDetail.solution_release_date) {
-                  releaseDateTime = getBerlinUTCDate(
-                    selectedReleaseForDetail.solution_release_date,
-                    selectedReleaseForDetail.solution_release_time || '00:00'
-                  );
-                } else if (selectedReleaseForDetail.end_time) {
-                  releaseDateTime = getBerlinUTCDate(
-                    selectedReleaseForDetail.release_date,
-                    selectedReleaseForDetail.end_time
-                  );
+                let canShowSolutions = selectedReleaseForDetail.solutions_released;
+                
+                if (!canShowSolutions) {
+                  if (selectedReleaseForDetail.solution_release_date) {
+                    canShowSolutions = isReleaseTimeReached(
+                      selectedReleaseForDetail.solution_release_date,
+                      selectedReleaseForDetail.solution_release_time || '00:00'
+                    );
+                  } else if (selectedReleaseForDetail.end_time) {
+                    canShowSolutions = isReleaseTimeReached(
+                      selectedReleaseForDetail.release_date,
+                      selectedReleaseForDetail.end_time
+                    );
+                  }
                 }
                 
-                const canShowSolutions = selectedReleaseForDetail.solutions_released || 
-                  (releaseDateTime && now >= releaseDateTime);
+                // Berechne releaseDateTime nur für Debug-Log
+                let releaseDateTime: Date | null = null;
+                if (selectedReleaseForDetail.solution_release_date) {
+                  releaseDateTime = new Date(`${selectedReleaseForDetail.solution_release_date}T${selectedReleaseForDetail.solution_release_time || '00:00'}:00`);
+                } else if (selectedReleaseForDetail.end_time) {
+                  releaseDateTime = new Date(`${selectedReleaseForDetail.release_date}T${selectedReleaseForDetail.end_time}:00`);
+                }
+                
                 console.log('[DEBUG] Solution release check:', {
                   release_date: selectedReleaseForDetail.release_date,
                   solutions_released: selectedReleaseForDetail.solutions_released,
@@ -2514,7 +2507,6 @@ export function EliteKleingruppeDashboard() {
                   end_time: selectedReleaseForDetail.end_time,
                   currentDateTime_UTC: now.toISOString(),
                   currentDateTime_Local: now.toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }),
-                  releaseDateTime_UTC: releaseDateTime?.toISOString(),
                   releaseDateTime_Local: releaseDateTime?.toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }),
                   canShowSolutions,
                   solutionCount: solutionIds.length
