@@ -2462,6 +2462,26 @@ export function EliteKleingruppeDashboard() {
                 
                 if (solutionIds.length === 0) return null;
                 
+                // Debug-Log für Lösungsfreigabe
+                const now = new Date();
+                const releaseDateTime = selectedReleaseForDetail.solution_release_date 
+                  ? new Date(`${selectedReleaseForDetail.solution_release_date}T${selectedReleaseForDetail.solution_release_time || '00:00'}`)
+                  : selectedReleaseForDetail.end_time
+                    ? new Date(`${selectedReleaseForDetail.release_date}T${selectedReleaseForDetail.end_time}`)
+                    : null;
+                const canShowSolutions = selectedReleaseForDetail.solutions_released || 
+                  (releaseDateTime && now >= releaseDateTime);
+                console.log('[DEBUG] Solution release check:', {
+                  solutions_released: selectedReleaseForDetail.solutions_released,
+                  solution_release_date: selectedReleaseForDetail.solution_release_date,
+                  solution_release_time: selectedReleaseForDetail.solution_release_time,
+                  end_time: selectedReleaseForDetail.end_time,
+                  currentDateTime: now.toISOString(),
+                  releaseDateTime: releaseDateTime?.toISOString(),
+                  canShowSolutions,
+                  solutionCount: solutionIds.length
+                });
+                
                 return (
                   <div className="mb-6">
                     <h3 className="text-sm font-medium text-yellow-700 mb-3 flex items-center">
