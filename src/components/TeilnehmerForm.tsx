@@ -216,7 +216,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
         house_number: formData.house_number.trim() || null,
         postal_code: formData.postal_code.trim() || null,
         city: formData.city.trim() || null,
-        elite_kleingruppe: !!formData.is_elite_kleingruppe,
+        elite_kleingruppe: typeof formData.elite_kleingruppe === 'boolean' ? formData.elite_kleingruppe : (formData.is_elite_kleingruppe || false),
         is_elite_kleingruppe: formData.is_elite_kleingruppe || false,
         elite_kleingruppe_id: formData.is_elite_kleingruppe ? (formData.elite_kleingruppe_id || null) : null,
         hours_zivilrecht: formData.legal_areas.includes('Zivilrecht') ? (formData.hours_zivilrecht || null) : null,
