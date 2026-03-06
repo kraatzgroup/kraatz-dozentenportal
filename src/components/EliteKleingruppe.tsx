@@ -520,8 +520,6 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
     setIsAllDay(false);
     setReleaseEndDate('');
     setIsDateRange(false);
-    // Set default elite group if only one exists
-    setSelectedEliteGroupId(eliteGroups.length === 1 ? eliteGroups[0].id : '');
   };
 
   const handleUnitTypeChange = (unitType: UnitType | '') => {
@@ -638,7 +636,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
         dozent_id: user?.id || null,
         event_type: releaseEventType,
         end_date: isDateRange && releaseEndDate ? releaseEndDate : null,
-        elite_kleingruppe_id: selectedEliteGroupId || null
+        elite_kleingruppe_id: selectedEliteGroupId || (eliteGroups.length === 1 ? eliteGroups[0].id : null)
       };
 
       // Ersten Termin erstellen
@@ -727,7 +725,6 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
     setSolutionReleaseMode(release.solution_release_date ? 'custom' : 'auto');
     setCustomSolutionReleaseDate(release.solution_release_date || '');
     setCustomSolutionReleaseTime(release.solution_release_time?.slice(0, 5) || '');
-    setSelectedEliteGroupId((release as any).elite_kleingruppe_id || '');
     setShowEditModal(true);
   };
 
@@ -751,7 +748,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
         solution_material_ids: releaseSolutionMaterialIds,
         solution_release_date: solutionReleaseMode === 'custom' && customSolutionReleaseDate ? customSolutionReleaseDate : null,
         solution_release_time: solutionReleaseMode === 'custom' && customSolutionReleaseTime ? customSolutionReleaseTime : null,
-        elite_kleingruppe_id: selectedEliteGroupId || null
+        elite_kleingruppe_id: selectedEliteGroupId || (eliteGroups.length === 1 ? eliteGroups[0].id : null)
       };
 
       const { error } = await supabase
