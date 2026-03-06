@@ -2465,15 +2465,43 @@ export function EliteKleingruppeDashboard() {
                 // Debug-Log für Lösungsfreigabe
                 const now = new Date();
                 
-                // Erstelle releaseDateTime in lokaler Berlin-Zeit, dann in UTC für Vergleich
+                // Hilfsfunktion: Erstelle UTC Date aus lokaler Berlin-Zeit
+                const getBerlinUTCDate = (dateStr: string, timeStr: string): Date => {
+                  // Erstelle einen String im Format "YYYY-MM-DD HH:MM" in Europe/Berlin
+                  const berlinDateStr = `${dateStr}T${timeStr}:00`;
+                  // Parse mit toLocaleString in Europe/Berlin Zeitzone
+                  const d = new Date(berlinDateStr);
+                  // JavaScript erstellt das Date als lokale Zeit, wir müssen es korrekt interpretieren
+                  // Als ISO String mit Zeitzone Europe/Berlin
+                  const options: Intl.DateTimeFormatOptions = {
+                    timeZone: 'Europe/Berlin',
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                  };
+                  const berlinTime = new Intl.DateTimeFormat('en-US', options).format(d);
+                  // Parsen: "03/06/2026, 18:30:00" → Date
+                  const [datePart, timePart] = berlinTime.split(', ');
+                  const [month, day, year] = datePart.split('/');
+                  const [hours, minutes, seconds] = timePart.split(':');
+                  return new Date(`${year}-${month}-${day}T${hours}:${minutes}:${seconds}Z`);
+                };
+                
                 let releaseDateTime: Date | null = null;
                 if (selectedReleaseForDetail.solution_release_date) {
-                  // Custom release date/time - interpretiere als Berlin-Zeit
-                  const timeStr = selectedReleaseForDetail.solution_release_time || '00:00';
-                  releaseDateTime = new Date(`${selectedReleaseForDetail.solution_release_date}T${timeStr}+01:00`); // +01:00 für Berlin (Winter)
+                  releaseDateTime = getBerlinUTCDate(
+                    selectedReleaseForDetail.solution_release_date,
+                    selectedReleaseForDetail.solution_release_time || '00:00'
+                  );
                 } else if (selectedReleaseForDetail.end_time) {
-                  // Standard: Ende der Einheit - interpretiere als Berlin-Zeit
-                  releaseDateTime = new Date(`${selectedReleaseForDetail.release_date}T${selectedReleaseForDetail.end_time}+01:00`); // +01:00 für Berlin (Winter)
+                  releaseDateTime = getBerlinUTCDate(
+                    selectedReleaseForDetail.release_date,
+                    selectedReleaseForDetail.end_time
+                  );
                 }
                 
                 const canShowSolutions = selectedReleaseForDetail.solutions_released || 
