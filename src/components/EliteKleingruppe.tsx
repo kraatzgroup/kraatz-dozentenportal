@@ -311,10 +311,60 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const { data: materialsData } = await supabase.from('teaching_materials').select('*').eq('is_active', true).order('title');
-      setMaterials(materialsData || []);
-      const { data: foldersData } = await supabase.from('material_folders').select('*').eq('is_active', true).order('name');
-      setFolders(foldersData || []);
+      // Fetch materials in batches like DozentenDashboard to get all records
+      let allMaterials: any[] = [];
+      let from = 0;
+      const batchSize = 1000;
+      
+      while (true) {
+        const { data, error } = await supabase
+          .from('teaching_materials')
+          .select('*')
+          .eq('is_active', true)
+          .order('title')
+          .range(from, from + batchSize - 1);
+        
+        if (error) {
+          console.error('Error fetching materials:', error);
+          break;
+        }
+        
+        if (!data || data.length === 0) break;
+        
+        allMaterials = [...allMaterials, ...data];
+        
+        if (data.length < batchSize) break;
+        from += batchSize;
+      }
+      
+      setMaterials(allMaterials);
+      
+      // Fetch folders in batches to get all records (Supabase default limit is 1000)
+      let allFolders: any[] = [];
+      let folderFrom = 0;
+      
+      while (true) {
+        const { data: foldersData, error: folderError } = await supabase
+          .from('material_folders')
+          .select('*')
+          .eq('is_active', true)
+          .order('name')
+          .range(folderFrom, folderFrom + batchSize - 1);
+        
+        if (folderError) {
+          console.error('Error fetching folders:', folderError);
+          break;
+        }
+        
+        if (!foldersData || foldersData.length === 0) break;
+        
+        allFolders = [...allFolders, ...foldersData];
+        
+        if (foldersData.length < batchSize) break;
+        folderFrom += batchSize;
+      }
+      
+      setFolders(allFolders);
       const { data: releasesData } = await supabase.from('elite_kleingruppe_releases').select('*').order('release_date', { ascending: true });
       setScheduledReleases(releasesData || []);
       const { data: teilnehmerData } = await supabase.from('teilnehmer').select('id, name, email').eq('elite_kleingruppe', true).order('name');
@@ -1686,16 +1736,52 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
 
                 {/* Dokumente aus Klausur-Ordner - nur wenn Klausur-Ordner gewählt */}
                 {releaseKlausurFolderId && (() => {
-                  // Materialien direkt im gewählten Ordner
-                  const directMaterials = materials.filter(m => m.folder_id === releaseKlausurFolderId);
                   // Finde den Ordnernamen
                   const selectedFolder = folders.find(f => f.id === releaseKlausurFolderId);
                   
-                  // Finde Unterordner (z.B. "Zusatzmaterial") und deren Materialien
-                  const subFolders = folders.filter(f => f.parent_id === releaseKlausurFolderId);
-                  const subFolderMaterials = subFolders.flatMap(sf => 
-                    materials.filter(m => m.folder_id === sf.id).map(m => ({ ...m, folderName: sf.name }))
-                  );
+                  // Finde direkte Kinder der Klausur (Unterordner)
+                  const uniqueFolders = folders.filter(f => f.parent_id === releaseKlausurFolderId);
+                  
+                  // Materialien direkt im gewählten Ordner
+                  const directMaterials = materials.filter(m => m.folder_id === releaseKlausurFolderId);
+                  
+                  // Rekursive Funktion um alle verschachtelten Unterordner zu finden
+                  const getAllSubFolders = (parentId: string): MaterialFolder[] => {
+                    const directChildren = folders.filter(f => f.parent_id === parentId);
+                    let allSubFolders: MaterialFolder[] = [...directChildren];
+                    
+                    for (const child of directChildren) {
+                      const nestedChildren = getAllSubFolders(child.id);
+                      allSubFolders = [...allSubFolders, ...nestedChildren];
+                    }
+                    
+                    return allSubFolders;
+                  };
+                  
+                  // Rekursive Funktion um alle Materialien aus einem Ordner und seinen Unterordnern zu holen
+                  const getAllMaterialsFromFolder = (folderId: string): { material: TeachingMaterial; path: string[] }[] => {
+                    const result: { material: TeachingMaterial; path: string[] }[] = [];
+                    const folder = folders.find(f => f.id === folderId);
+                    const folderName = folder?.name || 'Unbekannt';
+                    
+                    // Direkte Materialien
+                    const direct = materials.filter(m => m.folder_id === folderId);
+                    direct.forEach(m => result.push({ material: m, path: [folderName] }));
+                    
+                    // Rekursiv Unterordner
+                    const children = folders.filter(f => f.parent_id === folderId);
+                    for (const child of children) {
+                      const childMaterials = getAllMaterialsFromFolder(child.id);
+                      childMaterials.forEach(({ material, path }) => {
+                        result.push({ material, path: [folderName, ...path] });
+                      });
+                    }
+                    
+                    return result;
+                  };
+                  
+                  // Hole alle Materialien mit ihrem Pfad
+                  const allNestedMaterials = getAllMaterialsFromFolder(releaseKlausurFolderId);
                   
                   return (
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -1734,44 +1820,64 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                         </div>
                       )}
                       
-                      {/* Unterordner mit Materialien (z.B. Zusatzmaterial) */}
-                      {subFolders.length > 0 && (
-                        <div className="space-y-2">
-                          {subFolders.map(subFolder => {
-                            const folderMats = materials.filter(m => m.folder_id === subFolder.id);
-                            if (folderMats.length === 0) return null;
-                            return (
-                              <div key={subFolder.id} className="border border-green-200 rounded-lg bg-green-50">
-                                <div className="p-2 border-b border-green-200 bg-green-100 rounded-t-lg">
-                                  <div className="flex items-center">
-                                    <FolderOpen className="h-4 w-4 text-green-600 mr-2" />
-                                    <span className="text-sm font-medium text-green-800">{subFolder.name}</span>
-                                    <span className="ml-2 text-xs text-green-600">({folderMats.length} Dateien)</span>
+                      {/* Unterordner mit Materialien (auch verschachtelte) */}
+                      {(() => {
+                        if (uniqueFolders.length === 0) return null;
+                        
+                        // Rekursive Funktion um alle Materialien aus einem Ordner zu holen
+                        const getAllMaterialsFromFolder = (folderId: string): TeachingMaterial[] => {
+                          const result: TeachingMaterial[] = [];
+                          // Direkte Materialien
+                          const direct = materials.filter(m => m.folder_id === folderId);
+                          result.push(...direct);
+                          // Rekursiv Unterordner
+                          const children = folders.filter(f => f.parent_id === folderId);
+                          for (const child of children) {
+                            result.push(...getAllMaterialsFromFolder(child.id));
+                          }
+                          return result;
+                        };
+                        
+                        return (
+                          <div className="space-y-2">
+                            {uniqueFolders.map((subFolder) => {
+                              const folderMats = getAllMaterialsFromFolder(subFolder.id);
+                              
+                              return (
+                                <div key={subFolder.id} className="border border-green-200 rounded-lg bg-green-50">
+                                  <div className="p-2 border-b border-green-200 bg-green-100 rounded-t-lg">
+                                    <div className="flex items-center">
+                                      <FolderOpen className="h-4 w-4 text-green-600 mr-2" />
+                                      <span className="text-sm font-medium text-green-800">{subFolder.name}</span>
+                                      <span className="ml-2 text-xs text-green-600">({folderMats.length} Dateien)</span>
+                                    </div>
                                   </div>
+                                  {folderMats.length > 0 && (
+                                    <div className="max-h-32 overflow-y-auto">
+                                      {folderMats.map(material => (
+                                        <label key={material.id} className="flex items-center p-2 hover:bg-green-100 cursor-pointer border-b border-green-100 last:border-0">
+                                          <input 
+                                            type="checkbox" 
+                                            checked={releaseSolutionMaterialIds.includes(material.id)} 
+                                            onChange={() => setReleaseSolutionMaterialIds(prev => 
+                                              prev.includes(material.id) ? prev.filter(id => id !== material.id) : [...prev, material.id]
+                                            )} 
+                                            className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                                          />
+                                          <FileText className="h-4 w-4 ml-3 text-green-500" />
+                                          <span className="ml-2 text-sm text-gray-900">{material.title}</span>
+                                        </label>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
-                                <div className="max-h-32 overflow-y-auto">
-                                  {folderMats.map(material => (
-                                    <label key={material.id} className="flex items-center p-2 hover:bg-green-100 cursor-pointer border-b border-green-100 last:border-0">
-                                      <input 
-                                        type="checkbox" 
-                                        checked={releaseSolutionMaterialIds.includes(material.id)} 
-                                        onChange={() => setReleaseSolutionMaterialIds(prev => 
-                                          prev.includes(material.id) ? prev.filter(id => id !== material.id) : [...prev, material.id]
-                                        )} 
-                                        className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-                                      />
-                                      <FileText className="h-4 w-4 ml-3 text-green-500" />
-                                      <span className="ml-2 text-sm text-gray-900">{material.title}</span>
-                                    </label>
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                       
-                      {directMaterials.length === 0 && subFolderMaterials.length === 0 && (
+                      {directMaterials.length === 0 && uniqueFolders.length === 0 && (
                         <p className="p-3 text-sm text-gray-500 bg-white rounded-lg border border-blue-200">
                           Keine Dokumente in diesem Ordner vorhanden.
                         </p>
@@ -2792,10 +2898,31 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                 {releaseKlausurFolderId && (() => {
                   const directMaterials = materials.filter(m => m.folder_id === releaseKlausurFolderId);
                   const selectedFolder = folders.find(f => f.id === releaseKlausurFolderId);
-                  const subFolders = folders.filter(f => f.parent_id === releaseKlausurFolderId);
-                  const subFolderMaterials = subFolders.flatMap(sf => 
-                    materials.filter(m => m.folder_id === sf.id).map(m => ({ ...m, folderName: sf.name }))
-                  );
+                  
+                  // Rekursive Funktion um alle Materialien aus einem Ordner und seinen Unterordnern zu holen
+                  const getAllMaterialsFromFolder = (folderId: string): { material: TeachingMaterial; path: string[] }[] => {
+                    const result: { material: TeachingMaterial; path: string[] }[] = [];
+                    const folder = folders.find(f => f.id === folderId);
+                    const folderName = folder?.name || 'Unbekannt';
+                    
+                    // Direkte Materialien
+                    const direct = materials.filter(m => m.folder_id === folderId);
+                    direct.forEach(m => result.push({ material: m, path: [folderName] }));
+                    
+                    // Rekursiv Unterordner
+                    const children = folders.filter(f => f.parent_id === folderId);
+                    for (const child of children) {
+                      const childMaterials = getAllMaterialsFromFolder(child.id);
+                      childMaterials.forEach(({ material, path }) => {
+                        result.push({ material, path: [folderName, ...path] });
+                      });
+                    }
+                    
+                    return result;
+                  };
+                  
+                  // Hole alle Materialien mit ihrem Pfad
+                  const allNestedMaterials = getAllMaterialsFromFolder(releaseKlausurFolderId);
                   
                   return (
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -2831,22 +2958,37 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                         </div>
                       )}
                       
-                      {subFolders.length > 0 && (
-                        <div className="space-y-2">
-                          {subFolders.map(subFolder => {
-                            const folderMats = materials.filter(m => m.folder_id === subFolder.id);
-                            if (folderMats.length === 0) return null;
-                            return (
-                              <div key={subFolder.id} className="border border-green-200 rounded-lg bg-green-50">
+                      {/* Unterordner mit Materialien (auch verschachtelte) */}
+                      {(() => {
+                        // Gruppiere Materialien nach ihrem direkten Unterordner (erster Pfad-Teil nach dem Hauptordner)
+                        const subFolderGroups = new Map<string, { material: TeachingMaterial; path: string[] }[]>();
+                        
+                        allNestedMaterials.forEach(({ material, path }) => {
+                          if (path.length > 1) {
+                            // Dies ist ein Material aus einem Unterordner
+                            const subFolderName = path[1]; // Erster Unterordner
+                            if (!subFolderGroups.has(subFolderName)) {
+                              subFolderGroups.set(subFolderName, []);
+                            }
+                            subFolderGroups.get(subFolderName)!.push({ material, path });
+                          }
+                        });
+                        
+                        if (subFolderGroups.size === 0) return null;
+                        
+                        return (
+                          <div className="space-y-2">
+                            {Array.from(subFolderGroups.entries()).map(([folderName, items]) => (
+                              <div key={folderName} className="border border-green-200 rounded-lg bg-green-50">
                                 <div className="p-2 border-b border-green-200 bg-green-100 rounded-t-lg">
                                   <div className="flex items-center">
                                     <FolderOpen className="h-4 w-4 text-green-600 mr-2" />
-                                    <span className="text-sm font-medium text-green-800">{subFolder.name}</span>
-                                    <span className="ml-2 text-xs text-green-600">({folderMats.length} Dateien)</span>
+                                    <span className="text-sm font-medium text-green-800">{folderName}</span>
+                                    <span className="ml-2 text-xs text-green-600">({items.length} Dateien)</span>
                                   </div>
                                 </div>
                                 <div className="max-h-32 overflow-y-auto">
-                                  {folderMats.map(material => (
+                                  {items.map(({ material }) => (
                                     <label key={material.id} className="flex items-center p-2 hover:bg-green-100 cursor-pointer border-b border-green-100 last:border-0">
                                       <input 
                                         type="checkbox" 
@@ -2862,12 +3004,12 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                                   ))}
                                 </div>
                               </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                            ))}
+                          </div>
+                        );
+                      })()}
                       
-                      {directMaterials.length === 0 && subFolderMaterials.length === 0 && (
+                      {directMaterials.length === 0 && allNestedMaterials.filter(m => m.path.length > 1).length === 0 && (
                         <p className="p-3 text-sm text-gray-500 bg-white rounded-lg border border-blue-200">
                           Keine Dokumente in diesem Ordner vorhanden.
                         </p>
