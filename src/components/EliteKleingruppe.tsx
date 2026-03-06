@@ -537,9 +537,12 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
     if (unitType && UNIT_TYPES[unitType]) {
       const unitConfig = UNIT_TYPES[unitType];
       setReleaseLegalArea(unitConfig.legalArea);
+      // Set default start time based on unit type
+      const defaultStartTime = unitType === 'unterricht_strafrecht' ? '09:30' : '09:00';
+      setReleaseStartTime(defaultStartTime);
       // Automatisch Endzeit berechnen mit konfigurierbarer Dauer
       const duration = getUnitDurationFromSettings(unitDurations, unitType);
-      const endTime = calculateEndTime(releaseStartTime, duration);
+      const endTime = calculateEndTime(defaultStartTime, duration);
       setReleaseEndTime(endTime);
       // Automatisch Zoom-Link des zugewiesenen Dozenten laden
       const assignment = dozentAssignments.find(a => a.legal_area === unitConfig.legalArea);
