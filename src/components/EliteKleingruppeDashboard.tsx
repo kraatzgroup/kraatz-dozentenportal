@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { LogOut, Settings, Upload, FileText, PenTool, Calendar, CheckCircle, Clock, AlertCircle, Download, ChevronDown, ChevronUp, Users, ChevronLeft, ChevronRight, Lock, Unlock, BookOpen, Award, MessageCircle, Send, Video, FolderOpen, Menu } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { Logo } from './Logo';
 import { ProfilePicture } from './ProfilePicture';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 interface ScheduledRelease {
   id: string;
@@ -131,6 +132,7 @@ export function EliteKleingruppeDashboard() {
   const [tempExamDate, setTempExamDate] = useState('');
   const [courseTimes, setCourseTimes] = useState<CourseTime[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const releasesSubscription = useRef<RealtimeChannel | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -139,6 +141,34 @@ export function EliteKleingruppeDashboard() {
     fetchDozenten();
     fetchProfileData();
     fetchCourseTimes();
+
+    // Setup real-time subscription for releases
+    const setupRealtimeSubscription = () => {
+      console.log('🔔 Setting up releases real-time subscription for participant');
+      releasesSubscription.current = supabase
+        .channel('elite-kleingruppe-releases-participant')
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'elite_kleingruppe_releases'
+        }, (payload) => {
+          console.log('🔔 Releases change detected for participant:', payload);
+          // Refresh data when any change occurs
+          fetchData();
+        })
+        .subscribe();
+    };
+
+    setupRealtimeSubscription();
+
+    // Cleanup function
+    return () => {
+      if (releasesSubscription.current) {
+        console.log('🧹 Cleaning up releases subscription');
+        releasesSubscription.current.unsubscribe();
+        releasesSubscription.current = null;
+      }
+    };
   }, [user]);
 
   const fetchCourseTimes = async () => {
