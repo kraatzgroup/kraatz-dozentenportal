@@ -2036,41 +2036,6 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                   />
                 </div>
 
-                {/* Materialien auswählen */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Einzelne Materialien freigeben</label>
-                  <div className="relative mb-2">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <input 
-                      type="text" 
-                      placeholder="Materialien suchen..." 
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary" 
-                      value={materialSearchTerm} 
-                      onChange={(e) => setMaterialSearchTerm(e.target.value)} 
-                    />
-                  </div>
-                  <div className="border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
-                    {materials.length === 0 ? (
-                      <p className="p-3 text-sm text-gray-500">Keine Materialien vorhanden</p>
-                    ) : materials.filter(m => m.title.toLowerCase().includes(materialSearchTerm.toLowerCase())).length === 0 ? (
-                      <p className="p-3 text-sm text-gray-500">Keine Materialien gefunden</p>
-                    ) : (
-                      materials.filter(m => m.title.toLowerCase().includes(materialSearchTerm.toLowerCase())).map(material => (
-                        <label key={material.id} className="flex items-center p-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0">
-                          <input 
-                            type="checkbox" 
-                            checked={selectedMaterials.includes(material.id)} 
-                            onChange={() => toggleMaterialSelection(material.id)} 
-                            className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded" 
-                          />
-                          <FileText className="h-4 w-4 ml-3 text-gray-400" />
-                          <span className="ml-2 text-sm text-gray-900">{material.title}</span>
-                        </label>
-                      ))
-                    )}
-                  </div>
-                </div>
-
                 {/* Zusätzliches Dokument hochladen */}
                 <div className="border border-dashed border-gray-300 rounded-lg p-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
