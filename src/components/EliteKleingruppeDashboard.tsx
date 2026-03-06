@@ -2472,6 +2472,7 @@ export function EliteKleingruppeDashboard() {
                 const canShowSolutions = selectedReleaseForDetail.solutions_released || 
                   (releaseDateTime && now >= releaseDateTime);
                 console.log('[DEBUG] Solution release check:', {
+                  release_date: selectedReleaseForDetail.release_date,
                   solutions_released: selectedReleaseForDetail.solutions_released,
                   solution_release_date: selectedReleaseForDetail.solution_release_date,
                   solution_release_time: selectedReleaseForDetail.solution_release_time,
