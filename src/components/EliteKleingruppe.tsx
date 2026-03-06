@@ -2109,8 +2109,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                     <div>Rechtsgebiet: <strong>{releaseLegalArea || '-'}</strong></div>
                     <div>Zeit: <strong>{releaseStartTime} - {releaseEndTime}</strong></div>
                     <div>Dauer: <strong>{releaseUnitType ? formatDuration(getUnitDurationFromSettings(unitDurations, releaseUnitType)) : '-'}</strong></div>
-                    <div>Ordner: <strong>{selectedFolders.length}</strong></div>
-                    <div>Materialien: <strong>{selectedMaterials.length}{additionalDocument ? ' + 1 Upload' : ''}</strong></div>
+                    {releaseKlausurFolderId && <div className="col-span-2">Klausur: <strong>{folders.find(f => f.id === releaseKlausurFolderId)?.name || '-'}</strong></div>}
                     {releaseIsRecurring && <div className="col-span-2">Wiederholung: <strong>{releaseRecurrenceType === 'weekly' ? 'Wöchentlich' : 'Monatlich'}, {releaseRecurrenceCount} Termine</strong></div>}
                     {releaseSolutionMaterialIds.length > 0 && <div className="col-span-2">Lösungen (nach Termin): <strong>{releaseSolutionMaterialIds.length} Dateien</strong></div>}
                     {additionalDocument && <div className="col-span-2 text-green-700">Zusatzdokument: <strong>{additionalDocumentTitle || additionalDocument.name}</strong></div>}
