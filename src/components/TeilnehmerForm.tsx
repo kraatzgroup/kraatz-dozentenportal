@@ -143,7 +143,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
         house_number: (teilnehmer as any).house_number || '',
         postal_code: (teilnehmer as any).postal_code || '',
         city: (teilnehmer as any).city || '',
-        elite_kleingruppe: !!(teilnehmer as any).is_elite_kleingruppe,
+        elite_kleingruppe: typeof (teilnehmer as any).elite_kleingruppe === 'boolean' ? (teilnehmer as any).elite_kleingruppe : ((teilnehmer as any).is_elite_kleingruppe || false),
         is_elite_kleingruppe: (teilnehmer as any).is_elite_kleingruppe || false,
         elite_kleingruppe_id: (teilnehmer as any).elite_kleingruppe_id || null,
         hours_zivilrecht: (teilnehmer as any).hours_zivilrecht || null,
