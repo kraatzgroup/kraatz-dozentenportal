@@ -2476,8 +2476,10 @@ export function EliteKleingruppeDashboard() {
                   solution_release_date: selectedReleaseForDetail.solution_release_date,
                   solution_release_time: selectedReleaseForDetail.solution_release_time,
                   end_time: selectedReleaseForDetail.end_time,
-                  currentDateTime: now.toISOString(),
-                  releaseDateTime: releaseDateTime?.toISOString(),
+                  currentDateTime_UTC: now.toISOString(),
+                  currentDateTime_Local: now.toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }),
+                  releaseDateTime_UTC: releaseDateTime?.toISOString(),
+                  releaseDateTime_Local: releaseDateTime?.toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }),
                   canShowSolutions,
                   solutionCount: solutionIds.length
                 });
