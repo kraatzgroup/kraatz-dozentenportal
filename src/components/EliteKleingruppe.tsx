@@ -399,6 +399,9 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
       // Fetch elite groups
       const { data: eliteGroupsData } = await supabase.from('elite_kleingruppen').select('id, name').eq('is_active', true).order('created_at');
       setEliteGroups(eliteGroupsData || []);
+      if (eliteGroupsData?.length === 1 && !selectedEliteGroupId) {
+        setSelectedEliteGroupId(eliteGroupsData[0].id);
+      }
       
       // Fetch unit duration settings
       const { data: settingsData } = await supabase.from('elite_kleingruppe_settings').select('setting_value').eq('setting_key', 'unit_durations').single();
