@@ -2488,7 +2488,7 @@ export function EliteKleingruppeDashboard() {
                       <Award className="h-4 w-4 mr-2" />
                       Lösungen ({solutionIds.length})
                     </h3>
-                    {selectedReleaseForDetail.solutions_released ? (
+                    {canShowSolutions ? (
                       <div className="space-y-2">
                         {solutionIds.map(id => {
                           const material = materials.find(m => m.id === id);
