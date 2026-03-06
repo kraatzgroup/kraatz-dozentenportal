@@ -971,7 +971,12 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
               }
               
               return (
-                <div key={release.id} className={`text-xs px-1.5 py-0.5 rounded truncate ${bgColor} ${textColor}`} title={release.title}>
+                <div 
+                  key={release.id} 
+                  onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }}
+                  className={`text-xs px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 ${bgColor} ${textColor}`} 
+                  title={release.title}
+                >
                   {release.is_released ? <Unlock className="h-3 w-3 inline mr-1" /> : <Lock className="h-3 w-3 inline mr-1" />}
                   {release.event_type === 'einheit' && legalAreaAbbr && <span className="font-semibold">[{legalAreaAbbr}] </span>}
                   {release.title}
