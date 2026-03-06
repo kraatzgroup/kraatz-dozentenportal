@@ -1898,9 +1898,9 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                       {directMaterials.length > 0 && (
                         <div className="border border-blue-200 rounded-lg max-h-48 overflow-y-auto bg-white mb-3">
                           {directMaterials.map(material => {
-                            const isLoesung = material.title.toLowerCase().includes('lösung') || 
-                                             material.title.toLowerCase().includes('loesung') ||
-                                             material.title.toLowerCase().includes('musterlösung');
+                            const isLoesung = material.title.toLowerCase().normalize('NFC').includes('lösung') || 
+                                             material.title.toLowerCase().normalize('NFC').includes('loesung') ||
+                                             material.title.toLowerCase().normalize('NFC').includes('musterlösung');
                             return (
                               <label key={material.id} className={`flex items-center p-3 hover:bg-blue-50 cursor-pointer border-b border-blue-100 last:border-0 ${isLoesung ? 'bg-yellow-50' : ''}`}>
                                 <input 
@@ -2967,9 +2967,9 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                       {directMaterials.length > 0 && (
                         <div className="border border-blue-200 rounded-lg max-h-48 overflow-y-auto bg-white mb-3">
                           {directMaterials.map(material => {
-                            const isLoesung = material.title.toLowerCase().includes('lösung') || 
-                                             material.title.toLowerCase().includes('loesung') ||
-                                             material.title.toLowerCase().includes('musterlösung');
+                            const isLoesung = material.title.toLowerCase().normalize('NFC').includes('lösung') || 
+                                             material.title.toLowerCase().normalize('NFC').includes('loesung') ||
+                                             material.title.toLowerCase().normalize('NFC').includes('musterlösung');
                             return (
                               <label key={material.id} className={`flex items-center p-3 hover:bg-blue-50 cursor-pointer border-b border-blue-100 last:border-0 ${isLoesung ? 'bg-yellow-50' : ''}`}>
                                 <input 

@@ -2359,7 +2359,8 @@ export function EliteKleingruppeDashboard() {
               {selectedReleaseForDetail.is_released && (() => {
                 // Hilfsfunktion um zu prüfen ob ein Material eine Lösung ist (nur nach Titel)
                 const isLoesungMaterial = (m: TeachingMaterial) => {
-                  const title = m.title.toLowerCase();
+                  // Normalize to handle different Unicode representations (e.g., combining diaeresis vs precomposed)
+                  const title = m.title.toLowerCase().normalize('NFC');
                   return title.includes('lösung') || 
                          title.includes('loesung') || 
                          title.includes('musterlösung') ||
@@ -2436,7 +2437,8 @@ export function EliteKleingruppeDashboard() {
               {selectedReleaseForDetail.is_released && (() => {
                 // Hilfsfunktion um zu prüfen ob ein Material eine Lösung ist (nur nach Titel)
                 const isLoesungMaterial = (m: TeachingMaterial) => {
-                  const title = m.title.toLowerCase();
+                  // Normalize to handle different Unicode representations (e.g., combining diaeresis vs precomposed)
+                  const title = m.title.toLowerCase().normalize('NFC');
                   return title.includes('lösung') || 
                          title.includes('loesung') || 
                          title.includes('musterlösung') ||
