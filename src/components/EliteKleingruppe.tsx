@@ -3087,64 +3087,6 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                   />
                 </div>
 
-                {/* Ordner auswählen */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Ordner freigeben</label>
-                  <div className="relative mb-2">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <input 
-                      type="text" 
-                      placeholder="Ordner suchen..." 
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary" 
-                      value={folderSearchTerm} 
-                      onChange={(e) => setFolderSearchTerm(e.target.value)} 
-                    />
-                  </div>
-                  <div className="border border-gray-200 rounded-lg max-h-32 overflow-y-auto">
-                    {folders.filter(f => f.name.toLowerCase().includes(folderSearchTerm.toLowerCase())).map(folder => (
-                      <label key={folder.id} className="flex items-center p-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0">
-                        <input 
-                          type="checkbox" 
-                          checked={selectedFolders.includes(folder.id)} 
-                          onChange={() => toggleFolderSelection(folder.id)} 
-                          className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded" 
-                        />
-                        <FolderOpen className="h-4 w-4 ml-3 text-blue-500" />
-                        <span className="ml-2 text-sm text-gray-900">{folder.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Materialien auswählen */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Einzelne Materialien freigeben</label>
-                  <div className="relative mb-2">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <input 
-                      type="text" 
-                      placeholder="Materialien suchen..." 
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary" 
-                      value={materialSearchTerm} 
-                      onChange={(e) => setMaterialSearchTerm(e.target.value)} 
-                    />
-                  </div>
-                  <div className="border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
-                    {materials.filter(m => m.title.toLowerCase().includes(materialSearchTerm.toLowerCase())).map(material => (
-                      <label key={material.id} className="flex items-center p-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0">
-                        <input 
-                          type="checkbox" 
-                          checked={selectedMaterials.includes(material.id)} 
-                          onChange={() => toggleMaterialSelection(material.id)} 
-                          className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded" 
-                        />
-                        <FileText className="h-4 w-4 ml-3 text-gray-400" />
-                        <span className="ml-2 text-sm text-gray-900">{material.title}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
                 {/* Zusammenfassung */}
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h4 className="text-sm font-medium text-gray-900 mb-2">Zusammenfassung</h4>
@@ -3153,8 +3095,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                     <div>Rechtsgebiet: <strong>{releaseLegalArea || '-'}</strong></div>
                     <div>Zeit: <strong>{releaseStartTime} - {releaseEndTime}</strong></div>
                     <div>Dauer: <strong>{releaseUnitType ? formatDuration(getUnitDurationFromSettings(unitDurations, releaseUnitType)) : '-'}</strong></div>
-                    <div>Ordner: <strong>{selectedFolders.length}</strong></div>
-                    <div>Materialien: <strong>{selectedMaterials.length}</strong></div>
+                    {releaseKlausurFolderId && <div className="col-span-2">Klausur: <strong>{folders.find(f => f.id === releaseKlausurFolderId)?.name || '-'}</strong></div>}
                     {releaseSolutionMaterialIds.length > 0 && <div className="col-span-2">Lösungen (nach Termin): <strong>{releaseSolutionMaterialIds.length} Dateien</strong></div>}
                   </div>
                 </div>
