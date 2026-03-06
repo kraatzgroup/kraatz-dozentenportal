@@ -478,7 +478,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
     }
     
     return map;
-  }, [scheduledReleases]);
+  }, [filteredReleases]);
 
   // Optimized getReleasesForDate using the lookup map
   const getReleasesForDate = (date: Date) => {
@@ -913,6 +913,10 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
     return dozent ? dozent.name : 'Unbekannt';
   };
 
+  const filteredReleases = scheduledReleases.filter(r => 
+    !selectedEliteGroupId || (r as any).elite_kleingruppe_id === selectedEliteGroupId
+  );
+
   const filteredKlausuren = klausuren.filter(k => {
     // Für Dozenten: nur Klausuren aus ihren zugewiesenen Rechtsgebieten anzeigen
     if (!isAdmin && dozentLegalAreas.length > 0 && !dozentLegalAreas.includes(k.legal_area)) return false;
@@ -1012,9 +1016,27 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
           <h2 className="text-xl font-semibold text-gray-900">Elite-Kleingruppe</h2>
           <p className="text-sm text-gray-500 mt-1">Jahreskurs: Materialfreigabe nach Einheiten, Klausurenkorrekturen und Kommunikation</p>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-500">{teilnehmer.length} Teilnehmer</span>
-          <span className="text-sm text-gray-500">{scheduledReleases.length} Einheiten geplant</span>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          {/* Elite-Kleingruppe Dropdown */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500 whitespace-nowrap">Gruppe:</span>
+            <select
+              value={selectedEliteGroupId}
+              onChange={(e) => setSelectedEliteGroupId(e.target.value)}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white"
+            >
+              <option value="">Alle Gruppen</option>
+              {eliteGroups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-gray-500">{teilnehmer.length} Teilnehmer</span>
+            <span className="text-sm text-gray-500">{filteredReleases.length} Einheiten geplant</span>
+          </div>
         </div>
       </div>
 
@@ -1066,7 +1088,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
               </div>
             </div>
             {(() => {
-              const einheitenReleases = scheduledReleases.filter(r => r.event_type === 'einheit' && (legalAreaFilter === 'alle' || r.legal_area === legalAreaFilter));
+              const einheitenReleases = filteredReleases.filter(r => r.event_type === 'einheit' && (legalAreaFilter === 'alle' || r.legal_area === legalAreaFilter));
               if (einheitenReleases.length === 0) {
                 return <div className="p-8 text-center"><Calendar className="h-12 w-12 text-gray-300 mx-auto mb-4" /><h4 className="text-lg font-medium text-gray-900 mb-2">Keine Einheiten geplant</h4><p className="text-gray-500">Klicken Sie auf ein Datum im Kalender, um Materialien für eine Einheit freizugeben.</p></div>;
               }
@@ -1174,7 +1196,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
               <p className="text-sm text-gray-500 mt-1">Ferien, Verhinderungen und andere Ereignisse</p>
             </div>
             {(() => {
-              const sonstigesReleases = scheduledReleases.filter(r => r.event_type !== 'einheit');
+              const sonstigesReleases = filteredReleases.filter(r => r.event_type !== 'einheit');
               if (sonstigesReleases.length === 0) {
                 return <div className="p-8 text-center text-gray-500">Keine weiteren Ereignisse geplant</div>;
               }
@@ -1567,29 +1589,6 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                       )}
                     </div>
                   </div>
-                </div>
-
-                {/* Elite-Kleingruppe Auswahl */}
-                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                  <label className="block text-sm font-medium text-purple-900 mb-2">
-                    Elite-Kleingruppe zuordnen *
-                  </label>
-                  <select
-                    value={selectedEliteGroupId}
-                    onChange={(e) => setSelectedEliteGroupId(e.target.value)}
-                    className="w-full px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 bg-white"
-                    required
-                  >
-                    <option value="">Bitte wählen...</option>
-                    {eliteGroups.map((group) => (
-                      <option key={group.id} value={group.id}>
-                        {group.name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-purple-700 mt-2">
-                    Die Einheit wird nur für Teilnehmer dieser Gruppe sichtbar sein.
-                  </p>
                 </div>
 
                 {/* Typ der Einheit - nur bei Event-Typ "Einheit" */}
@@ -2794,29 +2793,6 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
               </div>
               
               <div className="space-y-6">
-                {/* Elite-Kleingruppe Auswahl */}
-                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                  <label className="block text-sm font-medium text-purple-900 mb-2">
-                    Elite-Kleingruppe zuordnen *
-                  </label>
-                  <select
-                    value={selectedEliteGroupId}
-                    onChange={(e) => setSelectedEliteGroupId(e.target.value)}
-                    className="w-full px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 bg-white"
-                    required
-                  >
-                    <option value="">Bitte wählen...</option>
-                    {eliteGroups.map((group) => (
-                      <option key={group.id} value={group.id}>
-                        {group.name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-purple-700 mt-2">
-                    Die Einheit wird nur für Teilnehmer dieser Gruppe sichtbar sein.
-                  </p>
-                </div>
-
                 {/* Typ der Einheit */}
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <label className="block text-sm font-medium text-blue-900 mb-2">Typ der Einheit *</label>
