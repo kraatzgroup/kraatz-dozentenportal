@@ -283,6 +283,10 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
     description: '',
     meeting_link: ''
   });
+
+  // Elite-Kleingruppe state
+  const [eliteGroups, setEliteGroups] = useState<{id: string; name: string}[]>([]);
+  const [selectedEliteGroupId, setSelectedEliteGroupId] = useState<string>('');
   
   // Unit duration settings state
   const [unitDurations, setUnitDurations] = useState({
@@ -391,6 +395,10 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
       // Fetch course times
       const { data: courseTimesData } = await supabase.from('elite_course_times').select('*').eq('is_active', true).order('weekday').order('start_time');
       setCourseTimes(courseTimesData || []);
+
+      // Fetch elite groups
+      const { data: eliteGroupsData } = await supabase.from('elite_kleingruppen').select('id, name').eq('is_active', true).order('created_at');
+      setEliteGroups(eliteGroupsData || []);
       
       // Fetch unit duration settings
       const { data: settingsData } = await supabase.from('elite_kleingruppe_settings').select('setting_value').eq('setting_key', 'unit_durations').single();
@@ -512,6 +520,8 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
     setIsAllDay(false);
     setReleaseEndDate('');
     setIsDateRange(false);
+    // Set default elite group if only one exists
+    setSelectedEliteGroupId(eliteGroups.length === 1 ? eliteGroups[0].id : '');
   };
 
   const handleUnitTypeChange = (unitType: UnitType | '') => {
@@ -627,7 +637,8 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
         recurrence_count: releaseIsRecurring ? releaseRecurrenceCount : null,
         dozent_id: user?.id || null,
         event_type: releaseEventType,
-        end_date: isDateRange && releaseEndDate ? releaseEndDate : null
+        end_date: isDateRange && releaseEndDate ? releaseEndDate : null,
+        elite_kleingruppe_id: selectedEliteGroupId || null
       };
 
       // Ersten Termin erstellen
@@ -716,6 +727,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
     setSolutionReleaseMode(release.solution_release_date ? 'custom' : 'auto');
     setCustomSolutionReleaseDate(release.solution_release_date || '');
     setCustomSolutionReleaseTime(release.solution_release_time?.slice(0, 5) || '');
+    setSelectedEliteGroupId((release as any).elite_kleingruppe_id || '');
     setShowEditModal(true);
   };
 
@@ -739,6 +751,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
         solution_material_ids: releaseSolutionMaterialIds,
         solution_release_date: solutionReleaseMode === 'custom' && customSolutionReleaseDate ? customSolutionReleaseDate : null,
         solution_release_time: solutionReleaseMode === 'custom' && customSolutionReleaseTime ? customSolutionReleaseTime : null,
+        elite_kleingruppe_id: selectedEliteGroupId || null
       };
 
       const { error } = await supabase
@@ -1554,6 +1567,29 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                       )}
                     </div>
                   </div>
+                </div>
+
+                {/* Elite-Kleingruppe Auswahl */}
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <label className="block text-sm font-medium text-purple-900 mb-2">
+                    Elite-Kleingruppe zuordnen *
+                  </label>
+                  <select
+                    value={selectedEliteGroupId}
+                    onChange={(e) => setSelectedEliteGroupId(e.target.value)}
+                    className="w-full px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 bg-white"
+                    required
+                  >
+                    <option value="">Bitte wählen...</option>
+                    {eliteGroups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-purple-700 mt-2">
+                    Die Einheit wird nur für Teilnehmer dieser Gruppe sichtbar sein.
+                  </p>
                 </div>
 
                 {/* Typ der Einheit - nur bei Event-Typ "Einheit" */}
@@ -2758,6 +2794,29 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
               </div>
               
               <div className="space-y-6">
+                {/* Elite-Kleingruppe Auswahl */}
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <label className="block text-sm font-medium text-purple-900 mb-2">
+                    Elite-Kleingruppe zuordnen *
+                  </label>
+                  <select
+                    value={selectedEliteGroupId}
+                    onChange={(e) => setSelectedEliteGroupId(e.target.value)}
+                    className="w-full px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 bg-white"
+                    required
+                  >
+                    <option value="">Bitte wählen...</option>
+                    {eliteGroups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-purple-700 mt-2">
+                    Die Einheit wird nur für Teilnehmer dieser Gruppe sichtbar sein.
+                  </p>
+                </div>
+
                 {/* Typ der Einheit */}
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <label className="block text-sm font-medium text-blue-900 mb-2">Typ der Einheit *</label>
