@@ -453,11 +453,15 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
   const dayNames = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year: number, month: number) => { const day = new Date(year, month, 1).getDay(); return day === 0 ? 6 : day - 1; };
+  const filteredReleases = scheduledReleases.filter(r => 
+    !selectedEliteGroupId || (r as any).elite_kleingruppe_id === selectedEliteGroupId
+  );
+
   // OPTIMIZED: Create a release lookup map for O(1) date access
   const releasesByDate = useMemo(() => {
     const map = new Map<string, ScheduledRelease[]>();
     
-    for (const release of scheduledReleases) {
+    for (const release of filteredReleases) {
       if (!release.end_date) {
         // Single day event
         const existing = map.get(release.release_date) || [];
@@ -909,10 +913,6 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
     const dozent = allDozenten.find(d => d.id === assignment.dozent_id);
     return dozent ? dozent.name : 'Unbekannt';
   };
-
-  const filteredReleases = scheduledReleases.filter(r => 
-    !selectedEliteGroupId || (r as any).elite_kleingruppe_id === selectedEliteGroupId
-  );
 
   const filteredKlausuren = klausuren.filter(k => {
     // Für Dozenten: nur Klausuren aus ihren zugewiesenen Rechtsgebieten anzeigen
