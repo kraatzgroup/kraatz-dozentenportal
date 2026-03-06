@@ -2464,11 +2464,18 @@ export function EliteKleingruppeDashboard() {
                 
                 // Debug-Log für Lösungsfreigabe
                 const now = new Date();
-                const releaseDateTime = selectedReleaseForDetail.solution_release_date 
-                  ? new Date(`${selectedReleaseForDetail.solution_release_date}T${selectedReleaseForDetail.solution_release_time || '00:00'}`)
-                  : selectedReleaseForDetail.end_time
-                    ? new Date(`${selectedReleaseForDetail.release_date}T${selectedReleaseForDetail.end_time}`)
-                    : null;
+                
+                // Erstelle releaseDateTime in lokaler Berlin-Zeit, dann in UTC für Vergleich
+                let releaseDateTime: Date | null = null;
+                if (selectedReleaseForDetail.solution_release_date) {
+                  // Custom release date/time - interpretiere als Berlin-Zeit
+                  const timeStr = selectedReleaseForDetail.solution_release_time || '00:00';
+                  releaseDateTime = new Date(`${selectedReleaseForDetail.solution_release_date}T${timeStr}+01:00`); // +01:00 für Berlin (Winter)
+                } else if (selectedReleaseForDetail.end_time) {
+                  // Standard: Ende der Einheit - interpretiere als Berlin-Zeit
+                  releaseDateTime = new Date(`${selectedReleaseForDetail.release_date}T${selectedReleaseForDetail.end_time}+01:00`); // +01:00 für Berlin (Winter)
+                }
+                
                 const canShowSolutions = selectedReleaseForDetail.solutions_released || 
                   (releaseDateTime && now >= releaseDateTime);
                 console.log('[DEBUG] Solution release check:', {
