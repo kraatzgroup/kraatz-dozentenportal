@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   Users, 
   FileText, 
@@ -445,21 +445,40 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
   const dayNames = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year: number, month: number) => { const day = new Date(year, month, 1).getDay(); return day === 0 ? 6 : day - 1; };
-  const getReleasesForDate = (date: Date) => { 
-    // Use local date string to avoid timezone issues
+  // OPTIMIZED: Create a release lookup map for O(1) date access
+  const releasesByDate = useMemo(() => {
+    const map = new Map<string, ScheduledRelease[]>();
+    
+    for (const release of scheduledReleases) {
+      if (!release.end_date) {
+        // Single day event
+        const existing = map.get(release.release_date) || [];
+        existing.push(release);
+        map.set(release.release_date, existing);
+      } else {
+        // Date range - add to all dates in range
+        const start = new Date(release.release_date);
+        const end = new Date(release.end_date);
+        
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          const dateStr = d.toISOString().split('T')[0];
+          const existing = map.get(dateStr) || [];
+          existing.push(release);
+          map.set(dateStr, existing);
+        }
+      }
+    }
+    
+    return map;
+  }, [scheduledReleases]);
+
+  // Optimized getReleasesForDate using the lookup map
+  const getReleasesForDate = (date: Date) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     const dateStr = `${year}-${month}-${day}`;
-    
-    return scheduledReleases.filter(r => {
-      // Exact match for single-day entries
-      if (!r.end_date) {
-        return r.release_date === dateStr;
-      }
-      // For date ranges, check if date falls within the range (inclusive)
-      return dateStr >= r.release_date && dateStr <= r.end_date;
-    }); 
+    return releasesByDate.get(dateStr) || [];
   };
 
   const handleDateClick = (day: number) => {
@@ -893,17 +912,25 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
   const toggleFolderSelection = (id: string) => setSelectedFolders(prev => prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]);
   const filteredTeilnehmer = teilnehmer.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()) || t.email.toLowerCase().includes(searchTerm.toLowerCase()));
 
-  const renderCalendar = () => {
+  // OPTIMIZED: Memoized calendar rendering
+  const calendarDays = useMemo(() => {
     const daysInMonth = getDaysInMonth(calendarYear, calendarMonth);
     const firstDay = getFirstDayOfMonth(calendarYear, calendarMonth);
     const days = [];
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    for (let i = 0; i < firstDay; i++) days.push(<div key={"empty-" + i} className="h-24 bg-gray-50"></div>);
+    
+    // Empty cells for days before the first day of month
+    for (let i = 0; i < firstDay; i++) {
+      days.push(<div key={"empty-" + i} className="h-24 bg-gray-50"></div>);
+    }
+    
+    // Days of the month
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(calendarYear, calendarMonth, day);
       const releases = getReleasesForDate(date);
       const isToday = date.getTime() === today.getTime();
       const isPast = date < today;
+      
       days.push(
         <div key={day} onClick={() => handleDateClick(day)} className={"h-24 p-2 border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors " + (isToday ? 'bg-primary/5 border-primary' : '')}>
           <div className={"text-sm font-medium " + (isToday ? 'text-primary' : isPast ? 'text-gray-400' : 'text-gray-900')}>{day}</div>
@@ -956,7 +983,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
       );
     }
     return days;
-  };
+  }, [calendarYear, calendarMonth, releasesByDate]);
 
   if (isLoading) return <div className="flex justify-center items-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
 
@@ -998,7 +1025,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
             </div>
             <div className="grid grid-cols-7 gap-px bg-gray-200 rounded-lg overflow-hidden">
               {dayNames.map(day => <div key={day} className="bg-gray-100 py-2 text-center text-sm font-medium text-gray-700">{day}</div>)}
-              {renderCalendar()}
+              {calendarDays}
             </div>
           </div>
           {/* Geplante Einheiten */}
@@ -1053,12 +1080,44 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                             }`} />
                           )}
                         </div>
-                        <div className="ml-4"><h4 className="text-sm font-medium text-gray-900">{release.title}</h4><p className="text-xs text-gray-500">{formatDate(release.release_date)} - {release.material_ids.length} Materialien, {release.folder_ids.length} Ordner{release.legal_area && <span className={`ml-2 px-1.5 py-0.5 rounded text-xs ${
-                          release.legal_area === 'Zivilrecht' ? 'bg-blue-100 text-blue-700' :
-                          release.legal_area === 'Strafrecht' ? 'bg-red-100 text-red-700' :
-                          release.legal_area === 'Öffentliches Recht' ? 'bg-green-100 text-green-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>{release.legal_area}</span>}</p></div>
+                        <div className="ml-4">
+                          <h4 className="text-sm font-medium text-gray-900">{release.title}</h4>
+                          <p className="text-xs text-gray-500">
+                            {formatDate(release.release_date)} 
+                            {release.start_time && release.end_time && ` • ${release.start_time.slice(0,5)}-${release.end_time.slice(0,5)}`}
+                            {release.unit_type && (
+                              <span className={`ml-2 px-1.5 py-0.5 rounded text-xs ${
+                                release.unit_type.includes('zivilrecht') ? 'bg-blue-100 text-blue-700' :
+                                release.unit_type.includes('strafrecht') ? 'bg-red-100 text-red-700' :
+                                release.unit_type.includes('oeffentliches') ? 'bg-green-100 text-green-700' :
+                                'bg-gray-100 text-gray-700'
+                              }`}>
+                                {UNIT_TYPES[release.unit_type as keyof typeof UNIT_TYPES]?.label || release.unit_type}
+                              </span>
+                            )}
+                            {release.legal_area && (
+                              <span className={`ml-2 px-1.5 py-0.5 rounded text-xs ${
+                                release.legal_area === 'Zivilrecht' ? 'bg-blue-100 text-blue-700' :
+                                release.legal_area === 'Strafrecht' ? 'bg-red-100 text-red-700' :
+                                release.legal_area === 'Öffentliches Recht' ? 'bg-green-100 text-green-700' :
+                                'bg-gray-100 text-gray-700'
+                              }`}>
+                                {release.legal_area}
+                              </span>
+                            )}
+                            {release.klausur_folder_id && (() => {
+                              const klausurFolder = folders.find(f => f.id === release.klausur_folder_id);
+                              return klausurFolder ? (
+                                <span className="ml-2 px-1.5 py-0.5 rounded text-xs bg-purple-100 text-purple-700" title="Besprochene Klausur">
+                                  📋 {klausurFolder.name}
+                                </span>
+                              ) : null;
+                            })()}
+                            <span className="ml-2 text-gray-400">
+                              {release.material_ids.length} Materialien, {release.folder_ids.length} Ordner
+                            </span>
+                          </p>
+                        </div>
                       </div>
                       <div className="flex items-center space-x-4">
                         <span className={"inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium " + (release.is_released ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800')}>{release.is_released ? 'Freigegeben' : 'Geplant'}</span>
