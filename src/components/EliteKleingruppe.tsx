@@ -2036,41 +2036,6 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                   />
                 </div>
 
-                {/* Ordner auswählen */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Ordner freigeben</label>
-                  <div className="relative mb-2">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <input 
-                      type="text" 
-                      placeholder="Ordner suchen..." 
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary" 
-                      value={folderSearchTerm} 
-                      onChange={(e) => setFolderSearchTerm(e.target.value)} 
-                    />
-                  </div>
-                  <div className="border border-gray-200 rounded-lg max-h-32 overflow-y-auto">
-                    {folders.length === 0 ? (
-                      <p className="p-3 text-sm text-gray-500">Keine Ordner vorhanden</p>
-                    ) : folders.filter(f => f.name.toLowerCase().includes(folderSearchTerm.toLowerCase())).length === 0 ? (
-                      <p className="p-3 text-sm text-gray-500">Keine Ordner gefunden</p>
-                    ) : (
-                      folders.filter(f => f.name.toLowerCase().includes(folderSearchTerm.toLowerCase())).map(folder => (
-                        <label key={folder.id} className="flex items-center p-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0">
-                          <input 
-                            type="checkbox" 
-                            checked={selectedFolders.includes(folder.id)} 
-                            onChange={() => toggleFolderSelection(folder.id)} 
-                            className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded" 
-                          />
-                          <FolderOpen className="h-4 w-4 ml-3 text-blue-500" />
-                          <span className="ml-2 text-sm text-gray-900">{folder.name}</span>
-                        </label>
-                      ))
-                    )}
-                  </div>
-                </div>
-
                 {/* Materialien auswählen */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Einzelne Materialien freigeben</label>
