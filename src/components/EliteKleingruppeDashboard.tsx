@@ -114,6 +114,7 @@ export function EliteKleingruppeDashboard() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [teilnehmerId, setTeilnehmerId] = useState<string | null>(null);
+  const [teilnehmerEliteKleingruppeId, setTeilnehmerEliteKleingruppeId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [selectedRecipient, setSelectedRecipient] = useState<string>('gruppe_zivilrecht');
@@ -269,9 +270,10 @@ export function EliteKleingruppeDashboard() {
   const fetchTeilnehmerId = async () => {
     if (!user) return;
     // Finde den Teilnehmer-Eintrag für diesen Benutzer basierend auf der E-Mail
-    const { data } = await supabase.from('teilnehmer').select('id').eq('email', user.email).single();
+    const { data } = await supabase.from('teilnehmer').select('id, elite_kleingruppe_id').eq('email', user.email).single();
     if (data) {
       setTeilnehmerId(data.id);
+      setTeilnehmerEliteKleingruppeId(data.elite_kleingruppe_id);
       fetchKlausuren(data.id);
     }
   };
@@ -279,11 +281,31 @@ export function EliteKleingruppeDashboard() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      // Alle Einheiten laden (für Kalender)
-      const { data: allReleasesData } = await supabase
+      // Get the current user's elite_kleingruppe_id if not already loaded
+      let groupId = teilnehmerEliteKleingruppeId;
+      if (!groupId && user) {
+        const { data: teilnehmerData } = await supabase
+          .from('teilnehmer')
+          .select('elite_kleingruppe_id')
+          .eq('email', user.email)
+          .single();
+        if (teilnehmerData?.elite_kleingruppe_id) {
+          groupId = teilnehmerData.elite_kleingruppe_id;
+          setTeilnehmerEliteKleingruppeId(groupId);
+        }
+      }
+
+      // Load releases filtered by elite_kleingruppe_id (or all if no group assigned)
+      let releasesQuery = supabase
         .from('elite_kleingruppe_releases')
         .select('*')
         .order('release_date', { ascending: true });
+      
+      if (groupId) {
+        releasesQuery = releasesQuery.eq('elite_kleingruppe_id', groupId);
+      }
+      
+      const { data: allReleasesData } = await releasesQuery;
       setAllReleases(allReleasesData || []);
 
       // Nur freigegebene Einheiten für Materialien-Tab
