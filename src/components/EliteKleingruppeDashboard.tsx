@@ -2503,19 +2503,18 @@ export function EliteKleingruppeDashboard() {
                   }
                 }
                 
-                // Debug-Info
-                const berlinNowStr = now.toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' });
-                
-                console.log('[DEBUG] Solution release check:', {
-                  release_date: selectedReleaseForDetail.release_date,
-                  solutions_released: selectedReleaseForDetail.solutions_released,
-                  solution_release_date: selectedReleaseForDetail.solution_release_date,
-                  solution_release_time: selectedReleaseForDetail.solution_release_time,
-                  end_time: selectedReleaseForDetail.end_time,
-                  current_Berlin: berlinNowStr,
-                  canShowSolutions,
-                  solutionCount: solutionIds.length
-                });
+                // Debug-Info (deaktiviert)
+                // const berlinNowStr = now.toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' });
+                // console.log('[DEBUG] Solution release check:', {
+                //   release_date: selectedReleaseForDetail.release_date,
+                //   solutions_released: selectedReleaseForDetail.solutions_released,
+                //   solution_release_date: selectedReleaseForDetail.solution_release_date,
+                //   solution_release_time: selectedReleaseForDetail.solution_release_time,
+                //   end_time: selectedReleaseForDetail.end_time,
+                //   current_Berlin: berlinNowStr,
+                //   canShowSolutions,
+                //   solutionCount: solutionIds.length
+                // });
                 
                 return (
                   <div className="mb-6">
