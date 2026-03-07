@@ -1891,30 +1891,48 @@ export function EliteKleingruppeDashboard() {
                                   }
                                 }
                                 
-                                return canShowSolutions ? (
-                                  release.solution_material_ids.map(id => {
-                                    const material = materials.find(m => m.id === id);
-                                    if (!material) return null;
-                                    return (
-                                      <a
-                                        key={id}
-                                        href={material.file_url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex items-center p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors border border-yellow-200"
-                                      >
-                                        <FileText className="h-5 w-5 text-yellow-600 mr-3" />
-                                        <span className="text-sm text-gray-900 flex-1">{material.title}</span>
-                                        <Download className="h-4 w-4 text-yellow-600" />
-                                      </a>
+                                // Hilfsfunktion: Prüfe ob Material eine Lösung ist
+                                    const isLoesungMaterial = (m: TeachingMaterial) => {
+                                      const title = m.title.toLowerCase().normalize('NFC');
+                                      return title.includes('lösung') || 
+                                             title.includes('loesung') || 
+                                             title.includes('musterlösung') ||
+                                             title.includes('musterlosung');
+                                    };
+                                    
+                                    // Filtere nur Lösungen aus solution_material_ids
+                                    const actualSolutionIds = release.solution_material_ids.filter(id => {
+                                      const material = materials.find(m => m.id === id);
+                                      if (!material) return false;
+                                      return isLoesungMaterial(material);
+                                    });
+                                    
+                                    if (actualSolutionIds.length === 0) return null;
+                                    
+                                    return canShowSolutions ? (
+                                      actualSolutionIds.map(id => {
+                                        const material = materials.find(m => m.id === id);
+                                        if (!material) return null;
+                                        return (
+                                          <a
+                                            key={id}
+                                            href={material.file_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors border border-yellow-200"
+                                          >
+                                            <FileText className="h-5 w-5 text-yellow-600 mr-3" />
+                                            <span className="text-sm text-gray-900 flex-1">{material.title}</span>
+                                            <Download className="h-4 w-4 text-yellow-600" />
+                                          </a>
+                                        );
+                                      })
+                                    ) : (
+                                      <div className="flex items-center p-3 bg-gray-100 rounded-lg text-gray-500">
+                                        <Lock className="h-5 w-5 mr-3" />
+                                        <span className="text-sm">Lösungen werden nach Ende des Termins freigeschaltet</span>
+                                      </div>
                                     );
-                                  })
-                                ) : (
-                                  <div className="flex items-center p-3 bg-gray-100 rounded-lg text-gray-500">
-                                    <Lock className="h-5 w-5 mr-3" />
-                                    <span className="text-sm">Lösungen werden nach Ende des Termins freigeschaltet</span>
-                                  </div>
-                                );
                               })()}
                             </div>
                           )}
