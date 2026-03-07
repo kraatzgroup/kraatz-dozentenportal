@@ -356,6 +356,7 @@ export function EliteKleingruppeDashboard() {
         .from('teaching_materials')
         .select('id, title, file_url, file_name, file_type, folder_id')
         .eq('is_active', true);
+      console.log('📚 Materials loaded:', materialsData?.length, 'First 3:', materialsData?.slice(0, 3).map(m => ({ id: m.id, title: m.title.substring(0, 30) })));
       setMaterials(materialsData || []);
 
       const { data: foldersData } = await supabase
