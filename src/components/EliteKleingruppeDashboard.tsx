@@ -631,16 +631,6 @@ export function EliteKleingruppeDashboard() {
               </div>
             </div>
             <div className="hidden md:flex items-center space-x-2 sm:space-x-4">
-              {/* Nächste Einheit Badge */}
-              {allReleases.filter(r => !r.is_released).length > 0 && (
-                <button 
-                  onClick={() => setActiveTab('kalender')}
-                  className="inline-flex items-center px-2 sm:px-3 py-1.5 rounded-full text-xs font-medium border transition cursor-pointer bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200"
-                  title="Nächste Einheit"
-                >
-                  <Calendar className="h-3.5 w-3.5 mr-1" />
-                </button>
-              )}
               {/* Nachrichten */}
               <button 
                 onClick={() => setActiveTab('kommunikation')}
