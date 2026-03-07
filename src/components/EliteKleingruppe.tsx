@@ -2870,6 +2870,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                 <div>
                   <h3 className="text-lg font-medium text-gray-900">Einheit bearbeiten</h3>
                   <p className="text-sm text-gray-500 mt-1">Bearbeiten Sie die Unterrichtseinheit vom {selectedDate ? formatDate(selectedDate.toISOString()) : ''}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">ID: {editingRelease.id}</p>
                 </div>
                 <button onClick={() => { setShowEditModal(false); setEditingRelease(null); }} className="text-gray-400 hover:text-gray-600">
                   <X className="h-5 w-5" />
