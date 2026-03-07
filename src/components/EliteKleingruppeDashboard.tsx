@@ -1100,7 +1100,16 @@ export function EliteKleingruppeDashboard() {
                       <Award className="h-6 w-6 text-yellow-600" />
                     </div>
                     <div className="ml-4 flex-1">
-                      <p className="text-sm text-gray-500">Korrigierte Klausuren</p>
+                      <p className="text-sm text-gray-500 flex items-center gap-2">
+                        Korrigierte Klausuren
+                        <span className="relative group">
+                          <Info className="h-4 w-4 text-gray-400 cursor-help" />
+                          <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-3 bg-gray-800 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                            Das ist die Anzahl deiner korrigierten Klausuren.
+                            <span className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-800"></span>
+                          </span>
+                        </span>
+                      </p>
                       <p className="text-2xl font-bold text-gray-900">{klausuren.filter(k => k.status === 'completed').length} <span className="text-sm font-normal text-gray-400">/ 60</span></p>
                       <div className="w-full bg-gray-100 rounded-full h-1.5 mt-2">
                         <div 
