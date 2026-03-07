@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { LogOut, Settings, Upload, FileText, PenTool, Calendar, CheckCircle, Clock, AlertCircle, Download, ChevronDown, ChevronUp, Users, ChevronLeft, ChevronRight, Lock, Unlock, BookOpen, Award, MessageCircle, Send, Video, FolderOpen, Menu } from 'lucide-react';
+import { LogOut, Settings, Upload, FileText, PenTool, Calendar, CheckCircle, Clock, AlertCircle, Download, ChevronDown, ChevronUp, Users, ChevronLeft, ChevronRight, Lock, Unlock, BookOpen, Award, MessageCircle, Send, Video, FolderOpen, Menu, Info } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { Logo } from './Logo';
@@ -1847,7 +1847,16 @@ export function EliteKleingruppeDashboard() {
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div>
                     <h2 className="text-lg font-medium text-gray-900">Freigegebene Einheiten</h2>
-                    <p className="text-sm text-gray-500 mt-1">Hier findest du alle für dich freigegebenen Materialien</p>
+                    <p className="text-sm text-gray-500 mt-1 flex items-center gap-2">
+                      Hier findest du alle für dich freigegebenen Materialien
+                      <span className="relative group">
+                        <Info className="h-4 w-4 text-gray-400 cursor-help" />
+                        <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-3 bg-gray-800 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                          Bei freigeschalteten Einheiten sind Sachverhalte und Zusatzmaterialien bereits verfügbar. Weitere Einheiten werden nacheinander freigeschaltet.
+                          <span className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-800"></span>
+                        </span>
+                      </span>
+                    </p>
                   </div>
                   {/* Search and Filter */}
                   <div className="flex flex-col sm:flex-row gap-3 sm:w-auto">
