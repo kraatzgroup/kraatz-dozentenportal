@@ -2929,22 +2929,47 @@ export function EliteKleingruppeDashboard() {
                 
                 console.log('🔍 DETAIL-MODAL BUNDESLAND-FILTER:', {
                   releaseTitle: selectedReleaseForDetail.title,
+                  releaseId: selectedReleaseForDetail.id,
                   teilnehmerStateLaw,
-                  totalMaterials: allSelectedMaterialIds.length,
-                  totalFolders: folders.length,
-                  sampleMaterials: allSelectedMaterialIds.slice(0, 3).map(id => {
+                  totalMaterialsInState: materials.length,
+                  totalFoldersInState: folders.length,
+                  directMaterialIds: selectedReleaseForDetail.material_ids,
+                  solutionMaterialIds: selectedReleaseForDetail.solution_material_ids,
+                  allSelectedMaterialIds,
+                  sampleMaterials: allSelectedMaterialIds.map(id => {
                     const m = materials.find(x => x.id === id);
-                    return { title: m?.title, folder_id: m?.folder_id, path: getMaterialFolderPath(id) };
+                    const path = getMaterialFolderPath(id);
+                    const isLoesung = m ? isLoesungMaterial(m) : false;
+                    const isValidBL = isMaterialInValidBundesland(id);
+                    return { 
+                      id, 
+                      title: m?.title, 
+                      folder_id: m?.folder_id, 
+                      path,
+                      isLoesung,
+                      isValidBL,
+                      show: m && !isLoesung && isValidBL
+                    };
                   })
                 });
                 
                 // Filtere Lösungen heraus - NUR nach Titel UND Bundesland
                 const nonSolutionMaterialIds = allSelectedMaterialIds.filter(id => {
                   const material = materials.find(m => m.id === id);
-                  if (!material) return false;
-                  if (isLoesungMaterial(material)) return false;
-                  return isMaterialInValidBundesland(id);
+                  if (!material) {
+                    console.log(`  ❌ Material ${id}: nicht gefunden`);
+                    return false;
+                  }
+                  if (isLoesungMaterial(material)) {
+                    console.log(`  ❌ Material ${id}: ist Lösung (${material.title})`);
+                    return false;
+                  }
+                  const valid = isMaterialInValidBundesland(id);
+                  console.log(`  ${valid ? '✅' : '❌'} Material ${id}: ${material.title} | BL-Valid: ${valid}`);
+                  return valid;
                 });
+                
+                console.log(`📊 Ergebnis: ${nonSolutionMaterialIds.length} von ${allSelectedMaterialIds.length} Materialien werden angezeigt`);
                 
                 if (nonSolutionMaterialIds.length === 0) return null;
                 
