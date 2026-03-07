@@ -230,6 +230,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
   const [folderSearchTerm, setFolderSearchTerm] = useState('');
   const [materialSearchTerm, setMaterialSearchTerm] = useState('');
   const [legalAreaFilter, setLegalAreaFilter] = useState<string>('alle');
+  const [einheitenSearchQuery, setEinheitenSearchQuery] = useState<string>('');
   const [releaseLegalArea, setReleaseLegalArea] = useState<string>('');
   const [releaseUnitType, setReleaseUnitType] = useState<UnitType | ''>('');
   const [releaseStartTime, setReleaseStartTime] = useState<string>('09:00');
@@ -1079,19 +1080,45 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                   <h3 className="text-lg font-medium text-gray-900">Geplante Einheiten</h3>
                   <p className="text-sm text-gray-500 mt-1">Unterrichts- und Wiederholungseinheiten mit Materialien</p>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm text-gray-500">Rechtsgebiet:</span>
-                  <select value={legalAreaFilter} onChange={(e) => setLegalAreaFilter(e.target.value)} className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary">
-                    <option value="alle">Alle</option>
-                    <option value="Zivilrecht">Zivilrecht</option>
-                    <option value="Strafrecht">Strafrecht</option>
-                    <option value="Öffentliches Recht">Öffentliches Recht</option>
-                  </select>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                  {/* Search */}
+                  <div className="relative w-full sm:w-56">
+                    <input
+                      type="text"
+                      placeholder="Einheit suchen..."
+                      value={einheitenSearchQuery}
+                      onChange={(e) => setEinheitenSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    />
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                      <Search className="h-4 w-4 text-gray-400" />
+                    </div>
+                  </div>
+                  {/* Legal Area Filter */}
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-gray-500">Rechtsgebiet:</span>
+                    <select value={legalAreaFilter} onChange={(e) => setLegalAreaFilter(e.target.value)} className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                      <option value="alle">Alle</option>
+                      <option value="Zivilrecht">Zivilrecht</option>
+                      <option value="Strafrecht">Strafrecht</option>
+                      <option value="Öffentliches Recht">Öffentliches Recht</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>
             {(() => {
-              const einheitenReleases = filteredReleases.filter(r => r.event_type === 'einheit' && (legalAreaFilter === 'alle' || r.legal_area === legalAreaFilter));
+              let einheitenReleases = filteredReleases.filter(r => r.event_type === 'einheit' && (legalAreaFilter === 'alle' || r.legal_area === legalAreaFilter));
+              
+              // Apply search filter
+              if (einheitenSearchQuery.trim()) {
+                const query = einheitenSearchQuery.toLowerCase();
+                einheitenReleases = einheitenReleases.filter(r => 
+                  r.title.toLowerCase().includes(query) || 
+                  r.description?.toLowerCase().includes(query)
+                );
+              }
+              
               if (einheitenReleases.length === 0) {
                 return <div className="p-8 text-center"><Calendar className="h-12 w-12 text-gray-300 mx-auto mb-4" /><h4 className="text-lg font-medium text-gray-900 mb-2">Keine Einheiten geplant</h4><p className="text-gray-500">Klicken Sie auf ein Datum im Kalender, um Materialien für eine Einheit freizugeben.</p></div>;
               }
