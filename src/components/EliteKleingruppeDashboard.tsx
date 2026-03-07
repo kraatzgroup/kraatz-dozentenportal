@@ -135,6 +135,10 @@ export function EliteKleingruppeDashboard() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const releasesSubscription = useRef<RealtimeChannel | null>(null);
 
+  // Calendar filters
+  const [legalAreaFilter, setLegalAreaFilter] = useState<string>('alle');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
   useEffect(() => {
     fetchData();
     fetchTeilnehmerId();
@@ -1508,6 +1512,40 @@ export function EliteKleingruppeDashboard() {
                 </div>
               </div>
               
+              {/* Filter & Search */}
+              <div className="px-4 py-3 bg-gray-50 border-t border-b border-gray-200">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  {/* Search */}
+                  <div className="flex-1">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Einheit suchen..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      />
+                      <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Legal Area Filter */}
+                  <div className="sm:w-48">
+                    <select
+                      value={legalAreaFilter}
+                      onChange={(e) => setLegalAreaFilter(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white"
+                    >
+                      <option value="alle">Alle Rechtsgebiete</option>
+                      <option value="Zivilrecht">Zivilrecht</option>
+                      <option value="Strafrecht">Strafrecht</option>
+                      <option value="Öffentliches Recht">Öffentliches Recht</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              
               {/* Kalender Grid */}
               <div className="p-4">
                 <div className="grid grid-cols-7 gap-px bg-gray-200 rounded-lg overflow-hidden">
@@ -1533,12 +1571,27 @@ export function EliteKleingruppeDashboard() {
                       const dateStr = `${year}-${month}-${dayStr}`;
                       
                       const dayReleases = allReleases.filter(r => {
-                        // Exact match for single-day entries
-                        if (!r.end_date) {
-                          return r.release_date === dateStr;
+                        // Check date match
+                        const dateMatch = !r.end_date 
+                          ? r.release_date === dateStr 
+                          : dateStr >= r.release_date && dateStr <= r.end_date;
+                        
+                        if (!dateMatch) return false;
+                        
+                        // Apply legal area filter
+                        if (legalAreaFilter !== 'alle' && r.legal_area !== legalAreaFilter) {
+                          return false;
                         }
-                        // For date ranges, check if date falls within the range (inclusive)
-                        return dateStr >= r.release_date && dateStr <= r.end_date;
+                        
+                        // Apply search query filter
+                        if (searchQuery.trim()) {
+                          const query = searchQuery.toLowerCase();
+                          const titleMatch = r.title.toLowerCase().includes(query);
+                          const descMatch = r.description?.toLowerCase().includes(query) || false;
+                          return titleMatch || descMatch;
+                        }
+                        
+                        return true;
                       });
                       const isToday = date.getTime() === today.getTime();
                       const isPast = date < today;
