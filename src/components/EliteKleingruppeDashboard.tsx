@@ -876,7 +876,17 @@ export function EliteKleingruppeDashboard() {
                               strokeWidth="6" 
                               fill="none" 
                               strokeLinecap="round"
-                              strokeDasharray={`${getExamProgress() * 2.26} 226`}
+                              strokeDasharray={`${(() => {
+                                const today = new Date();
+                                today.setHours(0, 0, 0, 0);
+                                const completedReleases = allReleases.filter(r => {
+                                  const releaseDate = new Date(r.release_date);
+                                  releaseDate.setHours(0, 0, 0, 0);
+                                  return releaseDate <= today;
+                                });
+                                const progress = allReleases.length > 0 ? (completedReleases.length / allReleases.length) * 100 : 0;
+                                return Math.round(progress * 2.26);
+                              })()} 226`}
                             />
                             <defs>
                               <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -887,11 +897,20 @@ export function EliteKleingruppeDashboard() {
                           </svg>
                           <div className="absolute inset-0 flex items-center justify-center">
                             <span className="text-lg font-bold text-white">
-                              {getExamProgress()}%
+                              {(() => {
+                                const today = new Date();
+                                today.setHours(0, 0, 0, 0);
+                                const completedReleases = allReleases.filter(r => {
+                                  const releaseDate = new Date(r.release_date);
+                                  releaseDate.setHours(0, 0, 0, 0);
+                                  return releaseDate <= today;
+                                });
+                                return allReleases.length > 0 ? Math.round((completedReleases.length / allReleases.length) * 100) : 0;
+                              })()}%
                             </span>
                           </div>
                         </div>
-                        <p className="text-xs text-white/40">Fortschritt</p>
+                        <p className="text-xs text-white/40">Kursfortschritt</p>
                       </div>
                     </div>
                   </div>
