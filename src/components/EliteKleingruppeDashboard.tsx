@@ -168,7 +168,21 @@ export function EliteKleingruppeDashboard() {
         filter: `elite_kleingruppe_id=eq.${teilnehmerEliteKleingruppeId}`
       }, (payload) => {
         console.log('🔔 Releases change detected:', payload);
-        // Refresh data when any change occurs
+        
+        // Handle DELETE event specifically - check if the deleted unit was expanded
+        if (payload.eventType === 'DELETE' && payload.old?.id) {
+          console.log('🗑️ Unit deleted:', payload.old.id);
+          // If the deleted unit was expanded, collapse it
+          setExpandedRelease(current => {
+            if (current === payload.old.id) {
+              console.log('📂 Collapsing deleted unit');
+              return null;
+            }
+            return current;
+          });
+        }
+        
+        // Refresh data for all events (INSERT, UPDATE, DELETE)
         fetchData();
       })
       .subscribe((status) => {
