@@ -618,8 +618,7 @@ export function DozentenDashboard() {
   const bundeslaenderList = [
     'Baden-Württemberg',
     'Bayern',
-    'Berlin',
-    'Brandenburg',
+    'Berlin/Brandenburg',
     'Bremen',
     'Hamburg',
     'Hessen',

@@ -282,8 +282,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const bundeslaenderList = [
     'Baden-Württemberg',
     'Bayern',
-    'Berlin',
-    'Brandenburg',
+    'Berlin/Brandenburg',
     'Bremen',
     'Hamburg',
     'Hessen',

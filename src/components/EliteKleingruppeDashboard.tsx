@@ -115,6 +115,7 @@ export function EliteKleingruppeDashboard() {
   const [isUploading, setIsUploading] = useState(false);
   const [teilnehmerId, setTeilnehmerId] = useState<string | null>(null);
   const [teilnehmerEliteKleingruppeId, setTeilnehmerEliteKleingruppeId] = useState<string | null>(null);
+  const [teilnehmerStateLaw, setTeilnehmerStateLaw] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [selectedRecipient, setSelectedRecipient] = useState<string>('gruppe_zivilrecht');
@@ -307,10 +308,12 @@ export function EliteKleingruppeDashboard() {
   const fetchTeilnehmerId = async () => {
     if (!user) return;
     // Finde den Teilnehmer-Eintrag für diesen Benutzer basierend auf der E-Mail
-    const { data } = await supabase.from('teilnehmer').select('id, elite_kleingruppe_id').eq('email', user.email).single();
+    const { data } = await supabase.from('teilnehmer').select('id, elite_kleingruppe_id, state_law').eq('email', user.email).single();
     if (data) {
       setTeilnehmerId(data.id);
       setTeilnehmerEliteKleingruppeId(data.elite_kleingruppe_id);
+      setTeilnehmerStateLaw(data.state_law);
+      console.log('Teilnehmer geladen:', { id: data.id, state_law: data.state_law });
       fetchKlausuren(data.id);
     }
   };
@@ -390,6 +393,34 @@ export function EliteKleingruppeDashboard() {
     if (recipient === 'gruppe_oeffentliches_recht') return 'Elite-Kleingruppe Öffentl. Recht';
     const dozent = dozenten.find(d => d.id === recipient);
     return dozent ? dozent.name : 'Kontakt';
+  };
+
+  // Helper function to check if folder matches user's Bundesland
+  const isFolderMatchingUserState = (folderName: string, releaseTitle?: string): boolean => {
+    console.log('Filter check:', { folderName, releaseTitle, teilnehmerStateLaw });
+    
+    // For Klausur 14, show all materials regardless of Bundesland
+    if (releaseTitle && releaseTitle.includes('Klausur 14')) {
+      console.log('  -> Klausur 14, showing all');
+      return true;
+    }
+    
+    if (!teilnehmerStateLaw) {
+      console.log('  -> No state_law set, showing all');
+      return true; // Show all if no state is set
+    }
+    
+    // Handle Berlin/Brandenburg special case
+    if (teilnehmerStateLaw === 'Berlin' || teilnehmerStateLaw === 'Brandenburg') {
+      const matches = folderName === 'Berlin/Brandenburg' || folderName === 'Berlin/ Brandenburg';
+      console.log('  -> Berlin/Brandenburg check:', matches);
+      return matches;
+    }
+    
+    // Direct match
+    const matches = folderName === teilnehmerStateLaw;
+    console.log('  -> Direct match:', matches);
+    return matches;
   };
 
   const handleDownloadMaterial = async (material: TeachingMaterial) => {
@@ -2033,14 +2064,91 @@ export function EliteKleingruppeDashboard() {
                         <div className="flex items-center space-x-2">
                           <span className="text-xs text-gray-500">
                             {(() => {
+                              // Ordnerpfad eines Materials ermitteln
+                              const getMaterialFolderPath = (materialId: string): string[] => {
+                                const material = materials.find(m => m.id === materialId);
+                                if (!material?.folder_id) return [];
+                                const path: string[] = [];
+                                let currentFolderId: string | null = material.folder_id;
+                                while (currentFolderId) {
+                                  const folder = folders.find(f => f.id === currentFolderId);
+                                  if (!folder) break;
+                                  path.unshift(folder.name);
+                                  currentFolderId = folder.parent_id;
+                                }
+                                return path;
+                              };
+                              const allBundeslandFolderNames = [
+                                'Baden-Württemberg', 'BaWü', 'Bayern', 'Berlin', 'Brandenburg',
+                                'Berlin/Brandenburg', 'Berlin/ Brandenburg', 'Bremen', 'Hamburg', 'Hessen',
+                                'Mecklenburg-Vorpommern', 'MV', 'Niedersachsen', 'Nordrhein-Westfalen', 'NRW',
+                                'Rheinland-Pfalz', 'RP', 'Saarland', 'Sachsen', 'Sachsen-Anhalt',
+                                'Schleswig-Holstein', 'SH', 'Thüringen'
+                              ];
+                              const folderMatchesState = (folderName: string): boolean => {
+                                if (!teilnehmerStateLaw) return true;
+                                if (folderName === teilnehmerStateLaw) return true;
+                                if ((teilnehmerStateLaw === 'Berlin' || teilnehmerStateLaw === 'Brandenburg') && 
+                                    (folderName === 'Berlin/Brandenburg' || folderName === 'Berlin/ Brandenburg')) return true;
+                                return false;
+                              };
+                              const isMaterialInValidBundesland = (materialId: string): boolean => {
+                                if (!teilnehmerStateLaw) return true;
+                                const path = getMaterialFolderPath(materialId);
+                                const bundeslandFolderInPath = path.find(name => allBundeslandFolderNames.includes(name));
+                                if (!bundeslandFolderInPath) return true;
+                                return folderMatchesState(bundeslandFolderInPath);
+                              };
+                              
+                              // Zähle nur Materialien aus gefilterten Ordnern
+                              let visibleMaterialCount = 0;
+                              
+                              // Direkte Materialien
                               const allMaterialIds = [...new Set([...(release.material_ids || []), ...(release.solution_material_ids || [])])];
                               const nonSolutionCount = allMaterialIds.filter(id => {
                                 const material = materials.find(m => m.id === id);
                                 if (!material) return false;
                                 const title = material.title.toLowerCase();
-                                return !(title.includes('lösung') || title.includes('loesung') || title.includes('musterlösung') || title.includes('musterlosung'));
+                                if (title.includes('lösung') || title.includes('loesung') || title.includes('musterlösung') || title.includes('musterlosung')) return false;
+                                return isMaterialInValidBundesland(id);
                               }).length;
-                              return nonSolutionCount;
+                              visibleMaterialCount += nonSolutionCount;
+                              
+                              // Ordner-Materialien (nur gefilterte)
+                              const getAllMaterialsFromFolder = (folderId: string): string[] => {
+                                const result: string[] = [];
+                                const folderMaterials = materials.filter(m => m.folder_id === folderId);
+                                folderMaterials.forEach(m => {
+                                  if (!result.includes(m.id)) result.push(m.id);
+                                });
+                                const children = folders.filter(f => f.parent_id === folderId);
+                                children.forEach(child => {
+                                  const childMaterials = getAllMaterialsFromFolder(child.id);
+                                  childMaterials.forEach(id => {
+                                    if (!result.includes(id)) result.push(id);
+                                  });
+                                });
+                                return result;
+                              };
+                              
+                              release.folder_ids.forEach(folderId => {
+                                const folder = folders.find(f => f.id === folderId);
+                                if (!folder) return;
+                                // Filter by user's Bundesland
+                                if (!isFolderMatchingUserState(folder.name, release.title)) return;
+                                
+                                const folderMaterialIds = getAllMaterialsFromFolder(folderId);
+                                const folderNonSolutionCount = folderMaterialIds.filter(id => {
+                                  const material = materials.find(m => m.id === id);
+                                  if (!material) return false;
+                                  const title = material.title.toLowerCase();
+                                  if (title.includes('lösung') || title.includes('loesung') || title.includes('musterlösung') || title.includes('musterlosung')) return false;
+                                  return isMaterialInValidBundesland(id);
+                                }).length;
+                                visibleMaterialCount += folderNonSolutionCount;
+                              });
+                              
+                              return visibleMaterialCount;
                             })()} Materialien
                           </span>
                           {expandedRelease === release.id ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
@@ -2082,12 +2190,55 @@ export function EliteKleingruppeDashboard() {
                           <div className="space-y-2">
                             <h5 className="text-xs font-medium text-gray-500 uppercase tracking-wider">Materialien</h5>
                             {(() => {
+                              // Ordnerpfad eines Materials ermitteln
+                              const getMaterialFolderPath = (materialId: string): string[] => {
+                                const material = materials.find(m => m.id === materialId);
+                                if (!material?.folder_id) return [];
+                                const path: string[] = [];
+                                let currentFolderId: string | null = material.folder_id;
+                                while (currentFolderId) {
+                                  const folder = folders.find(f => f.id === currentFolderId);
+                                  if (!folder) break;
+                                  path.unshift(folder.name);
+                                  currentFolderId = folder.parent_id;
+                                }
+                                return path;
+                              };
+                              
+                              const allBundeslandFolderNames = [
+                                'Baden-Württemberg', 'BaWü', 'Bayern', 'Berlin', 'Brandenburg',
+                                'Berlin/Brandenburg', 'Berlin/ Brandenburg', 'Bremen', 'Hamburg', 'Hessen',
+                                'Mecklenburg-Vorpommern', 'MV', 'Niedersachsen', 'Nordrhein-Westfalen', 'NRW',
+                                'Rheinland-Pfalz', 'RP', 'Saarland', 'Sachsen', 'Sachsen-Anhalt',
+                                'Schleswig-Holstein', 'SH', 'Thüringen'
+                              ];
+                              
+                              const folderMatchesState = (folderName: string): boolean => {
+                                if (!teilnehmerStateLaw) return true;
+                                if (folderName === teilnehmerStateLaw) return true;
+                                if ((teilnehmerStateLaw === 'Berlin' || teilnehmerStateLaw === 'Brandenburg') && 
+                                    (folderName === 'Berlin/Brandenburg' || folderName === 'Berlin/ Brandenburg')) return true;
+                                return false;
+                              };
+                              
+                              const isMaterialInValidBundesland = (materialId: string): boolean => {
+                                if (!teilnehmerStateLaw) return true;
+                                const path = getMaterialFolderPath(materialId);
+                                const bundeslandFolderInPath = path.find(name => allBundeslandFolderNames.includes(name));
+                                if (!bundeslandFolderInPath) return true;
+                                return folderMatchesState(bundeslandFolderInPath);
+                              };
+                              
                               const allMaterialIds = [...new Set([...(release.material_ids || []), ...(release.solution_material_ids || [])])];
+                              
                               const nonSolutionIds = allMaterialIds.filter(id => {
                                 const material = materials.find(m => m.id === id);
                                 if (!material) return false;
+                                // Filtere Lösungen heraus
                                 const title = material.title.toLowerCase().normalize('NFC');
-                                return !(title.includes('lösung') || title.includes('loesung') || title.includes('musterlösung') || title.includes('musterlosung'));
+                                if (title.includes('lösung') || title.includes('loesung') || title.includes('musterlösung') || title.includes('musterlosung')) return false;
+                                // Filtere nach Bundesland
+                                return isMaterialInValidBundesland(id);
                               });
                               
                               return nonSolutionIds.map(id => {
@@ -2111,6 +2262,8 @@ export function EliteKleingruppeDashboard() {
                             {release.folder_ids.map(id => {
                               const folder = folders.find(f => f.id === id);
                               if (!folder) return null;
+                              // Filter by user's Bundesland (allow all for Klausur 14)
+                              if (!isFolderMatchingUserState(folder.name, release.title)) return null;
                               return (
                                 <div key={id} className="flex items-center p-3 bg-blue-50 rounded-lg">
                                   <FolderOpen className="h-5 w-5 text-blue-500 mr-3" />
@@ -2161,20 +2314,60 @@ export function EliteKleingruppeDashboard() {
                                 }
                                 
                                 // Hilfsfunktion: Prüfe ob Material eine Lösung ist
-                                    const isLoesungMaterial = (m: TeachingMaterial) => {
-                                      const title = m.title.toLowerCase().normalize('NFC');
-                                      return title.includes('lösung') || 
-                                             title.includes('loesung') || 
-                                             title.includes('musterlösung') ||
-                                             title.includes('musterlosung');
-                                    };
+                                const isLoesungMaterial = (m: TeachingMaterial) => {
+                                  const title = m.title.toLowerCase().normalize('NFC');
+                                  return title.includes('lösung') || 
+                                         title.includes('loesung') || 
+                                         title.includes('musterlösung') ||
+                                         title.includes('musterlosung');
+                                };
+                                
+                                // Ordnerpfad eines Materials ermitteln
+                                const getMaterialFolderPath = (materialId: string): string[] => {
+                                  const material = materials.find(m => m.id === materialId);
+                                  if (!material?.folder_id) return [];
+                                  const path: string[] = [];
+                                  let currentFolderId: string | null = material.folder_id;
+                                  while (currentFolderId) {
+                                    const folder = folders.find(f => f.id === currentFolderId);
+                                    if (!folder) break;
+                                    path.unshift(folder.name);
+                                    currentFolderId = folder.parent_id;
+                                  }
+                                  return path;
+                                };
+                                
+                                const allBundeslandFolderNames = [
+                                  'Baden-Württemberg', 'BaWü', 'Bayern', 'Berlin', 'Brandenburg',
+                                  'Berlin/Brandenburg', 'Berlin/ Brandenburg', 'Bremen', 'Hamburg', 'Hessen',
+                                  'Mecklenburg-Vorpommern', 'MV', 'Niedersachsen', 'Nordrhein-Westfalen', 'NRW',
+                                  'Rheinland-Pfalz', 'RP', 'Saarland', 'Sachsen', 'Sachsen-Anhalt',
+                                  'Schleswig-Holstein', 'SH', 'Thüringen'
+                                ];
+                                
+                                const folderMatchesState = (folderName: string): boolean => {
+                                  if (!teilnehmerStateLaw) return true;
+                                  if (folderName === teilnehmerStateLaw) return true;
+                                  if ((teilnehmerStateLaw === 'Berlin' || teilnehmerStateLaw === 'Brandenburg') && 
+                                      (folderName === 'Berlin/Brandenburg' || folderName === 'Berlin/ Brandenburg')) return true;
+                                  return false;
+                                };
+                                
+                                const isMaterialInValidBundesland = (materialId: string): boolean => {
+                                  if (!teilnehmerStateLaw) return true;
+                                  const path = getMaterialFolderPath(materialId);
+                                  const bundeslandFolderInPath = path.find(name => allBundeslandFolderNames.includes(name));
+                                  if (!bundeslandFolderInPath) return true;
+                                  return folderMatchesState(bundeslandFolderInPath);
+                                };
                                     
-                                    // Filtere nur Lösungen aus solution_material_ids
-                                    const actualSolutionIds = release.solution_material_ids.filter(id => {
-                                      const material = materials.find(m => m.id === id);
-                                      if (!material) return false;
-                                      return isLoesungMaterial(material);
-                                    });
+                                // Filtere nur Lösungen aus solution_material_ids UND nach Bundesland
+                                const actualSolutionIds = release.solution_material_ids.filter(id => {
+                                  const material = materials.find(m => m.id === id);
+                                  if (!material) return false;
+                                  if (!isLoesungMaterial(material)) return false;
+                                  return isMaterialInValidBundesland(id);
+                                });
                                     
                                     if (actualSolutionIds.length === 0) return null;
                                     
@@ -2508,30 +2701,15 @@ export function EliteKleingruppeDashboard() {
                 </div>
               )}
 
-              {/* Profilbild */}
+              {/* E-Mail Adresse */}
               <div className="mb-6">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Profilbild</h4>
-                <div className="flex items-center space-x-4">
-                  <div className="h-16 w-16 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center">
-                    {profilePictureUrl ? (
-                      <img src={profilePictureUrl} alt="Profilbild" className="h-full w-full object-cover" />
-                    ) : (
-                      <span className="text-2xl font-medium text-gray-400">{user?.email?.charAt(0).toUpperCase()}</span>
-                    )}
+                <h4 className="text-sm font-medium text-gray-700 mb-3">E-Mail Adresse</h4>
+                <div className="flex items-center space-x-3">
+                  <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <span className="text-lg font-medium text-primary">{user?.email?.charAt(0).toUpperCase()}</span>
                   </div>
                   <div>
-                    <label className="cursor-pointer">
-                      <span className="px-3 py-1.5 bg-primary text-white text-sm rounded-lg hover:bg-primary/90">
-                        {isUploadingProfilePic ? 'Wird hochgeladen...' : 'Bild ändern'}
-                      </span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleProfilePictureUpload}
-                        className="hidden"
-                        disabled={isUploadingProfilePic}
-                      />
-                    </label>
+                    <p className="text-sm text-gray-900">{user?.email}</p>
                   </div>
                 </div>
               </div>
@@ -2696,11 +2874,76 @@ export function EliteKleingruppeDashboard() {
                 
                 const allSelectedMaterialIds = [...new Set([...directMaterials, ...selectedKlausurMaterials])];
                 
-                // Filtere Lösungen heraus - NUR nach Titel
+                // Ordnerpfad eines Materials ermitteln (von unten nach oben)
+                const getMaterialFolderPath = (materialId: string): string[] => {
+                  const material = materials.find(m => m.id === materialId);
+                  if (!material?.folder_id) return [];
+                  
+                  const path: string[] = [];
+                  let currentFolderId: string | null = material.folder_id;
+                  
+                  while (currentFolderId) {
+                    const folder = folders.find(f => f.id === currentFolderId);
+                    if (!folder) break;
+                    path.unshift(folder.name);
+                    currentFolderId = folder.parent_id;
+                  }
+                  
+                  return path;
+                };
+                
+                // Liste aller bekannten Bundesland-Ordnernamen
+                const allBundeslandFolderNames = [
+                  'Baden-Württemberg', 'BaWü', 'Bayern', 'Berlin', 'Brandenburg',
+                  'Berlin/Brandenburg', 'Berlin/ Brandenburg', 'Bremen', 'Hamburg', 'Hessen',
+                  'Mecklenburg-Vorpommern', 'MV', 'Niedersachsen', 'Nordrhein-Westfalen', 'NRW',
+                  'Rheinland-Pfalz', 'RP', 'Saarland', 'Sachsen', 'Sachsen-Anhalt',
+                  'Schleswig-Holstein', 'SH', 'Thüringen'
+                ];
+                
+                // Prüfe ob ein Ordnername zum Bundesland des Teilnehmers passt
+                const folderMatchesState = (folderName: string): boolean => {
+                  if (!teilnehmerStateLaw) return true;
+                  if (folderName === teilnehmerStateLaw) return true;
+                  // Sonderfall Berlin/Brandenburg
+                  if ((teilnehmerStateLaw === 'Berlin' || teilnehmerStateLaw === 'Brandenburg') && 
+                      (folderName === 'Berlin/Brandenburg' || folderName === 'Berlin/ Brandenburg')) return true;
+                  return false;
+                };
+                
+                // Prüfe ob Material im passenden Bundesland-Ordner liegt
+                const isMaterialInValidBundesland = (materialId: string): boolean => {
+                  if (!teilnehmerStateLaw) return true;
+                  
+                  const path = getMaterialFolderPath(materialId);
+                  
+                  // Prüfe ob irgendein Ordner im Pfad ein Bundesland-Ordner ist
+                  const bundeslandFolderInPath = path.find(name => allBundeslandFolderNames.includes(name));
+                  
+                  // Kein Bundesland-Ordner im Pfad → allgemeines Material → anzeigen
+                  if (!bundeslandFolderInPath) return true;
+                  
+                  // Bundesland-Ordner gefunden → nur anzeigen wenn er zum Teilnehmer passt
+                  return folderMatchesState(bundeslandFolderInPath);
+                };
+                
+                console.log('🔍 DETAIL-MODAL BUNDESLAND-FILTER:', {
+                  releaseTitle: selectedReleaseForDetail.title,
+                  teilnehmerStateLaw,
+                  totalMaterials: allSelectedMaterialIds.length,
+                  totalFolders: folders.length,
+                  sampleMaterials: allSelectedMaterialIds.slice(0, 3).map(id => {
+                    const m = materials.find(x => x.id === id);
+                    return { title: m?.title, folder_id: m?.folder_id, path: getMaterialFolderPath(id) };
+                  })
+                });
+                
+                // Filtere Lösungen heraus - NUR nach Titel UND Bundesland
                 const nonSolutionMaterialIds = allSelectedMaterialIds.filter(id => {
                   const material = materials.find(m => m.id === id);
                   if (!material) return false;
-                  return !isLoesungMaterial(material);
+                  if (isLoesungMaterial(material)) return false;
+                  return isMaterialInValidBundesland(id);
                 });
                 
                 if (nonSolutionMaterialIds.length === 0) return null;
@@ -2743,6 +2986,8 @@ export function EliteKleingruppeDashboard() {
                     {selectedReleaseForDetail.folder_ids.map(id => {
                       const folder = folders.find(f => f.id === id);
                       if (!folder) return null;
+                      // Filter by user's Bundesland (allow all for Klausur 14)
+                      if (!isFolderMatchingUserState(folder.name, selectedReleaseForDetail.title)) return null;
                       return (
                         <div key={id} className="flex items-center p-3 bg-blue-50 rounded-lg border border-blue-200">
                           <FolderOpen className="h-5 w-5 text-blue-500 mr-3 flex-shrink-0" />
@@ -2774,11 +3019,51 @@ export function EliteKleingruppeDashboard() {
                 
                 const allSelectedMaterialIds = [...new Set([...directMaterials, ...selectedKlausurMaterials])];
                 
-                // Finde alle Lösungen NUR nach Titel aus den ausgewählten Materialien
+                // Ordnerpfad eines Materials ermitteln
+                const getMaterialFolderPath = (materialId: string): string[] => {
+                  const material = materials.find(m => m.id === materialId);
+                  if (!material?.folder_id) return [];
+                  const path: string[] = [];
+                  let currentFolderId: string | null = material.folder_id;
+                  while (currentFolderId) {
+                    const folder = folders.find(f => f.id === currentFolderId);
+                    if (!folder) break;
+                    path.unshift(folder.name);
+                    currentFolderId = folder.parent_id;
+                  }
+                  return path;
+                };
+                
+                const allBundeslandFolderNames = [
+                  'Baden-Württemberg', 'BaWü', 'Bayern', 'Berlin', 'Brandenburg',
+                  'Berlin/Brandenburg', 'Berlin/ Brandenburg', 'Bremen', 'Hamburg', 'Hessen',
+                  'Mecklenburg-Vorpommern', 'MV', 'Niedersachsen', 'Nordrhein-Westfalen', 'NRW',
+                  'Rheinland-Pfalz', 'RP', 'Saarland', 'Sachsen', 'Sachsen-Anhalt',
+                  'Schleswig-Holstein', 'SH', 'Thüringen'
+                ];
+                
+                const folderMatchesState = (folderName: string): boolean => {
+                  if (!teilnehmerStateLaw) return true;
+                  if (folderName === teilnehmerStateLaw) return true;
+                  if ((teilnehmerStateLaw === 'Berlin' || teilnehmerStateLaw === 'Brandenburg') && 
+                      (folderName === 'Berlin/Brandenburg' || folderName === 'Berlin/ Brandenburg')) return true;
+                  return false;
+                };
+                
+                const isMaterialInValidBundesland = (materialId: string): boolean => {
+                  if (!teilnehmerStateLaw) return true;
+                  const path = getMaterialFolderPath(materialId);
+                  const bundeslandFolderInPath = path.find(name => allBundeslandFolderNames.includes(name));
+                  if (!bundeslandFolderInPath) return true;
+                  return folderMatchesState(bundeslandFolderInPath);
+                };
+                
+                // Finde alle Lösungen NUR nach Titel aus den ausgewählten Materialien UND filtere nach Bundesland
                 const solutionIds = allSelectedMaterialIds.filter(id => {
                   const material = materials.find(m => m.id === id);
                   if (!material) return false;
-                  return isLoesungMaterial(material);
+                  if (!isLoesungMaterial(material)) return false;
+                  return isMaterialInValidBundesland(id);
                 });
                 
                 if (solutionIds.length === 0) return null;

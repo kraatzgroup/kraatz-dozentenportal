@@ -1931,9 +1931,49 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                       <label className="block text-sm font-medium text-blue-800 mb-2">
                         📁 Dokumente aus: {selectedFolder?.name || 'Gewählter Ordner'}
                       </label>
-                      <p className="text-xs text-blue-600 mb-3">
-                        Wählen Sie die Dokumente aus, die Sie mit den Studenten teilen möchten.
-                      </p>
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-xs text-blue-600">
+                          Wählen Sie die Dokumente aus, die Sie mit den Studenten teilen möchten.
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              // Alle Materialien auswählen (direkte + aus Unterordnern)
+                              const allMaterialIds: string[] = [];
+                              
+                              // Direkte Materialien
+                              directMaterials.forEach(m => allMaterialIds.push(m.id));
+                              
+                              // Rekursive Funktion um alle Materialien aus Unterordnern zu holen
+                              const getAllMaterialsFromFolder = (folderId: string): void => {
+                                const folderMaterials = materials.filter(m => m.folder_id === folderId);
+                                folderMaterials.forEach(m => {
+                                  if (!allMaterialIds.includes(m.id)) {
+                                    allMaterialIds.push(m.id);
+                                  }
+                                });
+                                const children = folders.filter(f => f.parent_id === folderId);
+                                children.forEach(child => getAllMaterialsFromFolder(child.id));
+                              };
+                              
+                              uniqueFolders.forEach(folder => getAllMaterialsFromFolder(folder.id));
+                              
+                              setReleaseSolutionMaterialIds(allMaterialIds);
+                            }}
+                            className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
+                          >
+                            Alle auswählen
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setReleaseSolutionMaterialIds([])}
+                            className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                          >
+                            Alle abwählen
+                          </button>
+                        </div>
+                      </div>
                       
                       {/* Direkte Materialien im Ordner */}
                       {directMaterials.length > 0 && (
