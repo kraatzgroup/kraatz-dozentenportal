@@ -143,25 +143,6 @@ export function EliteKleingruppeDashboard() {
     fetchProfileData();
     fetchCourseTimes();
 
-    // Setup real-time subscription for releases
-    const setupRealtimeSubscription = () => {
-      console.log('🔔 Setting up releases real-time subscription for participant');
-      releasesSubscription.current = supabase
-        .channel('elite-kleingruppe-releases-participant')
-        .on('postgres_changes', {
-          event: '*',
-          schema: 'public',
-          table: 'elite_kleingruppe_releases'
-        }, (payload) => {
-          console.log('🔔 Releases change detected for participant:', payload);
-          // Refresh data when any change occurs
-          fetchData();
-        })
-        .subscribe();
-    };
-
-    setupRealtimeSubscription();
-
     // Cleanup function
     return () => {
       if (releasesSubscription.current) {
@@ -171,6 +152,36 @@ export function EliteKleingruppeDashboard() {
       }
     };
   }, [user]);
+
+  // Setup real-time subscription when group ID is available
+  useEffect(() => {
+    if (!teilnehmerEliteKleingruppeId) return;
+
+    console.log('🔔 Setting up releases real-time subscription for group:', teilnehmerEliteKleingruppeId);
+    
+    releasesSubscription.current = supabase
+      .channel(`elite-kleingruppe-releases-${teilnehmerEliteKleingruppeId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'elite_kleingruppe_releases',
+        filter: `elite_kleingruppe_id=eq.${teilnehmerEliteKleingruppeId}`
+      }, (payload) => {
+        console.log('🔔 Releases change detected:', payload);
+        // Refresh data when any change occurs
+        fetchData();
+      })
+      .subscribe((status) => {
+        console.log('🔔 Subscription status:', status);
+      });
+
+    return () => {
+      if (releasesSubscription.current) {
+        releasesSubscription.current.unsubscribe();
+        releasesSubscription.current = null;
+      }
+    };
+  }, [teilnehmerEliteKleingruppeId]);
 
   const fetchCourseTimes = async () => {
     const { data } = await supabase.from('elite_course_times').select('*').eq('is_active', true).order('weekday').order('start_time');
