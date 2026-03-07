@@ -1817,7 +1817,7 @@ export function EliteKleingruppeDashboard() {
                               const nonSolutionIds = allMaterialIds.filter(id => {
                                 const material = materials.find(m => m.id === id);
                                 if (!material) return false;
-                                const title = material.title.toLowerCase();
+                                const title = material.title.toLowerCase().normalize('NFC');
                                 return !(title.includes('lösung') || title.includes('loesung') || title.includes('musterlösung') || title.includes('musterlosung'));
                               });
                               
