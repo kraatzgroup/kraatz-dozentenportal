@@ -318,6 +318,48 @@ export function EliteKleingruppeDashboard() {
     }
   };
 
+  // Load missing materials when detail modal opens
+  useEffect(() => {
+    if (!selectedReleaseForDetail) return;
+    
+    const allIds = [
+      ...(selectedReleaseForDetail.material_ids || []),
+      ...(selectedReleaseForDetail.solution_material_ids || [])
+    ];
+    
+    // Find IDs not in current materials state
+    const missingIds = allIds.filter(id => !materials.find(m => m.id === id));
+    
+    if (missingIds.length === 0) return;
+    
+    console.log('📥 Loading missing materials:', missingIds.length, 'IDs');
+    
+    // Load missing materials in batches of 100 (Supabase limit workaround)
+    const loadMissingMaterials = async () => {
+      const newMaterials: TeachingMaterial[] = [];
+      
+      for (let i = 0; i < missingIds.length; i += 100) {
+        const batch = missingIds.slice(i, i + 100);
+        const { data } = await supabase
+          .from('teaching_materials')
+          .select('id, title, file_url, file_name, file_type, folder_id')
+          .in('id', batch)
+          .eq('is_active', true);
+        
+        if (data) {
+          newMaterials.push(...data);
+        }
+      }
+      
+      if (newMaterials.length > 0) {
+        console.log('✅ Loaded', newMaterials.length, 'missing materials');
+        setMaterials(prev => [...prev, ...newMaterials]);
+      }
+    };
+    
+    loadMissingMaterials();
+  }, [selectedReleaseForDetail?.id]);
+
   const fetchData = async () => {
     setIsLoading(true);
     try {
