@@ -639,7 +639,6 @@ export function EliteKleingruppeDashboard() {
                   title="Nächste Einheit"
                 >
                   <Calendar className="h-3.5 w-3.5 mr-1" />
-                  <span className="hidden sm:inline">{allReleases.filter(r => !r.is_released).length} geplant</span>
                 </button>
               )}
               {/* Nachrichten */}
