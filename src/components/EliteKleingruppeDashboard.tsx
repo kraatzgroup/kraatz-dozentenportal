@@ -958,36 +958,63 @@ export function EliteKleingruppeDashboard() {
               <div className="lg:col-span-2 bg-white rounded-xl shadow p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Dein Kursfortschritt</h3>
                 
-                {/* Gesamtfortschritt */}
-                <div className="mb-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-700">Gesamtfortschritt</span>
-                    <span className="text-sm font-bold text-primary">
-                      {allReleases.length > 0 ? Math.round((releases.length / allReleases.length) * 100) : 0}%
-                    </span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-4">
-                    <div 
-                      className="bg-gradient-to-r from-primary to-blue-500 h-4 rounded-full transition-all duration-500"
-                      style={{ width: `${allReleases.length > 0 ? (releases.length / allReleases.length) * 100 : 0}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">{releases.length} von {allReleases.length} Einheiten freigeschaltet</p>
-                </div>
+                {/* Gesamtfortschritt - zeitbasiert */}
+                {(() => {
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  
+                  // Filter releases that have already occurred (date <= today)
+                  const completedReleases = allReleases.filter(r => {
+                    const releaseDate = new Date(r.release_date);
+                    releaseDate.setHours(0, 0, 0, 0);
+                    return releaseDate <= today;
+                  });
+                  
+                  const totalReleases = allReleases.length;
+                  const progress = totalReleases > 0 ? (completedReleases.length / totalReleases) * 100 : 0;
+                  
+                  return (
+                    <div className="mb-6">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-700">Gesamtfortschritt</span>
+                        <span className="text-sm font-bold text-primary">
+                          {Math.round(progress)}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-4">
+                        <div 
+                          className="bg-gradient-to-r from-primary to-blue-500 h-4 rounded-full transition-all duration-500"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {completedReleases.length} von {totalReleases} Einheiten absolviert
+                      </p>
+                    </div>
+                  );
+                })()}
 
-                {/* Fortschritt nach Rechtsgebiet */}
+                {/* Fortschritt nach Rechtsgebiet - zeitbasiert */}
                 <div className="space-y-4">
                   {['Zivilrecht', 'Strafrecht', 'Öffentliches Recht'].map(area => {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    
                     const areaReleases = allReleases.filter(r => r.legal_area === area);
-                    const areaReleased = releases.filter(r => r.legal_area === area);
-                    const progress = areaReleases.length > 0 ? (areaReleased.length / areaReleases.length) * 100 : 0;
+                    const areaCompleted = areaReleases.filter(r => {
+                      const releaseDate = new Date(r.release_date);
+                      releaseDate.setHours(0, 0, 0, 0);
+                      return releaseDate <= today;
+                    });
+                    
+                    const progress = areaReleases.length > 0 ? (areaCompleted.length / areaReleases.length) * 100 : 0;
                     const colors = area === 'Zivilrecht' ? 'from-blue-500 to-blue-600' : area === 'Strafrecht' ? 'from-red-500 to-red-600' : 'from-green-500 to-green-600';
                     
                     return (
                       <div key={area}>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-sm text-gray-600">{area}</span>
-                          <span className="text-xs text-gray-500">{areaReleased.length}/{areaReleases.length}</span>
+                          <span className="text-xs text-gray-500">{areaCompleted.length}/{areaReleases.length}</span>
                         </div>
                         <div className="w-full bg-gray-100 rounded-full h-2">
                           <div 
