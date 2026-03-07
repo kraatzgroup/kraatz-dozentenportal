@@ -139,8 +139,9 @@ export function EliteKleingruppeDashboard() {
   const [legalAreaFilter, setLegalAreaFilter] = useState<string>('alle');
   const [searchQuery, setSearchQuery] = useState<string>('');
   
-  // Materials search
+  // Materials search and filter
   const [materialsSearchQuery, setMaterialsSearchQuery] = useState<string>('');
+  const [materialsLegalAreaFilter, setMaterialsLegalAreaFilter] = useState<string>('alle');
 
   useEffect(() => {
     fetchData();
@@ -1848,9 +1849,21 @@ export function EliteKleingruppeDashboard() {
                     <h2 className="text-lg font-medium text-gray-900">Freigegebene Einheiten</h2>
                     <p className="text-sm text-gray-500 mt-1">Hier findest du alle für dich freigegebenen Materialien</p>
                   </div>
-                  {/* Search */}
-                  <div className="sm:w-72">
-                    <div className="relative">
+                  {/* Search and Filter */}
+                  <div className="flex flex-col sm:flex-row gap-3 sm:w-auto">
+                    {/* Legal Area Filter */}
+                    <select
+                      value={materialsLegalAreaFilter}
+                      onChange={(e) => setMaterialsLegalAreaFilter(e.target.value)}
+                      className="w-full sm:w-44 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white"
+                    >
+                      <option value="alle">Alle Rechtsgebiete</option>
+                      <option value="Zivilrecht">Zivilrecht</option>
+                      <option value="Strafrecht">Strafrecht</option>
+                      <option value="Öffentliches Recht">Öffentliches Recht</option>
+                    </select>
+                    {/* Search */}
+                    <div className="relative sm:w-56">
                       <input
                         type="text"
                         placeholder="Einheit suchen..."
@@ -1868,13 +1881,17 @@ export function EliteKleingruppeDashboard() {
               {(() => {
                 let einheitenReleases = releases.filter(r => r.event_type === 'einheit');
                 
+                // Apply legal area filter
+                if (materialsLegalAreaFilter !== 'alle') {
+                  einheitenReleases = einheitenReleases.filter(r => r.legal_area === materialsLegalAreaFilter);
+                }
+                
                 // Apply search filter
                 if (materialsSearchQuery.trim()) {
                   const query = materialsSearchQuery.toLowerCase();
                   einheitenReleases = einheitenReleases.filter(r => 
                     r.title.toLowerCase().includes(query) || 
-                    r.description?.toLowerCase().includes(query) ||
-                    r.legal_area?.toLowerCase().includes(query)
+                    r.description?.toLowerCase().includes(query)
                   );
                 }
                 if (einheitenReleases.length === 0) {
