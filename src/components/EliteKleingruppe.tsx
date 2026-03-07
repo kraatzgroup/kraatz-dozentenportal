@@ -457,9 +457,23 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
   const dayNames = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year: number, month: number) => { const day = new Date(year, month, 1).getDay(); return day === 0 ? 6 : day - 1; };
-  const filteredReleases = scheduledReleases.filter(r => 
-    !selectedEliteGroupId || (r as any).elite_kleingruppe_id === selectedEliteGroupId
-  );
+  const filteredReleases = scheduledReleases.filter(r => {
+    // Filter by elite group
+    if (selectedEliteGroupId && (r as any).elite_kleingruppe_id !== selectedEliteGroupId) {
+      return false;
+    }
+    
+    // For non-admin users (Dozenten), only show units in their assigned legal areas
+    if (!isAdmin && dozentLegalAreas.length > 0) {
+      // Show if the release has a legal_area that matches one of the dozent's areas
+      // OR if it's not a unit (einheit) - e.g., ferien, etc. are shown to all
+      if (r.event_type === 'einheit' && r.legal_area && !dozentLegalAreas.includes(r.legal_area)) {
+        return false;
+      }
+    }
+    
+    return true;
+  });
 
   // OPTIMIZED: Create a release lookup map for O(1) date access
   const releasesByDate = useMemo(() => {
