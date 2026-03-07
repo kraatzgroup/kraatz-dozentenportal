@@ -138,6 +138,9 @@ export function EliteKleingruppeDashboard() {
   // Calendar filters
   const [legalAreaFilter, setLegalAreaFilter] = useState<string>('alle');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  
+  // Materials search
+  const [materialsSearchQuery, setMaterialsSearchQuery] = useState<string>('');
 
   useEffect(() => {
     fetchData();
@@ -1840,11 +1843,40 @@ export function EliteKleingruppeDashboard() {
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow">
               <div className="p-4 border-b border-gray-200">
-                <h2 className="text-lg font-medium text-gray-900">Freigegebene Einheiten</h2>
-                <p className="text-sm text-gray-500 mt-1">Hier findest du alle für dich freigegebenen Materialien</p>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-medium text-gray-900">Freigegebene Einheiten</h2>
+                    <p className="text-sm text-gray-500 mt-1">Hier findest du alle für dich freigegebenen Materialien</p>
+                  </div>
+                  {/* Search */}
+                  <div className="sm:w-72">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Einheit suchen..."
+                        value={materialsSearchQuery}
+                        onChange={(e) => setMaterialsSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      />
+                      <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
               {(() => {
-                const einheitenReleases = releases.filter(r => r.event_type === 'einheit');
+                let einheitenReleases = releases.filter(r => r.event_type === 'einheit');
+                
+                // Apply search filter
+                if (materialsSearchQuery.trim()) {
+                  const query = materialsSearchQuery.toLowerCase();
+                  einheitenReleases = einheitenReleases.filter(r => 
+                    r.title.toLowerCase().includes(query) || 
+                    r.description?.toLowerCase().includes(query) ||
+                    r.legal_area?.toLowerCase().includes(query)
+                  );
+                }
                 if (einheitenReleases.length === 0) {
                   return (
                     <div className="p-8 text-center">
