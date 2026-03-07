@@ -2928,6 +2928,26 @@ export function EliteKleingruppeDashboard() {
                   return folderMatchesState(bundeslandFolderInPath);
                 };
                 
+                // Debug: Prüfe ID-Typen und Vergleich
+                const testId = 'a6c27140-3fb1-462a-8217-a79c355350b0';
+                const foundById = materials.find(m => m.id === testId);
+                const foundByString = materials.find(m => String(m.id) === testId);
+                const foundByLoose = materials.find(m => m.id == testId);
+                
+                console.log('🔬 ID-DIAGNOSE:', {
+                  materialsCount: materials.length,
+                  firstMaterialId: materials[0]?.id,
+                  firstMaterialIdType: typeof materials[0]?.id,
+                  testId,
+                  testIdType: typeof testId,
+                  foundById: foundById?.title || 'nicht gefunden',
+                  foundByString: foundByString?.title || 'nicht gefunden',
+                  foundByLoose: foundByLoose?.title || 'nicht gefunden',
+                  directCompare: materials[0]?.id === testId,
+                  stringCompare: String(materials[0]?.id) === testId,
+                  looseCompare: materials[0]?.id == testId,
+                });
+                
                 console.log('🔍 DETAIL-MODAL BUNDESLAND-FILTER:', {
                   releaseTitle: selectedReleaseForDetail.title,
                   releaseId: selectedReleaseForDetail.id,
@@ -2937,14 +2957,16 @@ export function EliteKleingruppeDashboard() {
                   directMaterialIds: selectedReleaseForDetail.material_ids,
                   solutionMaterialIds: selectedReleaseForDetail.solution_material_ids,
                   allSelectedMaterialIds,
-                  sampleMaterials: allSelectedMaterialIds.map(id => {
+                  sampleMaterials: allSelectedMaterialIds.slice(0, 5).map(id => {
                     const m = materials.find(x => x.id === id);
                     const path = getMaterialFolderPath(id);
                     const isLoesung = m ? isLoesungMaterial(m) : false;
                     const isValidBL = isMaterialInValidBundesland(id);
                     return { 
                       id, 
+                      idType: typeof id,
                       title: m?.title, 
+                      found: !!m,
                       folder_id: m?.folder_id, 
                       path,
                       isLoesung,
