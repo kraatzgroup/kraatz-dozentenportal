@@ -1858,30 +1858,64 @@ export function EliteKleingruppeDashboard() {
                                 <Award className="h-3.5 w-3.5 mr-1" />
                                 Lösungen
                               </h5>
-                              {release.solutions_released ? (
-                                release.solution_material_ids.map(id => {
-                                  const material = materials.find(m => m.id === id);
-                                  if (!material) return null;
-                                  return (
-                                    <a
-                                      key={id}
-                                      href={material.file_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="flex items-center p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors border border-yellow-200"
-                                    >
-                                      <FileText className="h-5 w-5 text-yellow-600 mr-3" />
-                                      <span className="text-sm text-gray-900 flex-1">{material.title}</span>
-                                      <Download className="h-4 w-4 text-yellow-600" />
-                                    </a>
-                                  );
-                                })
-                              ) : (
-                                <div className="flex items-center p-3 bg-gray-100 rounded-lg text-gray-500">
-                                  <Lock className="h-5 w-5 mr-3" />
-                                  <span className="text-sm">Lösungen werden nach Ende des Termins freigeschaltet</span>
-                                </div>
-                              )}
+                              {(() => {
+                                // Hilfsfunktion: Prüfe ob aktuelle Zeit (Berlin) nach der Release-Zeit ist
+                                const isReleaseTimeReached = (dateStr: string, timeStr: string): boolean => {
+                                  const now = new Date();
+                                  const berlinNowStr = now.toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' });
+                                  const [berlinDate, berlinTime] = berlinNowStr.split(' ');
+                                  const [berlinHour, berlinMin] = berlinTime.split(':').map(Number);
+                                  const [releaseHour, releaseMin] = timeStr.split(':').map(Number);
+                                  
+                                  if (dateStr !== berlinDate) {
+                                    return new Date(berlinDate) >= new Date(dateStr);
+                                  }
+                                  if (berlinHour > releaseHour) return true;
+                                  if (berlinHour < releaseHour) return false;
+                                  return berlinMin >= releaseMin;
+                                };
+                                
+                                let canShowSolutions = release.solutions_released;
+                                
+                                if (!canShowSolutions) {
+                                  if (release.solution_release_date) {
+                                    canShowSolutions = isReleaseTimeReached(
+                                      release.solution_release_date,
+                                      release.solution_release_time || '00:00'
+                                    );
+                                  } else if (release.end_time) {
+                                    canShowSolutions = isReleaseTimeReached(
+                                      release.release_date,
+                                      release.end_time
+                                    );
+                                  }
+                                }
+                                
+                                return canShowSolutions ? (
+                                  release.solution_material_ids.map(id => {
+                                    const material = materials.find(m => m.id === id);
+                                    if (!material) return null;
+                                    return (
+                                      <a
+                                        key={id}
+                                        href={material.file_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors border border-yellow-200"
+                                      >
+                                        <FileText className="h-5 w-5 text-yellow-600 mr-3" />
+                                        <span className="text-sm text-gray-900 flex-1">{material.title}</span>
+                                        <Download className="h-4 w-4 text-yellow-600" />
+                                      </a>
+                                    );
+                                  })
+                                ) : (
+                                  <div className="flex items-center p-3 bg-gray-100 rounded-lg text-gray-500">
+                                    <Lock className="h-5 w-5 mr-3" />
+                                    <span className="text-sm">Lösungen werden nach Ende des Termins freigeschaltet</span>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           )}
                         </div>
