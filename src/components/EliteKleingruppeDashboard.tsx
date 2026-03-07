@@ -1416,6 +1416,21 @@ export function EliteKleingruppeDashboard() {
                       <p className="text-xs text-gray-500">Zur Korrektur hochladen</p>
                     </div>
                   </button>
+                  
+                  <a 
+                    href="https://member.kraatz-club.de/auth/login"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full flex items-center p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <div className="flex-shrink-0 p-2 bg-indigo-100 rounded-lg">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+                    </div>
+                    <div className="ml-3 text-left">
+                      <p className="text-sm font-medium text-gray-900">Zum Kraatz Club</p>
+                      <p className="text-xs text-gray-500">Deine digitale Lernplattform</p>
+                    </div>
+                  </a>
                 </div>
               </div>
             </div>
