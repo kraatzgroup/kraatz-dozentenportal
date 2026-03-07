@@ -3139,18 +3139,33 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                 </div>
               </div>
 
-              <div className="mt-6 flex justify-end space-x-3">
-                <button onClick={() => { setShowEditModal(false); setEditingRelease(null); }} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
-                  Abbrechen
-                </button>
+              <div className="mt-6 flex justify-between items-center">
                 <button 
-                  onClick={handleUpdateRelease} 
-                  disabled={!releaseTitle.trim() || !releaseUnitType} 
-                  className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => {
+                    if (editingRelease && confirm(`Möchten Sie die Einheit "${editingRelease.title}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) {
+                      handleDeleteRelease(editingRelease);
+                      setShowEditModal(false);
+                      setEditingRelease(null);
+                    }
+                  }} 
+                  className="px-4 py-2 text-red-700 bg-red-100 rounded-lg hover:bg-red-200 flex items-center"
                 >
-                  <Save className="h-4 w-4 inline mr-1" />
-                  Änderungen speichern
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Löschen
                 </button>
+                <div className="flex space-x-3">
+                  <button onClick={() => { setShowEditModal(false); setEditingRelease(null); }} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
+                    Abbrechen
+                  </button>
+                  <button 
+                    onClick={handleUpdateRelease} 
+                    disabled={!releaseTitle.trim() || !releaseUnitType} 
+                    className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Save className="h-4 w-4 inline mr-1" />
+                    Änderungen speichern
+                  </button>
+                </div>
               </div>
             </div>
           </div>
