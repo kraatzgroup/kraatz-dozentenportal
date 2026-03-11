@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { UserPlus, Key, Loader2, AlertCircle, ArrowLeft, Pencil, Trash2, Download, Calendar } from 'lucide-react';
+import { UserPlus, Key, Loader2, AlertCircle, ArrowLeft, Pencil, Trash2, Download, Calendar, Search, Mail, Bell, MessageSquare, LogOut, Menu, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useUserStore, User } from '../store/userStore';
+import { useAuthStore } from '../store/authStore';
+import { useChatStore } from '../store/chatStore';
 import { ProfilePicture } from './ProfilePicture';
 import { Logo } from './Logo';
 import { DozentForm } from './DozentForm';
+import { TeilnehmerForm } from './TeilnehmerForm';
 import { supabase } from '../lib/supabase';
 
 interface DialogState {
@@ -15,6 +18,8 @@ interface DialogState {
     fullName: string;
     password?: string;
     role?: string;
+    additional_roles?: string[];
+    eliteKleingruppe?: string;
   };
 }
 
@@ -25,6 +30,8 @@ interface ConfirmationState {
   confirmText: string;
   onConfirm: () => void;
   isDestructive?: boolean;
+  requireNameConfirmation?: boolean;
+  nameToConfirm?: string;
 }
 
 interface CreateUserResponse {
@@ -38,6 +45,8 @@ interface CreateUserResponse {
 
 export function UserManagement() {
   const navigate = useNavigate();
+  const { signOut } = useAuthStore();
+  const { unreadCount, fetchUnreadCount } = useChatStore();
   const { users, isLoading, error, fetchUsers, createUser, updateUser, deleteUser, resetPassword } = useUserStore();
   const [localError, setLocalError] = useState<string | null>(null);
   const [localLoading, setLocalLoading] = useState(false);
@@ -52,17 +61,64 @@ export function UserManagement() {
   const [checkResult, setCheckResult] = useState<any>(null);
   const [showDozentForm, setShowDozentForm] = useState(false);
   const [selectedDozentForEdit, setSelectedDozentForEdit] = useState<any>(null);
+  const [showTeilnehmerForm, setShowTeilnehmerForm] = useState(false);
+  const [selectedTeilnehmerForEdit, setSelectedTeilnehmerForEdit] = useState<any>(null);
+  const [dozenten, setDozenten] = useState<{ id: string; full_name: string }[]>([]);
   const [confirmation, setConfirmation] = useState<ConfirmationState>({
     show: false,
     title: '',
     message: '',
     confirmText: '',
     onConfirm: () => {},
-    isDestructive: false
+    isDestructive: false,
+    requireNameConfirmation: false,
+    nameToConfirm: ''
   });
+  const [confirmationInput, setConfirmationInput] = useState('');
+  const [showRoleSelection, setShowRoleSelection] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [eliteTeilnehmerIds, setEliteTeilnehmerIds] = useState<Set<string>>(new Set());
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [eliteKleingruppen, setEliteKleingruppen] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
     fetchUsers();
+    fetchUnreadCount();
+    
+    // Fetch elite teilnehmer IDs to filter out regular teilnehmer
+    const fetchEliteTeilnehmer = async () => {
+      const { data } = await supabase
+        .from('teilnehmer')
+        .select('profile_id')
+        .eq('is_elite_kleingruppe', true);
+      
+      if (data) {
+        setEliteTeilnehmerIds(new Set(data.map(t => t.profile_id)));
+      }
+    };
+    fetchEliteTeilnehmer();
+    
+    // Fetch dozenten for TeilnehmerForm
+    const fetchDozenten = async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .eq('role', 'dozent')
+        .order('full_name');
+      if (data) setDozenten(data);
+    };
+    fetchDozenten();
+    
+    // Fetch elite kleingruppen for teilnehmer creation
+    const fetchEliteKleingruppen = async () => {
+      const { data } = await supabase
+        .from('elite_kleingruppen')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name');
+      if (data) setEliteKleingruppen(data);
+    };
+    fetchEliteKleingruppen();
     
     // Debug: Log environment variables
     console.log('Environment check:', {
@@ -102,7 +158,8 @@ export function UserManagement() {
         body: JSON.stringify({
           email: dialog.userData.email,
           fullName: dialog.userData.fullName,
-          role: dialog.userData.role || 'dozent'
+          role: dialog.userData.role || 'dozent',
+          eliteKleingruppe: dialog.userData.eliteKleingruppe || undefined
         }),
       });
       
@@ -128,8 +185,17 @@ export function UserManagement() {
       
       closeDialog();
       
-      // Refresh the users list
+      // Refresh the users list and elite teilnehmer IDs
       await fetchUsers();
+      
+      // Re-fetch elite teilnehmer IDs to include the newly created one
+      const { data: eliteData } = await supabase
+        .from('teilnehmer')
+        .select('profile_id')
+        .eq('is_elite_kleingruppe', true);
+      if (eliteData) {
+        setEliteTeilnehmerIds(new Set(eliteData.map(t => t.profile_id)));
+      }
     } catch (error) {
       console.error(`[${requestId}] Error in handleCreateUser:`, error);
       
@@ -156,16 +222,42 @@ export function UserManagement() {
   };
 
   const handleDeleteUser = async (id: string, name: string) => {
+    setConfirmationInput('');
     setConfirmation({
       show: true,
       title: 'Benutzer löschen',
       message: `Möchten Sie den Benutzer "${name}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`,
       confirmText: 'Löschen',
       isDestructive: true,
+      requireNameConfirmation: true,
+      nameToConfirm: name,
       onConfirm: async () => {
         try {
+          // First, delete from teilnehmer table if user is an elite teilnehmer
+          const { error: teilnehmerError } = await supabase
+            .from('teilnehmer')
+            .delete()
+            .eq('profile_id', id);
+          
+          if (teilnehmerError) {
+            console.warn('Error deleting teilnehmer entry:', teilnehmerError);
+            // Continue with user deletion even if teilnehmer deletion fails
+          }
+          
+          // Then delete the user from profiles
           await deleteUser(id);
+          
+          // Refresh elite teilnehmer IDs
+          const { data: eliteData } = await supabase
+            .from('teilnehmer')
+            .select('profile_id')
+            .eq('is_elite_kleingruppe', true);
+          if (eliteData) {
+            setEliteTeilnehmerIds(new Set(eliteData.map(t => t.profile_id)));
+          }
+          
           setConfirmation(prev => ({ ...prev, show: false }));
+          setConfirmationInput('');
         } catch (error) {
           // Error is handled by the store
         }
@@ -186,7 +278,8 @@ export function UserManagement() {
       setLocalLoading(true);
       await updateUser(dialog.userData.id, { 
         fullName: dialog.userData.fullName,
-        role: dialog.userData.role 
+        role: dialog.userData.role,
+        additional_roles: dialog.userData.additional_roles || []
       });
       setSuccessMessage('Benutzer wurde erfolgreich aktualisiert.');
       closeDialog();
@@ -250,6 +343,51 @@ export function UserManagement() {
           setSuccessMessage(null);
         }
       }
+    });
+  };
+
+  const handleResendWelcomeEmail = async (userEmail: string, userName: string, userId: string) => {
+    setConfirmation({
+      show: true,
+      title: 'Willkommens-E-Mail erneut senden',
+      message: `Möchten Sie die Willkommens-E-Mail mit dem Aktivierungslink für "${userName}" erneut senden?`,
+      confirmText: 'Senden',
+      onConfirm: async () => {
+        try {
+          setLocalLoading(true);
+          
+          // Call resend-welcome-email edge function directly
+          // This will generate a new magic link and send the email
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/resend-welcome-email`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            },
+            body: JSON.stringify({
+              email: userEmail,
+              fullName: userName
+            })
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+          }
+
+          const result = await response.json();
+          console.log('Resend email result:', result);
+
+          setSuccessMessage(`Willkommens-E-Mail für "${userName}" erfolgreich gesendet.`);
+        } catch (error: any) {
+          console.error('Error resending welcome email:', error);
+          setDialogError(`Fehler beim Senden der Willkommens-E-Mail: ${error.message}`);
+        } finally {
+          setLocalLoading(false);
+          setConfirmation(prev => ({ ...prev, show: false }));
+        }
+      },
+      isDestructive: false
     });
   };
 
@@ -334,15 +472,105 @@ export function UserManagement() {
     <div className="min-h-screen bg-background">
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
+          <div className="flex justify-between items-center h-16">
             <div className="flex">
               <div className="flex-shrink-0 flex items-center">
-                <Logo />
-                <span className="ml-2 text-lg sm:text-xl font-semibold text-gray-900 hidden sm:block">Admin Dashboard</span>
-                <span className="ml-2 text-sm font-semibold text-gray-900 sm:hidden">Admin</span>
+                <Logo onClick={() => navigate('/dashboard')} />
+                <span className="ml-2 text-lg sm:text-xl font-semibold text-gray-900 hidden sm:block">Dashboard</span>
+                <span className="ml-2 text-sm font-semibold text-gray-900 sm:hidden">Dashboard</span>
               </div>
             </div>
+            
+            {/* Mobile menu button */}
+            <div className="sm:hidden">
+              <button
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
+              >
+                <span className="sr-only">Open main menu</span>
+                {!isMobileMenuOpen ? (
+                  <Menu className="block h-6 w-6" />
+                ) : (
+                  <X className="block h-6 w-6" />
+                )}
+              </button>
+            </div>
+            
+            {/* Desktop menu */}
+            <div className="hidden sm:flex items-center space-x-2 lg:space-x-4">
+              <div className="relative">
+                <button
+                  className="inline-flex items-center px-2 lg:px-3 py-2 border border-transparent text-xs lg:text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition relative"
+                  title="Aktivitäten"
+                >
+                  <Bell className="h-4 w-4 lg:h-5 lg:w-5" />
+                </button>
+              </div>
+              
+              <button
+                onClick={() => navigate('/messages')}
+                className="inline-flex items-center px-2 lg:px-3 py-2 border border-transparent text-xs lg:text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition relative"
+                title="Nachrichten"
+              >
+                <MessageSquare className="h-4 w-4 lg:h-5 lg:w-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </button>
+              
+              <button
+                onClick={() => signOut()}
+                className="inline-flex items-center px-2 lg:px-3 py-2 border border-transparent text-xs lg:text-sm leading-4 font-medium rounded-md text-red-500 hover:text-red-700 focus:outline-none transition"
+                title="Abmelden"
+              >
+                <LogOut className="h-4 w-4 lg:h-5 lg:w-5" />
+              </button>
+            </div>
           </div>
+          
+          {/* Mobile menu */}
+          {isMobileMenuOpen && (
+            <div className="sm:hidden">
+              <div className="pt-2 pb-3 space-y-1 border-t border-gray-200">
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="flex items-center w-full px-3 py-2 text-base font-medium text-primary hover:text-primary/80 hover:bg-gray-50"
+                >
+                  <Bell className="h-5 w-5 mr-3" />
+                  Aktivitäten
+                </button>
+                <button
+                  onClick={() => {
+                    navigate('/messages');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="flex items-center w-full px-3 py-2 text-base font-medium text-primary hover:text-primary/80 hover:bg-gray-50 relative"
+                >
+                  <MessageSquare className="h-5 w-5 mr-3" />
+                  Nachrichten
+                  {unreadCount > 0 && (
+                    <span className="ml-auto bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    signOut();
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="flex items-center w-full px-3 py-2 text-base font-medium text-red-500 hover:text-red-700 hover:bg-gray-50"
+                >
+                  <LogOut className="h-5 w-5 mr-3" />
+                  Abmelden
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </nav>
 
@@ -351,35 +579,37 @@ export function UserManagement() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
             <div className="flex items-center">
               <button
-                onClick={() => navigate('/admin?tab=uebersicht')}
-                className="mr-3 sm:mr-4 p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded-full">
+                onClick={() => navigate('/dashboard')}
+                className="mr-3 sm:mr-4 p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded-full"
+                title="Zurück zum Dashboard"
+              >
                 <ArrowLeft className="h-5 w-5" />
               </button>
               <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Benutzerverwaltung</h1>
             </div>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
               <button
-                onClick={handleMonthlyDocumentCheck}
-                disabled={isCheckingDocuments}
-                className="inline-flex items-center justify-center px-3 sm:px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-primary/90 disabled:opacity-50"
-                title="Monatliche Dokumentenprüfung manuell ausführen"
-              >
-                {isCheckingDocuments ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
-                ) : (
-                  <Calendar className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
-                )}
-                <span className="text-sm">{isCheckingDocuments ? 'Prüfe...' : 'Dokumente prüfen'}</span>
-              </button>
-              <button
-                onClick={() => setDialog({
-                  type: 'new',
-                  userData: { email: '', fullName: '', password: '', role: 'dozent' }
-                })}
+                onClick={() => setShowRoleSelection(true)}
                 className="inline-flex items-center justify-center px-3 sm:px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-primary/90">
                 <UserPlus className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
                 <span className="text-sm">Nutzer hinzufügen</span>
               </button>
+            </div>
+          </div>
+
+          {/* Search Bar */}
+          <div className="mb-6">
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-5 w-5 text-gray-400" />
+              </div>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Benutzer suchen (Name, E-Mail, Rolle)..."
+                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-primary focus:border-primary sm:text-sm"
+              />
             </div>
           </div>
 
@@ -466,7 +696,32 @@ export function UserManagement() {
           ) : (
             <div className="bg-white shadow overflow-hidden sm:rounded-md">
               <ul className="divide-y divide-gray-200">
-                {users.map((user) => (
+                {users.filter(user => {
+                  // Filter out regular teilnehmer (non-elite) - they don't have login access
+                  // Keep: admin, buchhaltung, verwaltung, vertrieb, dozent, and elite-kleingruppe teilnehmer
+                  if (user.role === 'teilnehmer' && !eliteTeilnehmerIds.has(user.id)) {
+                    return false; // Exclude regular teilnehmer
+                  }
+                  
+                  // Apply search filter
+                  if (!searchQuery) return true;
+                  const query = searchQuery.toLowerCase();
+                  const roleText = user.role === 'admin' ? 'administrator' : 
+                                   user.role === 'buchhaltung' ? 'buchhaltung' :
+                                   user.role === 'verwaltung' ? 'verwaltung' :
+                                   user.role === 'vertrieb' ? 'vertrieb' :
+                                   user.role === 'teilnehmer' ? 'teilnehmer' : 'dozent';
+                  const additionalRolesText = (user.additional_roles || []).join(' ').toLowerCase();
+                  return user.full_name.toLowerCase().includes(query) ||
+                         user.email.toLowerCase().includes(query) ||
+                         roleText.includes(query) ||
+                         additionalRolesText.includes(query);
+                }).sort((a, b) => {
+                  // Sort by created_at descending (newest first)
+                  const dateA = new Date(a.created_at || 0).getTime();
+                  const dateB = new Date(b.created_at || 0).getTime();
+                  return dateB - dateA;
+                }).map((user) => (
                   <li key={user.id}>
                     <div className="px-3 sm:px-4 py-4 sm:px-6">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -483,19 +738,10 @@ export function UserManagement() {
                           <div className="ml-3 flex-1 min-w-0">
                             <h3 className="text-base sm:text-lg font-medium text-gray-900 truncate">{user.full_name}</h3>
                             <p className="text-sm text-gray-500 mb-1 truncate">{user.email}</p>
-                            <div className="flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-2">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
-                              {user.role === 'admin' ? 'Administrator' : 
-                               user.role === 'buchhaltung' ? 'Buchhaltung' :
-                               user.role === 'verwaltung' ? 'Verwaltung' :
-                               user.role === 'vertrieb' ? 'Vertrieb' : 'Dozent'}
-                            </span>
                             {!user.last_login ? (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                Ausstehend
-                              </span>
+                              <p className="text-xs text-gray-500 mb-1 truncate">Letzter Login: Ausstehend</p>
                             ) : (
-                              <span className="text-xs text-gray-500 truncate">
+                              <p className="text-xs text-gray-500 mb-1 truncate">
                                 Letzter Login: {new Date(user.last_login).toLocaleString('de-DE', {
                                   year: 'numeric',
                                   month: '2-digit',
@@ -505,53 +751,90 @@ export function UserManagement() {
                                     minute: '2-digit'
                                   })
                                 })}
+                              </p>
+                            )}
+                            <div className="flex flex-wrap items-center gap-1">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                              {user.role === 'admin' ? 'Administrator' : 
+                               user.role === 'buchhaltung' ? 'Buchhaltung' :
+                               user.role === 'verwaltung' ? 'Verwaltung' :
+                               user.role === 'vertrieb' ? 'Vertrieb' :
+                               user.role === 'teilnehmer' ? 'Teilnehmer' : 'Dozent'}
+                            </span>
+                            {!user.last_login && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700 border border-orange-200">
+                                Ausstehend
                               </span>
+                            )}
+                            {user.role === 'teilnehmer' && eliteTeilnehmerIds.has(user.id) && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
+                                Elite-Kleingruppe
+                              </span>
+                            )}
+                            {user.additional_roles && user.additional_roles.length > 0 && (
+                              <>
+                                {user.additional_roles.map((r) => (
+                                  <span key={r} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                    +{r === 'admin' ? 'Admin' :
+                                      r === 'buchhaltung' ? 'Buchhaltung' :
+                                      r === 'verwaltung' ? 'Verwaltung' :
+                                      r === 'vertrieb' ? 'Vertrieb' :
+                                      r === 'teilnehmer' ? 'Teilnehmer' : 'Dozent'}
+                                  </span>
+                                ))}
+                              </>
                             )}
                           </div>
                         </div>
                         </div>
-                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-2 sm:space-y-0 sm:space-x-2 flex-shrink-0">
-                        {user.role !== 'admin' && (
-                          <>
+                        <div className="flex items-center space-x-2 flex-shrink-0">
+                          <button
+                            onClick={() => {
+                              if (user.role === 'dozent') {
+                                setSelectedDozentForEdit(user);
+                                setShowDozentForm(true);
+                              } else {
+                                setDialog({
+                                  type: 'edit',
+                                  userData: {
+                                    id: user.id,
+                                    email: user.email,
+                                    fullName: user.full_name,
+                                    role: user.role,
+                                    additional_roles: user.additional_roles || []
+                                  }
+                                });
+                              }
+                            }}
+                            className="p-2 border border-gray-300 shadow-sm rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                            title="Bearbeiten"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteUser(user.id, user.full_name)}
+                            className="p-2 border border-gray-300 shadow-sm rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                            title="Löschen"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                          {!user.last_login && (
                             <button
-                              onClick={() => {
-                                if (user.role === 'dozent') {
-                                  setSelectedDozentForEdit(user);
-                                  setShowDozentForm(true);
-                                } else {
-                                  setDialog({
-                                    type: 'edit',
-                                    userData: {
-                                      id: user.id,
-                                      email: user.email,
-                                      fullName: user.full_name,
-                                      role: user.role
-                                    }
-                                  });
-                                }
-                              }}
-                              className="inline-flex items-center justify-center px-2 sm:px-3 py-2 border border-gray-300 shadow-sm text-xs sm:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                              <Pencil className="h-4 w-4 sm:mr-2" />
-                              <span className="hidden sm:inline">Bearbeiten</span>
+                              onClick={() => handleResendWelcomeEmail(user.email, user.full_name, user.id)}
+                              className="p-2 border border-orange-300 shadow-sm rounded-md text-orange-700 bg-orange-50 hover:bg-orange-100"
+                              title="Willkommens-E-Mail erneut senden"
+                            >
+                              <Mail className="h-4 w-4" />
                             </button>
-                            <button
-                              onClick={() => handleDeleteUser(user.id, user.full_name)}
-                              className="inline-flex items-center justify-center px-2 sm:px-3 py-2 border border-gray-300 shadow-sm text-xs sm:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                              <Trash2 className="h-4 w-4 sm:mr-2" />
-                              <span className="hidden sm:inline">Löschen</span>
-                            </button>
-                          </>
-                        )}
-                        <button
-                          onClick={() => handleResetPasswordForUser(user.email, user.full_name)}
-                          className="inline-flex items-center justify-center px-2 sm:px-3 py-2 border border-gray-300 shadow-sm text-xs sm:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50" 
-                          title="Neues Passwort generieren und per E-Mail senden"
-                        >
-                          <Key className="h-4 w-4 sm:mr-2" />
-                          <span className="hidden sm:inline">Passwort zurücksetzen</span>
-                          <span className="sm:hidden">Reset</span>
-                        </button>
-                      </div>
+                          )}
+                          <button
+                            onClick={() => handleResetPasswordForUser(user.email, user.full_name)}
+                            className="p-2 border border-gray-300 shadow-sm rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                            title="Passwort zurücksetzen"
+                          >
+                            <Key className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </li>
@@ -560,35 +843,12 @@ export function UserManagement() {
             </div>
           )}
 
-          {/* Database Backup Section */}
-          <div className="mt-8 bg-white shadow overflow-hidden sm:rounded-md">
-            <div className="px-3 sm:px-4 py-5 sm:p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">Datenbank-Backup</h3>
-              <div className="mt-2 max-w-xl text-sm text-gray-500">
-                <p>Laden Sie ein Backup der Datenbank herunter. Das Backup enthält alle Benutzer, Ordner, Dateien und Nachrichten.</p>
-              </div>
-              <div className="mt-5">
-                <button
-                  type="button"
-                  onClick={handleDatabaseBackup}
-                  disabled={isBackupLoading}
-                  className="inline-flex items-center justify-center px-3 sm:px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50">
-                  {isBackupLoading ? (
-                    <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 mr-2 animate-spin" />
-                  ) : (
-                    <Download className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
-                  )}
-                  Backup herunterladen
-                </button>
-              </div>
-            </div>
-          </div>
 
           {/* Dialog Component */}
           {dialog.type && (
             <div className="fixed z-10 inset-0 overflow-y-auto">
               <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+                <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={(e) => e.stopPropagation()}>
                   <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
                 </div>
                 <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
@@ -599,7 +859,10 @@ export function UserManagement() {
                   }>
                     <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                       <h3 className="text-lg font-medium text-gray-900 mb-4">
-                        {dialog.type === 'new' ? 'Dozent einladen' :
+                        {dialog.type === 'new' ? 
+                          (dialog.userData.role === 'teilnehmer' ? 'Teilnehmer (Elite-Kleingruppe) einladen' : 
+                           dialog.userData.role === 'verwaltung' ? 'Verwaltung / Buchhaltung / Vertrieb einladen' :
+                           'Dozent einladen') :
                          dialog.type === 'edit' ? 'User bearbeiten' :
                          'Neues Passwort generieren'}
                       </h3>
@@ -629,47 +892,75 @@ export function UserManagement() {
                               required
                             />
                           </div>
-                          {dialog.type === 'edit' && (
+                          {(dialog.type === 'edit' || dialog.type === 'new') && (
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Rolle
+                                Hauptrolle
                               </label>
                               <select
                                 value={dialog.userData.role || 'dozent'}
-                                onChange={(e) => setDialog({
-                                  ...dialog,
-                                  userData: { ...dialog.userData, role: e.target.value }
-                                })}
+                                onChange={(e) => {
+                                  const newRole = e.target.value;
+                                  const currentAdditional = dialog.userData.additional_roles || [];
+                                  setDialog({
+                                    ...dialog,
+                                    userData: { 
+                                      ...dialog.userData, 
+                                      role: newRole,
+                                      additional_roles: currentAdditional.filter(r => r !== newRole)
+                                    }
+                                  });
+                                }}
                                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
                                 required
                               >
                                 <option value="dozent">Dozent</option>
+                                <option value="teilnehmer">Teilnehmer</option>
                                 <option value="vertrieb">Vertrieb</option>
                                 <option value="verwaltung">Verwaltung</option>
                                 <option value="buchhaltung">Buchhaltung</option>
-                                <option value="admin">Administrator</option>
+                                {dialog.type === 'edit' && <option value="admin">Administrator</option>}
                               </select>
                             </div>
                           )}
-                          {dialog.type === 'new' && (
+                          {(dialog.type === 'edit' || dialog.type === 'new') && (
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Rolle
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Zusätzliche Rollen
                               </label>
-                              <select
-                                value={dialog.userData.role || 'dozent'}
-                                onChange={(e) => setDialog({
-                                  ...dialog,
-                                  userData: { ...dialog.userData, role: e.target.value }
-                                })}
-                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
-                                required
-                              >
-                                <option value="dozent">Dozent</option>
-                                <option value="vertrieb">Vertrieb</option>
-                                <option value="verwaltung">Verwaltung</option>
-                                <option value="buchhaltung">Buchhaltung</option>
-                              </select>
+                              <div className="space-y-2">
+                                {[
+                                  { value: 'dozent', label: 'Dozent' },
+                                  { value: 'teilnehmer', label: 'Teilnehmer' },
+                                  { value: 'buchhaltung', label: 'Buchhaltung' },
+                                  { value: 'verwaltung', label: 'Verwaltung' },
+                                  { value: 'vertrieb', label: 'Vertrieb' },
+                                ]
+                                  .filter(r => r.value !== dialog.userData.role)
+                                  .map(r => (
+                                    <label key={r.value} className="flex items-center space-x-2 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={(dialog.userData.additional_roles || []).includes(r.value)}
+                                        onChange={(e) => {
+                                          const current = dialog.userData.additional_roles || [];
+                                          const updated = e.target.checked
+                                            ? [...current, r.value]
+                                            : current.filter(x => x !== r.value);
+                                          setDialog({
+                                            ...dialog,
+                                            userData: { ...dialog.userData, additional_roles: updated }
+                                          });
+                                        }}
+                                        className="rounded border-gray-300 text-primary focus:ring-primary/20"
+                                      />
+                                      <span className="text-sm text-gray-700">{r.label}</span>
+                                    </label>
+                                  ))}
+                              </div>
+                              <p className="mt-2 text-xs text-gray-500">
+                                Zusätzliche Rollen ermöglichen Zugriff auf weitere Bereiche.
+                              </p>
                             </div>
                           )}
                           <div>
@@ -700,6 +991,32 @@ export function UserManagement() {
                               </p>
                             )}
                           </div>
+                          {dialog.type === 'new' && dialog.userData.role === 'teilnehmer' && (
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Elite-Kleingruppe *
+                              </label>
+                              <select
+                                value={dialog.userData.eliteKleingruppe || ''}
+                                onChange={(e) => setDialog({
+                                  ...dialog,
+                                  userData: { ...dialog.userData, eliteKleingruppe: e.target.value }
+                                })}
+                                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                                required
+                              >
+                                <option value="">Bitte wählen...</option>
+                                {eliteKleingruppen.map((gruppe) => (
+                                  <option key={gruppe.id} value={gruppe.name}>
+                                    {gruppe.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <p className="mt-2 text-sm text-gray-500">
+                                Teilnehmer müssen einer Elite-Kleingruppe zugeordnet werden.
+                              </p>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -757,6 +1074,21 @@ export function UserManagement() {
                           <p className="text-sm text-gray-500">
                             {confirmation.message}
                           </p>
+                          {confirmation.requireNameConfirmation && (
+                            <div className="mt-4">
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Bitte geben Sie den Namen zur Bestätigung ein:
+                              </label>
+                              <input
+                                type="text"
+                                value={confirmationInput}
+                                onChange={(e) => setConfirmationInput(e.target.value)}
+                                placeholder={confirmation.nameToConfirm}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                                autoFocus
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -765,7 +1097,7 @@ export function UserManagement() {
                     <button
                       type="button"
                       onClick={confirmation.onConfirm}
-                      disabled={localLoading || isLoading}
+                      disabled={localLoading || isLoading || (confirmation.requireNameConfirmation && confirmationInput !== confirmation.nameToConfirm)}
                       className={`w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 ${
                         confirmation.isDestructive
                           ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500'
@@ -779,7 +1111,10 @@ export function UserManagement() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setConfirmation(prev => ({ ...prev, show: false }))}
+                      onClick={() => {
+                        setConfirmation(prev => ({ ...prev, show: false }));
+                        setConfirmationInput('');
+                      }}
                       className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm">
                       Abbrechen
                     </button>
@@ -789,7 +1124,7 @@ export function UserManagement() {
             </div>
           )}
 
-          {showDozentForm && selectedDozentForEdit && (
+          {showDozentForm && (
             <DozentForm
               dozent={selectedDozentForEdit}
               onClose={() => {
@@ -798,8 +1133,89 @@ export function UserManagement() {
               }}
               onSaved={() => {
                 fetchUsers();
+                setShowDozentForm(false);
+                setSelectedDozentForEdit(null);
               }}
             />
+          )}
+
+          {showTeilnehmerForm && (
+            <TeilnehmerForm
+              teilnehmer={selectedTeilnehmerForEdit}
+              dozenten={dozenten}
+              onClose={() => {
+                setShowTeilnehmerForm(false);
+                setSelectedTeilnehmerForEdit(null);
+              }}
+              onSaved={async () => {
+                await fetchUsers();
+                
+                // Re-fetch elite teilnehmer IDs to include newly created ones
+                const { data: eliteData } = await supabase
+                  .from('teilnehmer')
+                  .select('profile_id')
+                  .eq('is_elite_kleingruppe', true);
+                if (eliteData) {
+                  setEliteTeilnehmerIds(new Set(eliteData.map(t => t.profile_id)));
+                }
+                
+                setShowTeilnehmerForm(false);
+                setSelectedTeilnehmerForEdit(null);
+              }}
+            />
+          )}
+
+          {/* Role Selection Dialog */}
+          {showRoleSelection && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Welche Rolle soll der neue Nutzer haben?</h3>
+                <div className="space-y-3">
+                  <button
+                    onClick={() => {
+                      setShowRoleSelection(false);
+                      setShowDozentForm(true);
+                      setSelectedDozentForEdit(null);
+                    }}
+                    className="w-full p-4 text-left border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors"
+                  >
+                    <div className="font-medium text-gray-900">Dozent</div>
+                    <div className="text-sm text-gray-500 mt-1">Unterrichtende Person mit erweiterten Rechten</div>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowRoleSelection(false);
+                      setShowTeilnehmerForm(true);
+                      setSelectedTeilnehmerForEdit(null);
+                    }}
+                    className="w-full p-4 text-left border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors"
+                  >
+                    <div className="font-medium text-gray-900">Teilnehmer (Elite-Kleingruppe)</div>
+                    <div className="text-sm text-gray-500 mt-1">Elite-Kleingruppe Teilnehmer mit Login-Zugang</div>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowRoleSelection(false);
+                      setDialog({
+                        type: 'new',
+                        userData: { email: '', fullName: '', password: '', role: 'verwaltung' }
+                      });
+                      setDialogError(null);
+                    }}
+                    className="w-full p-4 text-left border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors"
+                  >
+                    <div className="font-medium text-gray-900">Verwaltung / Buchhaltung / Vertrieb</div>
+                    <div className="text-sm text-gray-500 mt-1">Mitarbeiter mit administrativen Aufgaben</div>
+                  </button>
+                </div>
+                <button
+                  onClick={() => setShowRoleSelection(false)}
+                  className="w-full mt-4 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                >
+                  Abbrechen
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </div>

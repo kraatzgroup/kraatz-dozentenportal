@@ -4,6 +4,7 @@ import { User } from '@supabase/supabase-js';
 
 interface AuthState {
   user: User | null;
+  fullName: string | null;
   isAdmin: boolean;
   isBuchhaltung: boolean;
   isVerwaltung: boolean;
@@ -11,6 +12,7 @@ interface AuthState {
   isDozent: boolean;
   isTeilnehmer: boolean;
   userRole: string | null;
+  additionalRoles: string[];
   isSigningOut: boolean;
   isSettingUser: boolean;
   setUser: (user: User | null) => void;
@@ -19,6 +21,7 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
+  fullName: null,
   isAdmin: false,
   isBuchhaltung: false,
   isVerwaltung: false,
@@ -26,6 +29,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isDozent: false,
   isTeilnehmer: false,
   userRole: null,
+  additionalRoles: [],
   isSigningOut: false,
   isSettingUser: false,
   setUser: (user) => {
@@ -56,7 +60,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.log('AuthStore: Fetching profile for user:', user.id);
       supabase
         .from('profiles')
-        .select('role')
+        .select('role, additional_roles, full_name')
         .eq('id', user.id)
         .single()
         .then(async ({ data, error }) => {
@@ -70,7 +74,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
           console.log('AuthStore: Profile fetch result:', { data, error });
           if (!error && data) {
-            console.log('AuthStore: User role:', data.role);
+            const allRoles = [data.role, ...(data.additional_roles || [])];
+            console.log('AuthStore: User role:', data.role, 'additional:', data.additional_roles, 'all:', allRoles);
             
             // Mark user as logged in
             try {
@@ -90,13 +95,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             
             set({ 
               user,
-              isAdmin: data.role === 'admin',
-              isBuchhaltung: data.role === 'buchhaltung',
-              isVerwaltung: data.role === 'verwaltung',
-              isVertrieb: data.role === 'vertrieb',
-              isDozent: data.role === 'dozent',
-              isTeilnehmer: data.role === 'teilnehmer',
+              fullName: data.full_name || null,
+              isAdmin: allRoles.includes('admin'),
+              isBuchhaltung: allRoles.includes('buchhaltung'),
+              isVerwaltung: allRoles.includes('verwaltung'),
+              isVertrieb: allRoles.includes('vertrieb'),
+              isDozent: allRoles.includes('dozent'),
+              isTeilnehmer: allRoles.includes('teilnehmer'),
               userRole: data.role,
+              additionalRoles: data.additional_roles || [],
               isSettingUser: false
             });
             console.log('AuthStore: User state updated successfully');
@@ -104,6 +111,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             console.error('AuthStore: Error fetching user profile:', error);
             set({ 
               user, 
+              fullName: null,
               isAdmin: false,
               isBuchhaltung: false,
               isVerwaltung: false,
@@ -111,6 +119,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               isDozent: false,
               isTeilnehmer: false,
               userRole: null,
+              additionalRoles: [],
               isSettingUser: false 
             });
           }
@@ -121,6 +130,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           if (!currentState.isSigningOut) {
             set({ 
               user, 
+              fullName: null,
               isAdmin: false,
               isBuchhaltung: false,
               isVerwaltung: false,
@@ -128,6 +138,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               isDozent: false,
               isTeilnehmer: false,
               userRole: null,
+              additionalRoles: [],
               isSettingUser: false 
             });
           } else {
@@ -145,6 +156,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isDozent: false,
         isTeilnehmer: false,
         userRole: null,
+        additionalRoles: [],
         isSettingUser: false 
       });
     }
@@ -166,6 +178,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isDozent: false,
         isTeilnehmer: false,
         userRole: null,
+        additionalRoles: [],
         isSigningOut: true, 
         isSettingUser: false 
       });
@@ -210,12 +223,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Always ensure we end up in a signed-out state
       set({ 
         user: null, 
+        fullName: null,
         isAdmin: false,
         isBuchhaltung: false,
         isVerwaltung: false,
         isVertrieb: false,
         isDozent: false,
+        isTeilnehmer: false,
         userRole: null,
+        additionalRoles: [],
         isSigningOut: false, 
         isSettingUser: false 
       });

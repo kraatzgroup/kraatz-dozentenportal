@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { MessageSquare, LogOut, Settings, FolderIcon, Plus, Edit, Trash2, Users, FileText, User, Clock, Calendar, X, GraduationCap, Check, AlertTriangle, Menu } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useMessageStore } from '../store/messageStore';
@@ -29,8 +29,24 @@ interface Folder {
   is_system?: boolean;
 }
 
+const EK_SUB_TAB_MAP: Record<string, string> = {
+  'einheiten-materialfreigabe': 'einheiten',
+  'klausurenkorrekturen': 'klausuren',
+  'kommunikation': 'kommunikation',
+  'kurszeiten': 'kurszeiten',
+};
+
+const EK_SUB_TAB_REVERSE: Record<string, string> = {
+  'einheiten': 'einheiten-materialfreigabe',
+  'klausuren': 'klausurenkorrekturen',
+  'kommunikation': 'kommunikation',
+  'kurszeiten': 'kurszeiten',
+};
+
 export function Dashboard({ isAdmin = false }: DashboardProps) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { subTab: urlSubTab } = useParams<{ subTab?: string }>();
   const { user, signOut, userRole, isAdmin: isUserAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isDozent } = useAuthStore();
   const { folders, fetchFolders, createFolder, updateFolder, deleteFolder } = useFolderStore();
   const { files, fetchFiles, uploadFile, deleteFile } = useFileStore();
@@ -95,6 +111,12 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     description: ''
   });
   const [activityRefreshKey, setActivityRefreshKey] = useState(0);
+  const [isEliteKleingruppeDozent, setIsEliteKleingruppeDozent] = useState(false);
+
+  // Derive EK view state from URL
+  const isEliteKleingruppeRoute = location.pathname.startsWith('/dashboard/elite-kleingruppe');
+  const showEliteKleingruppe = isEliteKleingruppeRoute;
+  const ekSubTab = urlSubTab ? (EK_SUB_TAB_MAP[urlSubTab] || 'einheiten') : 'einheiten';
   const [duplicateWarning, setDuplicateWarning] = useState<{ show: boolean; existingEntries: any[]; pendingData: any | null }>({
     show: false, existingEntries: [], pendingData: null
   });
@@ -114,6 +136,14 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     fetchTeilnehmer();
     fetchTrialLessons();
     fetchMonthlySummary(undefined, selectedYear, selectedMonth);
+
+    // Check if user is an Elite-Kleingruppe dozent
+    const checkEliteKleingruppeDozent = async () => {
+      if (!user) return;
+      const { data } = await supabase.from('elite_kleingruppe_dozenten').select('id').eq('dozent_id', user.id);
+      setIsEliteKleingruppeDozent((data && data.length > 0) || false);
+    };
+    if (isDozent) checkEliteKleingruppeDozent();
 
     // Setup message subscription
     const unsubscribe = setupMessageSubscription();
@@ -774,6 +804,24 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   </button>
                 </div>
               )}
+              {/* Elite-Kleingruppe Folder - only for assigned Dozenten */}
+              {isDozent && isEliteKleingruppeDozent && (
+                <div
+                  className={`relative block w-full text-left ${
+                    showEliteKleingruppe
+                      ? 'ring-2 ring-primary'
+                      : 'hover:bg-gray-50'
+                  } bg-white rounded-lg shadow p-4 transition-all`}
+                >
+                  <button
+                    onClick={() => { setSelectedFolder(null); navigate('/dashboard/elite-kleingruppe/einheiten-materialfreigabe'); }}
+                    className="w-full flex items-center text-left"
+                  >
+                    <Users className="h-6 w-6 text-primary" />
+                    <span className="ml-3 font-medium text-gray-900">Elite-Kleingruppe</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1135,7 +1183,14 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
           )}
 
           {/* DozentenDashboard für Dozenten - nur anzeigen wenn kein Ordner ausgewählt ist */}
-          {isDozent && !selectedFolder && <DozentenDashboard />}
+          {isDozent && !selectedFolder && (
+            <DozentenDashboard 
+              showEliteKleingruppe={showEliteKleingruppe}
+              ekSubTab={ekSubTab}
+              onEkSubTabChange={(tab: string) => navigate(`/dashboard/elite-kleingruppe/${EK_SUB_TAB_REVERSE[tab] || 'einheiten-materialfreigabe'}`)}
+              onCloseEliteKleingruppe={() => navigate('/dashboard')} 
+            />
+          )}
 
           {/* Teilnehmer Management Modal */}
 

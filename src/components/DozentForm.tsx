@@ -1,7 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Save, UserPlus, Camera, Trash2 } from 'lucide-react';
+import { X, Save, UserPlus, Camera, Trash2, Users, BookOpen } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useToastStore } from '../store/toastStore';
+
+interface EliteKleingruppe {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+interface EliteKleingruppeAssignment {
+  elite_kleingruppe_id: string;
+  legal_areas: string[];
+}
 
 interface Dozent {
   id?: string;
@@ -23,6 +34,7 @@ interface Dozent {
   hourly_rate_unterricht: number | null;
   hourly_rate_elite: number | null;
   hourly_rate_sonstige: number | null;
+  elite_kleingruppe_assignments?: EliteKleingruppeAssignment[];
 }
 
 interface DozentFormProps {
@@ -58,9 +70,44 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
   });
   const [profilePictureFile, setProfilePictureFile] = useState<File | null>(null);
   const [profilePicturePreview, setProfilePicturePreview] = useState<string>('');
+  const [eliteKleingruppen, setEliteKleingruppen] = useState<EliteKleingruppe[]>([]);
+  const [isEliteKleingruppeEnabled, setIsEliteKleingruppeEnabled] = useState(false);
+  const [eliteAssignments, setEliteAssignments] = useState<Record<string, string[]>>({});
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isEditing = !!dozent?.id;
+
+  // Fetch Elite-Kleingruppen and assignments
+  useEffect(() => {
+    const fetchEliteKleingruppen = async () => {
+      const { data } = await supabase.from('elite_kleingruppen').select('id, name, description').order('name');
+      setEliteKleingruppen(data || []);
+    };
+    fetchEliteKleingruppen();
+  }, []);
+
+  // Load existing assignments when editing
+  useEffect(() => {
+    if (dozent?.id) {
+      const fetchAssignments = async () => {
+        const { data } = await supabase
+          .from('elite_kleingruppe_dozent_assignments')
+          .select('elite_kleingruppe_id, legal_areas')
+          .eq('dozent_id', dozent.id);
+        
+        if (data && data.length > 0) {
+          setIsEliteKleingruppeEnabled(true);
+          const assignments: Record<string, string[]> = {};
+          data.forEach(a => {
+            assignments[a.elite_kleingruppe_id] = a.legal_areas || [];
+          });
+          setEliteAssignments(assignments);
+        }
+      };
+      fetchAssignments();
+    }
+  }, [dozent?.id]);
 
   useEffect(() => {
     if (dozent) {
@@ -194,13 +241,20 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         role: 'dozent'
       };
 
+      let dozentId: string;
+
       if (isEditing && dozent?.id) {
+        dozentId = dozent.id;
         const { error } = await supabase
           .from('profiles')
           .update(dataToSave)
-          .eq('id', dozent.id);
+          .eq('id', dozentId);
 
         if (error) throw error;
+        
+        // Delete existing assignments before saving new ones
+        await supabase.from('elite_kleingruppe_dozent_assignments').delete().eq('dozent_id', dozentId);
+        
         addToast('Dozent wurde aktualisiert', 'success');
       } else {
         // Create auth user with default password
@@ -215,16 +269,39 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
           throw new Error('Fehler beim Erstellen des Benutzerkontos: ' + authError.message);
         }
 
+        dozentId = newUserId;
+
         // Create profile with the auth user's ID
         const { error } = await supabase
           .from('profiles')
           .insert({
             ...dataToSave,
-            id: newUserId
+            id: dozentId
           });
 
         if (error) throw error;
         addToast('Dozent wurde hinzugefügt (Passwort: Dozent123!)', 'success');
+      }
+
+      // Save Elite-Kleingruppe assignments if enabled
+      if (isEliteKleingruppeEnabled && Object.keys(eliteAssignments).length > 0) {
+        const assignmentsToInsert = Object.entries(eliteAssignments)
+          .filter(([_, areas]) => areas.length > 0)
+          .map(([groupId, areas]) => ({
+            dozent_id: dozentId,
+            elite_kleingruppe_id: groupId,
+            legal_areas: areas
+          }));
+
+        if (assignmentsToInsert.length > 0) {
+          const { error: assignmentError } = await supabase
+            .from('elite_kleingruppe_dozent_assignments')
+            .insert(assignmentsToInsert);
+          
+          if (assignmentError) {
+            console.error('Error saving assignments:', assignmentError);
+          }
+        }
       }
 
       onSaved();
@@ -235,6 +312,17 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleEliteLegalAreaChange = (groupId: string, area: string, checked: boolean) => {
+    setEliteAssignments(prev => {
+      const current = prev[groupId] || [];
+      if (checked) {
+        return { ...prev, [groupId]: [...current, area] };
+      } else {
+        return { ...prev, [groupId]: current.filter(a => a !== area) };
+      }
+    });
   };
 
   const handleLegalAreaChange = (area: string, checked: boolean) => {
@@ -251,7 +339,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
       onClick={onClose}
     >
       <div 
-        className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -399,6 +487,73 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
                 </label>
               ))}
             </div>
+          </div>
+
+          {/* Elite-Kleingruppe Section */}
+          <div className="border-t pt-4">
+            <label className="flex items-center cursor-pointer mb-4">
+              <input
+                type="checkbox"
+                checked={isEliteKleingruppeEnabled}
+                onChange={(e) => setIsEliteKleingruppeEnabled(e.target.checked)}
+                className="h-4 w-4 text-primary border-gray-300 rounded focus:ring-primary"
+              />
+              <span className="ml-2 text-sm font-medium text-gray-900 flex items-center gap-2">
+                <Users className="h-4 w-4 text-primary" />
+                Elite-Kleingruppe Dozent
+              </span>
+            </label>
+
+            {/* Elite-Kleingruppe Assignment Panel */}
+            {isEliteKleingruppeEnabled && eliteKleingruppen.length > 0 && (
+              <div className="bg-gray-50 rounded-lg p-4 space-y-4">
+                <p className="text-sm text-gray-600">
+                  Weisen Sie dem Dozenten Elite-Kleingruppen zu und definieren Sie die Rechtsgebiete pro Gruppe:
+                </p>
+                
+                <div className="space-y-3">
+                  {eliteKleingruppen.map((group) => (
+                    <div key={group.id} className="bg-white rounded-lg p-3 border border-gray-200">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Left: Group Info */}
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <BookOpen className="h-5 w-5 text-primary" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900">{group.name}</p>
+                            {group.description && (
+                              <p className="text-xs text-gray-500">{group.description}</p>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* Right: Legal Areas */}
+                        <div className="flex flex-wrap gap-3">
+                          {['Zivilrecht', 'Strafrecht', 'Öffentliches Recht'].map((area) => (
+                            <label key={`${group.id}-${area}`} className="flex items-center cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={(eliteAssignments[group.id] || []).includes(area)}
+                                onChange={(e) => handleEliteLegalAreaChange(group.id, area, e.target.checked)}
+                                className="h-4 w-4 text-primary border-gray-300 rounded focus:ring-primary"
+                              />
+                              <span className="ml-1.5 text-sm text-gray-700">{area}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                {eliteKleingruppen.length === 0 && (
+                  <p className="text-sm text-gray-500 italic">
+                    Keine Elite-Kleingruppen verfügbar. Bitte erstellen Sie zuerst eine Gruppe.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Email */}

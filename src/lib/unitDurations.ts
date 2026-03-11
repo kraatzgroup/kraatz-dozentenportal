@@ -24,7 +24,7 @@ export const fetchUnitDurations = async (): Promise<UnitDurations> => {
       .from('elite_kleingruppe_settings')
       .select('setting_value')
       .eq('setting_key', 'unit_durations')
-      .single();
+      .maybeSingle();
     
     if (error || !data?.setting_value) {
       return DEFAULT_DURATIONS;

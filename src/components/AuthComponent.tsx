@@ -72,9 +72,14 @@ export function AuthComponent() {
         if (session?.user) {
           console.log('Found existing session, setting user');
           setUser(session.user);
+        } else {
+          // Only set loading to false if there's no session
+          // If there is a session, loading will be set to false by auth state change handler
+          setLoading(false);
         }
+      } else {
+        setLoading(false);
       }
-      setLoading(false);
     };
     
     checkSession();
@@ -229,26 +234,32 @@ export function AuthComponent() {
     setError(null);
 
     try {
-      // Use Supabase's built-in password reset
-      // Edge function disabled until deployed to new Supabase project
-      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: window.location.origin
+      const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-password-reset`;
+      const response = await fetch(edgeFunctionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ email: resetEmail }),
       });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Fehler beim Senden des Passwort-Reset-Links');
+      }
       
-      if (error) throw error;
-      
-      setSuccessMessage('Ein Link zum Zurücksetzen des Passworts wurde an Ihre E-Mail-Adresse gesendet.');
+      setSuccessMessage('Ein Login-Link wurde an Ihre E-Mail-Adresse gesendet.');
       setShowPasswordReset(false);
       setResetEmail('');
     } catch (error: any) {
       console.error('Password reset error:', error);
       
-      if (error.message?.includes('rate limit') || error.message?.includes('over_email_send_rate_limit')) {
-        setError('E-Mail-Versandlimit erreicht. Bitte warten Sie einige Minuten und versuchen Sie es später erneut.');
-      } else if (error.message?.includes('User not found') || error.message?.includes('Invalid login credentials')) {
+      if (error.message?.includes('nicht gefunden') || error.message?.includes('not found')) {
         setError('Benutzer mit dieser E-Mail-Adresse wurde nicht gefunden.');
       } else {
-        setError(`Fehler beim Senden des Passwort-Reset-Links: ${error.message}`);
+        setError(error.message || 'Fehler beim Senden des Passwort-Reset-Links');
       }
     } finally {
       setResetLoading(false);
@@ -358,7 +369,7 @@ export function AuthComponent() {
         <div className="bg-white p-8 rounded-lg shadow-md w-96 max-w-md">
           <div className="flex flex-col items-center mb-6">
             <Logo />
-            <h1 className="text-2xl font-bold mt-4 text-center">Dozenten-Portal</h1>
+            <h1 className="text-2xl font-bold mt-4 text-center">Portal</h1>
             <p className="text-gray-600 text-sm mt-2 text-center">
               Melden Sie sich an, um auf Ihr Portal zuzugreifen
             </p>

@@ -158,11 +158,6 @@ export function ProfilePicture({
 
   // Get validated image URL
   const validatedUrl = getValidatedImageUrl(url);
-  
-  // Debug log
-  if (url) {
-    console.log('ProfilePicture - url:', url, 'validated:', validatedUrl);
-  }
 
   const content = isAdmin ? (
     <div className={`${sizeClasses[size]} rounded-full bg-white flex items-center justify-center p-1 overflow-hidden`}>
@@ -175,7 +170,6 @@ export function ProfilePicture({
         alt="Profile"
         className="w-full h-full rounded-full object-cover"
         onError={(e) => {
-          console.error('❌ Failed to load profile picture:', validatedUrl);
           // Hide the broken image
           e.currentTarget.style.display = 'none';
           // Show fallback
@@ -185,7 +179,6 @@ export function ProfilePicture({
           }
         }}
         onLoad={(e) => {
-          console.log('✅ Profile picture loaded successfully:', validatedUrl);
           // Hide fallback when image loads successfully
           const fallback = (e.currentTarget as HTMLImageElement).nextElementSibling;
           if (fallback) {

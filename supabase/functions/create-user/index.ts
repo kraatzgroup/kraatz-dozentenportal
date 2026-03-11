@@ -9,7 +9,9 @@ const corsHeaders = {
 interface CreateUserRequest {
   email: string;
   fullName: string;
-  role?: 'admin' | 'buchhaltung' | 'verwaltung' | 'vertrieb' | 'dozent' | 'elite_kleingruppe';
+  role?: 'admin' | 'buchhaltung' | 'verwaltung' | 'vertrieb' | 'dozent' | 'teilnehmer';
+  additionalRoles?: string[];
+  eliteKleingruppe?: string;
 }
 
 // Generate a secure random password
@@ -66,8 +68,8 @@ Deno.serve(async (req) => {
     );
 
     console.log(`📋 [${requestId}] Parsing request body...`);
-    const { email, fullName, role = 'dozent' } = await req.json() as CreateUserRequest;
-    console.log(`📋 [${requestId}] Request data:`, { email, fullName, role });
+    const { email, fullName, role = 'dozent', additionalRoles = [], eliteKleingruppe } = await req.json() as CreateUserRequest;
+    console.log(`📋 [${requestId}] Request data:`, { email, fullName, role, additionalRoles, eliteKleingruppe });
 
     // Validate input
     if (!email || !fullName) {
@@ -94,37 +96,39 @@ Deno.serve(async (req) => {
     }
 
     let userId: string;
-    let tempPassword: string | null = null;
     let isNewUser = false;
+    let shouldSendEmail = false;
 
     if (existingProfiles && existingProfiles.length > 0) {
       // User already exists - just update the profile
       console.log(`ℹ️ [${requestId}] User already exists, updating profile...`);
       userId = existingProfiles[0].id;
+      // Send welcome email for existing profile (re-invitation)
+      shouldSendEmail = true;
     } else {
-      // Generate a secure temporary password for new user
-      tempPassword = generateSecurePassword();
-      console.log(`🔑 [${requestId}] Generated temporary password`);
-
-      // Create the user in Supabase Auth
+      // Create the user without sending default email
       console.log(`👤 [${requestId}] Creating user in Supabase Auth...`);
+      const tempPassword = generateSecurePassword();
       const { data: userData, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
         email: email,
         password: tempPassword,
         email_confirm: true,
-        user_metadata: { full_name: fullName }
+        user_metadata: { 
+          full_name: fullName,
+          role: role
+        }
       });
 
       if (createUserError) {
         // Check if user exists in auth but not in profiles
-        if (createUserError.code === 'email_exists') {
+        if (createUserError.code === 'email_exists' || createUserError.message?.includes('already registered')) {
           console.log(`ℹ️ [${requestId}] User exists in auth, fetching user...`);
           const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers();
           const existingAuthUser = authUsers?.users?.find(u => u.email === email);
           if (existingAuthUser) {
             userId = existingAuthUser.id;
-            // User exists in auth but not in profiles - treat as new for email purposes
             isNewUser = true;
+            shouldSendEmail = true;
             console.log(`ℹ️ [${requestId}] Found existing auth user, will create profile: ${userId}`);
           } else {
             throw createUserError;
@@ -139,8 +143,43 @@ Deno.serve(async (req) => {
       } else {
         userId = userData.user.id;
         isNewUser = true;
+        shouldSendEmail = true;
         console.log(`✅ [${requestId}] User created successfully:`, userId);
       }
+    }
+
+    // Generate magic link and send email for new users or re-invitations
+    if (shouldSendEmail) {
+      // Send welcome email (function generates its own magic link internally)
+      console.log(`📧 [${requestId}] Calling send-welcome-email for: ${email}`);
+      const welcomeEmailUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/send-welcome-email`;
+      
+      try {
+        const welcomeEmailResponse = await fetch(welcomeEmailUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY') || ''}`
+          },
+          body: JSON.stringify({ email, fullName, origin: req.headers.get('origin') || '' })
+        });
+
+        console.log(`📧 [${requestId}] Welcome email response status: ${welcomeEmailResponse.status}`);
+        
+        if (!welcomeEmailResponse.ok) {
+          const errorText = await welcomeEmailResponse.text();
+          console.error(`❌ [${requestId}] Error sending welcome email (${welcomeEmailResponse.status}):`, errorText);
+          console.warn(`⚠️ [${requestId}] User created but welcome email failed to send`);
+        } else {
+          const emailResult = await welcomeEmailResponse.json();
+          console.log(`✅ [${requestId}] Welcome email sent successfully:`, JSON.stringify(emailResult));
+        }
+      } catch (fetchError) {
+        console.error(`❌ [${requestId}] Exception while calling send-welcome-email:`, fetchError);
+        console.warn(`⚠️ [${requestId}] User created but email sending threw exception`);
+      }
+    } else {
+      console.log(`ℹ️ [${requestId}] Skipping email send (shouldSendEmail=false)`);
     }
 
     // Create/update profile for the user
@@ -151,7 +190,8 @@ Deno.serve(async (req) => {
         id: userId,
         email: email,
         full_name: fullName,
-        role: role
+        role: role,
+        additional_roles: additionalRoles.length > 0 ? additionalRoles : null
       }], {
         onConflict: 'id'
       });
@@ -163,6 +203,43 @@ Deno.serve(async (req) => {
 
     console.log(`✅ [${requestId}] Profile created successfully`);
 
+    // If user is a teilnehmer with an elite_kleingruppe, create entry in teilnehmer table
+    if (role === 'teilnehmer' && eliteKleingruppe) {
+      console.log(`🎓 [${requestId}] Creating teilnehmer entry for Elite-Kleingruppe: ${eliteKleingruppe}`);
+      
+      // Find the elite_kleingruppe by name
+      const { data: kleingruppe, error: kgError } = await supabaseAdmin
+        .from('elite_kleingruppen')
+        .select('id')
+        .eq('name', eliteKleingruppe)
+        .single();
+
+      if (kgError || !kleingruppe) {
+        console.error(`❌ [${requestId}] Elite-Kleingruppe not found:`, eliteKleingruppe);
+        console.warn(`⚠️ [${requestId}] User created but teilnehmer entry not created`);
+      } else {
+        // Create teilnehmer entry
+        const { error: teilnehmerError } = await supabaseAdmin
+          .from('teilnehmer')
+          .insert([{
+            profile_id: userId,
+            name: fullName,
+            email: email,
+            is_elite_kleingruppe: true,
+            elite_kleingruppe_id: kleingruppe.id,
+            active_since: new Date().toISOString().split('T')[0],
+            study_goal: '1. Staatsexamen Erstversuch'
+          }]);
+
+        if (teilnehmerError) {
+          console.error(`❌ [${requestId}] Error creating teilnehmer entry:`, teilnehmerError);
+          console.warn(`⚠️ [${requestId}] User created but teilnehmer entry failed`);
+        } else {
+          console.log(`✅ [${requestId}] Teilnehmer entry created successfully`);
+        }
+      }
+    }
+
     const endTime = Date.now();
     console.log(`⏱️ [${requestId}] Function completed in ${endTime - startTime}ms`);
     
@@ -170,10 +247,11 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true, 
-        message: isNewUser ? 'User created successfully' : 'User profile updated successfully',
+        message: isNewUser 
+          ? `Benutzer wurde erfolgreich erstellt. Eine Einladungs-E-Mail mit Magic Link wurde an ${email} gesendet.`
+          : 'Benutzerprofil wurde erfolgreich aktualisiert.',
         userId: userId,
-        email: email,
-        temporaryPassword: tempPassword
+        email: email
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

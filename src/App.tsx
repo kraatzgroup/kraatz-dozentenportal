@@ -26,7 +26,7 @@ import { ToastContainer } from './components/Toast';
 import { useState } from 'react';
 
 function App() {
-  const { setUser, user, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isTeilnehmer, userRole } = useAuthStore();
+  const { setUser, user, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isTeilnehmer, userRole, isSettingUser } = useAuthStore();
   const { isPreviewMode, previewedRole, togglePreview, setPreviewedRole } = usePreviewStore();
   const [appLoading, setAppLoading] = useState(true);
 
@@ -72,8 +72,8 @@ function App() {
 
   console.log('App: Current user:', user?.email, 'isAdmin:', isAdmin, 'isPreviewMode:', isPreviewMode);
 
-  // Show loading while app is initializing
-  if (appLoading) {
+  // Show loading while app is initializing or user profile is being loaded
+  if (appLoading || isSettingUser) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="bg-white p-8 rounded-lg shadow-md">
@@ -97,12 +97,13 @@ function App() {
   const showPreview = isAdmin && isPreviewMode;
   
   // Determine if we should show admin view based on role hierarchy and preview mode
-  const showAdminView = showPreview ? previewedRole === 'admin' : (isAdmin || isBuchhaltung);
+  const showAdminView = showPreview ? previewedRole === 'admin' : isAdmin;
+  const showBuchhaltungView = showPreview ? previewedRole === 'buchhaltung' : (isBuchhaltung && !isAdmin);
   const showVerwaltungView = showPreview ? previewedRole === 'verwaltung' : isVerwaltung;
   const showVertriebView = showPreview ? previewedRole === 'vertrieb' : isVertrieb;
   const showTeilnehmerView = showPreview ? previewedRole === 'teilnehmer' : isTeilnehmer;
 
-  console.log('App: Rendering with views:', { showAdminView, showVerwaltungView, showVertriebView, showTeilnehmerView, userRole });
+  console.log('App: Rendering with views:', { showAdminView, showBuchhaltungView, showVerwaltungView, showVertriebView, showTeilnehmerView, userRole });
 
   return (
     <Router>
@@ -121,51 +122,42 @@ function App() {
           </div>
         }>
         <Routes>
-          {/* Root redirect based on role */}
+          {/* Root redirect to unified dashboard */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+          {/* Legacy route redirects */}
+          <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/accounting" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/vertrieb" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/elite-kleingruppe" element={<Navigate to="/dashboard" replace />} />
+
+          {/* Unified dashboard - renders correct view based on role */}
           <Route 
-            path="/" 
+            path="/dashboard" 
             element={
               showTeilnehmerView ?
-                <Navigate to="/elite-kleingruppe" replace /> :
-              showVertriebView ? 
-                <Navigate to="/vertrieb" replace /> :
-              (showAdminView || showVerwaltungView) ? 
-                <Navigate to="/admin" replace /> : 
-                <Navigate to="/dashboard" replace />
+                <EliteKleingruppeDashboard /> :
+              showVertriebView ?
+                <VertriebDashboard /> :
+              showBuchhaltungView ?
+                <AdminDashboard mode="accounting" /> :
+              showVerwaltungView ?
+                <AdminDashboard mode="verwaltung" /> :
+              showAdminView ?
+                <AdminDashboard mode="admin" /> :
+                <Dashboard isAdmin={false} />
+            } 
+          />
+          <Route 
+            path="/dashboard/elite-kleingruppe/:subTab?" 
+            element={
+              showTeilnehmerView ?
+                <EliteKleingruppeDashboard /> :
+                <Dashboard isAdmin={showAdminView || showVerwaltungView || showVertriebView} />
             } 
           />
 
-          {/* Elite-Kleingruppe route */}
-          <Route 
-            path="/elite-kleingruppe" 
-            element={
-              showTeilnehmerView ? 
-                <EliteKleingruppeDashboard /> : 
-                <Navigate to="/" replace />
-            } 
-          />
-
-          {/* Vertrieb route */}
-          <Route 
-            path="/vertrieb" 
-            element={
-              showVertriebView ? 
-                <VertriebDashboard /> : 
-                <Navigate to="/" replace />
-            } 
-          />
-
-          {/* Admin routes - accessible based on role hierarchy */}
-          <Route 
-            path="/admin" 
-            element={
-              (showAdminView || showVerwaltungView) ? 
-                <AdminDashboard /> : 
-                showVertriebView ?
-                  <Navigate to="/vertrieb" replace /> :
-                  <Navigate to="/dashboard" replace />
-            } 
-          />
+          {/* Sub-routes */}
           <Route 
             path="/users" 
             element={
@@ -177,17 +169,13 @@ function App() {
           <Route 
             path="/dozent/:id" 
             element={
-              (showAdminView || showVerwaltungView || showVertriebView) ? 
+              (showAdminView || showBuchhaltungView || showVerwaltungView || showVertriebView) ? 
                 <DozentDetail /> : 
                 <Navigate to="/dashboard" replace />
             } 
           />
 
           {/* Common routes */}
-          <Route 
-            path="/dashboard" 
-            element={<Dashboard isAdmin={showAdminView || showVerwaltungView || showVertriebView} />} 
-          />
           <Route path="/messages" element={<Chat />} />
           <Route path="/settings" element={<Settings />} />
           
@@ -206,18 +194,8 @@ function App() {
             } 
           />
 
-
           {/* Catch-all redirect */}
-          <Route 
-            path="*" 
-            element={
-              showVertriebView ?
-                <Navigate to="/vertrieb" replace /> :
-              (showAdminView || showVerwaltungView) ? 
-                <Navigate to="/admin" replace /> : 
-                <Navigate to="/dashboard" replace />
-            } 
-          />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
         </Suspense>
         <Footer />

@@ -8,7 +8,7 @@ import { Logo } from './Logo';
 
 export function Settings() {
   const navigate = useNavigate();
-  const { user } = useAuthStore();
+  const { user, isDozent } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +41,7 @@ export function Settings() {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('full_name, email, profile_picture_url, phone, tax_id, bank_name, iban, bic')
+        .select('full_name, email, profile_picture_url, phone, tax_id, bank_name, iban, bic, role, additional_roles')
         .eq('id', user.id)
         .single();
 
@@ -297,7 +297,8 @@ export function Settings() {
                   </div>
                 </div>
 
-                {/* Tax Information Section */}
+                {/* Tax Information Section - Only for Dozenten */}
+                {isDozent && (
                 <div className="border-t border-gray-200 pt-6">
                   <h4 className="text-lg font-medium text-gray-900 mb-4">
                     Steuerliche Angaben
@@ -315,13 +316,13 @@ export function Settings() {
                       className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
                       placeholder="12/345/67890"
                     />
-                    <p className="mt-2 text-sm text-gray-500">
-                      Wird für die Rechnungserstellung benötigt.
-                    </p>
+                    <p className="text-xs text-gray-500 mt-1">Wird für die Rechnungserstellung benötigt.</p>
                   </div>
                 </div>
+                )}
 
-                {/* Banking Information Section */}
+                {/* Banking Information Section - Only for Dozenten */}
+                {isDozent && (
                 <div className="border-t border-gray-200 pt-6">
                   <h4 className="text-lg font-medium text-gray-900 mb-4">
                     Bankverbindung
@@ -376,6 +377,7 @@ export function Settings() {
                     </div>
                   </div>
                 </div>
+                )}
 
                 {/* Password Section */}
                 <div className="border-t border-gray-200 pt-6">
@@ -509,7 +511,7 @@ export function Settings() {
                     <li>Änderungen an der E-Mail-Adresse müssen bestätigt werden</li>
                     <li>Ihr Name wird in Nachrichten und Datei-Uploads angezeigt</li>
                     <li>Passwort-Änderungen sind optional - lassen Sie die Felder leer, um das aktuelle Passwort zu behalten</li>
-                    <li>Bankdaten und Steuernummer werden für die automatische Rechnungserstellung verwendet</li>
+                    {isDozent && <li>Bankdaten und Steuernummer werden für die automatische Rechnungserstellung verwendet</li>}
                   </ul>
                 </div>
               </div>

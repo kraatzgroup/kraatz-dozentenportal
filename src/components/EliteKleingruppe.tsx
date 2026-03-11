@@ -24,7 +24,10 @@ import {
   Save,
   X,
   Edit2,
-  Trash2
+  Trash2,
+  Info,
+  HelpCircle,
+  Video
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
@@ -91,6 +94,42 @@ export const calculateEndTime = (startTime: string, durationMinutes: number): st
   const endHours = Math.floor(totalMinutes / 60) % 24;
   const endMins = totalMinutes % 60;
   return `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
+};
+
+// Helper function to get embeddable video URL
+const getEmbedUrl = (url: string): { type: 'iframe' | 'video'; embedUrl: string } => {
+  // Loom
+  if (url.includes('loom.com')) {
+    const match = url.match(/loom\.com\/share\/([a-zA-Z0-9]+)/);
+    if (match) {
+      return { type: 'iframe', embedUrl: `https://www.loom.com/embed/${match[1]}` };
+    }
+  }
+  
+  // YouTube
+  if (url.includes('youtube.com') || url.includes('youtu.be')) {
+    let videoId = '';
+    if (url.includes('youtube.com/watch')) {
+      const urlParams = new URLSearchParams(url.split('?')[1]);
+      videoId = urlParams.get('v') || '';
+    } else if (url.includes('youtu.be/')) {
+      videoId = url.split('youtu.be/')[1].split('?')[0];
+    }
+    if (videoId) {
+      return { type: 'iframe', embedUrl: `https://www.youtube.com/embed/${videoId}` };
+    }
+  }
+  
+  // Vimeo
+  if (url.includes('vimeo.com')) {
+    const match = url.match(/vimeo\.com\/(\d+)/);
+    if (match) {
+      return { type: 'iframe', embedUrl: `https://player.vimeo.com/video/${match[1]}` };
+    }
+  }
+  
+  // Default: direct video
+  return { type: 'video', embedUrl: url };
 };
 
 interface TeachingMaterial {
@@ -183,9 +222,45 @@ interface Teilnehmer {
   id: string;
   name: string;
   email: string;
+  full_name?: string;
+  active_since?: string;
+  contract_end?: string;
+  study_goal?: string;
+  state_law?: string;
+  dozent_zivilrecht_name?: string;
+  dozent_strafrecht_name?: string;
+  dozent_oeffentliches_recht_name?: string;
+  completed_hours?: number;
+  elite_kleingruppe_name?: string;
+  is_elite_kleingruppe?: boolean;
+  zoom_background_url?: string;
 }
 
-type SubTab = 'einheiten' | 'klausuren' | 'kommunikation' | 'kurszeiten';
+interface FAQ {
+  id: string;
+  question: string;
+  answer: string;
+  category: string;
+  order_index: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+interface SupportVideo {
+  id: string;
+  title: string;
+  description: string | null;
+  video_url: string;
+  thumbnail_url: string | null;
+  category: string;
+  order_index: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+type SubTab = 'einheiten' | 'klausuren' | 'kommunikation' | 'kurszeiten' | 'support' | 'teilnehmer';
 
 interface CourseTime {
   id: string;
@@ -200,12 +275,22 @@ interface CourseTime {
 
 interface EliteKleingruppeProps {
   isAdmin?: boolean;
+  activeSubTabProp?: string;
+  onSubTabChange?: (tab: string) => void;
 }
 
-export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
+export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabChange }: EliteKleingruppeProps) {
   const { user } = useAuthStore();
   const [dozentLegalAreas, setDozentLegalAreas] = useState<string[]>([]);
-  const [activeSubTab, setActiveSubTab] = useState<SubTab>('einheiten');
+  const [internalSubTab, setInternalSubTab] = useState<SubTab>('einheiten');
+  const activeSubTab: SubTab = (activeSubTabProp as SubTab) || internalSubTab;
+  const setActiveSubTab = (tab: SubTab) => {
+    if (onSubTabChange) {
+      onSubTabChange(tab);
+    } else {
+      setInternalSubTab(tab);
+    }
+  };
   const [teilnehmer, setTeilnehmer] = useState<Teilnehmer[]>([]);
   const [materials, setMaterials] = useState<TeachingMaterial[]>([]);
   const [folders, setFolders] = useState<MaterialFolder[]>([]);
@@ -267,6 +352,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
   const [korrekturDuration, setKorrekturDuration] = useState<string>('');
   const [isUploadingKorrektur, setIsUploadingKorrektur] = useState(false);
   const [dozentAssignments, setDozentAssignments] = useState<DozentAssignment[]>([]);
+  const [showAllLegalAreas, setShowAllLegalAreas] = useState(false);
   const [showDozentModal, setShowDozentModal] = useState(false);
   const [newDozentId, setNewDozentId] = useState('');
   const [newDozentLegalArea, setNewDozentLegalArea] = useState('');
@@ -300,6 +386,34 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
   });
   const [showDurationSettings, setShowDurationSettings] = useState(false);
 
+  // Zoom Links state
+  const [zoomLinks, setZoomLinks] = useState({
+    Zivilrecht: { url: '', meetingId: '', passcode: '' },
+    Strafrecht: { url: '', meetingId: '', passcode: '' },
+    'Öffentliches Recht': { url: '', meetingId: '', passcode: '' }
+  });
+  const [showZoomLinksSettings, setShowZoomLinksSettings] = useState(false);
+
+  // Support state
+  const [faqs, setFaqs] = useState<FAQ[]>([]);
+  const [videos, setVideos] = useState<SupportVideo[]>([]);
+  const [supportActiveSection, setSupportActiveSection] = useState<'faq' | 'videos'>('faq');
+  const [expandedFaq, setExpandedFaq] = useState<string | null>(null);
+  const [showFaqModal, setShowFaqModal] = useState(false);
+  const [editingFaq, setEditingFaq] = useState<FAQ | null>(null);
+  const [faqForm, setFaqForm] = useState({ question: '', answer: '', category: 'Allgemein' });
+  const [showVideoModal, setShowVideoModal] = useState(false);
+  const [editingVideo, setEditingVideo] = useState<SupportVideo | null>(null);
+  const [videoForm, setVideoForm] = useState({ title: '', description: '', video_url: '', category: 'Allgemein' });
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [showZoomBgModal, setShowZoomBgModal] = useState(false);
+  const [selectedTeilnehmerForBg, setSelectedTeilnehmerForBg] = useState<Teilnehmer | null>(null);
+  const [zoomBgFiles, setZoomBgFiles] = useState<File[]>([]);
+  const [isUploadingZoomBg, setIsUploadingZoomBg] = useState(false);
+  const [showManageBgModal, setShowManageBgModal] = useState(false);
+  const [existingBackgrounds, setExistingBackgrounds] = useState<string[]>([]);
+
   useEffect(() => {
     fetchData();
     if (!isAdmin && user) {
@@ -309,8 +423,24 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
 
   const fetchDozentLegalAreas = async () => {
     if (!user) return;
-    const { data } = await supabase.from('elite_kleingruppe_dozenten').select('legal_area').eq('dozent_id', user.id);
-    setDozentLegalAreas((data || []).map(d => d.legal_area));
+    const areas = new Set<string>();
+    
+    // Check new assignments table first
+    const { data: assignments } = await supabase
+      .from('elite_kleingruppe_dozent_assignments')
+      .select('legal_areas')
+      .eq('dozent_id', user.id);
+    if (assignments) {
+      assignments.forEach(a => (a.legal_areas || []).forEach((la: string) => areas.add(la)));
+    }
+    
+    // Fallback: check old table
+    if (areas.size === 0) {
+      const { data } = await supabase.from('elite_kleingruppe_dozenten').select('legal_area').eq('dozent_id', user.id);
+      (data || []).forEach(d => areas.add(d.legal_area));
+    }
+    
+    setDozentLegalAreas(Array.from(areas));
   };
 
   const fetchData = async () => {
@@ -372,7 +502,7 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
       setFolders(allFolders);
       const { data: releasesData } = await supabase.from('elite_kleingruppe_releases').select('*').order('release_date', { ascending: true });
       setScheduledReleases(releasesData || []);
-      const { data: teilnehmerData } = await supabase.from('teilnehmer').select('id, name, email').eq('elite_kleingruppe', true).order('name');
+      const { data: teilnehmerData } = await supabase.from('teilnehmer').select('id, name, email, state_law, zoom_background_url').eq('elite_kleingruppe', true).order('name');
       setTeilnehmer(teilnehmerData || []);
       
       // Fetch Klausuren with teilnehmer names
@@ -405,10 +535,24 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
       }
       
       // Fetch unit duration settings
-      const { data: settingsData } = await supabase.from('elite_kleingruppe_settings').select('setting_value').eq('setting_key', 'unit_durations').single();
+      const { data: settingsData } = await supabase.from('elite_kleingruppe_settings').select('setting_value').eq('setting_key', 'unit_durations').maybeSingle();
       if (settingsData?.setting_value) {
         setUnitDurations(settingsData.setting_value as any);
       }
+      
+      // Fetch zoom links settings
+      const { data: zoomLinksData } = await supabase.from('elite_kleingruppe_settings').select('setting_value').eq('setting_key', 'zoom_links').maybeSingle();
+      if (zoomLinksData?.setting_value) {
+        setZoomLinks(zoomLinksData.setting_value as any);
+      }
+      
+      // Fetch FAQs
+      const { data: faqsData } = await supabase.from('elite_faqs').select('*').eq('is_active', true).order('order_index');
+      setFaqs(faqsData || []);
+      
+      // Fetch Videos
+      const { data: videosData } = await supabase.from('elite_support_videos').select('*').eq('is_active', true).order('order_index');
+      setVideos(videosData || []);
       
       setMessages([]);
     } catch (error) {
@@ -442,6 +586,160 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
     }
   };
 
+  const handleSaveZoomLinks = async () => {
+    try {
+      const { error } = await supabase
+        .from('elite_kleingruppe_settings')
+        .upsert({
+          setting_key: 'zoom_links',
+          setting_value: zoomLinks,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'setting_key' });
+      
+      if (error) throw error;
+      alert('Zoom-Links erfolgreich gespeichert!');
+      setShowZoomLinksSettings(false);
+    } catch (error) {
+      console.error('Error saving zoom links:', error);
+      alert('Fehler beim Speichern der Zoom-Links');
+    }
+  };
+
+  // FAQ Functions
+  const handleSaveFaq = async () => {
+    if (!faqForm.question.trim() || !faqForm.answer.trim()) return;
+    try {
+      if (editingFaq) {
+        await supabase.from('elite_faqs').update({
+          question: faqForm.question,
+          answer: faqForm.answer,
+          category: faqForm.category,
+          updated_at: new Date().toISOString()
+        }).eq('id', editingFaq.id);
+      } else {
+        const { data: maxOrder } = await supabase.from('elite_faqs').select('order_index').order('order_index', { ascending: false }).limit(1).maybeSingle();
+        await supabase.from('elite_faqs').insert({
+          question: faqForm.question,
+          answer: faqForm.answer,
+          category: faqForm.category,
+          order_index: (maxOrder?.order_index || 0) + 1,
+          is_active: true
+        });
+      }
+      setShowFaqModal(false);
+      setEditingFaq(null);
+      setFaqForm({ question: '', answer: '', category: 'Allgemein' });
+      fetchData();
+    } catch (error) {
+      console.error('Error saving FAQ:', error);
+      alert('Fehler beim Speichern der FAQ');
+    }
+  };
+
+  const handleDeleteFaq = async (id: string) => {
+    if (!confirm('Möchten Sie diese FAQ wirklich löschen?')) return;
+    try {
+      await supabase.from('elite_faqs').update({ is_active: false }).eq('id', id);
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting FAQ:', error);
+    }
+  };
+
+  const openEditFaqModal = (faq: FAQ) => {
+    setEditingFaq(faq);
+    setFaqForm({ question: faq.question, answer: faq.answer, category: faq.category });
+    setShowFaqModal(true);
+  };
+
+  const openCreateFaqModal = () => {
+    setEditingFaq(null);
+    setFaqForm({ question: '', answer: '', category: 'Allgemein' });
+    setShowFaqModal(true);
+  };
+
+  // Video Functions
+  const handleSaveVideo = async () => {
+    if (!videoForm.title.trim() || !videoForm.video_url.trim()) return;
+    setIsUploadingVideo(true);
+    try {
+      let videoUrl = videoForm.video_url;
+      
+      // Upload video file if selected
+      if (videoFile) {
+        const fileExt = videoFile.name.split('.').pop();
+        const fileName = `${Date.now()}_${videoForm.title.replace(/[^a-zA-Z0-9]/g, '_')}.${fileExt}`;
+        const filePath = `elite-videos/${fileName}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('teaching-materials')
+          .upload(filePath, videoFile);
+        
+        if (uploadError) throw uploadError;
+        
+        const { data: urlData } = supabase.storage
+          .from('teaching-materials')
+          .getPublicUrl(filePath);
+        
+        videoUrl = urlData.publicUrl;
+      }
+      
+      if (editingVideo) {
+        await supabase.from('elite_support_videos').update({
+          title: videoForm.title,
+          description: videoForm.description || null,
+          video_url: videoUrl,
+          category: videoForm.category,
+          updated_at: new Date().toISOString()
+        }).eq('id', editingVideo.id);
+      } else {
+        const { data: maxOrder } = await supabase.from('elite_support_videos').select('order_index').order('order_index', { ascending: false }).limit(1).maybeSingle();
+        await supabase.from('elite_support_videos').insert({
+          title: videoForm.title,
+          description: videoForm.description || null,
+          video_url: videoUrl,
+          category: videoForm.category,
+          order_index: (maxOrder?.order_index || 0) + 1,
+          is_active: true
+        });
+      }
+      setShowVideoModal(false);
+      setEditingVideo(null);
+      setVideoForm({ title: '', description: '', video_url: '', category: 'Allgemein' });
+      setVideoFile(null);
+      fetchData();
+    } catch (error) {
+      console.error('Error saving video:', error);
+      alert('Fehler beim Speichern des Videos');
+    } finally {
+      setIsUploadingVideo(false);
+    }
+  };
+
+  const handleDeleteVideo = async (id: string) => {
+    if (!confirm('Möchten Sie dieses Video wirklich löschen?')) return;
+    try {
+      await supabase.from('elite_support_videos').update({ is_active: false }).eq('id', id);
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting video:', error);
+    }
+  };
+
+  const openEditVideoModal = (video: SupportVideo) => {
+    setEditingVideo(video);
+    setVideoForm({ title: video.title, description: video.description || '', video_url: video.video_url, category: video.category });
+    setVideoFile(null);
+    setShowVideoModal(true);
+  };
+
+  const openCreateVideoModal = () => {
+    setEditingVideo(null);
+    setVideoForm({ title: '', description: '', video_url: '', category: 'Allgemein' });
+    setVideoFile(null);
+    setShowVideoModal(true);
+  };
+
   const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const formatDateTime = (dateString: string) => new Date(dateString).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -451,6 +749,14 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
       case 'in_review': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />In Bearbeitung</span>;
       default: return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800"><AlertCircle className="h-3 w-3 mr-1" />Ausstehend</span>;
     }
+  };
+
+  // Check if a release belongs to the dozent's own legal areas (or if admin)
+  const canEditRelease = (release: ScheduledRelease) => {
+    if (isAdmin) return true;
+    if (dozentLegalAreas.length === 0) return true;
+    if (!release.legal_area) return true;
+    return dozentLegalAreas.includes(release.legal_area);
   };
 
   const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
@@ -463,11 +769,9 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
       return false;
     }
     
-    // For non-admin users (Dozenten), only show units in their assigned legal areas
-    if (!isAdmin && dozentLegalAreas.length > 0) {
-      // Show if the release has a legal_area that matches one of the dozent's areas
-      // OR if it's not a unit (einheit) - e.g., ferien, etc. are shown to all
-      if (r.event_type === 'einheit' && r.legal_area && !dozentLegalAreas.includes(r.legal_area)) {
+    // Filter by dozent's assigned legal areas (non-admin only, unless showAllLegalAreas is toggled)
+    if (!isAdmin && !showAllLegalAreas && dozentLegalAreas.length > 0 && r.legal_area) {
+      if (!dozentLegalAreas.includes(r.legal_area)) {
         return false;
       }
     }
@@ -559,10 +863,10 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
       const duration = getUnitDurationFromSettings(unitDurations, unitType);
       const endTime = calculateEndTime(defaultStartTime, duration);
       setReleaseEndTime(endTime);
-      // Automatisch Zoom-Link des zugewiesenen Dozenten laden
-      const assignment = dozentAssignments.find(a => a.legal_area === unitConfig.legalArea);
-      if (assignment?.zoom_link) {
-        setReleaseZoomLink(assignment.zoom_link);
+      // Automatisch Zoom-Link aus den Einstellungen laden (nach Rechtsgebiet)
+      const legalArea = unitConfig.legalArea as keyof typeof zoomLinks;
+      if (zoomLinks[legalArea]?.url) {
+        setReleaseZoomLink(zoomLinks[legalArea].url);
       }
     }
   };
@@ -913,7 +1217,15 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
   const handleAddDozentAssignment = async () => {
     if (!newDozentId || !newDozentLegalArea) return;
     try {
-      await supabase.from('elite_kleingruppe_dozenten').insert({ dozent_id: newDozentId, legal_area: newDozentLegalArea });
+      // Automatically populate Zoom link based on legal area from settings
+      const legalArea = newDozentLegalArea as keyof typeof zoomLinks;
+      const autoZoomLink = zoomLinks[legalArea]?.url || null;
+      
+      await supabase.from('elite_kleingruppe_dozenten').insert({ 
+        dozent_id: newDozentId, 
+        legal_area: newDozentLegalArea,
+        zoom_link: autoZoomLink
+      });
       setShowDozentModal(false);
       setNewDozentId('');
       setNewDozentLegalArea('');
@@ -1005,12 +1317,13 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                 }
               }
               
+              const editable = canEditRelease(release);
               return (
                 <div 
                   key={release.id} 
                   onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }}
-                  className={`text-xs px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 ${bgColor} ${textColor}`} 
-                  title={release.title}
+                  className={`text-xs px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 ${!editable ? 'opacity-60' : ''} ${bgColor} ${textColor}`} 
+                  title={editable ? release.title : `${release.title} (nur Ansicht)`}
                 >
                   {release.is_released ? <Unlock className="h-3 w-3 inline mr-1" /> : <Lock className="h-3 w-3 inline mr-1" />}
                   {release.event_type === 'einheit' && legalAreaAbbr && <span className="font-semibold">[{legalAreaAbbr}] </span>}
@@ -1062,8 +1375,9 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
         <nav className="-mb-px flex space-x-4 md:space-x-8 min-w-max md:min-w-0">
           <button onClick={() => setActiveSubTab('einheiten')} className={(activeSubTab === 'einheiten' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><Calendar className="h-4 w-4 mr-2" />Einheiten & Materialfreigabe</button>
           <button onClick={() => setActiveSubTab('klausuren')} className={(activeSubTab === 'klausuren' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><PenTool className="h-4 w-4 mr-2" />Klausurenkorrekturen</button>
-          <button onClick={() => setActiveSubTab('kommunikation')} className={(activeSubTab === 'kommunikation' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><MessageSquare className="h-4 w-4 mr-2" />Kommunikation</button>
+          <button onClick={() => setActiveSubTab('teilnehmer')} className={(activeSubTab === 'teilnehmer' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><Users className="h-4 w-4 mr-2" />Teilnehmer</button>
           <button onClick={() => setActiveSubTab('kurszeiten')} className={(activeSubTab === 'kurszeiten' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><Clock className="h-4 w-4 mr-2" />Kurszeiten</button>
+          <button onClick={() => setActiveSubTab('support')} className={(activeSubTab === 'support' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><HelpCircle className="h-4 w-4 mr-2" />Support</button>
         </nav>
       </div>
 
@@ -1077,6 +1391,17 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                 <button onClick={() => { if (calendarMonth === 11) { setCalendarMonth(0); setCalendarYear(calendarYear + 1); } else { setCalendarMonth(calendarMonth + 1); } }} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronRight className="h-5 w-5" /></button>
               </div>
               <div className="flex items-center space-x-2 text-sm">
+                {!isAdmin && dozentLegalAreas.length > 0 && (
+                  <label className="flex items-center cursor-pointer mr-3">
+                    <input
+                      type="checkbox"
+                      checked={showAllLegalAreas}
+                      onChange={(e) => setShowAllLegalAreas(e.target.checked)}
+                      className="h-3.5 w-3.5 text-primary border-gray-300 rounded focus:ring-primary"
+                    />
+                    <span className="ml-1.5 text-xs text-gray-600">Alle Rechtsgebiete</span>
+                  </label>
+                )}
                 <span className="flex items-center"><span className="w-3 h-3 rounded bg-green-100 mr-1"></span>Freigegeben</span>
                 <span className="flex items-center"><span className="w-3 h-3 rounded bg-yellow-100 mr-1"></span>Geplant</span>
               </div>
@@ -1215,15 +1540,17 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                           {release.material_ids.map(id => { const m = materials.find(x => x.id === id); return m ? <span key={id} className="inline-flex items-center px-2 py-1 bg-gray-100 rounded text-xs"><FileText className="h-3 w-3 mr-1" />{m.title}</span> : null; })}
                           {release.folder_ids.map(id => { const f = folders.find(x => x.id === id); return f ? <span key={id} className="inline-flex items-center px-2 py-1 bg-blue-100 rounded text-xs"><FolderOpen className="h-3 w-3 mr-1" />{f.name}</span> : null; })}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-blue-100 text-blue-700 hover:bg-blue-200">
-                            <Edit2 className="h-4 w-4 mr-1" />Bearbeiten
-                          </button>
-                          <button onClick={(e) => { e.stopPropagation(); handleToggleRelease(release); }} className={"inline-flex items-center px-3 py-1.5 rounded text-sm " + (release.is_released ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200')}>{release.is_released ? <><Lock className="h-4 w-4 mr-1" />Sperren</> : <><Unlock className="h-4 w-4 mr-1" />Jetzt freigeben</>}</button>
-                          <button onClick={(e) => { e.stopPropagation(); handleDeleteRelease(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-red-100 text-red-700 hover:bg-red-200">
-                            <Trash2 className="h-4 w-4 mr-1" />Löschen
-                          </button>
-                        </div>
+                        {canEditRelease(release) && (
+                          <div className="flex items-center gap-2">
+                            <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-blue-100 text-blue-700 hover:bg-blue-200">
+                              <Edit2 className="h-4 w-4 mr-1" />Bearbeiten
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); handleToggleRelease(release); }} className={"inline-flex items-center px-3 py-1.5 rounded text-sm " + (release.is_released ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200')}>{release.is_released ? <><Lock className="h-4 w-4 mr-1" />Sperren</> : <><Unlock className="h-4 w-4 mr-1" />Jetzt freigeben</>}</button>
+                            <button onClick={(e) => { e.stopPropagation(); handleDeleteRelease(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-red-100 text-red-700 hover:bg-red-200">
+                              <Trash2 className="h-4 w-4 mr-1" />Löschen
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </li>
@@ -1287,17 +1614,19 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                         {expandedRelease === release.id && (
                           <div className="mt-4 pl-14 space-y-4">
                             {release.description && <p className="text-sm text-gray-600">{release.description}</p>}
-                            <div className="flex items-center gap-2">
-                              <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-blue-100 text-blue-700 hover:bg-blue-200">
-                                <Edit2 className="h-4 w-4 mr-1" />Bearbeiten
-                              </button>
-                              <button onClick={(e) => { e.stopPropagation(); handleToggleRelease(release); }} className={`inline-flex items-center px-3 py-1.5 rounded text-sm ${release.is_released ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}>
-                                {release.is_released ? <><Lock className="h-4 w-4 mr-1" />Deaktivieren</> : <><Unlock className="h-4 w-4 mr-1" />Aktivieren</>}
-                              </button>
-                              <button onClick={(e) => { e.stopPropagation(); handleDeleteRelease(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-red-100 text-red-700 hover:bg-red-200">
-                                <Trash2 className="h-4 w-4 mr-1" />Löschen
-                              </button>
-                            </div>
+                            {canEditRelease(release) && (
+                              <div className="flex items-center gap-2">
+                                <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-blue-100 text-blue-700 hover:bg-blue-200">
+                                  <Edit2 className="h-4 w-4 mr-1" />Bearbeiten
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); handleToggleRelease(release); }} className={`inline-flex items-center px-3 py-1.5 rounded text-sm ${release.is_released ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}>
+                                  {release.is_released ? <><Lock className="h-4 w-4 mr-1" />Deaktivieren</> : <><Unlock className="h-4 w-4 mr-1" />Aktivieren</>}
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); handleDeleteRelease(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-red-100 text-red-700 hover:bg-red-200">
+                                  <Trash2 className="h-4 w-4 mr-1" />Löschen
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )}
                       </li>
@@ -1722,12 +2051,13 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Endzeit (automatisch)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Endzeit {releaseEventType === 'einheit' ? '(automatisch)' : ''}</label>
                     <input 
                       type="time" 
                       value={releaseEndTime} 
-                      readOnly
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600" 
+                      onChange={(e) => releaseEventType !== 'einheit' && setReleaseEndTime(e.target.value)}
+                      readOnly={releaseEventType === 'einheit'}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary ${releaseEventType === 'einheit' ? 'border-gray-200 bg-gray-50 text-gray-600' : 'border-gray-300'}`} 
                     />
                   </div>
                   <div>
@@ -1753,24 +2083,24 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                   />
                 </div>
 
+                {/* Zoom Link - für alle Event-Typen */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Zoom-Link / Meeting-Link (optional)</label>
+                  <input 
+                    type="url" 
+                    value={releaseZoomLink} 
+                    onChange={(e) => setReleaseZoomLink(e.target.value)} 
+                    placeholder="https://zoom.us/j/... oder https://meet.google.com/..." 
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                  />
+                  {releaseZoomLink && releaseEventType === 'einheit' && (
+                    <p className="text-xs text-green-600 mt-1">✓ Zoom-Link wird automatisch vom zugewiesenen Dozenten übernommen</p>
+                  )}
+                </div>
+
                 {/* Alle folgenden Felder nur bei Einheiten */}
                 {releaseEventType === 'einheit' && (
                   <>
-                    {/* Zoom Link */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Zoom-Link</label>
-                      <input 
-                        type="url" 
-                        value={releaseZoomLink} 
-                        onChange={(e) => setReleaseZoomLink(e.target.value)} 
-                        placeholder="https://zoom.us/j/..." 
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
-                      />
-                      {releaseZoomLink && (
-                        <p className="text-xs text-green-600 mt-1">✓ Zoom-Link wird automatisch vom zugewiesenen Dozenten übernommen</p>
-                      )}
-                    </div>
-
                     {/* Wiederkehrendes Meeting */}
                     <div className="border border-gray-200 rounded-lg p-4">
                   <label className="flex items-center cursor-pointer">
@@ -2389,7 +2719,16 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
           <div className="bg-white rounded-lg shadow">
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-medium text-gray-900">Reguläre Kurszeiten</h3>
+                <h3 className="text-lg font-medium text-gray-900 flex items-center gap-2">
+                  Reguläre Kurszeiten
+                  <span className="relative group">
+                    <Info className="h-4 w-4 text-gray-400 cursor-help" />
+                    <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-72 p-3 bg-gray-800 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                      Änderungen und Wiederholungseinheiten sind dem Kurskalender zu entnehmen
+                      <span className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-800"></span>
+                    </span>
+                  </span>
+                </h3>
                 <p className="text-sm text-gray-500 mt-1">Wöchentliche Termine für die Elite-Kleingruppe</p>
               </div>
               <button
@@ -2697,6 +3036,230 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
               </div>
             )}
           </div>
+
+          {/* Zoom Links Settings */}
+          <div className="bg-white rounded-lg shadow">
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">Zoom-Links für Rechtsgebiete</h3>
+                <p className="text-sm text-gray-500 mt-1">Permanente Meeting-Links für die 3 Rechtsgebiete</p>
+              </div>
+              <button
+                onClick={() => setShowZoomLinksSettings(!showZoomLinksSettings)}
+                className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+              >
+                <Edit2 className="h-4 w-4 mr-2" />
+                {showZoomLinksSettings ? 'Schließen' : 'Bearbeiten'}
+              </button>
+            </div>
+            
+            {showZoomLinksSettings ? (
+              <div className="p-6">
+                <div className="space-y-6">
+                  {/* Zivilrecht */}
+                  <div className="bg-blue-50 rounded-lg p-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                      <span className="inline-flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full bg-blue-500"></span>
+                        Zivilrecht
+                      </span>
+                    </label>
+                    <div className="space-y-3">
+                      <input
+                        type="url"
+                        value={zoomLinks.Zivilrecht.url}
+                        onChange={(e) => setZoomLinks({ ...zoomLinks, Zivilrecht: { ...zoomLinks.Zivilrecht, url: e.target.value } })}
+                        placeholder="https://zoom.us/j/..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                      />
+                      <div className="grid grid-cols-2 gap-3">
+                        <input
+                          type="text"
+                          value={zoomLinks.Zivilrecht.meetingId}
+                          onChange={(e) => setZoomLinks({ ...zoomLinks, Zivilrecht: { ...zoomLinks.Zivilrecht, meetingId: e.target.value } })}
+                          placeholder="Meeting ID"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                        />
+                        <input
+                          type="text"
+                          value={zoomLinks.Zivilrecht.passcode}
+                          onChange={(e) => setZoomLinks({ ...zoomLinks, Zivilrecht: { ...zoomLinks.Zivilrecht, passcode: e.target.value } })}
+                          placeholder="Passcode"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Strafrecht */}
+                  <div className="bg-red-50 rounded-lg p-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                      <span className="inline-flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full bg-red-500"></span>
+                        Strafrecht
+                      </span>
+                    </label>
+                    <div className="space-y-3">
+                      <input
+                        type="url"
+                        value={zoomLinks.Strafrecht.url}
+                        onChange={(e) => setZoomLinks({ ...zoomLinks, Strafrecht: { ...zoomLinks.Strafrecht, url: e.target.value } })}
+                        placeholder="https://zoom.us/j/..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                      />
+                      <div className="grid grid-cols-2 gap-3">
+                        <input
+                          type="text"
+                          value={zoomLinks.Strafrecht.meetingId}
+                          onChange={(e) => setZoomLinks({ ...zoomLinks, Strafrecht: { ...zoomLinks.Strafrecht, meetingId: e.target.value } })}
+                          placeholder="Meeting ID"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                        />
+                        <input
+                          type="text"
+                          value={zoomLinks.Strafrecht.passcode}
+                          onChange={(e) => setZoomLinks({ ...zoomLinks, Strafrecht: { ...zoomLinks.Strafrecht, passcode: e.target.value } })}
+                          placeholder="Passcode"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Öffentliches Recht */}
+                  <div className="bg-green-50 rounded-lg p-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                      <span className="inline-flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full bg-green-500"></span>
+                        Öffentliches Recht
+                      </span>
+                    </label>
+                    <div className="space-y-3">
+                      <input
+                        type="url"
+                        value={zoomLinks['Öffentliches Recht'].url}
+                        onChange={(e) => setZoomLinks({ ...zoomLinks, 'Öffentliches Recht': { ...zoomLinks['Öffentliches Recht'], url: e.target.value } })}
+                        placeholder="https://zoom.us/j/..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                      />
+                      <div className="grid grid-cols-2 gap-3">
+                        <input
+                          type="text"
+                          value={zoomLinks['Öffentliches Recht'].meetingId}
+                          onChange={(e) => setZoomLinks({ ...zoomLinks, 'Öffentliches Recht': { ...zoomLinks['Öffentliches Recht'], meetingId: e.target.value } })}
+                          placeholder="Meeting ID"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                        />
+                        <input
+                          type="text"
+                          value={zoomLinks['Öffentliches Recht'].passcode}
+                          onChange={(e) => setZoomLinks({ ...zoomLinks, 'Öffentliches Recht': { ...zoomLinks['Öffentliches Recht'], passcode: e.target.value } })}
+                          placeholder="Passcode"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-4 border-t">
+                    <button
+                      onClick={() => setShowZoomLinksSettings(false)}
+                      className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                    >
+                      Abbrechen
+                    </button>
+                    <button
+                      onClick={handleSaveZoomLinks}
+                      className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      Speichern
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="bg-blue-50 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-900">Zivilrecht</span>
+                      {zoomLinks.Zivilrecht.url && (
+                        <a
+                          href={zoomLinks.Zivilrecht.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                          Zoom
+                        </a>
+                      )}
+                    </div>
+                    {zoomLinks.Zivilrecht.meetingId && (
+                      <p className="text-xs text-gray-600">ID: {zoomLinks.Zivilrecht.meetingId}</p>
+                    )}
+                    {zoomLinks.Zivilrecht.passcode && (
+                      <p className="text-xs text-gray-600">Code: {zoomLinks.Zivilrecht.passcode}</p>
+                    )}
+                    {!zoomLinks.Zivilrecht.url && !zoomLinks.Zivilrecht.meetingId && (
+                      <span className="text-xs text-gray-400">Kein Link</span>
+                    )}
+                  </div>
+                  <div className="bg-red-50 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-900">Strafrecht</span>
+                      {zoomLinks.Strafrecht.url && (
+                        <a
+                          href={zoomLinks.Strafrecht.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                          Zoom
+                        </a>
+                      )}
+                    </div>
+                    {zoomLinks.Strafrecht.meetingId && (
+                      <p className="text-xs text-gray-600">ID: {zoomLinks.Strafrecht.meetingId}</p>
+                    )}
+                    {zoomLinks.Strafrecht.passcode && (
+                      <p className="text-xs text-gray-600">Code: {zoomLinks.Strafrecht.passcode}</p>
+                    )}
+                    {!zoomLinks.Strafrecht.url && !zoomLinks.Strafrecht.meetingId && (
+                      <span className="text-xs text-gray-400">Kein Link</span>
+                    )}
+                  </div>
+                  <div className="bg-green-50 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-900">Öffentliches Recht</span>
+                      {zoomLinks['Öffentliches Recht'].url && (
+                        <a
+                          href={zoomLinks['Öffentliches Recht'].url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                          Zoom
+                        </a>
+                      )}
+                    </div>
+                    {zoomLinks['Öffentliches Recht'].meetingId && (
+                      <p className="text-xs text-gray-600">ID: {zoomLinks['Öffentliches Recht'].meetingId}</p>
+                    )}
+                    {zoomLinks['Öffentliches Recht'].passcode && (
+                      <p className="text-xs text-gray-600">Code: {zoomLinks['Öffentliches Recht'].passcode}</p>
+                    )}
+                    {!zoomLinks['Öffentliches Recht'].url && !zoomLinks['Öffentliches Recht'].meetingId && (
+                      <span className="text-xs text-gray-400">Kein Link</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -2862,22 +3425,26 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
 
       {/* Einheit Bearbeiten Modal */}
       {showEditModal && editingRelease && (
+        (() => {
+        const isReadOnly = !canEditRelease(editingRelease);
+        return (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 py-8">
             <div className="fixed inset-0 bg-black/50" onClick={() => { setShowEditModal(false); setEditingRelease(null); }} />
             <div className="relative bg-white rounded-lg shadow-xl max-w-3xl w-full p-6 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="text-lg font-medium text-gray-900">Einheit bearbeiten</h3>
-                  <p className="text-sm text-gray-500 mt-1">Bearbeiten Sie die Unterrichtseinheit vom {selectedDate ? formatDate(selectedDate.toISOString()) : ''}</p>
+                  <h3 className="text-lg font-medium text-gray-900">{isReadOnly ? 'Einheit ansehen (nur Lesezugriff)' : 'Einheit bearbeiten'}</h3>
+                  <p className="text-sm text-gray-500 mt-1">{isReadOnly ? 'Details der' : 'Bearbeiten Sie die'} Unterrichtseinheit vom {selectedDate ? formatDate(selectedDate.toISOString()) : ''}</p>
                   <p className="text-xs text-gray-400 mt-0.5">ID: {editingRelease.id}</p>
+                  {isReadOnly && <p className="text-xs text-orange-600 mt-1 font-medium">⚠️ Diese Einheit gehört nicht zu Ihren zugewiesenen Rechtsgebieten</p>}
                 </div>
                 <button onClick={() => { setShowEditModal(false); setEditingRelease(null); }} className="text-gray-400 hover:text-gray-600">
                   <X className="h-5 w-5" />
                 </button>
               </div>
               
-              <div className="space-y-6">
+              <div className={`space-y-6 ${isReadOnly ? 'pointer-events-none opacity-60' : ''}`}>
                 {/* Typ der Einheit */}
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <label className="block text-sm font-medium text-blue-900 mb-2">Typ der Einheit *</label>
@@ -2915,7 +3482,8 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                       value={releaseTitle} 
                       onChange={(e) => setReleaseTitle(e.target.value)} 
                       placeholder="z.B. Einheit 1 - BGB AT" 
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                      disabled={isReadOnly}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-100 disabled:cursor-not-allowed" 
                     />
                   </div>
                   <div>
@@ -2924,7 +3492,8 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                       type="date" 
                       value={selectedDate?.toISOString().split('T')[0] || ''} 
                       onChange={(e) => setSelectedDate(new Date(e.target.value))} 
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                      disabled={isReadOnly}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-100 disabled:cursor-not-allowed" 
                     />
                   </div>
                 </div>
@@ -2965,7 +3534,8 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                     value={releaseZoomLink} 
                     onChange={(e) => setReleaseZoomLink(e.target.value)} 
                     placeholder="https://zoom.us/j/..." 
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                    disabled={isReadOnly}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-100 disabled:cursor-not-allowed" 
                   />
                 </div>
 
@@ -2975,8 +3545,8 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
                   <select 
                     value={releaseKlausurFolderId} 
                     onChange={(e) => setReleaseKlausurFolderId(e.target.value)} 
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    disabled={!releaseLegalArea}
+                    disabled={isReadOnly || !releaseLegalArea}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-100 disabled:cursor-not-allowed"
                   >
                     <option value="">{releaseLegalArea ? 'Keine Klausur auswählen...' : 'Bitte zuerst Einheitstyp wählen...'}</option>
                     {releaseLegalArea && (() => {
@@ -3222,32 +3792,904 @@ export function EliteKleingruppe({ isAdmin = true }: EliteKleingruppeProps) {
               </div>
 
               <div className="mt-6 flex justify-between items-center">
-                <button 
-                  onClick={() => {
-                    if (editingRelease && confirm(`Möchten Sie die Einheit "${editingRelease.title}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) {
-                      handleDeleteRelease(editingRelease);
-                      setShowEditModal(false);
-                      setEditingRelease(null);
-                    }
-                  }} 
-                  className="px-4 py-2 text-red-700 bg-red-100 rounded-lg hover:bg-red-200 flex items-center"
-                >
-                  <Trash2 className="h-4 w-4 mr-1" />
-                  Löschen
-                </button>
+                {!isReadOnly && (
+                  <button 
+                    onClick={() => {
+                      if (editingRelease && confirm(`Möchten Sie die Einheit "${editingRelease.title}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) {
+                        handleDeleteRelease(editingRelease);
+                        setShowEditModal(false);
+                        setEditingRelease(null);
+                      }
+                    }} 
+                    className="px-4 py-2 text-red-700 bg-red-100 rounded-lg hover:bg-red-200 flex items-center"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Löschen
+                  </button>
+                )}
+                {isReadOnly && <div></div>}
                 <div className="flex space-x-3">
                   <button onClick={() => { setShowEditModal(false); setEditingRelease(null); }} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
-                    Abbrechen
+                    {isReadOnly ? 'Schließen' : 'Abbrechen'}
                   </button>
-                  <button 
-                    onClick={handleUpdateRelease} 
-                    disabled={!releaseTitle.trim() || !releaseUnitType} 
-                    className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  {!isReadOnly && (
+                    <button 
+                      onClick={handleUpdateRelease} 
+                      disabled={!releaseTitle.trim() || !releaseUnitType} 
+                      className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Save className="h-4 w-4 inline mr-1" />
+                      Änderungen speichern
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        );
+        })()
+      )}
+
+      {/* Support Tab */}
+      {activeSubTab === 'support' && (
+        <div className="space-y-6">
+          {/* Admin Dropdown für FAQ/Videos */}
+          {isAdmin && (
+            <div className="bg-white rounded-lg shadow p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Support-Bereich verwalten</h3>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={supportActiveSection}
+                    onChange={(e) => setSupportActiveSection(e.target.value as 'faq' | 'videos')}
+                    className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white"
                   >
-                    <Save className="h-4 w-4 inline mr-1" />
-                    Änderungen speichern
+                    <option value="faq">FAQ bearbeiten</option>
+                    <option value="videos">Videos bearbeiten</option>
+                  </select>
+                  <button
+                    onClick={supportActiveSection === 'faq' ? openCreateFaqModal : openCreateVideoModal}
+                    className="inline-flex items-center px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm"
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    {supportActiveSection === 'faq' ? 'FAQ hinzufügen' : 'Video hinzufügen'}
                   </button>
                 </div>
+              </div>
+              <p className="text-sm text-gray-500">
+                Wählen Sie aus dem Dropdown, ob Sie Fragen & Antworten oder Videos verwalten möchten.
+              </p>
+            </div>
+          )}
+
+          {/* FAQ Section */}
+          {supportActiveSection === 'faq' && (
+            <div className="bg-white rounded-lg shadow">
+              <div className="p-4 border-b border-gray-200">
+                <h3 className="text-lg font-medium text-gray-900 flex items-center gap-2">
+                  <HelpCircle className="h-5 w-5 text-primary" />
+                  Häufig gestellte Fragen
+                </h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  Antworten auf die wichtigsten Fragen zur Elite-Kleingruppe
+                </p>
+              </div>
+              {faqs.length === 0 ? (
+                <div className="p-8 text-center">
+                  <HelpCircle className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                  <h4 className="text-lg font-medium text-gray-900 mb-2">Noch keine FAQs vorhanden</h4>
+                  <p className="text-gray-500">
+                    {isAdmin 
+                      ? 'Fügen Sie FAQs hinzu, um Teilnehmern schnell Antworten zu geben.'
+                      : 'Der Support-Bereich wird bald mit Inhalten gefüllt.'
+                    }
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-200">
+                  {faqs.map((faq) => (
+                    <div key={faq.id} className="p-4">
+                      <button
+                        onClick={() => setExpandedFaq(expandedFaq === faq.id ? null : faq.id)}
+                        className="w-full flex items-start justify-between text-left"
+                      >
+                        <div className="flex-1">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600 mb-2">
+                            {faq.category}
+                          </span>
+                          <h4 className="text-sm font-medium text-gray-900">{faq.question}</h4>
+                        </div>
+                        {expandedFaq === faq.id ? (
+                          <ChevronUp className="h-5 w-5 text-gray-400 flex-shrink-0 ml-2" />
+                        ) : (
+                          <ChevronDown className="h-5 w-5 text-gray-400 flex-shrink-0 ml-2" />
+                        )}
+                      </button>
+                      {expandedFaq === faq.id && (
+                        <div className="mt-3 pl-0">
+                          <p className="text-sm text-gray-600 whitespace-pre-wrap">{faq.answer}</p>
+                          {isAdmin && (
+                            <div className="mt-3 flex items-center gap-2">
+                              <button
+                                onClick={() => openEditFaqModal(faq)}
+                                className="inline-flex items-center px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                              >
+                                <Edit2 className="h-3 w-3 mr-1" />
+                                Bearbeiten
+                              </button>
+                              <button
+                                onClick={() => handleDeleteFaq(faq.id)}
+                                className="inline-flex items-center px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
+                              >
+                                <Trash2 className="h-3 w-3 mr-1" />
+                                Löschen
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Videos Section */}
+          {supportActiveSection === 'videos' && (
+            <div className="bg-white rounded-lg shadow">
+              <div className="p-4 border-b border-gray-200">
+                <h3 className="text-lg font-medium text-gray-900 flex items-center gap-2">
+                  <Video className="h-5 w-5 text-primary" />
+                  Hilfsvideos
+                </h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  Videos mit Anleitungen und Erklärungen für die Elite-Kleingruppe
+                </p>
+              </div>
+              {videos.length === 0 ? (
+                <div className="p-8 text-center">
+                  <Video className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                  <h4 className="text-lg font-medium text-gray-900 mb-2">Noch keine Videos vorhanden</h4>
+                  <p className="text-gray-500">
+                    {isAdmin 
+                      ? 'Fügen Sie Videos hinzu, um Teilnehmern visuelle Anleitungen zu geben.'
+                      : 'Der Video-Bereich wird bald mit Inhalten gefüllt.'
+                    }
+                  </p>
+                </div>
+              ) : (
+                <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {videos.map((video) => {
+                    const { type, embedUrl } = getEmbedUrl(video.video_url);
+                    return (
+                      <div key={video.id} className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+                        <div className="aspect-video bg-gray-900 relative">
+                          {type === 'iframe' ? (
+                            <iframe
+                              src={embedUrl}
+                              className="w-full h-full"
+                              frameBorder="0"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                            />
+                          ) : (
+                            <video
+                              src={embedUrl}
+                              className="w-full h-full object-contain"
+                              controls
+                              preload="metadata"
+                            />
+                          )}
+                        </div>
+                        <div className="p-3">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600 mb-2">
+                            {video.category}
+                          </span>
+                          <h4 className="text-sm font-medium text-gray-900 mb-1">{video.title}</h4>
+                          {video.description && (
+                            <p className="text-xs text-gray-500 line-clamp-2">{video.description}</p>
+                          )}
+                          {isAdmin && (
+                            <div className="mt-3 flex items-center gap-2">
+                              <button
+                                onClick={() => openEditVideoModal(video)}
+                                className="inline-flex items-center px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                              >
+                                <Edit2 className="h-3 w-3 mr-1" />
+                                Bearbeiten
+                              </button>
+                              <button
+                                onClick={() => handleDeleteVideo(video.id)}
+                                className="inline-flex items-center px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
+                              >
+                                <Trash2 className="h-3 w-3 mr-1" />
+                                Löschen
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* FAQ Modal */}
+      {showFaqModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4">
+            <div className="fixed inset-0 bg-black/50" onClick={() => setShowFaqModal(false)} />
+            <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  {editingFaq ? 'FAQ bearbeiten' : 'Neue FAQ hinzufügen'}
+                </h3>
+                <button onClick={() => setShowFaqModal(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Kategorie</label>
+                  <select
+                    value={faqForm.category}
+                    onChange={(e) => setFaqForm({ ...faqForm, category: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  >
+                    <option value="Allgemein">Allgemein</option>
+                    <option value="Einheiten">Einheiten</option>
+                    <option value="Klausuren">Klausuren</option>
+                    <option value="Materialien">Materialien</option>
+                    <option value="Technisch">Technisch</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Frage *</label>
+                  <input
+                    type="text"
+                    value={faqForm.question}
+                    onChange={(e) => setFaqForm({ ...faqForm, question: e.target.value })}
+                    placeholder="z.B. Wie melde ich mich zu einer Einheit an?"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Antwort *</label>
+                  <textarea
+                    value={faqForm.answer}
+                    onChange={(e) => setFaqForm({ ...faqForm, answer: e.target.value })}
+                    placeholder="Antwort auf die Frage..."
+                    rows={5}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end space-x-3">
+                <button onClick={() => setShowFaqModal(false)} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
+                  Abbrechen
+                </button>
+                <button
+                  onClick={handleSaveFaq}
+                  disabled={!faqForm.question.trim() || !faqForm.answer.trim()}
+                  className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                >
+                  <Save className="h-4 w-4 inline mr-1" />
+                  {editingFaq ? 'Aktualisieren' : 'Speichern'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Video Modal */}
+      {showVideoModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4">
+            <div className="fixed inset-0 bg-black/50" onClick={() => setShowVideoModal(false)} />
+            <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  {editingVideo ? 'Video bearbeiten' : 'Neues Video hinzufügen'}
+                </h3>
+                <button onClick={() => setShowVideoModal(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Kategorie</label>
+                  <select
+                    value={videoForm.category}
+                    onChange={(e) => setVideoForm({ ...videoForm, category: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  >
+                    <option value="Allgemein">Allgemein</option>
+                    <option value="Einheiten">Einheiten</option>
+                    <option value="Klausuren">Klausuren</option>
+                    <option value="Materialien">Materialien</option>
+                    <option value="Technisch">Technisch</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Titel *</label>
+                  <input
+                    type="text"
+                    value={videoForm.title}
+                    onChange={(e) => setVideoForm({ ...videoForm, title: e.target.value })}
+                    placeholder="z.B. So funktioniert die Klausurenkorrektur"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Beschreibung</label>
+                  <textarea
+                    value={videoForm.description}
+                    onChange={(e) => setVideoForm({ ...videoForm, description: e.target.value })}
+                    placeholder="Kurze Beschreibung des Videos..."
+                    rows={2}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {videoFile ? 'Video-Datei hochladen' : 'Video-URL oder Datei hochladen *'}
+                  </label>
+                  {videoFile ? (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <Video className="h-5 w-5 text-green-600 mr-2" />
+                          <span className="text-sm text-green-800">{videoFile.name}</span>
+                        </div>
+                        <button
+                          onClick={() => setVideoFile(null)}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <input
+                        type="url"
+                        value={videoForm.video_url}
+                        onChange={(e) => setVideoForm({ ...videoForm, video_url: e.target.value })}
+                        placeholder="https://... oder Video-Datei auswählen"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      />
+                      <label className="flex items-center justify-center w-full h-24 border-2 border-gray-200 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
+                        <div className="flex flex-col items-center justify-center">
+                          <Upload className="h-6 w-6 text-gray-400 mb-1" />
+                          <span className="text-sm text-gray-500">Video-Datei hochladen</span>
+                          <span className="text-xs text-gray-400">MP4, WebM, etc.</span>
+                        </div>
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="video/*"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              setVideoFile(file);
+                              if (!videoForm.title) {
+                                setVideoForm({ ...videoForm, title: file.name.replace(/\.[^/.]+$/, '') });
+                              }
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end space-x-3">
+                <button onClick={() => { setShowVideoModal(false); setVideoFile(null); }} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
+                  Abbrechen
+                </button>
+                <button
+                  onClick={handleSaveVideo}
+                  disabled={(!videoForm.video_url.trim() && !videoFile) || !videoForm.title.trim() || isUploadingVideo}
+                  className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {isUploadingVideo ? (
+                    <>
+                      <span className="inline-block h-4 w-4 mr-1 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Wird hochgeladen...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 inline mr-1" />
+                      {editingVideo ? 'Aktualisieren' : 'Speichern'}
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Teilnehmer Tab */}
+      {activeSubTab === 'teilnehmer' && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="p-4 border-b border-gray-200">
+              <h3 className="text-lg font-medium text-gray-900 flex items-center gap-2">
+                <Users className="h-5 w-5 text-primary" />
+                Teilnehmerübersicht
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Alle Teilnehmer der Elite-Kleingruppe mit ihren wichtigsten Informationen
+              </p>
+            </div>
+            
+            {teilnehmer.length === 0 ? (
+              <div className="p-8 text-center">
+                <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                <h4 className="text-lg font-medium text-gray-900 mb-2">Keine Teilnehmer vorhanden</h4>
+                <p className="text-gray-500">
+                  Es wurden noch keine Teilnehmer für diese Elite-Kleingruppe registriert.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Name
+                      </th>
+                      <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        E-Mail
+                      </th>
+                      <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Landesrecht
+                      </th>
+                      {isAdmin && (
+                        <th scope="col" className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Aktionen
+                        </th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {teilnehmer.map((t) => {
+                      const initials = t.full_name
+                        ? t.full_name.split(' ')
+                            .map((n: string) => n[0])
+                            .join('')
+                            .toUpperCase()
+                            .slice(0, 2)
+                        : (t.name
+                            ? t.name.split(' ')
+                                .map((n: string) => n[0])
+                                .join('')
+                                .toUpperCase()
+                                .slice(0, 2)
+                            : '??');
+
+                      return (
+                        <tr key={t.id} className="hover:bg-gray-50">
+                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                <span className="text-primary font-medium">{initials}</span>
+                              </div>
+                              <div className="ml-3">
+                                <div className="text-sm font-medium text-gray-900">
+                                  {t.full_name || t.name || 'Unbekannt'}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">{t.email}</div>
+                          </td>
+                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-500">
+                              {t.state_law || '-'}
+                            </div>
+                          </td>
+                          {isAdmin && (
+                            <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                {t.zoom_background_url && (() => {
+                                  try {
+                                    const urls = JSON.parse(t.zoom_background_url);
+                                    const count = Array.isArray(urls) ? urls.length : 1;
+                                    return (
+                                      <button
+                                        onClick={() => {
+                                          setSelectedTeilnehmerForBg(t);
+                                          setExistingBackgrounds(Array.isArray(urls) ? urls : [urls]);
+                                          setShowManageBgModal(true);
+                                        }}
+                                        className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-100 text-green-800 hover:bg-green-200 transition-colors cursor-pointer"
+                                      >
+                                        <CheckCircle className="h-3 w-3 mr-1" />
+                                        {count} Hintergrund{count > 1 ? 'e' : ''}
+                                      </button>
+                                    );
+                                  } catch {
+                                    return (
+                                      <button
+                                        onClick={() => {
+                                          setSelectedTeilnehmerForBg(t);
+                                          setExistingBackgrounds(t.zoom_background_url ? [t.zoom_background_url] : []);
+                                          setShowManageBgModal(true);
+                                        }}
+                                        className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-100 text-green-800 hover:bg-green-200 transition-colors cursor-pointer"
+                                      >
+                                        <CheckCircle className="h-3 w-3 mr-1" />
+                                        1 Hintergrund
+                                      </button>
+                                    );
+                                  }
+                                })()}
+                                <button
+                                  onClick={() => {
+                                    setSelectedTeilnehmerForBg(t);
+                                    setShowZoomBgModal(true);
+                                  }}
+                                  className="inline-flex items-center px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90"
+                                  title="Zoom-Hintergrund hochladen"
+                                >
+                                  <Upload className="h-4 w-4 mr-1" />
+                                  {t.zoom_background_url ? 'Weitere hinzufügen' : 'Zoom-Hintergrund'}
+                                </button>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Zoom Background Upload Modal */}
+      {showZoomBgModal && selectedTeilnehmerForBg && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Zoom-Hintergrund hochladen
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowZoomBgModal(false);
+                    setZoomBgFiles([]);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <p className="text-sm font-medium text-gray-900">
+                  {selectedTeilnehmerForBg.full_name || selectedTeilnehmerForBg.name}
+                </p>
+                <p className="text-xs text-gray-500">{selectedTeilnehmerForBg.email}</p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Hintergrundbilder auswählen (mehrere möglich)
+                  </label>
+                  
+                  {/* File Upload Area */}
+                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-200 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors mb-4">
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      <Upload className="h-8 w-8 text-gray-400 mb-2" />
+                      <p className="mb-1 text-sm text-gray-500">
+                        <span className="font-semibold">Klicken zum Hochladen</span> oder Drag & Drop
+                      </p>
+                      <p className="text-xs text-gray-400">PNG, JPG oder JPEG (max. 10MB pro Datei)</p>
+                    </div>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept="image/png,image/jpeg,image/jpg"
+                      multiple
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        const validFiles = files.filter(file => {
+                          if (file.size > 10 * 1024 * 1024) {
+                            alert(`${file.name} ist zu groß. Maximal 10MB erlaubt.`);
+                            return false;
+                          }
+                          return true;
+                        });
+                        setZoomBgFiles(prev => [...prev, ...validFiles]);
+                      }}
+                    />
+                  </label>
+
+                  {/* Preview of selected files */}
+                  {zoomBgFiles.length > 0 && (
+                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                      {zoomBgFiles.map((file, index) => (
+                        <div key={index} className="bg-green-50 border border-green-200 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center">
+                              <FileText className="h-5 w-5 text-green-600 mr-2" />
+                              <span className="text-sm text-green-800">{file.name}</span>
+                            </div>
+                            <button
+                              onClick={() => setZoomBgFiles(prev => prev.filter((_, i) => i !== index))}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                          {file.type.startsWith('image/') && (
+                            <img
+                              src={URL.createObjectURL(file)}
+                              alt={`Vorschau ${index + 1}`}
+                              className="w-full h-32 object-cover rounded-lg"
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-xs text-blue-800">
+                    <Info className="h-4 w-4 inline mr-1" />
+                    Die Zoom-Hintergründe werden nur diesem Teilnehmer in seinem Dashboard angezeigt.
+                  </p>
+                  {zoomBgFiles.length > 0 && (
+                    <p className="text-xs text-blue-800 mt-1">
+                      {zoomBgFiles.length} Datei(en) ausgewählt
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  onClick={() => {
+                    setShowZoomBgModal(false);
+                    setZoomBgFiles([]);
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  onClick={async () => {
+                    if (zoomBgFiles.length === 0 || !selectedTeilnehmerForBg) return;
+                    
+                    setIsUploadingZoomBg(true);
+                    try {
+                      const uploadedUrls: string[] = [];
+
+                      // Upload all files
+                      for (const file of zoomBgFiles) {
+                        const fileExt = file.name.split('.').pop()?.toLowerCase();
+                        const fileName = `zoom_bg_${selectedTeilnehmerForBg.id}_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+                        const filePath = fileName;
+
+                        // Determine content type from file extension
+                        let contentType = 'image/png';
+                        if (fileExt === 'jpg' || fileExt === 'jpeg') {
+                          contentType = 'image/jpeg';
+                        } else if (fileExt === 'png') {
+                          contentType = 'image/png';
+                        } else if (fileExt === 'webp') {
+                          contentType = 'image/webp';
+                        }
+
+                        const { error: uploadError } = await supabase.storage
+                          .from('zoom-backgrounds')
+                          .upload(filePath, file, {
+                            contentType: contentType,
+                            cacheControl: '3600',
+                            upsert: false
+                          });
+
+                        if (uploadError) throw uploadError;
+
+                        const { data: { publicUrl } } = supabase.storage
+                          .from('zoom-backgrounds')
+                          .getPublicUrl(filePath);
+
+                        uploadedUrls.push(publicUrl);
+                      }
+
+                      // Get existing URLs and append new ones
+                      const { data: existingData } = await supabase
+                        .from('teilnehmer')
+                        .select('zoom_background_url')
+                        .eq('id', selectedTeilnehmerForBg.id)
+                        .single();
+
+                      let allUrls = uploadedUrls;
+                      if (existingData?.zoom_background_url) {
+                        try {
+                          const existing = JSON.parse(existingData.zoom_background_url);
+                          if (Array.isArray(existing)) {
+                            allUrls = [...existing, ...uploadedUrls];
+                          }
+                        } catch {
+                          // If it's a single URL string, convert to array
+                          allUrls = [existingData.zoom_background_url, ...uploadedUrls];
+                        }
+                      }
+
+                      const { error: updateError } = await supabase
+                        .from('teilnehmer')
+                        .update({ zoom_background_url: JSON.stringify(allUrls) })
+                        .eq('id', selectedTeilnehmerForBg.id);
+
+                      if (updateError) throw updateError;
+
+                      alert(`${zoomBgFiles.length} Zoom-Hintergrund(e) erfolgreich hochgeladen!`);
+                      setShowZoomBgModal(false);
+                      setZoomBgFiles([]);
+                      await fetchData();
+                    } catch (error: any) {
+                      console.error('Error uploading zoom backgrounds:', error);
+                      alert('Fehler beim Hochladen: ' + error.message);
+                    } finally {
+                      setIsUploadingZoomBg(false);
+                    }
+                  }}
+                  disabled={zoomBgFiles.length === 0 || isUploadingZoomBg}
+                  className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {isUploadingZoomBg ? (
+                    <>
+                      <span className="inline-block h-4 w-4 mr-1 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Wird hochgeladen...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 inline mr-1" />
+                      Hochladen
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manage Existing Backgrounds Modal */}
+      {showManageBgModal && selectedTeilnehmerForBg && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Zoom-Hintergründe verwalten
+                </h3>
+                <button
+                  onClick={() => setShowManageBgModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <p className="text-sm font-medium text-gray-900">
+                  {selectedTeilnehmerForBg.full_name || selectedTeilnehmerForBg.name}
+                </p>
+                <p className="text-xs text-gray-500">{selectedTeilnehmerForBg.email}</p>
+              </div>
+
+              {existingBackgrounds.length === 0 ? (
+                <div className="text-center py-8">
+                  <FileText className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500">Keine Hintergründe vorhanden</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-sm text-gray-600">
+                    {existingBackgrounds.length} Hintergrund{existingBackgrounds.length > 1 ? 'e' : ''} hochgeladen
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {existingBackgrounds.map((url, index) => (
+                      <div key={index} className="relative group">
+                        <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center min-h-[192px]">
+                          <div className="text-center p-4">
+                            <FileText className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                            <p className="text-sm text-gray-600 font-medium mb-1">Zoom-Hintergrund {index + 1}</p>
+                            <p className="text-xs text-gray-500 break-all">{url.split('/').pop()}</p>
+                          </div>
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-3 py-2 bg-white text-gray-900 rounded-lg hover:bg-gray-100 text-sm flex items-center gap-1"
+                            >
+                              <Download className="h-4 w-4" />
+                              Download
+                            </a>
+                            <button
+                              onClick={async () => {
+                                if (!confirm('Möchten Sie diesen Hintergrund wirklich löschen?')) return;
+                                
+                                try {
+                                  const updatedBackgrounds = existingBackgrounds.filter((_, i) => i !== index);
+                                  
+                                  const { error } = await supabase
+                                    .from('teilnehmer')
+                                    .update({ 
+                                      zoom_background_url: updatedBackgrounds.length > 0 
+                                        ? JSON.stringify(updatedBackgrounds) 
+                                        : null 
+                                    })
+                                    .eq('id', selectedTeilnehmerForBg.id);
+
+                                  if (error) throw error;
+
+                                  setExistingBackgrounds(updatedBackgrounds);
+                                  await fetchData();
+                                  
+                                  if (updatedBackgrounds.length === 0) {
+                                    setShowManageBgModal(false);
+                                  }
+                                  
+                                  alert('Hintergrund erfolgreich gelöscht!');
+                                } catch (error: any) {
+                                  console.error('Error deleting background:', error);
+                                  alert('Fehler beim Löschen: ' + error.message);
+                                }
+                              }}
+                              className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm flex items-center gap-1"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Löschen
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1 text-center">
+                          Hintergrund {index + 1}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-6 flex justify-between">
+                <button
+                  onClick={() => {
+                    setShowManageBgModal(false);
+                    setShowZoomBgModal(true);
+                  }}
+                  className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+                >
+                  <Plus className="h-4 w-4 inline mr-1" />
+                  Weitere hinzufügen
+                </button>
+                <button
+                  onClick={() => setShowManageBgModal(false)}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                >
+                  Schließen
+                </button>
               </div>
             </div>
           </div>

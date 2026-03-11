@@ -5,9 +5,11 @@ export interface User {
   id: string;
   email: string;
   full_name: string;
-  role: 'admin' | 'buchhaltung' | 'verwaltung' | 'vertrieb' | 'dozent';
+  role: 'admin' | 'buchhaltung' | 'verwaltung' | 'vertrieb' | 'dozent' | 'teilnehmer';
+  additional_roles?: string[];
   profile_picture_url?: string | null;
   last_login?: string | null;
+  created_at?: string;
 }
 
 interface UserState {
@@ -16,7 +18,7 @@ interface UserState {
   error: string | null;
   fetchUsers: () => Promise<void>;
   createUser: (userData: { email: string; password: string; fullName: string; role?: string }) => Promise<void>;
-  updateUser: (id: string, data: { fullName: string; role?: string }) => Promise<void>;
+  updateUser: (id: string, data: { fullName: string; role?: string; additional_roles?: string[] }) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
 }
@@ -32,7 +34,7 @@ export const useUserStore = create<UserState>((set, get) => ({
       console.log('UserStore: Fetching users with last_login column');
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, email, full_name, role, profile_picture_url, last_login')
+        .select('id, email, full_name, role, additional_roles, profile_picture_url, last_login, created_at')
         .order('role', { ascending: false })
         .order('full_name', { ascending: true });
 
@@ -106,12 +108,15 @@ export const useUserStore = create<UserState>((set, get) => ({
     }
   },
 
-  updateUser: async (id: string, data: { fullName: string; role?: string }) => {
+  updateUser: async (id: string, data: { fullName: string; role?: string; additional_roles?: string[] }) => {
     set({ isLoading: true, error: null });
     try {
       const updateData: any = { full_name: data.fullName };
       if (data.role) {
         updateData.role = data.role;
+      }
+      if (data.additional_roles !== undefined) {
+        updateData.additional_roles = data.additional_roles;
       }
       
       const { error } = await supabase

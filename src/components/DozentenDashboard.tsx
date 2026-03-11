@@ -472,10 +472,24 @@ function LinkPreviewWidget({ widget, isEditMode, onEdit, onDelete, cache, setCac
   );
 }
 
-export function DozentenDashboard() {
+interface DozentenDashboardProps {
+  showEliteKleingruppe?: boolean;
+  ekSubTab?: string;
+  onEkSubTabChange?: (tab: string) => void;
+  onCloseEliteKleingruppe?: () => void;
+}
+
+export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKleingruppe, ekSubTab, onEkSubTabChange, onCloseEliteKleingruppe }: DozentenDashboardProps = {}) {
   const { isAdmin, isBuchhaltung, user } = useAuthStore();
   const [isEliteKleingruppeDozent, setIsEliteKleingruppeDozent] = useState(false);
-  const [showEliteKleingruppe, setShowEliteKleingruppe] = useState(false);
+  const [internalShowEliteKleingruppe, setInternalShowEliteKleingruppe] = useState(false);
+  const showEliteKleingruppe = externalShowEliteKleingruppe ?? internalShowEliteKleingruppe;
+  const setShowEliteKleingruppe = (val: boolean) => {
+    if (!val && onCloseEliteKleingruppe) {
+      onCloseEliteKleingruppe();
+    }
+    setInternalShowEliteKleingruppe(val);
+  };
   const { addToast } = useToastStore();
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -1748,7 +1762,7 @@ export function DozentenDashboard() {
             <Users className="h-6 w-6 text-primary" /><h1 className="text-lg font-semibold">Elite-Kleingruppe</h1>
           </div>
         </div>
-        <EliteKleingruppe isAdmin={false} />
+        <EliteKleingruppe isAdmin={false} activeSubTabProp={ekSubTab} onSubTabChange={onEkSubTabChange} />
       </div>
     );
   }
@@ -2811,18 +2825,6 @@ export function DozentenDashboard() {
         </div>
       </div>}
 
-      {/* Elite-Kleingruppe Button - nur anzeigen wenn Dozent zugewiesen ist */}
-      {isEliteKleingruppeDozent && (
-        <div className="mt-6">
-          <button 
-            onClick={() => setShowEliteKleingruppe(true)} 
-            className="w-full flex items-center justify-center gap-3 p-4 text-white rounded-xl shadow-lg hover:shadow-xl transition-all" style={{ backgroundColor: '#2e83c2' }}
-          >
-            <Users className="h-6 w-6" />
-            <span className="text-lg font-semibold">Elite-Kleingruppe</span>
-          </button>
-        </div>
-      )}
 
     </div>
   );

@@ -81,9 +81,12 @@ interface Profile {
   role: string;
 }
 
-export function AdminDashboard() {
+export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accounting' | 'verwaltung' } = {}) {
+  const isAccountingMode = mode === 'accounting';
+  const isVerwaltungMode = mode === 'verwaltung';
+  const isRestrictedMode = isAccountingMode || isVerwaltungMode;
   const navigate = useNavigate();
-  const { signOut } = useAuthStore();
+  const { signOut, user, fullName } = useAuthStore();
   const { userRole, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb } = useAuthStore();
   const { unreadCount, fetchUnreadCount } = useChatStore();
   const { undownloadedCount, fetchUndownloadedCount } = useFileStore();
@@ -99,20 +102,37 @@ export function AdminDashboard() {
   const [checkResult, setCheckResult] = useReactState<any>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const accountingTabs = ['dozenten', 'teilnehmer', 'rechnungen', 'kalender', 'elite-kleingruppe'];
+  const verwaltungTabs = ['dozenten', 'teilnehmer', 'kalender', 'elite-kleingruppe'];
+  const allowedTabs = isAccountingMode ? accountingTabs : isVerwaltungMode ? verwaltungTabs : null;
+  const defaultTab = isRestrictedMode ? 'dozenten' : 'uebersicht';
+  const storageKey = isAccountingMode ? 'accountingDashboardTab' : isVerwaltungMode ? 'verwaltungDashboardTab' : 'adminDashboardTab';
+
   const [activeTab, setActiveTabState] = useState<'uebersicht' | 'dozenten' | 'teilnehmer' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard' | 'elite-kleingruppe'>(() => {
     // Check URL parameter first
     const tabParam = searchParams.get('tab');
-    if (tabParam && ['uebersicht', 'dozenten', 'teilnehmer', 'rechnungen', 'kalender', 'emails', 'vertrieb', 'integrationen', 'dozenten-dashboard', 'elite-kleingruppe'].includes(tabParam)) {
-      return tabParam as 'uebersicht' | 'dozenten' | 'teilnehmer' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard' | 'elite-kleingruppe';
+    const allTabs = ['uebersicht', 'dozenten', 'teilnehmer', 'rechnungen', 'kalender', 'emails', 'vertrieb', 'integrationen', 'dozenten-dashboard', 'elite-kleingruppe'];
+    if (tabParam && allTabs.includes(tabParam)) {
+      // In restricted mode, only allow permitted tabs
+      if (allowedTabs && !allowedTabs.includes(tabParam)) {
+        return defaultTab as any;
+      }
+      return tabParam as any;
     }
-    const saved = localStorage.getItem('adminDashboardTab');
-    return (saved as 'uebersicht' | 'dozenten' | 'teilnehmer' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard' | 'elite-kleingruppe') || 'uebersicht';
+    const saved = localStorage.getItem(storageKey);
+    if (saved && allTabs.includes(saved)) {
+      if (allowedTabs && !allowedTabs.includes(saved)) {
+        return defaultTab as any;
+      }
+      return saved as any;
+    }
+    return defaultTab as any;
   });
   
   // Helper function to change tab and update URL
   const setActiveTab = useCallback((tab: typeof activeTab) => {
     setActiveTabState(tab);
-    localStorage.setItem('adminDashboardTab', tab);
+    localStorage.setItem(storageKey, tab);
     setSearchParams({ tab });
   }, [setSearchParams]);
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
@@ -926,9 +946,9 @@ export function AdminDashboard() {
           <div className="flex justify-between items-center h-16">
             <div className="flex">
               <div className="flex-shrink-0 flex items-center">
-                <Logo onClick={() => { setActiveTab('uebersicht'); }} />
-                <span className="ml-2 text-lg sm:text-xl font-semibold text-gray-900 hidden sm:block">Admin Dashboard</span>
-                <span className="ml-2 text-sm font-semibold text-gray-900 sm:hidden">Admin</span>
+                <Logo onClick={() => { setActiveTab(isRestrictedMode ? 'dozenten' : 'uebersicht'); }} />
+                <span className="ml-2 text-lg sm:text-xl font-semibold text-gray-900 hidden sm:block">Dashboard</span>
+                <span className="ml-2 text-sm font-semibold text-gray-900 sm:hidden">Dashboard</span>
               </div>
             </div>
             
@@ -1027,14 +1047,21 @@ export function AdminDashboard() {
                 )}
               </button>
               
-              {(isAdmin || isBuchhaltung) && (
+              {/* Settings icon for all users to edit their own profile */}
               <button
-                onClick={() => navigate('/users')}
+                onClick={() => {
+                  if (isAdmin) {
+                    navigate('/users');
+                  } else if (user?.id) {
+                    // For other roles, navigate to their own profile settings
+                    navigate(`/settings`);
+                  }
+                }}
                 className="inline-flex items-center px-2 lg:px-3 py-2 border border-transparent text-xs lg:text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition"
+                title={isAdmin ? 'Benutzerverwaltung' : 'Profil bearbeiten'}
               >
                 <Settings className="h-4 w-4 lg:h-5 lg:w-5" />
               </button>
-              )}
               
               <button
                 onClick={handleSignOut}
@@ -1049,18 +1076,20 @@ export function AdminDashboard() {
           {isMobileMenuOpen && (
             <div className="sm:hidden">
               <div className="pt-2 pb-3 space-y-1 border-t border-gray-200">
-                {(isAdmin || isBuchhaltung) && (
                 <button
                   onClick={() => {
-                    navigate('/users');
+                    if (isAdmin) {
+                      navigate('/users');
+                    } else if (user?.id) {
+                      navigate(`/settings`);
+                    }
                     setIsMobileMenuOpen(false);
                   }}
                   className="flex items-center w-full px-3 py-2 text-base font-medium text-primary hover:text-primary/80 hover:bg-gray-50"
                 >
                   <Settings className="h-5 w-5 mr-3" />
-                  Benutzerverwaltung
+                  {isAdmin ? 'Benutzerverwaltung' : 'Profil bearbeiten'}
                 </button>
-                )}
                 <button
                   onClick={() => {
                     navigate('/messages');
@@ -1093,6 +1122,13 @@ export function AdminDashboard() {
       </nav>
 
       <main className="max-w-7xl mx-auto py-4 sm:py-6 px-2 sm:px-6 lg:px-8">
+        {/* Personalized Greeting */}
+        <div className="mb-4 sm:mb-6">
+          <h2 className="text-xl sm:text-2xl font-semibold text-gray-900">
+            Guten Tag, {fullName?.split(' ')[0] || 'Benutzer'}
+          </h2>
+        </div>
+
         {/* Tab Navigation */}
         <div className="mb-6">
           <div className="border-b border-gray-200 relative">
@@ -1121,6 +1157,7 @@ export function AdminDashboard() {
               aria-label="Tabs"
               style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
+              {!isRestrictedMode && (
               <button
                 onClick={() => { setActiveTab('uebersicht'); }}
                 className={`${
@@ -1132,6 +1169,7 @@ export function AdminDashboard() {
                 <LayoutDashboard className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">Übersicht</span>
               </button>
+              )}
               <button
                 onClick={() => { setActiveTab('dozenten'); }}
                 className={`${
@@ -1168,6 +1206,7 @@ export function AdminDashboard() {
                   ) : null;
                 })()}
               </button>
+              {(isAdmin || isBuchhaltung) && (
               <button
                 onClick={() => { setActiveTab('rechnungen'); }}
                 className={`${
@@ -1184,6 +1223,7 @@ export function AdminDashboard() {
                   </span>
                 )}
               </button>
+              )}
               <button
                 onClick={() => { setActiveTab('kalender'); }}
                 className={`${
@@ -1195,6 +1235,7 @@ export function AdminDashboard() {
                 <Calendar className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">Kalender</span>
               </button>
+              {!isRestrictedMode && (
               <button
                 onClick={() => { setActiveTab('emails'); }}
                 className={`${
@@ -1206,6 +1247,8 @@ export function AdminDashboard() {
                 <Mail className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">E-Mails</span>
               </button>
+              )}
+              {!isRestrictedMode && (
               <button
                 onClick={() => { setActiveTab('vertrieb'); }}
                 className={`${
@@ -1217,6 +1260,8 @@ export function AdminDashboard() {
                 <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">Vertrieb</span>
               </button>
+              )}
+              {!isRestrictedMode && (
               <button
                 onClick={() => { setActiveTab('dozenten-dashboard'); }}
                 className={`${
@@ -1228,6 +1273,7 @@ export function AdminDashboard() {
                 <GraduationCap className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">Dozenten Dashboard</span>
               </button>
+              )}
               <button
                 onClick={() => { setActiveTab('elite-kleingruppe'); }}
                 className={`${
@@ -1271,6 +1317,7 @@ export function AdminDashboard() {
                   </div>
                 </div>
               </div>
+              {(isAdmin || isBuchhaltung) && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -1282,6 +1329,7 @@ export function AdminDashboard() {
                   </div>
                 </div>
               </div>
+              )}
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -1316,14 +1364,15 @@ export function AdminDashboard() {
                     <span className="text-xs text-gray-400 mt-1">{dozenten.length} gesamt</span>
                   </button>
 
+                  {(isAdmin || isBuchhaltung) && (
                   <button
                     onClick={() => { setActiveTab('rechnungen'); }}
                     className="flex flex-col items-center p-4 sm:p-6 bg-white rounded-xl shadow-sm border border-gray-100 hover:border-primary hover:shadow-md transition-all group"
                   >
                     <div className="p-3 bg-orange-50 rounded-lg group-hover:bg-orange-100 transition-colors mb-3 relative">
-                      <Receipt className="h-6 w-6 text-orange-600" />
+                      <Receipt className="h-6 w-6 text-orange-500" />
                       {submittedInvoices.filter(i => i.status === 'submitted' || i.status === 'sent').length > 0 && (
-                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
                           {submittedInvoices.filter(i => i.status === 'submitted' || i.status === 'sent').length}
                         </span>
                       )}
@@ -1331,6 +1380,7 @@ export function AdminDashboard() {
                     <span className="text-sm font-medium text-gray-700 text-center">Rechnungen</span>
                     <span className="text-xs text-gray-400 mt-1">{submittedInvoices.filter(i => i.status === 'submitted' || i.status === 'sent').length} offen</span>
                   </button>
+                  )}
 
                   <button
                     onClick={() => navigate('/messages')}
@@ -1514,6 +1564,7 @@ export function AdminDashboard() {
               </div>
 
               {/* Pending Invoices */}
+              {(isAdmin || isBuchhaltung) && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
                 <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center">
                   <Receipt className="h-5 w-5 text-orange-500 mr-2" />
@@ -1541,6 +1592,7 @@ export function AdminDashboard() {
                   )}
                 </div>
               </div>
+              )}
             </div>
           </div>
         )}

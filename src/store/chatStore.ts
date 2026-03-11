@@ -162,11 +162,65 @@ export const useChatStore = create<ChatState>((set, get) => ({
         .single();
 
       if (error) throw error;
+      
       // Fetch messages again to update the chat
       await get().fetchMessages(message.receiver_id);
 
-      // Email notifications disabled for now
-      // TODO: Re-enable when Edge Function is deployed to new Supabase project
+      // Send email notification to recipient
+      try {
+        console.log('📧 Attempting to send email notification...');
+        
+        // Fetch sender and recipient profiles
+        const [senderProfile, recipientProfile] = await Promise.all([
+          supabase.from('profiles').select('full_name').eq('id', user.id).single(),
+          supabase.from('profiles').select('full_name, email').eq('id', message.receiver_id).single()
+        ]);
+
+        console.log('👤 Sender profile:', senderProfile.data);
+        console.log('👤 Recipient profile:', recipientProfile.data);
+
+        if (senderProfile.error) {
+          console.error('❌ Error fetching sender profile:', senderProfile.error);
+        }
+        if (recipientProfile.error) {
+          console.error('❌ Error fetching recipient profile:', recipientProfile.error);
+        }
+
+        if (senderProfile.data && recipientProfile.data) {
+          const origin = window.location.origin;
+          
+          console.log('📤 Calling new-message-notify edge function with:', {
+            recipientEmail: recipientProfile.data.email,
+            recipientName: recipientProfile.data.full_name,
+            senderName: senderProfile.data.full_name,
+            messageLength: message.content.length,
+            origin
+          });
+          
+          // Call the new-message-notify edge function
+          const { data, error } = await supabase.functions.invoke('new-message-notify', {
+            body: {
+              recipientEmail: recipientProfile.data.email,
+              recipientName: recipientProfile.data.full_name,
+              senderName: senderProfile.data.full_name,
+              messageContent: message.content,
+              recipientId: message.receiver_id,
+              origin
+            }
+          });
+
+          if (error) {
+            console.error('❌ Edge function error:', error);
+          } else {
+            console.log('✅ Email notification sent successfully:', data);
+          }
+        } else {
+          console.warn('⚠️ Skipping notification - missing profile data');
+        }
+      } catch (notifyError) {
+        // Don't fail the message send if notification fails
+        console.error('❌ Error sending notification email:', notifyError);
+      }
     } catch (error: any) {
       set({ error: error.message });
       console.error('Error sending message:', error);

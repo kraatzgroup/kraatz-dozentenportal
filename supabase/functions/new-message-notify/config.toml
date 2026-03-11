@@ -1,0 +1,2 @@
+# Disable JWT verification for this function to make it publicly accessible
+verify_jwt = false

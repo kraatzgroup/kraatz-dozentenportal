@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { LogOut, Settings, Upload, FileText, PenTool, Calendar, CheckCircle, Clock, AlertCircle, Download, ChevronDown, ChevronUp, Users, ChevronLeft, ChevronRight, Lock, Unlock, BookOpen, Award, MessageCircle, Send, Video, FolderOpen, Menu, Info } from 'lucide-react';
+import { LogOut, Settings, Upload, FileText, PenTool, Calendar, CheckCircle, Clock, AlertCircle, Download, ChevronDown, ChevronUp, Users, ChevronLeft, ChevronRight, Lock, Unlock, BookOpen, Award, Video, FolderOpen, Menu, Info } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { Logo } from './Logo';
-import { ProfilePicture } from './ProfilePicture';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 interface ScheduledRelease {
@@ -58,15 +57,6 @@ interface Klausur {
   corrected_at?: string;
 }
 
-interface Message {
-  id: string;
-  sender_id: string;
-  sender_name: string;
-  content: string;
-  created_at: string;
-  is_group_message: boolean;
-}
-
 interface CourseTime {
   id: string;
   weekday: number;
@@ -77,14 +67,14 @@ interface CourseTime {
   meeting_link: string | null;
 }
 
-type Tab = 'dashboard' | 'kalender' | 'materialien' | 'klausuren' | 'kommunikation';
+type Tab = 'dashboard' | 'kalender' | 'materialien' | 'klausuren';
 
 export function EliteKleingruppeDashboard() {
   const { user, signOut } = useAuthStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTabState] = useState<Tab>(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam && ['dashboard', 'kalender', 'materialien', 'klausuren', 'kommunikation'].includes(tabParam)) {
+    if (tabParam && ['dashboard', 'kalender', 'materialien', 'klausuren'].includes(tabParam)) {
       return tabParam as Tab;
     }
     const saved = localStorage.getItem('eliteKleingruppeDashboardTab');
@@ -116,9 +106,6 @@ export function EliteKleingruppeDashboard() {
   const [teilnehmerId, setTeilnehmerId] = useState<string | null>(null);
   const [teilnehmerEliteKleingruppeId, setTeilnehmerEliteKleingruppeId] = useState<string | null>(null);
   const [teilnehmerStateLaw, setTeilnehmerStateLaw] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [newMessage, setNewMessage] = useState('');
-  const [selectedRecipient, setSelectedRecipient] = useState<string>('gruppe_zivilrecht');
   const [dozenten, setDozenten] = useState<{id: string; name: string; email: string; profile_picture_url: string | null}[]>([]);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(null);
@@ -134,7 +121,19 @@ export function EliteKleingruppeDashboard() {
   const [tempExamDate, setTempExamDate] = useState('');
   const [courseTimes, setCourseTimes] = useState<CourseTime[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [zoomBackgrounds, setZoomBackgrounds] = useState<string[]>([]);
   const releasesSubscription = useRef<RealtimeChannel | null>(null);
+
+  // Zoom links state
+  const [zoomLinks, setZoomLinks] = useState<{
+    Zivilrecht: { url: string; meetingId: string; passcode: string };
+    Strafrecht: { url: string; meetingId: string; passcode: string };
+    'Öffentliches Recht': { url: string; meetingId: string; passcode: string };
+  }>({
+    Zivilrecht: { url: '', meetingId: '', passcode: '' },
+    Strafrecht: { url: '', meetingId: '', passcode: '' },
+    'Öffentliches Recht': { url: '', meetingId: '', passcode: '' }
+  });
 
   // Calendar filters
   const [legalAreaFilter, setLegalAreaFilter] = useState<string>('alle');
@@ -147,14 +146,15 @@ export function EliteKleingruppeDashboard() {
   // Upcoming units filter
   const [upcomingSearchQuery, setUpcomingSearchQuery] = useState<string>('');
   const [upcomingLegalAreaFilter, setUpcomingLegalAreaFilter] = useState<string>('alle');
+  const [showAllUpcomingUnits, setShowAllUpcomingUnits] = useState<boolean>(false);
 
   useEffect(() => {
     fetchData();
     fetchTeilnehmerId();
-    fetchMessages();
     fetchDozenten();
     fetchProfileData();
     fetchCourseTimes();
+    fetchZoomLinks();
 
     // Cleanup function
     return () => {
@@ -213,6 +213,17 @@ export function EliteKleingruppeDashboard() {
   const fetchCourseTimes = async () => {
     const { data } = await supabase.from('elite_course_times').select('*').eq('is_active', true).order('weekday').order('start_time');
     setCourseTimes(data || []);
+  };
+
+  const fetchZoomLinks = async () => {
+    const { data } = await supabase
+      .from('elite_kleingruppe_settings')
+      .select('setting_value')
+      .eq('setting_key', 'zoom_links')
+      .maybeSingle();
+    if (data?.setting_value) {
+      setZoomLinks(data.setting_value as any);
+    }
   };
 
   const fetchProfileData = async () => {
@@ -368,12 +379,21 @@ export function EliteKleingruppeDashboard() {
       if (!groupId && user) {
         const { data: teilnehmerData } = await supabase
           .from('teilnehmer')
-          .select('elite_kleingruppe_id')
+          .select('elite_kleingruppe_id, zoom_background_url')
           .eq('email', user.email)
           .single();
         if (teilnehmerData?.elite_kleingruppe_id) {
           groupId = teilnehmerData.elite_kleingruppe_id;
           setTeilnehmerEliteKleingruppeId(groupId);
+        }
+        // Load zoom backgrounds
+        if (teilnehmerData?.zoom_background_url) {
+          try {
+            const urls = JSON.parse(teilnehmerData.zoom_background_url);
+            setZoomBackgrounds(Array.isArray(urls) ? urls : [urls]);
+          } catch {
+            setZoomBackgrounds([teilnehmerData.zoom_background_url]);
+          }
         }
       }
 
@@ -422,22 +442,6 @@ export function EliteKleingruppeDashboard() {
     setKlausuren(data || []);
   };
 
-  const fetchMessages = async () => {
-    const { data } = await supabase
-      .from('elite_kleingruppe_messages')
-      .select('*')
-      .order('created_at', { ascending: true });
-    setMessages(data || []);
-  };
-
-  const getRecipientLabel = (recipient: string) => {
-    if (recipient === 'gruppe_zivilrecht') return 'Elite-Kleingruppe Zivilrecht';
-    if (recipient === 'gruppe_strafrecht') return 'Elite-Kleingruppe Strafrecht';
-    if (recipient === 'gruppe_oeffentliches_recht') return 'Elite-Kleingruppe Öffentl. Recht';
-    const dozent = dozenten.find(d => d.id === recipient);
-    return dozent ? dozent.name : 'Kontakt';
-  };
-
   // Helper function to check if folder matches user's Bundesland
   const isFolderMatchingUserState = (folderName: string, releaseTitle?: string): boolean => {
     console.log('Filter check:', { folderName, releaseTitle, teilnehmerStateLaw });
@@ -464,6 +468,52 @@ export function EliteKleingruppeDashboard() {
     const matches = folderName === teilnehmerStateLaw;
     console.log('  -> Direct match:', matches);
     return matches;
+  };
+
+  const handleDownloadZoomBackground = async (url: string, index: number) => {
+    try {
+      // Extract path from URL - support both old and new bucket
+      let match = url.match(/\/storage\/v1\/object\/public\/zoom-backgrounds\/(.+)$/);
+      let bucket = 'zoom-backgrounds';
+      
+      if (!match) {
+        match = url.match(/\/storage\/v1\/object\/public\/elite-kleingruppe\/(.+)$/);
+        bucket = 'elite-kleingruppe';
+      }
+      
+      if (!match) {
+        console.error('Invalid URL format');
+        window.open(url, '_blank');
+        return;
+      }
+      
+      const path = match[1];
+      
+      // Download using Supabase storage API
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .download(path);
+      
+      if (error || !data) {
+        console.error('Download error:', error);
+        window.open(url, '_blank');
+        return;
+      }
+      
+      // Create download link with correct blob
+      const downloadUrl = URL.createObjectURL(data);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `Zoom_Hintergrund_${index + 1}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(downloadUrl);
+      
+    } catch (error) {
+      console.error('Download failed:', error);
+      window.open(url, '_blank');
+    }
   };
 
   const handleDownloadMaterial = async (material: TeachingMaterial) => {
@@ -530,32 +580,6 @@ export function EliteKleingruppeDashboard() {
     } catch (error) {
       console.error('Error downloading file:', error);
       alert('Fehler beim Herunterladen der Datei');
-    }
-  };
-
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || !user || !teilnehmerId) return;
-    
-    const isGroupMessage = selectedRecipient.startsWith('gruppe_');
-    const recipientId = isGroupMessage ? null : selectedRecipient;
-    const legalArea = selectedRecipient === 'gruppe_zivilrecht' ? 'Zivilrecht' 
-      : selectedRecipient === 'gruppe_strafrecht' ? 'Strafrecht'
-      : selectedRecipient === 'gruppe_oeffentliches_recht' ? 'Öffentliches Recht'
-      : null;
-    
-    const { error } = await supabase.from('elite_kleingruppe_messages').insert({
-      sender_id: user.id,
-      sender_name: user.email,
-      content: newMessage.trim(),
-      is_group_message: isGroupMessage,
-      teilnehmer_id: teilnehmerId,
-      recipient_id: recipientId,
-      recipient_type: isGroupMessage ? legalArea : 'einzeln'
-    });
-    
-    if (!error) {
-      setNewMessage('');
-      fetchMessages();
     }
   };
 
@@ -640,7 +664,11 @@ export function EliteKleingruppeDashboard() {
     setIsUploading(true);
     try {
       // Upload file to Supabase Storage - use user.id for RLS policy compliance
-      const fileName = `${Date.now()}_${uploadFile.name}`;
+      // Sanitize filename: remove special characters that are invalid for storage keys
+      const sanitizedFileName = uploadFile.name
+        .replace(/[^a-zA-Z0-9._-]/g, '_')
+        .replace(/_+/g, '_');
+      const fileName = `${Date.now()}_${sanitizedFileName}`;
       const filePath = `klausuren/${user.id}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
@@ -717,14 +745,6 @@ export function EliteKleingruppeDashboard() {
               </div>
             </div>
             <div className="hidden md:flex items-center space-x-2 sm:space-x-4">
-              {/* Nachrichten */}
-              <button 
-                onClick={() => setActiveTab('kommunikation')}
-                className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition relative"
-              >
-                <MessageCircle className="h-5 w-5 sm:mr-2" />
-                <span className="hidden sm:inline">Nachrichten</span>
-              </button>
               {/* Einstellungen */}
               <button 
                 onClick={() => setShowSettingsModal(true)}
@@ -767,16 +787,6 @@ export function EliteKleingruppeDashboard() {
                   {allReleases.filter(r => !r.is_released).length} Einheiten geplant
                 </button>
               )}
-              <button
-                onClick={() => {
-                  setActiveTab('kommunikation');
-                  setMobileMenuOpen(false);
-                }}
-                className="w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 flex items-center"
-              >
-                <MessageCircle className="h-5 w-5 mr-2" />
-                Nachrichten
-              </button>
               <button
                 onClick={() => {
                   setShowSettingsModal(true);
@@ -903,7 +913,42 @@ export function EliteKleingruppeDashboard() {
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
             {/* Staatsexamen Countdown */}
-            {examDate ? (
+            {showExamDateInput ? (
+              <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="flex items-center space-x-4">
+                    <div className="flex-shrink-0 p-3 bg-primary/10 rounded-xl">
+                      <Calendar className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-lg font-semibold text-gray-900">Wann ist dein Staatsexamen?</p>
+                      <p className="text-sm text-gray-500">Trage das Datum ein, um deinen Countdown zu starten</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="date"
+                      value={tempExamDate}
+                      onChange={(e) => setTempExamDate(e.target.value)}
+                      className="px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                    />
+                    <button 
+                      onClick={saveExamDate}
+                      disabled={!tempExamDate}
+                      className="px-5 py-2.5 bg-primary text-white rounded-xl hover:bg-primary/90 text-sm font-medium disabled:opacity-50 transition-colors"
+                    >
+                      Speichern
+                    </button>
+                    <button 
+                      onClick={() => { setShowExamDateInput(false); setTempExamDate(''); }}
+                      className="px-4 py-2.5 text-gray-500 hover:text-gray-700 text-sm"
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : examDate ? (
               <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl p-6 text-white shadow-xl">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
                 <div className="absolute bottom-0 left-0 w-48 h-48 bg-blue-500/10 rounded-full blur-2xl translate-y-1/2 -translate-x-1/2" />
@@ -991,41 +1036,6 @@ export function EliteKleingruppeDashboard() {
                   </div>
                 </div>
               </div>
-            ) : showExamDateInput ? (
-              <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div className="flex items-center space-x-4">
-                    <div className="flex-shrink-0 p-3 bg-primary/10 rounded-xl">
-                      <Calendar className="h-6 w-6 text-primary" />
-                    </div>
-                    <div>
-                      <p className="text-lg font-semibold text-gray-900">Wann ist dein Staatsexamen?</p>
-                      <p className="text-sm text-gray-500">Trage das Datum ein, um deinen Countdown zu starten</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <input
-                      type="date"
-                      value={tempExamDate}
-                      onChange={(e) => setTempExamDate(e.target.value)}
-                      className="px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
-                    />
-                    <button 
-                      onClick={saveExamDate}
-                      disabled={!tempExamDate}
-                      className="px-5 py-2.5 bg-primary text-white rounded-xl hover:bg-primary/90 text-sm font-medium disabled:opacity-50 transition-colors"
-                    >
-                      Speichern
-                    </button>
-                    <button 
-                      onClick={() => { setShowExamDateInput(false); setTempExamDate(''); }}
-                      className="px-4 py-2.5 text-gray-500 hover:text-gray-700 text-sm"
-                    >
-                      Abbrechen
-                    </button>
-                  </div>
-                </div>
-              </div>
             ) : (
               <div className="relative overflow-hidden bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl border border-gray-200 p-6 group hover:border-primary/30 transition-colors cursor-pointer" onClick={() => setShowExamDateInput(true)}>
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -1046,11 +1056,115 @@ export function EliteKleingruppeDashboard() {
               </div>
             )}
 
+            {/* Zoom-Links für Rechtsgebiete */}
+            {(zoomLinks.Zivilrecht.url || zoomLinks.Strafrecht.url || zoomLinks['Öffentliches Recht'].url) && (
+              <div className="bg-white rounded-xl shadow p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                  Zoom-Links für Unterrichtseinheiten
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {zoomLinks.Zivilrecht.url && (
+                    <div className="bg-blue-50 rounded-xl p-4">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="p-2 bg-blue-500 rounded-lg">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">Zivilrecht</p>
+                        </div>
+                      </div>
+                      {zoomLinks.Zivilrecht.meetingId && (
+                        <p className="text-xs text-gray-600 mb-1">Meeting ID: <span className="font-medium">{zoomLinks.Zivilrecht.meetingId}</span></p>
+                      )}
+                      {zoomLinks.Zivilrecht.passcode && (
+                        <p className="text-xs text-gray-600 mb-3">Passcode: <span className="font-medium">{zoomLinks.Zivilrecht.passcode}</span></p>
+                      )}
+                      <a
+                        href={zoomLinks.Zivilrecht.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                        Zoom beitreten
+                      </a>
+                    </div>
+                  )}
+                  {zoomLinks.Strafrecht.url && (
+                    <div className="bg-red-50 rounded-xl p-4">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="p-2 bg-red-500 rounded-lg">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">Strafrecht</p>
+                        </div>
+                      </div>
+                      {zoomLinks.Strafrecht.meetingId && (
+                        <p className="text-xs text-gray-600 mb-1">Meeting ID: <span className="font-medium">{zoomLinks.Strafrecht.meetingId}</span></p>
+                      )}
+                      {zoomLinks.Strafrecht.passcode && (
+                        <p className="text-xs text-gray-600 mb-3">Passcode: <span className="font-medium">{zoomLinks.Strafrecht.passcode}</span></p>
+                      )}
+                      <a
+                        href={zoomLinks.Strafrecht.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                        Zoom beitreten
+                      </a>
+                    </div>
+                  )}
+                  {zoomLinks['Öffentliches Recht'].url && (
+                    <div className="bg-green-50 rounded-xl p-4">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="p-2 bg-green-500 rounded-lg">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">Öffentliches Recht</p>
+                        </div>
+                      </div>
+                      {zoomLinks['Öffentliches Recht'].meetingId && (
+                        <p className="text-xs text-gray-600 mb-1">Meeting ID: <span className="font-medium">{zoomLinks['Öffentliches Recht'].meetingId}</span></p>
+                      )}
+                      {zoomLinks['Öffentliches Recht'].passcode && (
+                        <p className="text-xs text-gray-600 mb-3">Passcode: <span className="font-medium">{zoomLinks['Öffentliches Recht'].passcode}</span></p>
+                      )}
+                      <a
+                        href={zoomLinks['Öffentliches Recht'].url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                        Zoom beitreten
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Kursfortschritt */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Fortschrittsübersicht */}
               <div className="lg:col-span-2 bg-white rounded-xl shadow p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Dein Kursfortschritt</h3>
+                <div className="flex items-center gap-2 mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Dein Kursfortschritt</h3>
+                  <div className="group relative">
+                    <Info className="h-4 w-4 text-gray-400 cursor-help" />
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-10">
+                      <div className="bg-gray-900 text-white text-xs rounded-lg py-2 px-3 whitespace-nowrap">
+                        Dein Kurs besteht aus Einheiten (U) und Wiederholungseinheiten (W)
+                        <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 
                 {/* Gesamtfortschritt - zeitbasiert */}
                 {(() => {
@@ -1075,13 +1189,39 @@ export function EliteKleingruppeDashboard() {
                           {Math.round(progress)}%
                         </span>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-4">
+                      <div className="relative w-full bg-gray-200 rounded-full h-4">
                         <div 
                           className="bg-gradient-to-r from-primary to-blue-500 h-4 rounded-full transition-all duration-500"
                           style={{ width: `${progress}%` }}
                         />
+                        
+                        {/* Milestone markers */}
+                        {[25, 50, 75].map(milestone => (
+                          <div 
+                            key={milestone}
+                            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2"
+                            style={{ left: `${milestone}%` }}
+                          >
+                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
+                              progress >= milestone 
+                                ? 'bg-primary border-primary shadow-lg' 
+                                : 'bg-white border-gray-300'
+                            }`}>
+                              {progress >= milestone ? (
+                                <CheckCircle className="w-3.5 h-3.5 text-white" />
+                              ) : (
+                                <div className="w-2 h-2 rounded-full bg-gray-300" />
+                              )}
+                            </div>
+                            <div className={`absolute top-7 left-1/2 -translate-x-1/2 text-xs font-medium whitespace-nowrap transition-colors ${
+                              progress >= milestone ? 'text-primary' : 'text-gray-400'
+                            }`}>
+                              {milestone}%
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-gray-500 mt-8">
                         {completedReleases.length} von {totalReleases} Einheiten absolviert
                       </p>
                     </div>
@@ -1101,6 +1241,21 @@ export function EliteKleingruppeDashboard() {
                       return releaseDate <= today;
                     });
                     
+                    // Count instruction and review units separately
+                    const unterrichtReleases = areaReleases.filter(r => 
+                      r.unit_type?.startsWith('unterricht_')
+                    );
+                    const wiederholungReleases = areaReleases.filter(r => 
+                      r.unit_type?.startsWith('wiederholung_')
+                    );
+                    
+                    const unterrichtCompleted = areaCompleted.filter(r => 
+                      r.unit_type?.startsWith('unterricht_')
+                    );
+                    const wiederholungCompleted = areaCompleted.filter(r => 
+                      r.unit_type?.startsWith('wiederholung_')
+                    );
+                    
                     const progress = areaReleases.length > 0 ? (areaCompleted.length / areaReleases.length) * 100 : 0;
                     const colors = area === 'Zivilrecht' ? 'from-blue-500 to-blue-600' : area === 'Strafrecht' ? 'from-red-500 to-red-600' : 'from-green-500 to-green-600';
                     
@@ -1108,7 +1263,14 @@ export function EliteKleingruppeDashboard() {
                       <div key={area}>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-sm text-gray-600">{area}</span>
-                          <span className="text-xs text-gray-500">{areaCompleted.length}/{areaReleases.length}</span>
+                          <span className="text-xs text-gray-500">
+                            {areaCompleted.length}/{areaReleases.length}
+                            {(unterrichtReleases.length > 0 || wiederholungReleases.length > 0) && (
+                              <span className="ml-1 text-gray-400">
+                                ({unterrichtCompleted.length}/{unterrichtReleases.length} U + {wiederholungCompleted.length}/{wiederholungReleases.length} W)
+                              </span>
+                            )}
+                          </span>
                         </div>
                         <div className="w-full bg-gray-100 rounded-full h-2">
                           <div 
@@ -1203,7 +1365,50 @@ export function EliteKleingruppeDashboard() {
 
             {/* Klausur-Bewertungs-Statistik */}
             <div className="bg-white rounded-xl shadow p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Klausur-Bewertungen</h3>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-semibold text-gray-900">Klausur-Bewertungen</h3>
+                  <div className="group relative">
+                    <Info className="h-4 w-4 text-gray-400 cursor-help" />
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-10">
+                      <div className="bg-gray-900 text-white text-xs rounded-lg py-2 px-3 whitespace-nowrap">
+                        Dies ist dein Klausuren-Kontingent. Nur kontinuierliches Üben führt zum Erfolg!
+                        <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setActiveTab('klausuren')}
+                  className="inline-flex items-center px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm font-medium transition-colors"
+                >
+                  <Upload className="h-4 w-4 mr-1.5" />
+                  Neue Klausur einreichen
+                </button>
+              </div>
+              
+              {/* Klausuren-Kontingent */}
+              <div className="mb-6 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-700">Klausuren-Kontingent</span>
+                  <span className="text-sm font-bold text-gray-900">
+                    {klausuren.length > 0 ? `${60 - klausuren.length}/60` : '60/60'}
+                  </span>
+                </div>
+                <div className="relative w-full bg-gray-200 rounded-full h-3">
+                  <div 
+                    className="bg-gradient-to-r from-primary to-blue-500 h-3 rounded-full transition-all duration-500"
+                    style={{ width: `${klausuren.length > 0 ? ((60 - klausuren.length) / 60) * 100 : 100}%` }}
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  {klausuren.length > 0 
+                    ? `${klausuren.length} Klausur${klausuren.length === 1 ? '' : 'en'} eingereicht, ${60 - klausuren.length} verbleibend`
+                    : 'Noch keine Klausuren eingereicht'
+                  }
+                </p>
+              </div>
+              
               {klausuren.filter(k => k.status === 'completed' && k.score !== undefined).length > 0 ? (
                 <div className="space-y-4">
                   {/* Durchschnittsnote */}
@@ -1511,6 +1716,36 @@ export function EliteKleingruppeDashboard() {
                   </a>
                 </div>
               </div>
+
+              {/* Zoom Backgrounds */}
+              {zoomBackgrounds.length > 0 && (
+                <div className="bg-white rounded-xl shadow p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Zoom-Hintergründe</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    {zoomBackgrounds.length} Hintergrund{zoomBackgrounds.length > 1 ? 'e' : ''} verfügbar
+                  </p>
+                  <div className="space-y-2">
+                    {zoomBackgrounds.map((url, index) => (
+                      <button
+                        key={index}
+                        onClick={() => handleDownloadZoomBackground(url, index)}
+                        className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="flex-shrink-0 p-2 bg-blue-100 rounded-lg">
+                            <Video className="h-5 w-5 text-blue-600" />
+                          </div>
+                          <div className="text-left">
+                            <p className="text-sm font-medium text-gray-900">Hintergrund {index + 1}</p>
+                            <p className="text-xs text-gray-500">Klicken zum Herunterladen</p>
+                          </div>
+                        </div>
+                        <Download className="h-5 w-5 text-gray-400 group-hover:text-primary transition-colors" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Kurszeiten mit Meeting-Links */}
@@ -1600,16 +1835,6 @@ export function EliteKleingruppeDashboard() {
                         <p className="text-sm font-medium text-gray-900 truncate">{dozent.name}</p>
                         <p className="text-xs text-gray-500 truncate">{dozent.email}</p>
                       </div>
-                      <button
-                        onClick={() => {
-                          setSelectedRecipient(dozent.id);
-                          setActiveTab('kommunikation');
-                        }}
-                        className="flex-shrink-0 p-2 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                        title="Chat öffnen"
-                      >
-                        <MessageCircle className="h-5 w-5" />
-                      </button>
                     </div>
                   ))}
                 </div>
@@ -1874,68 +2099,97 @@ export function EliteKleingruppeDashboard() {
                     return <li className="p-8 text-center text-gray-500">Keine kommenden Einheiten geplant</li>;
                   }
                   
-                  return upcomingReleases.slice(0, 10).map(release => (
-                    <li 
-                      key={release.id} 
-                      className="p-4 hover:bg-gray-50 cursor-pointer transition-colors"
-                      onClick={() => setSelectedReleaseForDetail(release)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center flex-1">
-                          <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${release.is_released ? 'bg-green-100' : 'bg-gray-100'}`}>
-                            {release.is_released ? <Unlock className="h-6 w-6 text-green-600" /> : <Lock className="h-6 w-6 text-gray-400" />}
-                          </div>
-                          <div className="ml-4 flex-1">
-                            <div className="flex items-center gap-2">
-                              <h4 className="text-sm font-medium text-gray-900">{release.title}</h4>
-                              {release.legal_area && (
-                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                                  release.legal_area === 'Zivilrecht' ? 'bg-blue-100 text-blue-700' :
-                                  release.legal_area === 'Strafrecht' ? 'bg-red-100 text-red-700' :
-                                  'bg-green-100 text-green-700'
-                                }`}>
-                                  {release.legal_area}
-                                </span>
-                              )}
+                  const displayedReleases = showAllUpcomingUnits ? upcomingReleases : upcomingReleases.slice(0, 10);
+                  const hasMore = upcomingReleases.length > 10;
+                  
+                  return (
+                    <>
+                      {displayedReleases.map(release => (
+                        <li 
+                          key={release.id} 
+                          className="p-4 hover:bg-gray-50 cursor-pointer transition-colors"
+                          onClick={() => setSelectedReleaseForDetail(release)}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center flex-1">
+                              <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${release.is_released ? 'bg-green-100' : 'bg-gray-100'}`}>
+                                {release.is_released ? <Unlock className="h-6 w-6 text-green-600" /> : <Lock className="h-6 w-6 text-gray-400" />}
+                              </div>
+                              <div className="ml-4 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <h4 className="text-sm font-medium text-gray-900">{release.title}</h4>
+                                  {release.legal_area && (
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                      release.legal_area === 'Zivilrecht' ? 'bg-blue-100 text-blue-700' :
+                                      release.legal_area === 'Strafrecht' ? 'bg-red-100 text-red-700' :
+                                      'bg-green-100 text-green-700'
+                                    }`}>
+                                      {release.legal_area}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-3 mt-1">
+                                  <p className="text-xs text-gray-500">
+                                    {formatDate(release.release_date)}
+                                    {release.start_time && release.end_time && (
+                                      <span className="ml-2">
+                                        <Clock className="h-3 w-3 inline mr-1" />
+                                        {release.start_time.slice(0, 5)} - {release.end_time.slice(0, 5)} Uhr
+                                      </span>
+                                    )}
+                                  </p>
+                                  {release.duration_minutes && (
+                                    <span className="text-xs text-gray-400">
+                                      ({Math.floor(release.duration_minutes / 60)} Std {release.duration_minutes % 60 > 0 ? `${release.duration_minutes % 60} Min` : ''})
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-3 mt-1">
-                              <p className="text-xs text-gray-500">
-                                {formatDate(release.release_date)}
-                                {release.start_time && release.end_time && (
-                                  <span className="ml-2">
-                                    <Clock className="h-3 w-3 inline mr-1" />
-                                    {release.start_time.slice(0, 5)} - {release.end_time.slice(0, 5)} Uhr
-                                  </span>
-                                )}
-                              </p>
-                              {release.duration_minutes && (
-                                <span className="text-xs text-gray-400">
-                                  ({Math.floor(release.duration_minutes / 60)} Std {release.duration_minutes % 60 > 0 ? `${release.duration_minutes % 60} Min` : ''})
-                                </span>
+                            <div className="flex items-center gap-3">
+                              {release.zoom_link && release.is_released && (
+                                <a
+                                  href={release.zoom_link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-medium transition-colors"
+                                >
+                                  <Video className="h-3.5 w-3.5 mr-1.5" />
+                                  Zoom beitreten
+                                </a>
                               )}
+                              <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${release.is_released ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                {release.is_released ? 'Verfügbar' : 'Geplant'}
+                              </span>
                             </div>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          {release.zoom_link && release.is_released && (
-                            <a
-                              href={release.zoom_link}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-medium transition-colors"
-                            >
-                              <Video className="h-3.5 w-3.5 mr-1.5" />
-                              Zoom beitreten
-                            </a>
-                          )}
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${release.is_released ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                            {release.is_released ? 'Verfügbar' : 'Geplant'}
-                          </span>
-                        </div>
-                      </div>
-                    </li>
-                  ));
+                        </li>
+                      ))}
+                      {hasMore && !showAllUpcomingUnits && (
+                        <li className="p-4 border-t border-gray-200">
+                          <button
+                            onClick={() => setShowAllUpcomingUnits(true)}
+                            className="w-full flex items-center justify-center gap-2 py-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                          >
+                            <span>Alle {upcomingReleases.length} Einheiten anzeigen</span>
+                            <ChevronDown className="h-4 w-4" />
+                          </button>
+                        </li>
+                      )}
+                      {showAllUpcomingUnits && hasMore && (
+                        <li className="p-4 border-t border-gray-200">
+                          <button
+                            onClick={() => setShowAllUpcomingUnits(false)}
+                            className="w-full flex items-center justify-center gap-2 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
+                          >
+                            <span>Weniger anzeigen</span>
+                            <ChevronUp className="h-4 w-4" />
+                          </button>
+                        </li>
+                      )}
+                    </>
+                  );
                 })()}
               </ul>
             </div>
@@ -2511,157 +2765,6 @@ export function EliteKleingruppeDashboard() {
                   ))}
                 </ul>
               )}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'kommunikation' && (
-          <div className="bg-white rounded-lg shadow">
-            <div className="grid grid-cols-1 sm:grid-cols-3 min-h-[500px]">
-              {/* Kontakte-Liste */}
-              <div className="col-span-1 border-r border-gray-200">
-                <div className="p-4 border-b border-gray-200">
-                  <h2 className="text-lg font-medium text-gray-900">Kontakte</h2>
-                  <p className="text-sm text-gray-500 mt-1">Wähle einen Empfänger</p>
-                </div>
-                <div className="overflow-y-auto max-h-[400px]">
-                  {/* Gruppen nach Rechtsgebiet */}
-                  <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Gruppen</span>
-                  </div>
-                  <button
-                    onClick={() => setSelectedRecipient('gruppe_zivilrecht')}
-                    className={`w-full text-left p-4 hover:bg-gray-50 transition-colors border-b border-gray-100 ${selectedRecipient === 'gruppe_zivilrecht' ? 'bg-primary/10 border-l-4 border-l-primary' : ''}`}
-                  >
-                    <div className="flex items-center">
-                      <div className="h-10 w-10 rounded-full bg-white border border-gray-200 flex items-center justify-center overflow-hidden">
-                        <img src="https://kraatz-group.de/wp-content/uploads/2023/05/KraatzGroup_Logo_web.png" alt="Kraatz Group" className="h-6 w-auto object-contain" />
-                      </div>
-                      <div className="ml-3">
-                        <div className="font-medium text-gray-900">Elite-Kleingruppe Zivilrecht</div>
-                      </div>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => setSelectedRecipient('gruppe_strafrecht')}
-                    className={`w-full text-left p-4 hover:bg-gray-50 transition-colors border-b border-gray-100 ${selectedRecipient === 'gruppe_strafrecht' ? 'bg-primary/10 border-l-4 border-l-primary' : ''}`}
-                  >
-                    <div className="flex items-center">
-                      <div className="h-10 w-10 rounded-full bg-white border border-gray-200 flex items-center justify-center overflow-hidden">
-                        <img src="https://kraatz-group.de/wp-content/uploads/2023/05/KraatzGroup_Logo_web.png" alt="Kraatz Group" className="h-6 w-auto object-contain" />
-                      </div>
-                      <div className="ml-3">
-                        <div className="font-medium text-gray-900">Elite-Kleingruppe Strafrecht</div>
-                      </div>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => setSelectedRecipient('gruppe_oeffentliches_recht')}
-                    className={`w-full text-left p-4 hover:bg-gray-50 transition-colors border-b border-gray-100 ${selectedRecipient === 'gruppe_oeffentliches_recht' ? 'bg-primary/10 border-l-4 border-l-primary' : ''}`}
-                  >
-                    <div className="flex items-center">
-                      <div className="h-10 w-10 rounded-full bg-white border border-gray-200 flex items-center justify-center overflow-hidden">
-                        <img src="https://kraatz-group.de/wp-content/uploads/2023/05/KraatzGroup_Logo_web.png" alt="Kraatz Group" className="h-6 w-auto object-contain" />
-                      </div>
-                      <div className="ml-3">
-                        <div className="font-medium text-gray-900">Elite-Kleingruppe Öffentl. Recht</div>
-                      </div>
-                    </div>
-                  </button>
-                  
-                  {/* Dozenten & Verwaltung */}
-                  <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Direktnachrichten</span>
-                  </div>
-                  {dozenten.map(d => (
-                    <button
-                      key={d.id}
-                      onClick={() => setSelectedRecipient(d.id)}
-                      className={`w-full text-left p-4 hover:bg-gray-50 transition-colors border-b border-gray-100 ${selectedRecipient === d.id ? 'bg-primary/10 border-l-4 border-l-primary' : ''}`}
-                    >
-                      <div className="flex items-center">
-                        <ProfilePicture
-                          userId={d.id}
-                          url={d.profile_picture_url}
-                          size="sm"
-                          editable={false}
-                          isAdmin={d.name === 'Verwaltung'}
-                          fullName={d.name}
-                        />
-                        <div className="ml-3">
-                          <div className="font-medium text-gray-900">{d.name}</div>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                  {dozenten.length === 0 && (
-                    <div className="p-4 text-center text-gray-500 text-sm">
-                      Keine Kontakte verfügbar
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Chat-Bereich */}
-              <div className="col-span-1 sm:col-span-2 flex flex-col">
-                <div className="p-4 border-b border-gray-200">
-                  <h2 className="text-lg font-medium text-gray-900">
-                    Chat mit {getRecipientLabel(selectedRecipient)}
-                  </h2>
-                </div>
-                
-                {/* Nachrichten */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-[300px] max-h-[350px]">
-                  {messages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-400">
-                      <MessageCircle className="h-12 w-12 mb-3" />
-                      <p className="text-sm">Noch keine Nachrichten vorhanden</p>
-                      <p className="text-xs mt-1">Schreibe die erste Nachricht!</p>
-                    </div>
-                  ) : (
-                    messages.map(msg => (
-                      <div 
-                        key={msg.id} 
-                        className={`flex ${msg.sender_id === user?.id ? 'justify-end' : 'justify-start'}`}
-                      >
-                        <div className={`max-w-[70%] rounded-lg p-3 ${msg.sender_id === user?.id ? 'bg-[#2a83bf] text-white' : msg.is_group_message ? 'bg-yellow-50 border border-yellow-200' : 'bg-gray-100'}`}>
-                          <div className="flex items-center space-x-2 mb-1">
-                            {msg.is_group_message && <Users className="h-3 w-3 text-yellow-600" />}
-                            <span className={`text-xs font-medium ${msg.sender_id === user?.id ? 'text-blue-100' : 'text-gray-500'}`}>
-                              {msg.sender_id === user?.id ? 'Du' : msg.sender_name}
-                            </span>
-                            <span className={`text-xs ${msg.sender_id === user?.id ? 'text-blue-100' : 'text-gray-400'}`}>
-                              {new Date(msg.created_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </div>
-                          <p className={`text-sm ${msg.sender_id === user?.id ? 'text-white' : 'text-gray-800'}`}>{msg.content}</p>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                {/* Eingabefeld */}
-                <div className="p-4 border-t border-gray-200">
-                  <div className="flex space-x-3">
-                    <input
-                      type="text"
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                      placeholder="Nachricht schreiben..."
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    />
-                    <button
-                      onClick={handleSendMessage}
-                      disabled={!newMessage.trim()}
-                      className="px-4 py-2 bg-[#2a83bf] text-white rounded-lg hover:bg-[#2a83bf]/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                    >
-                      <Send className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         )}

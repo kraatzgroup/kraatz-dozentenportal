@@ -139,7 +139,17 @@ export function Chat() {
     return `${date.toLocaleDateString('de-DE')}, ${time}`;
   };
 
-  // Filter and separate contacts into unread and read
+  // Get last message timestamp for a contact
+  const getLastMessageTime = (contactId: string) => {
+    const contactMessages = messages.filter(msg => 
+      msg.sender_id === contactId || msg.receiver_id === contactId
+    );
+    if (contactMessages.length === 0) return new Date(0);
+    const lastMessage = contactMessages[contactMessages.length - 1];
+    return new Date(lastMessage.created_at);
+  };
+
+  // Filter and separate contacts into unread and read, sorted by last message time
   const { unreadContacts, readContacts } = useMemo(() => {
     const filtered = contacts.filter(contact => 
       contact.full_name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -147,6 +157,10 @@ export function Chat() {
     
     const unread = filtered.filter(contact => hasUnreadMessages(contact.id));
     const read = filtered.filter(contact => !hasUnreadMessages(contact.id));
+    
+    // Sort by last message time (newest first)
+    unread.sort((a, b) => getLastMessageTime(b.id).getTime() - getLastMessageTime(a.id).getTime());
+    read.sort((a, b) => getLastMessageTime(b.id).getTime() - getLastMessageTime(a.id).getTime());
     
     return { unreadContacts: unread, readContacts: read };
   }, [contacts, searchQuery, messages, user?.id]);

@@ -8,7 +8,7 @@ export function Logo({ onClick }: LogoProps) {
       onClick();
     } else {
       // Use window.location for navigation to work outside Router context
-      window.location.href = '/';
+      window.location.href = '/dashboard?tab=dashboard';
     }
   };
 
