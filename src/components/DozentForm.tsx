@@ -92,16 +92,24 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
     if (dozent?.id) {
       const fetchAssignments = async () => {
         const { data } = await supabase
-          .from('elite_kleingruppe_dozent_assignments')
-          .select('elite_kleingruppe_id, legal_areas')
+          .from('elite_kleingruppe_dozenten')
+          .select('elite_kleingruppe_id, legal_area')
           .eq('dozent_id', dozent.id);
         
         if (data && data.length > 0) {
           setIsEliteKleingruppeEnabled(true);
           const assignments: Record<string, string[]> = {};
+          
+          // Group by elite_kleingruppe_id and collect legal_areas
           data.forEach(a => {
-            assignments[a.elite_kleingruppe_id] = a.legal_areas || [];
+            if (!assignments[a.elite_kleingruppe_id]) {
+              assignments[a.elite_kleingruppe_id] = [];
+            }
+            if (!assignments[a.elite_kleingruppe_id].includes(a.legal_area)) {
+              assignments[a.elite_kleingruppe_id].push(a.legal_area);
+            }
           });
+          
           setEliteAssignments(assignments);
         }
       };
@@ -111,10 +119,42 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
 
   useEffect(() => {
     if (dozent) {
+      // Split full_name into title, first_name and last_name if needed
+      let title = dozent.title || '';
+      let firstName = dozent.first_name || '';
+      let lastName = dozent.last_name || '';
+      
+      if (!firstName && !lastName && (dozent as any).full_name) {
+        const fullName = (dozent as any).full_name;
+        const titlePrefixes = ['Dr.', 'Prof.', 'LL.M.', 'Ass. jur.', 'Dipl. jur.', 'RA'];
+        
+        // Extract titles from the beginning
+        let remainingName = fullName;
+        const extractedTitles: string[] = [];
+        
+        for (const prefix of titlePrefixes) {
+          if (remainingName.startsWith(prefix)) {
+            extractedTitles.push(prefix);
+            remainingName = remainingName.substring(prefix.length).trim();
+          }
+        }
+        
+        if (extractedTitles.length > 0) {
+          title = extractedTitles.join(' ');
+        }
+        
+        // Split remaining name into first and last name
+        const nameParts = remainingName.split(' ').filter((p: string) => p.length > 0);
+        if (nameParts.length > 0) {
+          firstName = nameParts[0];
+          lastName = nameParts.slice(1).join(' ');
+        }
+      }
+      
       setFormData({
-        title: dozent.title || '',
-        first_name: dozent.first_name || '',
-        last_name: dozent.last_name || '',
+        title: title,
+        first_name: firstName,
+        last_name: lastName,
         email: dozent.email || '',
         phone: dozent.phone || '',
         legal_areas: dozent.legal_areas || [],
@@ -181,6 +221,21 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
       const fullName = formData.title 
         ? `${formData.title} ${formData.first_name} ${formData.last_name}`.trim()
         : `${formData.first_name} ${formData.last_name}`.trim();
+
+      // Check for duplicate names (only when creating new user)
+      if (!isEditing) {
+        const { data: existingProfiles } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .eq('full_name', fullName);
+
+        if (existingProfiles && existingProfiles.length > 0) {
+          const existingEmails = existingProfiles.map(p => p.email).join(', ');
+          addToast(`⚠️ Ein Benutzer mit dem Namen "${fullName}" existiert bereits (${existingEmails}). Bitte verwenden Sie einen eindeutigen Namen.`, 'error');
+          setIsLoading(false);
+          return;
+        }
+      }
 
       let profilePictureUrl = formData.profile_picture_url || null;
 
@@ -253,49 +308,87 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         if (error) throw error;
         
         // Delete existing assignments before saving new ones
-        await supabase.from('elite_kleingruppe_dozent_assignments').delete().eq('dozent_id', dozentId);
+        await supabase.from('elite_kleingruppe_dozenten').delete().eq('dozent_id', dozentId);
         
         addToast('Dozent wurde aktualisiert', 'success');
       } else {
-        // Create auth user with default password
-        const { data: newUserId, error: authError } = await supabase
-          .rpc('create_dozent_user', { 
-            user_email: formData.email.trim(),
-            user_password: 'Dozent123!'
-          });
+        // Create user via create-user edge function
+        const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`;
+        const response = await fetch(edgeFunctionUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            email: formData.email.trim(),
+            fullName: fullName,
+            role: 'dozent'
+          }),
+        });
 
-        if (authError) {
-          console.error('Error creating auth user:', authError);
-          throw new Error('Fehler beim Erstellen des Benutzerkontos: ' + authError.message);
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          console.error('Error creating user via edge function:', result);
+          throw new Error(result.error || 'Fehler beim Erstellen des Benutzerkontos');
         }
 
-        dozentId = newUserId;
+        dozentId = result.userId;
 
-        // Create profile with the auth user's ID
+        // Upsert profile with additional dozent-specific fields
+        // The create-user edge function already created the basic profile,
+        // but we need to add dozent-specific fields
         const { error } = await supabase
           .from('profiles')
-          .insert({
-            ...dataToSave,
-            id: dozentId
+          .upsert({
+            id: dozentId,
+            email: formData.email.trim(),
+            full_name: fullName,
+            role: 'dozent',
+            title: dataToSave.title,
+            phone: dataToSave.phone,
+            legal_areas: dataToSave.legal_areas,
+            street: dataToSave.street,
+            house_number: dataToSave.house_number,
+            postal_code: dataToSave.postal_code,
+            city: dataToSave.city,
+            profile_picture_url: dataToSave.profile_picture_url,
+            iban: dataToSave.iban,
+            bic: dataToSave.bic,
+            bank_name: dataToSave.bank_name,
+            tax_id: dataToSave.tax_id,
+            hourly_rate_unterricht: dataToSave.hourly_rate_unterricht,
+            hourly_rate_elite: dataToSave.hourly_rate_elite,
+            hourly_rate_sonstige: dataToSave.hourly_rate_sonstige
+          }, {
+            onConflict: 'id'
           });
 
         if (error) throw error;
-        addToast('Dozent wurde hinzugefügt (Passwort: Dozent123!)', 'success');
+        addToast('Dozent wurde hinzugefügt und Einladungs-E-Mail wurde gesendet', 'success');
       }
 
       // Save Elite-Kleingruppe assignments if enabled
       if (isEliteKleingruppeEnabled && Object.keys(eliteAssignments).length > 0) {
-        const assignmentsToInsert = Object.entries(eliteAssignments)
+        // Flatten assignments: one row per legal area per kleingruppe
+        const assignmentsToInsert: { dozent_id: string; elite_kleingruppe_id: string; legal_area: string }[] = [];
+        
+        Object.entries(eliteAssignments)
           .filter(([_, areas]) => areas.length > 0)
-          .map(([groupId, areas]) => ({
-            dozent_id: dozentId,
-            elite_kleingruppe_id: groupId,
-            legal_areas: areas
-          }));
+          .forEach(([groupId, areas]) => {
+            areas.forEach(area => {
+              assignmentsToInsert.push({
+                dozent_id: dozentId,
+                elite_kleingruppe_id: groupId,
+                legal_area: area
+              });
+            });
+          });
 
         if (assignmentsToInsert.length > 0) {
           const { error: assignmentError } = await supabase
-            .from('elite_kleingruppe_dozent_assignments')
+            .from('elite_kleingruppe_dozenten')
             .insert(assignmentsToInsert);
           
           if (assignmentError) {

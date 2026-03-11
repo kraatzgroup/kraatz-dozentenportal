@@ -522,14 +522,30 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
 
       if (hoursError) throw hoursError;
 
-      // Fetch Elite-Kleingruppe releases for progress calculation
+      // Fetch Elite-Kleingruppe releases for progress calculation (per group)
       const { data: releasesData, error: releasesError } = await supabase
         .from('elite_kleingruppe_releases')
-        .select('id, is_released');
+        .select('id, is_released, elite_kleingruppe_id, event_type');
       
+      // Calculate progress per elite_kleingruppe_id
+      const progressByGroup: { [key: string]: { total: number; released: number } } = {};
       if (!releasesError && releasesData) {
-        const totalReleases = releasesData.length;
-        const releasedCount = releasesData.filter(r => r.is_released).length;
+        releasesData.forEach(release => {
+          // Only count actual units (einheit), not holidays or other events
+          if (release.event_type === 'einheit' && release.elite_kleingruppe_id) {
+            if (!progressByGroup[release.elite_kleingruppe_id]) {
+              progressByGroup[release.elite_kleingruppe_id] = { total: 0, released: 0 };
+            }
+            progressByGroup[release.elite_kleingruppe_id].total++;
+            if (release.is_released) {
+              progressByGroup[release.elite_kleingruppe_id].released++;
+            }
+          }
+        });
+        
+        // For backward compatibility, keep global stats (will be deprecated)
+        const totalReleases = releasesData.filter(r => r.event_type === 'einheit').length;
+        const releasedCount = releasesData.filter(r => r.is_released && r.event_type === 'einheit').length;
         setEliteReleases({ total: totalReleases, released: releasedCount });
       }
 
@@ -542,10 +558,13 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
         hoursMap[entry.teilnehmer_id] += Number(entry.hours);
       });
 
-      // Merge completed hours into teilnehmer data
+      // Merge completed hours and elite progress into teilnehmer data
       const teilnehmerWithHours = (teilnehmerData || []).map(t => ({
         ...t,
-        completed_hours: hoursMap[t.id] || 0
+        completed_hours: hoursMap[t.id] || 0,
+        elite_progress: t.elite_kleingruppe_id && progressByGroup[t.elite_kleingruppe_id] 
+          ? progressByGroup[t.elite_kleingruppe_id]
+          : null
       }));
 
       setTeilnehmer(teilnehmerWithHours);
@@ -691,14 +710,15 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
 
   const fetchDozenten = async () => {
     try {
-      // Fetch dozenten profiles
+      // Fetch dozenten profiles - include both primary role and additional roles
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('role', 'dozent')
+        .or('role.eq.dozent,additional_roles.cs.{dozent}')
         .order('full_name');
 
       if (error) throw error;
+      
       setDozenten(data || []);
       
       // Batch fetch availability for all dozenten in ONE query
@@ -2217,8 +2237,10 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                               {(() => {
                                 // For Elite-Kleingruppe participants, show progress based on released units
                                 if (t.elite_kleingruppe || t.is_elite_kleingruppe) {
-                                  const progressPercent = eliteReleases.total > 0 
-                                    ? Math.round((eliteReleases.released / eliteReleases.total) * 100) 
+                                  // Use individual progress if available, otherwise fall back to global
+                                  const progress = t.elite_progress || eliteReleases;
+                                  const progressPercent = progress.total > 0 
+                                    ? Math.round((progress.released / progress.total) * 100) 
                                     : 0;
                                   const isComplete = progressPercent >= 100;
                                   return (
@@ -2228,6 +2250,11 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                                       }`}>
                                         {isComplete ? 'Abgeschlossen' : `${progressPercent}% Einheiten`}
                                       </span>
+                                      {progress.total > 0 && (
+                                        <span className="text-xs text-gray-500">
+                                          ({progress.released}/{progress.total})
+                                        </span>
+                                      )}
                                     </div>
                                   );
                                 }
@@ -3654,6 +3681,24 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
           }}
           onSaved={() => {
             fetchTeilnehmer();
+          }}
+          onDelete={async (teilnehmer) => {
+            try {
+              const { error } = await supabase
+                .from('teilnehmer')
+                .delete()
+                .eq('id', teilnehmer.id);
+
+              if (error) throw error;
+
+              addToast('Teilnehmer erfolgreich gelöscht', 'success');
+              setShowTeilnehmerForm(false);
+              setSelectedTeilnehmerForEdit(null);
+              fetchTeilnehmer();
+            } catch (error: any) {
+              console.error('Error deleting teilnehmer:', error);
+              addToast('Fehler beim Löschen des Teilnehmers: ' + error.message, 'error');
+            }
           }}
           dozenten={dozenten}
         />

@@ -1221,7 +1221,16 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       const legalArea = newDozentLegalArea as keyof typeof zoomLinks;
       const autoZoomLink = zoomLinks[legalArea]?.url || null;
       
+      // Use selectedEliteGroupId or default to first group if only one exists
+      const kleingruppe_id = selectedEliteGroupId || (eliteGroups.length === 1 ? eliteGroups[0].id : null);
+      
+      if (!kleingruppe_id) {
+        console.error('No elite kleingruppe selected');
+        return;
+      }
+      
       await supabase.from('elite_kleingruppe_dozenten').insert({ 
+        elite_kleingruppe_id: kleingruppe_id,
         dozent_id: newDozentId, 
         legal_area: newDozentLegalArea,
         zoom_link: autoZoomLink

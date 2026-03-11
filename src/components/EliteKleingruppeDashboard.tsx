@@ -106,7 +106,7 @@ export function EliteKleingruppeDashboard() {
   const [teilnehmerId, setTeilnehmerId] = useState<string | null>(null);
   const [teilnehmerEliteKleingruppeId, setTeilnehmerEliteKleingruppeId] = useState<string | null>(null);
   const [teilnehmerStateLaw, setTeilnehmerStateLaw] = useState<string | null>(null);
-  const [dozenten, setDozenten] = useState<{id: string; name: string; email: string; profile_picture_url: string | null}[]>([]);
+  const [dozenten, setDozenten] = useState<{id: string; name: string; email: string; profile_picture_url: string | null; legal_areas?: string[]}[]>([]);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
@@ -288,21 +288,110 @@ export function EliteKleingruppeDashboard() {
   };
 
   const fetchDozenten = async () => {
-    const allContacts: {id: string; name: string; email: string; profile_picture_url: string | null}[] = [];
+    if (!user?.id) {
+      console.log('[fetchDozenten] No user ID, skipping');
+      return;
+    }
+    
+    console.log('[fetchDozenten] Starting fetch for user:', user.id);
+    
+    const allContacts: {id: string; name: string; email: string; profile_picture_url: string | null; legal_areas?: string[]}[] = [];
     const seenIds = new Set<string>();
     
-    // Hole alle Dozenten die der Elite-Kleingruppe zugewiesen sind
-    const { data: assignments } = await supabase.from('elite_kleingruppe_dozenten').select('dozent_id');
-    if (assignments && assignments.length > 0) {
-      const dozentIds = assignments.map(a => a.dozent_id);
-      const { data: dozentenData } = await supabase.from('profiles').select('id, full_name, email, profile_picture_url').in('id', dozentIds);
+    // Get current teilnehmer data
+    const { data: teilnehmerData, error: teilnehmerError } = await supabase
+      .from('teilnehmer')
+      .select('dozent_zivilrecht_id, dozent_strafrecht_id, dozent_oeffentliches_recht_id, elite_kleingruppe_id')
+      .eq('profile_id', user.id)
+      .single();
+    
+    console.log('[fetchDozenten] Teilnehmer data:', teilnehmerData);
+    console.log('[fetchDozenten] Teilnehmer error:', teilnehmerError);
+    
+    const dozentLegalAreas = new Map<string, string[]>();
+    
+    if (teilnehmerData) {
+      // Individual dozent assignments from teilnehmer table
+      if (teilnehmerData.dozent_zivilrecht_id) {
+        const areas = dozentLegalAreas.get(teilnehmerData.dozent_zivilrecht_id) || [];
+        areas.push('Zivilrecht');
+        dozentLegalAreas.set(teilnehmerData.dozent_zivilrecht_id, areas);
+        console.log('[fetchDozenten] Individual Zivilrecht dozent:', teilnehmerData.dozent_zivilrecht_id);
+      }
+      if (teilnehmerData.dozent_strafrecht_id) {
+        const areas = dozentLegalAreas.get(teilnehmerData.dozent_strafrecht_id) || [];
+        areas.push('Strafrecht');
+        dozentLegalAreas.set(teilnehmerData.dozent_strafrecht_id, areas);
+        console.log('[fetchDozenten] Individual Strafrecht dozent:', teilnehmerData.dozent_strafrecht_id);
+      }
+      if (teilnehmerData.dozent_oeffentliches_recht_id) {
+        const areas = dozentLegalAreas.get(teilnehmerData.dozent_oeffentliches_recht_id) || [];
+        areas.push('Öffentliches Recht');
+        dozentLegalAreas.set(teilnehmerData.dozent_oeffentliches_recht_id, areas);
+        console.log('[fetchDozenten] Individual Öffentliches Recht dozent:', teilnehmerData.dozent_oeffentliches_recht_id);
+      }
+      
+      // Elite-Kleingruppe dozent assignments
+      if (teilnehmerData.elite_kleingruppe_id) {
+        console.log('[fetchDozenten] Elite-Kleingruppe ID:', teilnehmerData.elite_kleingruppe_id);
+        
+        const { data: eliteDozenten, error: eliteError } = await supabase
+          .from('elite_kleingruppe_dozenten')
+          .select('dozent_id, legal_area')
+          .eq('elite_kleingruppe_id', teilnehmerData.elite_kleingruppe_id);
+        
+        console.log('[fetchDozenten] Elite-Kleingruppe dozenten query result:', eliteDozenten);
+        console.log('[fetchDozenten] Elite-Kleingruppe dozenten error:', eliteError);
+        
+        if (eliteDozenten) {
+          console.log('[fetchDozenten] Found', eliteDozenten.length, 'elite dozenten assignments');
+          eliteDozenten.forEach(ed => {
+            console.log('[fetchDozenten] Processing elite dozent:', ed.dozent_id, 'for', ed.legal_area);
+            const areas = dozentLegalAreas.get(ed.dozent_id) || [];
+            if (!areas.includes(ed.legal_area)) {
+              areas.push(ed.legal_area);
+            }
+            dozentLegalAreas.set(ed.dozent_id, areas);
+          });
+        }
+      } else {
+        console.log('[fetchDozenten] No elite_kleingruppe_id found for teilnehmer');
+      }
+    } else {
+      console.log('[fetchDozenten] No teilnehmer data found');
+    }
+    
+    console.log('[fetchDozenten] Final dozentLegalAreas map:', Array.from(dozentLegalAreas.entries()));
+    
+    // Fetch all assigned dozenten
+    const dozentIds = Array.from(dozentLegalAreas.keys());
+    console.log('[fetchDozenten] Dozent IDs to fetch:', dozentIds);
+    
+    if (dozentIds.length > 0) {
+      const { data: dozentenData, error: dozentenError } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, profile_picture_url')
+        .in('id', dozentIds);
+      
+      console.log('[fetchDozenten] Profiles query result:', dozentenData);
+      console.log('[fetchDozenten] Profiles query error:', dozentenError);
+      
       (dozentenData || []).forEach(d => {
         if (!seenIds.has(d.id)) {
           seenIds.add(d.id);
-          allContacts.push({ id: d.id, name: d.full_name || d.email, email: d.email, profile_picture_url: d.profile_picture_url });
+          const contact = { 
+            id: d.id, 
+            name: d.full_name || d.email, 
+            email: d.email, 
+            profile_picture_url: d.profile_picture_url,
+            legal_areas: dozentLegalAreas.get(d.id) || []
+          };
+          console.log('[fetchDozenten] Adding dozent to list:', contact);
+          allContacts.push(contact);
         }
       });
     }
+    
     // Hole auch Verwaltung (nur wenn nicht bereits als Dozent hinzugefügt)
     const { data: verwaltungData } = await supabase.from('profiles').select('id, full_name, email, profile_picture_url').eq('role', 'admin');
     if (verwaltungData) {
@@ -313,6 +402,8 @@ export function EliteKleingruppeDashboard() {
         }
       });
     }
+    
+    console.log('[fetchDozenten] Final dozenten list:', allContacts);
     setDozenten(allContacts);
   };
 
@@ -1770,27 +1861,29 @@ export function EliteKleingruppeDashboard() {
                         <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">{dayName}</p>
                         <div className="space-y-2">
                           {dayTimes.map(ct => (
-                            <div key={ct.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
-                              <div className="flex items-center gap-3">
+                            <div key={ct.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-gray-50 rounded-lg p-3 gap-3">
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
                                 <div className="flex items-center gap-2">
                                   <Clock className="h-4 w-4 text-gray-400" />
                                   <span className="font-medium text-gray-900">{ct.start_time.slice(0, 5)} - {ct.end_time.slice(0, 5)}</span>
                                 </div>
-                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                                  ct.legal_area === 'Zivilrecht' ? 'bg-blue-100 text-blue-700' :
-                                  ct.legal_area === 'Strafrecht' ? 'bg-red-100 text-red-700' :
-                                  'bg-green-100 text-green-700'
-                                }`}>
-                                  {ct.legal_area}
-                                </span>
-                                {ct.description && <span className="text-sm text-gray-500">{ct.description}</span>}
+                                <div className="flex items-center gap-2">
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                    ct.legal_area === 'Zivilrecht' ? 'bg-blue-100 text-blue-700' :
+                                    ct.legal_area === 'Strafrecht' ? 'bg-red-100 text-red-700' :
+                                    'bg-green-100 text-green-700'
+                                  }`}>
+                                    {ct.legal_area}
+                                  </span>
+                                  {ct.description && <span className="text-sm text-gray-500">{ct.description}</span>}
+                                </div>
                               </div>
                               {ct.meeting_link && (
                                 <a
                                   href={ct.meeting_link}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                                  className="inline-flex items-center justify-center gap-2 px-3 py-1.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors w-full sm:w-auto"
                                 >
                                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
                                   Meeting beitreten
@@ -1814,27 +1907,41 @@ export function EliteKleingruppeDashboard() {
                   {dozenten.filter(d => d.name !== 'Verwaltung').map(dozent => (
                     <div 
                       key={dozent.id}
-                      className="flex items-center p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors group"
+                      className="flex flex-col p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors group"
                     >
-                      <div className="flex-shrink-0">
-                        {dozent.profile_picture_url ? (
-                          <img 
-                            src={dozent.profile_picture_url} 
-                            alt={dozent.name}
-                            className="h-12 w-12 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-                            <span className="text-primary font-semibold text-lg">
-                              {dozent.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                      <div className="flex items-center mb-2">
+                        <div className="flex-shrink-0">
+                          {dozent.profile_picture_url ? (
+                            <img 
+                              src={dozent.profile_picture_url} 
+                              alt={dozent.name}
+                              className="h-12 w-12 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                              <span className="text-primary font-semibold text-lg">
+                                {dozent.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="ml-3 flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{dozent.name}</p>
+                          <p className="text-xs text-gray-500 truncate">{dozent.email}</p>
+                        </div>
+                      </div>
+                      {dozent.legal_areas && dozent.legal_areas.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {dozent.legal_areas.map(area => (
+                            <span 
+                              key={area}
+                              className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-100 text-blue-800"
+                            >
+                              {area}
                             </span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="ml-3 flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{dozent.name}</p>
-                        <p className="text-xs text-gray-500 truncate">{dozent.email}</p>
-                      </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -2110,13 +2217,13 @@ export function EliteKleingruppeDashboard() {
                           className="p-4 hover:bg-gray-50 cursor-pointer transition-colors"
                           onClick={() => setSelectedReleaseForDetail(release)}
                         >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center flex-1">
-                              <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${release.is_released ? 'bg-green-100' : 'bg-gray-100'}`}>
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div className="flex items-start sm:items-center flex-1 gap-3">
+                              <div className={`h-12 w-12 flex-shrink-0 rounded-xl flex items-center justify-center ${release.is_released ? 'bg-green-100' : 'bg-gray-100'}`}>
                                 {release.is_released ? <Unlock className="h-6 w-6 text-green-600" /> : <Lock className="h-6 w-6 text-gray-400" />}
                               </div>
-                              <div className="ml-4 flex-1">
-                                <div className="flex items-center gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex flex-wrap items-center gap-2 mb-1">
                                   <h4 className="text-sm font-medium text-gray-900">{release.title}</h4>
                                   {release.legal_area && (
                                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -2128,7 +2235,7 @@ export function EliteKleingruppeDashboard() {
                                     </span>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-3 mt-1">
+                                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                                   <p className="text-xs text-gray-500">
                                     {formatDate(release.release_date)}
                                     {release.start_time && release.end_time && (
@@ -2146,20 +2253,20 @@ export function EliteKleingruppeDashboard() {
                                 </div>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-3 sm:flex-shrink-0">
                               {release.zoom_link && release.is_released && (
                                 <a
                                   href={release.zoom_link}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   onClick={(e) => e.stopPropagation()}
-                                  className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-medium transition-colors"
+                                  className="inline-flex items-center justify-center px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-medium transition-colors w-full sm:w-auto"
                                 >
                                   <Video className="h-3.5 w-3.5 mr-1.5" />
                                   Zoom beitreten
                                 </a>
                               )}
-                              <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${release.is_released ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                              <span className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${release.is_released ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
                                 {release.is_released ? 'Verfügbar' : 'Geplant'}
                               </span>
                             </div>
@@ -2225,13 +2332,13 @@ export function EliteKleingruppeDashboard() {
                         className="p-4 hover:bg-gray-50 cursor-pointer transition-colors"
                         onClick={() => setSelectedReleaseForDetail(release)}
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center flex-1">
-                            <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${config.color}`}>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                          <div className="flex items-start sm:items-center flex-1 gap-3">
+                            <div className={`h-12 w-12 flex-shrink-0 rounded-xl flex items-center justify-center ${config.color}`}>
                               <span className="text-2xl">{config.icon}</span>
                             </div>
-                            <div className="ml-4 flex-1">
-                              <div className="flex items-center gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-2 mb-1">
                                 <h4 className="text-sm font-medium text-gray-900">{release.title}</h4>
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
                                   {config.label}
@@ -2249,11 +2356,11 @@ export function EliteKleingruppeDashboard() {
                                 </p>
                               </div>
                               {release.description && (
-                                <p className="text-xs text-gray-500 mt-1 line-clamp-1">{release.description}</p>
+                                <p className="text-xs text-gray-500 mt-1">{release.description}</p>
                               )}
                             </div>
                           </div>
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${release.is_released ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap self-start sm:self-center ${release.is_released ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
                             {release.is_released ? 'Aktiv' : 'Geplant'}
                           </span>
                         </div>
@@ -2452,7 +2559,7 @@ export function EliteKleingruppeDashboard() {
                         </div>
                       </div>
                       {expandedRelease === release.id && (
-                        <div className="mt-4 pl-14 space-y-4">
+                        <div className="mt-4 pl-0 sm:pl-14 space-y-4">
                           {/* Termin-Infos */}
                           {(release.start_time || release.zoom_link) && (
                             <div className="flex flex-wrap items-center gap-3 p-3 bg-blue-50 rounded-lg">
@@ -2547,11 +2654,11 @@ export function EliteKleingruppeDashboard() {
                                     href={material.file_url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                                    className="flex items-start p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors gap-3"
                                   >
-                                    <FileText className="h-5 w-5 text-gray-400 mr-3" />
-                                    <span className="text-sm text-gray-900 flex-1">{material.title}</span>
-                                    <Download className="h-4 w-4 text-primary" />
+                                    <FileText className="h-5 w-5 text-gray-400 flex-shrink-0" />
+                                    <span className="text-sm text-gray-900 flex-1 break-words">{material.title}</span>
+                                    <Download className="h-5 w-5 text-primary flex-shrink-0" />
                                   </a>
                                 );
                               });
@@ -2678,11 +2785,11 @@ export function EliteKleingruppeDashboard() {
                                             href={material.file_url}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="flex items-center p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors border border-yellow-200"
+                                            className="flex items-start p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors border border-yellow-200 gap-3"
                                           >
-                                            <FileText className="h-5 w-5 text-yellow-600 mr-3" />
-                                            <span className="text-sm text-gray-900 flex-1">{material.title}</span>
-                                            <Download className="h-4 w-4 text-yellow-600" />
+                                            <FileText className="h-5 w-5 text-yellow-600 flex-shrink-0" />
+                                            <span className="text-sm text-gray-900 flex-1 break-words">{material.title}</span>
+                                            <Download className="h-5 w-5 text-yellow-600 flex-shrink-0" />
                                           </a>
                                         );
                                       })
@@ -3155,11 +3262,11 @@ export function EliteKleingruppeDashboard() {
                           <button
                             key={id}
                             onClick={() => handleDownloadMaterial(material)}
-                            className="flex items-center w-full p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200 text-left"
+                            className="flex items-start w-full p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200 text-left gap-3"
                           >
-                            <FileText className="h-5 w-5 text-gray-400 mr-3 flex-shrink-0" />
-                            <span className="text-sm text-gray-900 flex-1">{material.title}</span>
-                            <Download className="h-4 w-4 text-primary flex-shrink-0" />
+                            <FileText className="h-5 w-5 text-gray-400 flex-shrink-0" />
+                            <span className="text-sm text-gray-900 flex-1 break-words">{material.title}</span>
+                            <Download className="h-5 w-5 text-primary flex-shrink-0" />
                           </button>
                         );
                       })}
@@ -3330,11 +3437,11 @@ export function EliteKleingruppeDashboard() {
                             <button
                               key={id}
                               onClick={() => handleDownloadMaterial(material)}
-                              className="flex items-center w-full p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors border border-yellow-200 text-left"
+                              className="flex items-start w-full p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors border border-yellow-200 text-left gap-3"
                             >
-                              <FileText className="h-5 w-5 text-yellow-600 mr-3 flex-shrink-0" />
-                              <span className="text-sm text-gray-900 flex-1">{material.title}</span>
-                              <Download className="h-4 w-4 text-yellow-600 flex-shrink-0" />
+                              <FileText className="h-5 w-5 text-yellow-600 flex-shrink-0" />
+                              <span className="text-sm text-gray-900 flex-1 break-words">{material.title}</span>
+                              <Download className="h-5 w-5 text-yellow-600 flex-shrink-0" />
                             </button>
                           );
                         })}

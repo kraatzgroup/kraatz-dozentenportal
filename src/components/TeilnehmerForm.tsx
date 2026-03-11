@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { X, Save, UserPlus, MapPin } from 'lucide-react';
+import { X, Save, UserPlus, MapPin, Trash2, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useToastStore } from '../store/toastStore';
 
 interface Teilnehmer {
   id?: string;
+  user_id?: string | null;
   first_name: string;
   last_name: string;
   email: string;
@@ -27,13 +28,13 @@ interface Teilnehmer {
   elite_kleingruppe?: boolean;
   is_elite_kleingruppe?: boolean;
   elite_kleingruppe_id?: string | null;
-  hours_zivilrecht: number | null;
-  hours_strafrecht: number | null;
-  hours_oeffentliches_recht: number | null;
-  frequency_type: string;
-  frequency_hours_zivilrecht: number | null;
-  frequency_hours_strafrecht: number | null;
-  frequency_hours_oeffentliches_recht: number | null;
+  hours_zivilrecht?: number | null;
+  hours_strafrecht?: number | null;
+  hours_oeffentliches_recht?: number | null;
+  frequency_type?: string;
+  frequency_hours_zivilrecht?: number | null;
+  frequency_hours_strafrecht?: number | null;
+  frequency_hours_oeffentliches_recht?: number | null;
 }
 
 const GERMAN_STATES = [
@@ -59,6 +60,7 @@ interface TeilnehmerFormProps {
   teilnehmer?: Teilnehmer | null;
   onClose: () => void;
   onSaved: () => void;
+  onDelete?: (teilnehmer: Teilnehmer) => void;
   dozenten: { id: string; full_name: string }[];
 }
 
@@ -67,9 +69,10 @@ interface EliteKleingruppe {
   name: string;
 }
 
-export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: TeilnehmerFormProps) {
+export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozenten }: TeilnehmerFormProps) {
   const { addToast } = useToastStore();
   const [isLoading, setIsLoading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [eliteKleingruppen, setEliteKleingruppen] = useState<EliteKleingruppe[]>([]);
   
   // Get today's date in YYYY-MM-DD format
@@ -187,6 +190,24 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
     setIsLoading(true);
 
     try {
+      const fullName = `${formData.first_name.trim()} ${formData.last_name.trim()}`;
+
+      // Check for duplicate names (only when creating new user)
+      const isEditing = !!teilnehmer?.id;
+      if (!isEditing) {
+        const { data: existingProfiles } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .eq('full_name', fullName);
+
+        if (existingProfiles && existingProfiles.length > 0) {
+          const existingEmails = existingProfiles.map(p => p.email).join(', ');
+          addToast(`⚠️ Ein Benutzer mit dem Namen "${fullName}" existiert bereits (${existingEmails}). Bitte verwenden Sie einen eindeutigen Namen.`, 'error');
+          setIsLoading(false);
+          return;
+        }
+      }
+
       // Use selected dozent from dropdown, or any of the legal area dozents as fallback
       // Elite-Kleingruppe participants don't need a dozent assigned here
       const dozentId = formData.dozent_id || 
@@ -199,8 +220,6 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
         setIsLoading(false);
         return;
       }
-
-      const fullName = `${formData.first_name.trim()} ${formData.last_name.trim()}`;
       
       const dataToSave = {
         first_name: formData.first_name.trim(),
@@ -811,29 +830,86 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, dozenten }: Teiln
           )}
 
           {/* Buttons */}
-          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-4 border-t">
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full sm:w-auto px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-            >
-              Abbrechen
-            </button>
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full sm:w-auto px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors flex items-center justify-center disabled:opacity-50"
-            >
-              {isLoading ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-              ) : (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  {isEditing ? 'Speichern' : 'Hinzufügen'}
-                </>
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-3 pt-4 border-t">
+            <div className="flex gap-3">
+              {teilnehmer && !teilnehmer.user_id && onDelete && (
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="w-full sm:w-auto px-4 py-2 text-red-700 bg-red-50 hover:bg-red-100 rounded-md transition-colors flex items-center justify-center border border-red-200"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Löschen
+                </button>
               )}
-            </button>
+            </div>
+            <div className="flex flex-col-reverse sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full sm:w-auto px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full sm:w-auto px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors flex items-center justify-center disabled:opacity-50"
+              >
+                {isLoading ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    {isEditing ? 'Speichern' : 'Hinzufügen'}
+                  </>
+                )}
+              </button>
+            </div>
           </div>
+
+          {/* Delete Confirmation Dialog */}
+          {showDeleteConfirm && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                    <AlertTriangle className="h-6 w-6 text-red-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                      Teilnehmer löschen?
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Möchten Sie {formData.first_name} {formData.last_name} wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.
+                    </p>
+                    <div className="flex gap-3 justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setShowDeleteConfirm(false)}
+                        className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                      >
+                        Abbrechen
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (teilnehmer && onDelete) {
+                            onDelete(teilnehmer);
+                            setShowDeleteConfirm(false);
+                          }
+                        }}
+                        className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors flex items-center"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Löschen
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </form>
       </div>
     </div>
