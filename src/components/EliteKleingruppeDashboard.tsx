@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { LogOut, Settings, Upload, FileText, PenTool, Calendar, CheckCircle, Clock, AlertCircle, Download, ChevronDown, ChevronUp, Users, ChevronLeft, ChevronRight, Lock, Unlock, BookOpen, Award, Video, FolderOpen, Menu, Info } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { LogOut, Settings, Upload, FileText, PenTool, Calendar, CheckCircle, Clock, AlertCircle, Download, ChevronDown, ChevronUp, Users, ChevronLeft, ChevronRight, Lock, Unlock, BookOpen, Award, Video, FolderOpen, Menu, Info, MessageSquare } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
+import { useChatStore } from '../store/chatStore';
 import { Logo } from './Logo';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -71,6 +72,8 @@ type Tab = 'dashboard' | 'kalender' | 'materialien' | 'klausuren';
 
 export function EliteKleingruppeDashboard() {
   const { user, signOut } = useAuthStore();
+  const { unreadCount, fetchUnreadCount } = useChatStore();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTabState] = useState<Tab>(() => {
     const tabParam = searchParams.get('tab');
@@ -155,6 +158,7 @@ export function EliteKleingruppeDashboard() {
     fetchProfileData();
     fetchCourseTimes();
     fetchZoomLinks();
+    fetchUnreadCount();
 
     // Cleanup function
     return () => {
@@ -836,6 +840,19 @@ export function EliteKleingruppeDashboard() {
               </div>
             </div>
             <div className="hidden md:flex items-center space-x-2 sm:space-x-4">
+              {/* Chat */}
+              <button
+                onClick={() => navigate('/messages')}
+                className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition relative"
+              >
+                <MessageSquare className="h-5 w-5 sm:mr-2" />
+                <span className="hidden sm:inline">Chat</span>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
               {/* Einstellungen */}
               <button 
                 onClick={() => setShowSettingsModal(true)}
@@ -866,6 +883,23 @@ export function EliteKleingruppeDashboard() {
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-gray-200">
             <div className="px-2 pt-2 pb-3 space-y-1">
+              <button
+                onClick={() => {
+                  navigate('/messages');
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 flex items-center justify-between"
+              >
+                <div className="flex items-center">
+                  <MessageSquare className="h-5 w-5 mr-2" />
+                  <span>Chat</span>
+                </div>
+                {unreadCount > 0 && (
+                  <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
               {allReleases.filter(r => !r.is_released).length > 0 && (
                 <button
                   onClick={() => {

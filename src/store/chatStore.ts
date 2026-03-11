@@ -4,7 +4,8 @@ import { supabase } from '../lib/supabase';
 export interface Message {
   id: string;
   sender_id: string;
-  receiver_id: string;
+  receiver_id: string | null;
+  group_id: string | null;
   content: string;
   created_at: string;
   read_at: string | null;
@@ -19,8 +20,10 @@ interface ChatState {
   isLoading: boolean;
   error: string | null;
   fetchMessages: (contactId: string | null) => Promise<void>;
+  fetchGroupMessages: (groupId: string) => Promise<void>;
   fetchUnreadCount: () => Promise<void>;
   sendMessage: (message: { content: string; receiver_id: string }) => Promise<void>;
+  sendGroupMessage: (message: { content: string; group_id: string }) => Promise<void>;
   markAsRead: (messageId: string) => Promise<void>;
 }
 
@@ -224,6 +227,120 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch (error: any) {
       set({ error: error.message });
       console.error('Error sending message:', error);
+    }
+  },
+
+  fetchGroupMessages: async (groupId: string) => {
+    set({ isLoading: true, error: null });
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('No authenticated user');
+      }
+
+      const { data, error } = await supabase
+        .from('messages')
+        .select(`
+          *,
+          sender:profiles!messages_sender_id_fkey(full_name)
+        `)
+        .eq('group_id', groupId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      set({ messages: data || [] });
+    } catch (error: any) {
+      set({ error: error.message });
+      console.error('Error fetching group messages:', error);
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  sendGroupMessage: async (message: { content: string; group_id: string }) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('No authenticated user');
+      }
+
+      const { error } = await supabase
+        .from('messages')
+        .insert([{
+          content: message.content,
+          sender_id: user.id,
+          group_id: message.group_id,
+          receiver_id: null
+        }])
+        .select();
+
+      if (error) throw error;
+      
+      // Fetch messages again to update the chat
+      await get().fetchGroupMessages(message.group_id);
+
+      // Send email notifications to group members
+      try {
+        console.log('📧 Attempting to send group notification emails...');
+        
+        // Fetch sender profile and group details
+        const [senderProfile, groupData] = await Promise.all([
+          supabase.from('profiles').select('full_name').eq('id', user.id).single(),
+          supabase.from('chat_groups').select('name').eq('id', message.group_id).single()
+        ]);
+
+        console.log('👤 Sender profile:', senderProfile.data);
+        console.log('👥 Group data:', groupData.data);
+
+        if (senderProfile.error) {
+          console.error('❌ Error fetching sender profile:', senderProfile.error);
+        }
+        if (groupData.error) {
+          console.error('❌ Error fetching group data:', groupData.error);
+        }
+
+        if (senderProfile.data && groupData.data) {
+          const origin = window.location.origin;
+          
+          console.log('📤 Calling group-message-notify edge function with:', {
+            groupId: message.group_id,
+            groupName: groupData.data.name,
+            senderName: senderProfile.data.full_name,
+            senderId: user.id,
+            messageLength: message.content.length,
+            origin
+          });
+          
+          // Call the group-message-notify edge function
+          const { data, error } = await supabase.functions.invoke('group-message-notify', {
+            body: {
+              groupId: message.group_id,
+              groupName: groupData.data.name,
+              senderName: senderProfile.data.full_name,
+              senderId: user.id,
+              messageContent: message.content,
+              origin
+            }
+          });
+
+          if (error) {
+            console.error('❌ Edge function error:', error);
+          } else {
+            console.log('✅ Group notification emails sent successfully:', data);
+          }
+        } else {
+          console.warn('⚠️ Skipping notifications - missing profile or group data');
+        }
+      } catch (notifyError) {
+        // Don't fail the message send if notification fails
+        console.error('❌ Error sending group notification emails:', notifyError);
+      }
+    } catch (error: any) {
+      set({ error: error.message });
+      console.error('Error sending group message:', error);
     }
   },
 
