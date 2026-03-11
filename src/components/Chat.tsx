@@ -568,7 +568,10 @@ export function Chat() {
                         return (
                           <button
                             key={contact.id}
-                            onClick={() => setSelectedContact(contact)}
+                            onClick={() => {
+                              setSelectedContact(contact);
+                              setSelectedGroup(null);
+                            }}
                             className={`w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors duration-150 relative border-l-4 border-red-500 ${
                               isSelected ? 'bg-blue-50' : 'bg-red-50/30'
                             }`}
@@ -622,7 +625,10 @@ export function Chat() {
                         return (
                           <button
                             key={contact.id}
-                            onClick={() => setSelectedContact(contact)}
+                            onClick={() => {
+                              setSelectedContact(contact);
+                              setSelectedGroup(null);
+                            }}
                             className={`w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors duration-150 relative ${
                               isSelected ? 'bg-blue-50' : ''
                             }`}
@@ -1222,7 +1228,7 @@ export function Chat() {
                     
                     if (memberError) throw memberError;
                     
-                    const members = memberData?.map(m => ({
+                    const members = memberData?.map((m: any) => ({
                       id: m.profiles.id,
                       full_name: m.profiles.full_name,
                       role: m.profiles.role,

@@ -41,15 +41,41 @@ export const useChatStore = create<ChatState>((set, get) => ({
         throw new Error('No authenticated user');
       }
 
-      const { count, error } = await supabase
+      // Count unread direct messages
+      const { count: directCount, error: directError } = await supabase
         .from('messages')
         .select('*', { count: 'exact', head: true })
         .eq('receiver_id', user.id)
         .is('read_at', null);
 
-      if (error) throw error;
+      if (directError) throw directError;
 
-      set({ unreadCount: count || 0 });
+      // Get user's groups
+      const { data: userGroups, error: groupsError } = await supabase
+        .from('chat_group_members')
+        .select('group_id')
+        .eq('user_id', user.id);
+
+      if (groupsError) throw groupsError;
+
+      let groupCount = 0;
+      if (userGroups && userGroups.length > 0) {
+        const groupIds = userGroups.map(g => g.group_id);
+        
+        // Count unread group messages (messages sent by others in user's groups)
+        const { count: groupMessagesCount, error: groupMessagesError } = await supabase
+          .from('messages')
+          .select('*', { count: 'exact', head: true })
+          .in('group_id', groupIds)
+          .neq('sender_id', user.id)
+          .is('read_at', null);
+
+        if (groupMessagesError) throw groupMessagesError;
+        groupCount = groupMessagesCount || 0;
+      }
+
+      const totalCount = (directCount || 0) + groupCount;
+      set({ unreadCount: totalCount });
     } catch (error: any) {
       console.error('Error fetching unread count:', error);
     }
@@ -251,6 +277,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (error) throw error;
 
       set({ messages: data || [] });
+
+      // Mark unread group messages as read
+      const unreadMessages = (data || []).filter(msg => 
+        msg.sender_id !== user.id && !msg.read_at
+      );
+
+      for (const msg of unreadMessages) {
+        await get().markAsRead(msg.id);
+      }
+
+      // Update unread count after marking messages as read
+      if (unreadMessages.length > 0) {
+        await get().fetchUnreadCount();
+      }
     } catch (error: any) {
       set({ error: error.message });
       console.error('Error fetching group messages:', error);
