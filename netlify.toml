@@ -1,0 +1,13 @@
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  # Vite embeds environment variables at build time - this is expected behavior
+  # Disable secrets scanning for VITE_ prefixed variables as they are meant to be public
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_URL,VITE_SUPABASE_ANON_KEY,VITE_CAL_API_KEY"
