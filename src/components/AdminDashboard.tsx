@@ -525,27 +525,88 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
       // Fetch Elite-Kleingruppe releases for progress calculation (per group)
       const { data: releasesData, error: releasesError } = await supabase
         .from('elite_kleingruppe_releases')
-        .select('id, is_released, elite_kleingruppe_id, event_type');
+        .select('id, is_released, elite_kleingruppe_id, event_type, release_date, end_time');
       
       // Calculate progress per elite_kleingruppe_id
       const progressByGroup: { [key: string]: { total: number; released: number } } = {};
+      const now = new Date();
+      
       if (!releasesError && releasesData) {
         releasesData.forEach(release => {
           // Only count actual units (einheit), not holidays or other events
           if (release.event_type === 'einheit' && release.elite_kleingruppe_id) {
+            // Check if the unit has already passed (release_date + end_time < now)
+            const releaseDate = new Date(release.release_date);
+            let unitHasPassed = false;
+            
+            if (release.end_time) {
+              // Combine date and time to check if unit has passed
+              const [hours, minutes] = release.end_time.split(':').map(Number);
+              const unitEndDateTime = new Date(releaseDate);
+              unitEndDateTime.setHours(hours, minutes, 0, 0);
+              unitHasPassed = unitEndDateTime < now;
+            } else {
+              // If no end_time, just check if the date has passed
+              const endOfDay = new Date(releaseDate);
+              endOfDay.setHours(23, 59, 59, 999);
+              unitHasPassed = endOfDay < now;
+            }
+            
             if (!progressByGroup[release.elite_kleingruppe_id]) {
               progressByGroup[release.elite_kleingruppe_id] = { total: 0, released: 0 };
             }
-            progressByGroup[release.elite_kleingruppe_id].total++;
-            if (release.is_released) {
-              progressByGroup[release.elite_kleingruppe_id].released++;
+            
+            // Only count units that have already passed
+            if (unitHasPassed) {
+              progressByGroup[release.elite_kleingruppe_id].total++;
+              if (release.is_released) {
+                progressByGroup[release.elite_kleingruppe_id].released++;
+              }
             }
           }
         });
         
         // For backward compatibility, keep global stats (will be deprecated)
-        const totalReleases = releasesData.filter(r => r.event_type === 'einheit').length;
-        const releasedCount = releasesData.filter(r => r.is_released && r.event_type === 'einheit').length;
+        const totalReleases = releasesData.filter(r => {
+          if (r.event_type !== 'einheit') return false;
+          
+          const releaseDate = new Date(r.release_date);
+          let unitHasPassed = false;
+          
+          if (r.end_time) {
+            const [hours, minutes] = r.end_time.split(':').map(Number);
+            const unitEndDateTime = new Date(releaseDate);
+            unitEndDateTime.setHours(hours, minutes, 0, 0);
+            unitHasPassed = unitEndDateTime < now;
+          } else {
+            const endOfDay = new Date(releaseDate);
+            endOfDay.setHours(23, 59, 59, 999);
+            unitHasPassed = endOfDay < now;
+          }
+          
+          return unitHasPassed;
+        }).length;
+        
+        const releasedCount = releasesData.filter(r => {
+          if (r.event_type !== 'einheit' || !r.is_released) return false;
+          
+          const releaseDate = new Date(r.release_date);
+          let unitHasPassed = false;
+          
+          if (r.end_time) {
+            const [hours, minutes] = r.end_time.split(':').map(Number);
+            const unitEndDateTime = new Date(releaseDate);
+            unitEndDateTime.setHours(hours, minutes, 0, 0);
+            unitHasPassed = unitEndDateTime < now;
+          } else {
+            const endOfDay = new Date(releaseDate);
+            endOfDay.setHours(23, 59, 59, 999);
+            unitHasPassed = endOfDay < now;
+          }
+          
+          return unitHasPassed;
+        }).length;
+        
         setEliteReleases({ total: totalReleases, released: releasedCount });
       }
 

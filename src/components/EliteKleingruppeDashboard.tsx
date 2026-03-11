@@ -1704,7 +1704,15 @@ export function EliteKleingruppeDashboard() {
                   <div>
                     <p className="text-sm font-medium text-gray-700 mb-3">Letzte Bewertungen</p>
                     <div className="space-y-2">
-                      {klausuren.filter(k => k.status === 'completed' && k.score !== undefined).slice(-3).reverse().map(k => (
+                      {klausuren
+                        .filter(k => k.status === 'completed' && k.score !== undefined)
+                        .sort((a, b) => {
+                          const dateA = a.corrected_at ? new Date(a.corrected_at).getTime() : 0;
+                          const dateB = b.corrected_at ? new Date(b.corrected_at).getTime() : 0;
+                          return dateB - dateA;
+                        })
+                        .slice(0, 3)
+                        .map(k => (
                         <div key={k.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                           <div>
                             <p className="text-sm font-medium text-gray-900">{k.title}</p>
@@ -1720,6 +1728,14 @@ export function EliteKleingruppeDashboard() {
                         </div>
                       ))}
                     </div>
+                    {klausuren.filter(k => k.status === 'completed' && k.score !== undefined).length > 3 && (
+                      <button
+                        onClick={() => setActiveTab('klausuren')}
+                        className="w-full mt-3 px-4 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors"
+                      >
+                        Alle Korrekturen
+                      </button>
+                    )}
                   </div>
                 </div>
               ) : (
