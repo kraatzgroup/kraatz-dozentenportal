@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { LogOut, Settings, Upload, FileText, PenTool, Calendar, CheckCircle, Clock, AlertCircle, Download, ChevronDown, ChevronUp, Users, ChevronLeft, ChevronRight, Lock, Unlock, BookOpen, Award, Video, FolderOpen, Menu, Info, MessageSquare } from 'lucide-react';
+import { LogOut, Settings, Upload, FileText, PenTool, Calendar, CheckCircle, Clock, AlertCircle, Download, ChevronDown, ChevronUp, Users, ChevronLeft, ChevronRight, Lock, Unlock, BookOpen, Award, Video, FolderOpen, Menu, Info, MessageSquare, HelpCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
@@ -68,7 +68,31 @@ interface CourseTime {
   meeting_link: string | null;
 }
 
-type Tab = 'dashboard' | 'kalender' | 'materialien' | 'klausuren';
+interface FAQ {
+  id: string;
+  question: string;
+  answer: string;
+  category: string;
+  order_index: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+interface SupportVideo {
+  id: string;
+  title: string;
+  description: string | null;
+  video_url: string;
+  thumbnail_url: string | null;
+  category: string;
+  order_index: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+type Tab = 'dashboard' | 'kalender' | 'materialien' | 'klausuren' | 'support';
 
 export function EliteKleingruppeDashboard() {
   const { user, signOut } = useAuthStore();
@@ -77,7 +101,7 @@ export function EliteKleingruppeDashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTabState] = useState<Tab>(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam && ['dashboard', 'kalender', 'materialien', 'klausuren'].includes(tabParam)) {
+    if (tabParam && ['dashboard', 'kalender', 'materialien', 'klausuren', 'support'].includes(tabParam)) {
       return tabParam as Tab;
     }
     const saved = localStorage.getItem('eliteKleingruppeDashboardTab');
@@ -98,6 +122,9 @@ export function EliteKleingruppeDashboard() {
   const [materials, setMaterials] = useState<TeachingMaterial[]>([]);
   const [folders, setFolders] = useState<MaterialFolder[]>([]);
   const [klausuren, setKlausuren] = useState<Klausur[]>([]);
+  const [faqs, setFaqs] = useState<FAQ[]>([]);
+  const [videos, setVideos] = useState<SupportVideo[]>([]);
+  const [expandedFaq, setExpandedFaq] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedRelease, setExpandedRelease] = useState<string | null>(null);
   const [selectedReleaseForDetail, setSelectedReleaseForDetail] = useState<ScheduledRelease | null>(null);
@@ -159,6 +186,7 @@ export function EliteKleingruppeDashboard() {
     fetchCourseTimes();
     fetchZoomLinks();
     fetchUnreadCount();
+    fetchSupportContent();
 
     // Cleanup function
     return () => {
@@ -535,6 +563,22 @@ export function EliteKleingruppeDashboard() {
       .eq('teilnehmer_id', tId)
       .order('submitted_at', { ascending: false });
     setKlausuren(data || []);
+  };
+
+  const fetchSupportContent = async () => {
+    const { data: faqData } = await supabase
+      .from('elite_faqs')
+      .select('*')
+      .eq('is_active', true)
+      .order('order_index', { ascending: true });
+    setFaqs(faqData || []);
+
+    const { data: videoData } = await supabase
+      .from('elite_support_videos')
+      .select('*')
+      .eq('is_active', true)
+      .order('order_index', { ascending: true });
+    setVideos(videoData || []);
   };
 
   // Helper function to check if folder matches user's Bundesland
@@ -1029,6 +1073,13 @@ export function EliteKleingruppeDashboard() {
               <PenTool className="h-4 w-4 mr-2" />
               Meine Klausuren
             </button>
+            <button
+              onClick={() => setActiveTab('support')}
+              className={`py-4 px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors ${activeTab === 'support' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+            >
+              <HelpCircle className="h-4 w-4 mr-2" />
+              Support
+            </button>
           </nav>
         </div>
       </div>
@@ -1441,8 +1492,8 @@ export function EliteKleingruppeDashboard() {
               <div className="space-y-4">
                 <div className="bg-white rounded-xl shadow p-5">
                   <div className="flex items-center">
-                    <div className="flex-shrink-0 p-3 bg-green-100 rounded-xl">
-                      <BookOpen className="h-6 w-6 text-green-600" />
+                    <div className="flex-shrink-0 p-3 bg-blue-50 rounded-xl">
+                      <Calendar className="h-6 w-6" style={{ color: '#2e83c2' }} />
                     </div>
                     <div className="ml-4">
                       <p className="text-sm text-gray-500 flex items-center gap-2">
@@ -1462,8 +1513,8 @@ export function EliteKleingruppeDashboard() {
                 
                 <div className="bg-white rounded-xl shadow p-5">
                   <div className="flex items-center">
-                    <div className="flex-shrink-0 p-3 bg-blue-100 rounded-xl">
-                      <PenTool className="h-6 w-6 text-blue-600" />
+                    <div className="flex-shrink-0 p-3 bg-blue-50 rounded-xl">
+                      <FileText className="h-6 w-6" style={{ color: '#2e83c2' }} />
                     </div>
                     <div className="ml-4 flex-1">
                       <p className="text-sm text-gray-500 flex items-center gap-2">
@@ -1489,8 +1540,8 @@ export function EliteKleingruppeDashboard() {
                 
                 <div className="bg-white rounded-xl shadow p-5">
                   <div className="flex items-center">
-                    <div className="flex-shrink-0 p-3 bg-yellow-100 rounded-xl">
-                      <Award className="h-6 w-6 text-yellow-600" />
+                    <div className="flex-shrink-0 p-3 bg-blue-50 rounded-xl">
+                      <CheckCircle className="h-6 w-6" style={{ color: '#2e83c2' }} />
                     </div>
                     <div className="ml-4 flex-1">
                       <p className="text-sm text-gray-500 flex items-center gap-2">
@@ -1506,8 +1557,8 @@ export function EliteKleingruppeDashboard() {
                       <p className="text-2xl font-bold text-gray-900">{klausuren.filter(k => k.status === 'completed').length} <span className="text-sm font-normal text-gray-400">/ 60</span></p>
                       <div className="w-full bg-gray-100 rounded-full h-1.5 mt-2">
                         <div 
-                          className="bg-yellow-500 h-1.5 rounded-full transition-all duration-500"
-                          style={{ width: `${Math.min((klausuren.filter(k => k.status === 'completed').length / 60) * 100, 100)}%` }}
+                          className="h-1.5 rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min((klausuren.filter(k => k.status === 'completed').length / 60) * 100, 100)}%`, backgroundColor: '#2e83c2' }}
                         />
                       </div>
                     </div>
@@ -1598,8 +1649,8 @@ export function EliteKleingruppeDashboard() {
                       
                       const legalAreas = [
                         { name: 'Zivilrecht', color: '#3B82F6', bgColor: 'bg-blue-50' },
-                        { name: 'Strafrecht', color: '#EF4444', bgColor: 'bg-red-50' },
-                        { name: 'Öffentliches Recht', color: '#22C55E', bgColor: 'bg-green-50' },
+                        { name: 'Strafrecht', color: '#EF4444', bgColor: 'bg-blue-50' },
+                        { name: 'Öffentliches Recht', color: '#22C55E', bgColor: 'bg-blue-50' },
                       ];
                       
                       const chartHeight = 50;
@@ -3580,6 +3631,172 @@ export function EliteKleingruppeDashboard() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Support Tab */}
+      {activeTab === 'support' && (
+        <div className="space-y-6">
+          {/* Videos Section */}
+          {videos.length > 0 && (
+            <div className="bg-white rounded-lg shadow">
+              <div className="p-4 sm:p-6 border-b border-gray-200">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-medium text-gray-900 flex items-center gap-2">
+                      <Video className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+                      Hilfsvideos
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Videos mit Anleitungen und Erklärungen für die Elite-Kleingruppe
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => navigate('/messages')}
+                    className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium whitespace-nowrap"
+                  >
+                    <MessageSquare className="h-4 w-4 mr-2" />
+                    Support kontaktieren
+                  </button>
+                </div>
+              </div>
+              <div className="p-4 sm:p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                  {videos.map((video) => {
+                    const { type, embedUrl } = (() => {
+                      // Loom
+                      if (video.video_url.includes('loom.com')) {
+                        const match = video.video_url.match(/loom\.com\/share\/([a-zA-Z0-9]+)/);
+                        if (match) {
+                          return { type: 'iframe' as const, embedUrl: `https://www.loom.com/embed/${match[1]}` };
+                        }
+                      }
+                      
+                      // YouTube
+                      if (video.video_url.includes('youtube.com') || video.video_url.includes('youtu.be')) {
+                        let videoId = '';
+                        if (video.video_url.includes('youtube.com/watch')) {
+                          const urlParams = new URLSearchParams(video.video_url.split('?')[1]);
+                          videoId = urlParams.get('v') || '';
+                        } else if (video.video_url.includes('youtu.be/')) {
+                          videoId = video.video_url.split('youtu.be/')[1].split('?')[0];
+                        }
+                        if (videoId) {
+                          return { type: 'iframe' as const, embedUrl: `https://www.youtube.com/embed/${videoId}` };
+                        }
+                      }
+                      
+                      // Vimeo
+                      if (video.video_url.includes('vimeo.com')) {
+                        const match = video.video_url.match(/vimeo\.com\/(\d+)/);
+                        if (match) {
+                          return { type: 'iframe' as const, embedUrl: `https://player.vimeo.com/video/${match[1]}` };
+                        }
+                      }
+                      
+                      // Default: direct video
+                      return { type: 'video' as const, embedUrl: video.video_url };
+                    })();
+
+                    return (
+                      <div key={video.id} className="bg-gray-50 rounded-lg overflow-hidden border border-gray-200">
+                        <div className="aspect-video bg-black">
+                          {type === 'iframe' ? (
+                            <iframe
+                              src={embedUrl}
+                              className="w-full h-full"
+                              frameBorder="0"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                            />
+                          ) : (
+                            <video
+                              src={embedUrl}
+                              controls
+                              className="w-full h-full"
+                              poster={video.thumbnail_url || undefined}
+                            />
+                          )}
+                        </div>
+                        <div className="p-4">
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <h3 className="text-sm font-medium text-gray-900 flex-1">{video.title}</h3>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-800 whitespace-nowrap">
+                              {video.category}
+                            </span>
+                          </div>
+                          {video.description && (
+                            <p className="text-sm text-gray-600 mt-2">{video.description}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* FAQ Section */}
+          <div className="bg-white rounded-lg shadow">
+            <div className="p-4 sm:p-6 border-b border-gray-200">
+              <h2 className="text-lg sm:text-xl font-medium text-gray-900 flex items-center gap-2">
+                <HelpCircle className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+                Häufig gestellte Fragen
+              </h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Antworten auf die wichtigsten Fragen zur Elite-Kleingruppe
+              </p>
+            </div>
+            {faqs.length === 0 ? (
+              <div className="p-8 text-center">
+                <HelpCircle className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                <h4 className="text-lg font-medium text-gray-900 mb-2">Noch keine FAQs vorhanden</h4>
+                <p className="text-gray-500">
+                  Der Support-Bereich wird bald mit Inhalten gefüllt.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-200">
+                {faqs.map((faq) => (
+                  <div key={faq.id} className="p-4 sm:p-6">
+                    <button
+                      onClick={() => setExpandedFaq(expandedFaq === faq.id ? null : faq.id)}
+                      className="w-full flex items-start justify-between text-left gap-4"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600 mb-2">
+                          {faq.category}
+                        </span>
+                        <h4 className="text-sm sm:text-base font-medium text-gray-900 break-words">{faq.question}</h4>
+                      </div>
+                      {expandedFaq === faq.id ? (
+                        <ChevronUp className="h-5 w-5 text-gray-400 flex-shrink-0 mt-1" />
+                      ) : (
+                        <ChevronDown className="h-5 w-5 text-gray-400 flex-shrink-0 mt-1" />
+                      )}
+                    </button>
+                    {expandedFaq === faq.id && (
+                      <div className="mt-3 pl-0">
+                        <p className="text-sm text-gray-600 whitespace-pre-wrap break-words">{faq.answer}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Empty State when no content */}
+          {videos.length === 0 && faqs.length === 0 && (
+            <div className="bg-white rounded-lg shadow p-8 text-center">
+              <HelpCircle className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-xl font-medium text-gray-900 mb-2">Support-Bereich</h3>
+              <p className="text-gray-500 max-w-md mx-auto">
+                Hier findest du bald hilfreiche Videos und Antworten auf häufig gestellte Fragen zur Elite-Kleingruppe.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
