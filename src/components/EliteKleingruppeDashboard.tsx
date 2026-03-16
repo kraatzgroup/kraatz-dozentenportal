@@ -1185,15 +1185,23 @@ export function EliteKleingruppeDashboard() {
             {(zoomLinks.Zivilrecht.url || zoomLinks.Strafrecht.url || zoomLinks['Öffentliches Recht'].url) && (
               <div className="bg-white rounded-xl shadow p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                  <svg className="h-5 w-5" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="100" height="100" rx="20" fill="#2D8CFF"/>
+                    <path d="M25 35C25 32.2386 27.2386 30 30 30H50C52.7614 30 55 32.2386 55 35V65C55 67.7614 52.7614 70 50 70H30C27.2386 70 25 67.7614 25 65V35Z" fill="white"/>
+                    <path d="M60 42.5L75 32.5V67.5L60 57.5V42.5Z" fill="white"/>
+                  </svg>
                   Zoom-Links für Unterrichtseinheiten
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {zoomLinks.Zivilrecht.url && (
                     <div className="bg-blue-50 rounded-xl p-4">
                       <div className="flex items-center gap-3 mb-3">
-                        <div className="p-2 bg-blue-500 rounded-lg">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                        <div className="p-2 bg-white rounded-lg">
+                          <svg className="h-5 w-5" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="100" height="100" rx="20" fill="#2D8CFF"/>
+                    <path d="M25 35C25 32.2386 27.2386 30 30 30H50C52.7614 30 55 32.2386 55 35V65C55 67.7614 52.7614 70 50 70H30C27.2386 70 25 67.7614 25 65V35Z" fill="white"/>
+                    <path d="M60 42.5L75 32.5V67.5L60 57.5V42.5Z" fill="white"/>
+                  </svg>
                         </div>
                         <div>
                           <p className="text-sm font-semibold text-gray-900">Zivilrecht</p>
@@ -1209,18 +1217,26 @@ export function EliteKleingruppeDashboard() {
                         href={zoomLinks.Zivilrecht.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                        className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-[#2e83c2] text-white rounded-lg text-sm font-medium hover:bg-[#2571a8] transition-colors"
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                        <svg className="h-4 w-4" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <rect width="100" height="100" rx="20" fill="white"/>
+                          <path d="M25 35C25 32.2386 27.2386 30 30 30H50C52.7614 30 55 32.2386 55 35V65C55 67.7614 52.7614 70 50 70H30C27.2386 70 25 67.7614 25 65V35Z" fill="#2D8CFF"/>
+                          <path d="M60 42.5L75 32.5V67.5L60 57.5V42.5Z" fill="#2D8CFF"/>
+                        </svg>
                         Zoom beitreten
                       </a>
                     </div>
                   )}
                   {zoomLinks.Strafrecht.url && (
-                    <div className="bg-red-50 rounded-xl p-4">
+                    <div className="bg-blue-50 rounded-xl p-4">
                       <div className="flex items-center gap-3 mb-3">
-                        <div className="p-2 bg-red-500 rounded-lg">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                        <div className="p-2 bg-white rounded-lg">
+                          <svg className="h-5 w-5" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="100" height="100" rx="20" fill="#2D8CFF"/>
+                    <path d="M25 35C25 32.2386 27.2386 30 30 30H50C52.7614 30 55 32.2386 55 35V65C55 67.7614 52.7614 70 50 70H30C27.2386 70 25 67.7614 25 65V35Z" fill="white"/>
+                    <path d="M60 42.5L75 32.5V67.5L60 57.5V42.5Z" fill="white"/>
+                  </svg>
                         </div>
                         <div>
                           <p className="text-sm font-semibold text-gray-900">Strafrecht</p>
@@ -1236,18 +1252,26 @@ export function EliteKleingruppeDashboard() {
                         href={zoomLinks.Strafrecht.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
+                        className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-[#2e83c2] text-white rounded-lg text-sm font-medium hover:bg-[#2571a8] transition-colors"
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                        <svg className="h-4 w-4" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <rect width="100" height="100" rx="20" fill="white"/>
+                          <path d="M25 35C25 32.2386 27.2386 30 30 30H50C52.7614 30 55 32.2386 55 35V65C55 67.7614 52.7614 70 50 70H30C27.2386 70 25 67.7614 25 65V35Z" fill="#2D8CFF"/>
+                          <path d="M60 42.5L75 32.5V67.5L60 57.5V42.5Z" fill="#2D8CFF"/>
+                        </svg>
                         Zoom beitreten
                       </a>
                     </div>
                   )}
                   {zoomLinks['Öffentliches Recht'].url && (
-                    <div className="bg-green-50 rounded-xl p-4">
+                    <div className="bg-blue-50 rounded-xl p-4">
                       <div className="flex items-center gap-3 mb-3">
-                        <div className="p-2 bg-green-500 rounded-lg">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                        <div className="p-2 bg-white rounded-lg">
+                          <svg className="h-5 w-5" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="100" height="100" rx="20" fill="#2D8CFF"/>
+                    <path d="M25 35C25 32.2386 27.2386 30 30 30H50C52.7614 30 55 32.2386 55 35V65C55 67.7614 52.7614 70 50 70H30C27.2386 70 25 67.7614 25 65V35Z" fill="white"/>
+                    <path d="M60 42.5L75 32.5V67.5L60 57.5V42.5Z" fill="white"/>
+                  </svg>
                         </div>
                         <div>
                           <p className="text-sm font-semibold text-gray-900">Öffentliches Recht</p>
@@ -1263,9 +1287,13 @@ export function EliteKleingruppeDashboard() {
                         href={zoomLinks['Öffentliches Recht'].url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+                        className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-[#2e83c2] text-white rounded-lg text-sm font-medium hover:bg-[#2571a8] transition-colors"
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                        <svg className="h-4 w-4" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <rect width="100" height="100" rx="20" fill="white"/>
+                          <path d="M25 35C25 32.2386 27.2386 30 30 30H50C52.7614 30 55 32.2386 55 35V65C55 67.7614 52.7614 70 50 70H30C27.2386 70 25 67.7614 25 65V35Z" fill="#2D8CFF"/>
+                          <path d="M60 42.5L75 32.5V67.5L60 57.5V42.5Z" fill="#2D8CFF"/>
+                        </svg>
                         Zoom beitreten
                       </a>
                     </div>
@@ -1505,10 +1533,11 @@ export function EliteKleingruppeDashboard() {
                 </div>
                 <button
                   onClick={() => setActiveTab('klausuren')}
-                  className="inline-flex items-center px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm font-medium transition-colors"
+                  className="inline-flex items-center justify-center px-3 sm:px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm font-medium transition-colors whitespace-nowrap"
                 >
-                  <Upload className="h-4 w-4 mr-1.5" />
-                  Neue Klausur einreichen
+                  <Upload className="h-4 w-4 sm:mr-1.5" />
+                  <span className="hidden sm:inline ml-1.5">Neue Klausur einreichen</span>
+                  <span className="sm:hidden ml-1.5">Klausur einreichen</span>
                 </button>
               </div>
               
@@ -2297,7 +2326,7 @@ export function EliteKleingruppeDashboard() {
                                   </p>
                                   {release.duration_minutes && (
                                     <span className="text-xs text-gray-400">
-                                      ({Math.floor(release.duration_minutes / 60)} Std {release.duration_minutes % 60 > 0 ? `${release.duration_minutes % 60} Min` : ''})
+                                      ({(release.duration_minutes / 60).toFixed(2).replace('.', ',')} Std)
                                     </span>
                                   )}
                                 </div>
@@ -2619,7 +2648,7 @@ export function EliteKleingruppeDashboard() {
                                   {release.start_time.slice(0, 5)} - {release.end_time.slice(0, 5)} Uhr
                                   {release.duration_minutes && (
                                     <span className="ml-1 text-blue-600">
-                                      ({Math.floor(release.duration_minutes / 60)} Std {release.duration_minutes % 60 > 0 ? `${release.duration_minutes % 60} Min` : ''})
+                                      ({(release.duration_minutes / 60).toFixed(2).replace('.', ',')} Std)
                                     </span>
                                   )}
                                 </div>
@@ -3129,7 +3158,7 @@ export function EliteKleingruppeDashboard() {
                         <span className="ml-2">{selectedReleaseForDetail.start_time.slice(0, 5)} - {selectedReleaseForDetail.end_time.slice(0, 5)} Uhr</span>
                         {selectedReleaseForDetail.duration_minutes && (
                           <span className="ml-2 text-blue-600">
-                            ({Math.floor(selectedReleaseForDetail.duration_minutes / 60)} Std {selectedReleaseForDetail.duration_minutes % 60 > 0 ? `${selectedReleaseForDetail.duration_minutes % 60} Min` : ''})
+                            ({(selectedReleaseForDetail.duration_minutes / 60).toFixed(2).replace('.', ',')} Std)
                           </span>
                         )}
                       </div>

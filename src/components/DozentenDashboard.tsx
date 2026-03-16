@@ -213,7 +213,7 @@ function YouTubeChannelWidget({ widget, isEditMode, onEdit, onDelete, cache, set
   const [videos, setVideos] = useState<YouTubeVideo[]>([]);
   const [loading, setLoading] = useState(true);
   const channelId = widget.youtube_channel_id;
-  const videoCount = widget.youtube_video_count || 3;
+  const videoCount = widget.youtube_video_count || 6;
 
   useEffect(() => {
     if (!channelId) return;
@@ -249,18 +249,18 @@ function YouTubeChannelWidget({ widget, isEditMode, onEdit, onDelete, cache, set
   }, [channelId, videoCount, cache, setCache]);
 
   return (
-    <div className="group bg-white rounded-xl shadow-sm hover:shadow-md border border-gray-100 p-4 w-full h-full">
+    <div className="group rounded-xl shadow-sm hover:shadow-md p-4 w-full h-full" style={{ backgroundColor: '#000000' }}>
       <div className="flex items-center gap-3 mb-4">
         <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center">
           <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
             <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
           </svg>
         </div>
-        <span className="text-lg font-semibold" style={{ color: '#2d84c1' }}>{widget.title}</span>
+        <span className="text-lg font-semibold text-white">{widget.title}</span>
         {isEditMode && (
           <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100">
-            <button onClick={onEdit} className="p-1 bg-gray-100 rounded"><Edit2 className="h-3 w-3 text-gray-600" /></button>
-            <button onClick={onDelete} className="p-1 bg-gray-100 rounded"><Trash2 className="h-3 w-3 text-red-500" /></button>
+            <button onClick={onEdit} className="p-1 bg-white/10 hover:bg-white/20 rounded"><Edit2 className="h-3 w-3 text-white" /></button>
+            <button onClick={onDelete} className="p-1 bg-white/10 hover:bg-white/20 rounded"><Trash2 className="h-3 w-3 text-red-500" /></button>
           </div>
         )}
       </div>
@@ -269,7 +269,7 @@ function YouTubeChannelWidget({ widget, isEditMode, onEdit, onDelete, cache, set
           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div>
         </div>
       ) : videos.length === 0 ? (
-        <p className="text-sm text-gray-500 text-center py-4">Keine Videos gefunden</p>
+        <p className="text-sm text-gray-400 text-center py-4">Keine Videos gefunden</p>
       ) : (
         <div className="space-y-3">
           {videos.map((video, index) => (
@@ -278,7 +278,7 @@ function YouTubeChannelWidget({ widget, isEditMode, onEdit, onDelete, cache, set
               href={`https://www.youtube.com/watch?v=${video.id}`} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="flex gap-3 hover:bg-gray-50 rounded-lg p-1 -mx-1 transition-colors"
+              className="flex gap-3 hover:bg-white/5 rounded-lg p-1 -mx-1 transition-colors"
             >
               <img 
                 src={video.thumbnail} 
@@ -286,8 +286,8 @@ function YouTubeChannelWidget({ widget, isEditMode, onEdit, onDelete, cache, set
                 className="w-24 h-14 object-cover rounded-lg flex-shrink-0"
               />
               <div className="flex-1 min-w-0">
-                <h4 className="text-sm font-medium text-gray-900 line-clamp-2">{video.title}</h4>
-                <p className="text-xs text-gray-500 mt-1">
+                <h4 className="text-sm font-medium text-white line-clamp-2">{video.title}</h4>
+                <p className="text-xs text-gray-400 mt-1">
                   {new Date(video.publishedAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' })}, {new Date(video.publishedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
                 </p>
               </div>
@@ -2535,7 +2535,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
                   <DroppableSection id={`section-${section.id}`} isOver={activeOverSection === section.id}>
                     <div className={`grid gap-4 items-stretch ${
                       section.columns === 1 ? 'grid-cols-1' :
-                      section.columns === 2 ? 'grid-cols-1 md:grid-cols-2' :
+                      section.columns === 2 ? 'grid-cols-1 md:grid-cols-3' :
                       section.columns === 3 ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' :
                       section.columns === 4 ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4' :
                       'grid-cols-1 md:grid-cols-2 lg:grid-cols-5'
@@ -2566,19 +2566,31 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
                               setCache={setYoutubeVideosCache}
                             />
                           ) : isHtmlWidget ? (
-                            <div className="group bg-white rounded-xl shadow-sm hover:shadow-md border border-gray-100 p-4 w-full h-full">
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm font-semibold" style={{ color: '#2d84c1' }}>{w.title}</span>
+                            w.title === 'Kraatz Group Links' ? (
+                              <div className="w-full h-full relative">
                                 {isEditMode && (
-                                  <div className="flex gap-1 opacity-0 group-hover:opacity-100">
+                                  <div className="absolute top-2 right-2 z-10 flex gap-1 bg-white/90 rounded p-1">
                                     <button onClick={() => openWidgetModal(w)} className="p-1 bg-gray-100 rounded"><Edit2 className="h-3 w-3 text-gray-600" /></button>
                                     <button onClick={() => deleteWidget(w.id)} className="p-1 bg-gray-100 rounded"><Trash2 className="h-3 w-3 text-red-500" /></button>
                                   </div>
                                 )}
+                                <div dangerouslySetInnerHTML={{ __html: w.html_content || '' }} className="w-full h-full" />
                               </div>
-                              {w.description && <p className="text-xs text-gray-500 mb-2">{w.description}</p>}
-                              <div dangerouslySetInnerHTML={{ __html: w.html_content || '' }} className="w-full" />
-                            </div>
+                            ) : (
+                              <div className="group bg-white rounded-xl shadow-sm hover:shadow-md border border-gray-100 p-4 w-full h-full">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-sm font-semibold" style={{ color: '#2d84c1' }}>{w.title}</span>
+                                  {isEditMode && (
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100">
+                                      <button onClick={() => openWidgetModal(w)} className="p-1 bg-gray-100 rounded"><Edit2 className="h-3 w-3 text-gray-600" /></button>
+                                      <button onClick={() => deleteWidget(w.id)} className="p-1 bg-gray-100 rounded"><Trash2 className="h-3 w-3 text-red-500" /></button>
+                                    </div>
+                                  )}
+                                </div>
+                                {w.description && <p className="text-xs text-gray-500 mb-2">{w.description}</p>}
+                                <div dangerouslySetInnerHTML={{ __html: w.html_content || '' }} className="w-full" />
+                              </div>
+                            )
                           ) : isOnboarding ? (
                             <div onClick={() => setShowMasterclassView(true)} className={`group relative block rounded-xl overflow-hidden shadow-lg hover:shadow-xl cursor-pointer w-full ${w.image_height === 'small' ? 'h-32' : w.image_height === 'large' ? 'h-64' : 'h-48'}`}>
                               {w.image_url ? <img src={w.image_url} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-gradient-to-br from-primary/80 to-primary" />}

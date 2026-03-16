@@ -477,10 +477,10 @@ export function Chat() {
         <div className="py-4">
           <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-4">Nachrichten</h1>
           <div className="bg-white rounded-lg shadow">
-            <div className="grid grid-cols-1 sm:grid-cols-3 min-h-[400px] sm:min-h-[600px]">
+            <div className="grid grid-cols-1 sm:grid-cols-3 min-h-[calc(100vh-12rem)] sm:min-h-[600px]">
               {/* Contacts List */}
-              <div className="col-span-1 sm:border-r border-gray-200 border-b sm:border-b-0">
-                <div className="p-4 border-b border-gray-200">
+              <div className="col-span-1 sm:border-r border-gray-200 border-b sm:border-b-0 flex flex-col">
+                <div className="p-4 border-b border-gray-200 flex-shrink-0">
                   <div className="flex items-center justify-between mb-3">
                     <h2 className="text-base sm:text-lg font-medium text-gray-900">Kontakte</h2>
                     <button
@@ -503,7 +503,7 @@ export function Chat() {
                     />
                   </div>
                 </div>
-                <div className="overflow-y-auto h-[200px] sm:h-[calc(600px-7rem)]">
+                <div className="overflow-y-auto flex-1">
                   {/* Groups Section */}
                   {groups.length > 0 && (
                     <>
@@ -844,9 +844,9 @@ export function Chat() {
                     </form>
                   </>
                 ) : (
-                  <div className="flex items-center justify-center h-full text-gray-500">
-                    <div className="flex items-center">
-                      <span>Wählen Sie einen Kontakt aus, um den Chat zu starten</span>
+                  <div className="flex items-center justify-center h-full text-gray-500 p-4">
+                    <div className="text-center">
+                      <span className="text-sm sm:text-base">Wählen Sie einen Kontakt aus, um den Chat zu starten</span>
                     </div>
                   </div>
                 )}

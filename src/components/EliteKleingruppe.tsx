@@ -81,6 +81,11 @@ export const getUnitDurationHours = (legalArea: string): number => {
 };
 
 export const formatDuration = (minutes: number): string => {
+  const decimalHours = minutes / 60;
+  return `${decimalHours.toFixed(2).replace('.', ',')} Std`;
+};
+
+export const formatDurationReadable = (minutes: number): string => {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
   if (hours === 0) return `${mins} Min`;
@@ -377,12 +382,12 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   
   // Unit duration settings state
   const [unitDurations, setUnitDurations] = useState({
-    zivilrecht_unterricht: 150,
-    oeffentliches_recht_unterricht: 120,
-    strafrecht_unterricht: 120,
-    zivilrecht_wiederholung: 150,
-    oeffentliches_recht_wiederholung: 70,
-    strafrecht_wiederholung: 100
+    zivilrecht_unterricht: 150,      // 2,30 Std (2 Std 30 Min)
+    strafrecht_unterricht: 120,      // 2,00 Std (2 Std 0 Min)
+    oeffentliches_recht_unterricht: 120,  // 2,00 Std (2 Std 0 Min)
+    zivilrecht_wiederholung: 150,    // 2,30 Std (2 Std 30 Min)
+    strafrecht_wiederholung: 75,     // 1,25 Std (1 Std 15 Min)
+    oeffentliches_recht_wiederholung: 105   // 1,75 Std (1 Std 45 Min)
   });
   const [showDurationSettings, setShowDurationSettings] = useState(false);
 
@@ -544,6 +549,32 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       const { data: zoomLinksData } = await supabase.from('elite_kleingruppe_settings').select('setting_value').eq('setting_key', 'zoom_links').maybeSingle();
       if (zoomLinksData?.setting_value) {
         setZoomLinks(zoomLinksData.setting_value as any);
+      }
+      
+      // Extract zoom links from course times if not in settings
+      if (courseTimesData && courseTimesData.length > 0) {
+        const extractedLinks = {
+          Zivilrecht: { url: '', meetingId: '', passcode: '' },
+          Strafrecht: { url: '', meetingId: '', passcode: '' },
+          'Öffentliches Recht': { url: '', meetingId: '', passcode: '' }
+        };
+        
+        courseTimesData.forEach((ct: any) => {
+          if (ct.meeting_link && ct.legal_area) {
+            extractedLinks[ct.legal_area as keyof typeof extractedLinks] = {
+              url: ct.meeting_link,
+              meetingId: '',
+              passcode: ''
+            };
+          }
+        });
+        
+        // Update zoomLinks with extracted links (only if not already set from settings)
+        setZoomLinks(prev => ({
+          Zivilrecht: prev.Zivilrecht?.url ? prev.Zivilrecht : extractedLinks.Zivilrecht,
+          Strafrecht: prev.Strafrecht?.url ? prev.Strafrecht : extractedLinks.Strafrecht,
+          'Öffentliches Recht': prev['Öffentliches Recht']?.url ? prev['Öffentliches Recht'] : extractedLinks['Öffentliches Recht']
+        }));
       }
       
       // Fetch FAQs
@@ -1186,6 +1217,31 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         dozent_id: user.id
       }).eq('id', selectedKlausur.id);
       
+      // E-Mail-Benachrichtigung an Teilnehmer senden
+      try {
+        const teilnehmer = teilnehmerList.find(t => t.id === selectedKlausur.teilnehmer_id);
+        if (teilnehmer?.email) {
+          const { data: { session } } = await supabase.auth.getSession();
+          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/klausur-correction-notify`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.access_token}`
+            },
+            body: JSON.stringify({
+              teilnehmerEmail: teilnehmer.email,
+              teilnehmerName: teilnehmer.name,
+              klausurTitle: selectedKlausur.title,
+              legalArea: selectedKlausur.legal_area,
+              score: korrekturScore ? parseInt(korrekturScore) : undefined,
+              feedback: korrekturFeedback || undefined
+            })
+          });
+        }
+      } catch (emailError) {
+        console.error('Error sending notification email:', emailError);
+      }
+      
       // Tätigkeitsbericht-Eintrag erstellen falls Dauer angegeben
       if (korrekturDuration && parseFloat(korrekturDuration) > 0) {
         const { error: hoursError } = await supabase.from('dozent_hours').insert({
@@ -1384,24 +1440,28 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         <nav className="-mb-px flex space-x-4 md:space-x-8 min-w-max md:min-w-0">
           <button onClick={() => setActiveSubTab('einheiten')} className={(activeSubTab === 'einheiten' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><Calendar className="h-4 w-4 mr-2" />Einheiten & Materialfreigabe</button>
           <button onClick={() => setActiveSubTab('klausuren')} className={(activeSubTab === 'klausuren' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><PenTool className="h-4 w-4 mr-2" />Klausurenkorrekturen</button>
-          <button onClick={() => setActiveSubTab('teilnehmer')} className={(activeSubTab === 'teilnehmer' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><Users className="h-4 w-4 mr-2" />Teilnehmer</button>
+          {isAdmin && (
+            <button onClick={() => setActiveSubTab('teilnehmer')} className={(activeSubTab === 'teilnehmer' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><Users className="h-4 w-4 mr-2" />Teilnehmer</button>
+          )}
           <button onClick={() => setActiveSubTab('kurszeiten')} className={(activeSubTab === 'kurszeiten' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><Clock className="h-4 w-4 mr-2" />Kurszeiten</button>
-          <button onClick={() => setActiveSubTab('support')} className={(activeSubTab === 'support' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><HelpCircle className="h-4 w-4 mr-2" />Support</button>
+          {isAdmin && (
+            <button onClick={() => setActiveSubTab('support')} className={(activeSubTab === 'support' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') + ' whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center'}><HelpCircle className="h-4 w-4 mr-2" />Support</button>
+          )}
         </nav>
       </div>
 
       {activeSubTab === 'einheiten' && (
         <div className="space-y-6">
           <div className="bg-white rounded-lg shadow p-4">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
               <div className="flex items-center space-x-4">
                 <button onClick={() => { if (calendarMonth === 0) { setCalendarMonth(11); setCalendarYear(calendarYear - 1); } else { setCalendarMonth(calendarMonth - 1); } }} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronLeft className="h-5 w-5" /></button>
                 <h3 className="text-lg font-semibold text-gray-900">{monthNames[calendarMonth]} {calendarYear}</h3>
                 <button onClick={() => { if (calendarMonth === 11) { setCalendarMonth(0); setCalendarYear(calendarYear + 1); } else { setCalendarMonth(calendarMonth + 1); } }} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronRight className="h-5 w-5" /></button>
               </div>
-              <div className="flex items-center space-x-2 text-sm">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                 {!isAdmin && dozentLegalAreas.length > 0 && (
-                  <label className="flex items-center cursor-pointer mr-3">
+                  <label className="flex items-center cursor-pointer">
                     <input
                       type="checkbox"
                       checked={showAllLegalAreas}
@@ -1792,31 +1852,31 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
               <ul className="divide-y divide-gray-200">
                 {filteredKlausuren.map(klausur => (
                   <li key={klausur.id} className="p-4">
-                    <div className="flex items-center justify-between cursor-pointer" onClick={() => setExpandedKlausur(expandedKlausur === klausur.id ? null : klausur.id)}>
-                      <div className="flex items-center">
-                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer gap-2" onClick={() => setExpandedKlausur(expandedKlausur === klausur.id ? null : klausur.id)}>
+                      <div className="flex items-center min-w-0">
+                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                           <PenTool className="h-5 w-5 text-primary" />
                         </div>
-                        <div className="ml-4">
-                          <h4 className="text-sm font-medium text-gray-900">{klausur.title}</h4>
-                          <p className="text-xs text-gray-500">
-                            {klausur.teilnehmer_name}
-                            <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{klausur.legal_area}</span>
+                        <div className="ml-3 min-w-0">
+                          <h4 className="text-sm font-medium text-gray-900 truncate">{klausur.title}</h4>
+                          <p className="text-xs text-gray-500 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <span>{klausur.teilnehmer_name}</span>
+                            <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{klausur.legal_area}</span>
                             {getDozentForLegalArea(klausur.legal_area) && (
-                              <span className="ml-2 text-gray-400">→ {getDozentForLegalArea(klausur.legal_area)}</span>
+                              <span className="text-gray-400">→ {getDozentForLegalArea(klausur.legal_area)}</span>
                             )}
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-4">
+                      <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4">
                         {getStatusBadge(klausur.status)}
-                        <span className="text-xs text-gray-500">{formatDateTime(klausur.submitted_at)}</span>
-                        {expandedKlausur === klausur.id ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                        <span className="text-xs text-gray-500 whitespace-nowrap">{formatDateTime(klausur.submitted_at)}</span>
+                        {expandedKlausur === klausur.id ? <ChevronUp className="h-4 w-4 text-gray-400 flex-shrink-0" /> : <ChevronDown className="h-4 w-4 text-gray-400 flex-shrink-0" />}
                       </div>
                     </div>
                     {expandedKlausur === klausur.id && (
                       <div className="mt-4 pl-14 space-y-4">
-                        <div className="flex items-center space-x-4">
+                        <div className="flex flex-wrap items-center gap-2">
                           <button onClick={() => downloadKlausur(klausur)} className="inline-flex items-center px-3 py-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm">
                             <Download className="h-4 w-4 mr-1" />Klausur herunterladen
                           </button>
@@ -2740,17 +2800,19 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                 </h3>
                 <p className="text-sm text-gray-500 mt-1">Wöchentliche Termine für die Elite-Kleingruppe</p>
               </div>
-              <button
-                onClick={() => {
-                  setEditingCourseTime(null);
-                  setCourseTimeForm({ weekday: 0, start_time: '09:00', end_time: '10:30', legal_area: 'Zivilrecht', description: '', meeting_link: '' });
-                  setShowCourseTimeModal(true);
-                }}
-                className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Kurszeit hinzufügen
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => {
+                    setEditingCourseTime(null);
+                    setCourseTimeForm({ weekday: 0, start_time: '09:00', end_time: '10:30', legal_area: 'Zivilrecht', description: '', meeting_link: '' });
+                    setShowCourseTimeModal(true);
+                  }}
+                  className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Kurszeit hinzufügen
+                </button>
+              )}
             </div>
             
             {courseTimes.length === 0 ? (
@@ -2796,36 +2858,38 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                                 </a>
                               )}
                             </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => {
-                                  setEditingCourseTime(ct);
-                                  setCourseTimeForm({
-                                    weekday: ct.weekday,
-                                    start_time: ct.start_time.slice(0, 5),
-                                    end_time: ct.end_time.slice(0, 5),
-                                    legal_area: ct.legal_area,
-                                    description: ct.description || '',
-                                    meeting_link: ct.meeting_link || ''
-                                  });
-                                  setShowCourseTimeModal(true);
-                                }}
-                                className="p-1.5 text-gray-400 hover:text-primary hover:bg-primary/10 rounded"
-                              >
-                                <PenTool className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={async () => {
-                                  if (confirm('Kurszeit wirklich löschen?')) {
-                                    await supabase.from('elite_course_times').delete().eq('id', ct.id);
-                                    fetchData();
-                                  }
-                                }}
-                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
-                              >
-                                <X className="h-4 w-4" />
-                              </button>
-                            </div>
+                            {isAdmin && (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    setEditingCourseTime(ct);
+                                    setCourseTimeForm({
+                                      weekday: ct.weekday,
+                                      start_time: ct.start_time.slice(0, 5),
+                                      end_time: ct.end_time.slice(0, 5),
+                                      legal_area: ct.legal_area,
+                                      description: ct.description || '',
+                                      meeting_link: ct.meeting_link || ''
+                                    });
+                                    setShowCourseTimeModal(true);
+                                  }}
+                                  className="p-1.5 text-gray-400 hover:text-primary hover:bg-primary/10 rounded"
+                                >
+                                  <PenTool className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    if (confirm('Kurszeit wirklich löschen?')) {
+                                      await supabase.from('elite_course_times').delete().eq('id', ct.id);
+                                      fetchData();
+                                    }
+                                  }}
+                                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -2843,13 +2907,15 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                 <h3 className="text-lg font-medium text-gray-900">Einheitenlängen</h3>
                 <p className="text-sm text-gray-500 mt-1">Standard-Dauern für Unterrichts- und Wiederholungseinheiten</p>
               </div>
-              <button
-                onClick={() => setShowDurationSettings(!showDurationSettings)}
-                className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
-              >
-                <Edit2 className="h-4 w-4 mr-2" />
-                {showDurationSettings ? 'Schließen' : 'Bearbeiten'}
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => setShowDurationSettings(!showDurationSettings)}
+                  className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+                >
+                  <Edit2 className="h-4 w-4 mr-2" />
+                  {showDurationSettings ? 'Schließen' : 'Bearbeiten'}
+                </button>
+              )}
             </div>
             
             {showDurationSettings ? (
@@ -2865,18 +2931,42 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                             Zivilrecht
                           </span>
                         </label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            value={unitDurations.zivilrecht_unterricht}
-                            onChange={(e) => setUnitDurations({ ...unitDurations, zivilrecht_unterricht: parseInt(e.target.value) || 0 })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                            min="0"
-                            step="5"
-                          />
-                          <span className="text-sm text-gray-500 whitespace-nowrap">Min</span>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1 flex-1">
+                              <input
+                                type="number"
+                                value={Math.floor(unitDurations.zivilrecht_unterricht / 60)}
+                                onChange={(e) => {
+                                  const hours = parseInt(e.target.value) || 0;
+                                  const mins = unitDurations.zivilrecht_unterricht % 60;
+                                  setUnitDurations({ ...unitDurations, zivilrecht_unterricht: hours * 60 + mins });
+                                }}
+                                className="w-20 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-center"
+                                min="0"
+                                max="24"
+                              />
+                              <span className="text-sm text-gray-500">Std</span>
+                            </div>
+                            <div className="flex items-center gap-1 flex-1">
+                              <input
+                                type="number"
+                                value={unitDurations.zivilrecht_unterricht % 60}
+                                onChange={(e) => {
+                                  const hours = Math.floor(unitDurations.zivilrecht_unterricht / 60);
+                                  const mins = parseInt(e.target.value) || 0;
+                                  setUnitDurations({ ...unitDurations, zivilrecht_unterricht: hours * 60 + Math.min(59, Math.max(0, mins)) });
+                                }}
+                                className="w-20 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-center"
+                                min="0"
+                                max="59"
+                                step="5"
+                              />
+                              <span className="text-sm text-gray-500">Min</span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-500 text-center">= {(unitDurations.zivilrecht_unterricht / 60).toFixed(2).replace('.', ',')} Std</p>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1">{formatDuration(unitDurations.zivilrecht_unterricht)}</p>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -2885,18 +2975,42 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                             Strafrecht
                           </span>
                         </label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            value={unitDurations.strafrecht_unterricht}
-                            onChange={(e) => setUnitDurations({ ...unitDurations, strafrecht_unterricht: parseInt(e.target.value) || 0 })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                            min="0"
-                            step="5"
-                          />
-                          <span className="text-sm text-gray-500 whitespace-nowrap">Min</span>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1 flex-1">
+                              <input
+                                type="number"
+                                value={Math.floor(unitDurations.strafrecht_unterricht / 60)}
+                                onChange={(e) => {
+                                  const hours = parseInt(e.target.value) || 0;
+                                  const mins = unitDurations.strafrecht_unterricht % 60;
+                                  setUnitDurations({ ...unitDurations, strafrecht_unterricht: hours * 60 + mins });
+                                }}
+                                className="w-20 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-center"
+                                min="0"
+                                max="24"
+                              />
+                              <span className="text-sm text-gray-500">Std</span>
+                            </div>
+                            <div className="flex items-center gap-1 flex-1">
+                              <input
+                                type="number"
+                                value={unitDurations.strafrecht_unterricht % 60}
+                                onChange={(e) => {
+                                  const hours = Math.floor(unitDurations.strafrecht_unterricht / 60);
+                                  const mins = parseInt(e.target.value) || 0;
+                                  setUnitDurations({ ...unitDurations, strafrecht_unterricht: hours * 60 + Math.min(59, Math.max(0, mins)) });
+                                }}
+                                className="w-20 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-center"
+                                min="0"
+                                max="59"
+                                step="5"
+                              />
+                              <span className="text-sm text-gray-500">Min</span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-500 text-center">= {(unitDurations.strafrecht_unterricht / 60).toFixed(2).replace('.', ',')} Std</p>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1">{formatDuration(unitDurations.strafrecht_unterricht)}</p>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -2905,18 +3019,42 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                             Öffentliches Recht
                           </span>
                         </label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            value={unitDurations.oeffentliches_recht_unterricht}
-                            onChange={(e) => setUnitDurations({ ...unitDurations, oeffentliches_recht_unterricht: parseInt(e.target.value) || 0 })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                            min="0"
-                            step="5"
-                          />
-                          <span className="text-sm text-gray-500 whitespace-nowrap">Min</span>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1 flex-1">
+                              <input
+                                type="number"
+                                value={Math.floor(unitDurations.oeffentliches_recht_unterricht / 60)}
+                                onChange={(e) => {
+                                  const hours = parseInt(e.target.value) || 0;
+                                  const mins = unitDurations.oeffentliches_recht_unterricht % 60;
+                                  setUnitDurations({ ...unitDurations, oeffentliches_recht_unterricht: hours * 60 + mins });
+                                }}
+                                className="w-20 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-center"
+                                min="0"
+                                max="24"
+                              />
+                              <span className="text-sm text-gray-500">Std</span>
+                            </div>
+                            <div className="flex items-center gap-1 flex-1">
+                              <input
+                                type="number"
+                                value={unitDurations.oeffentliches_recht_unterricht % 60}
+                                onChange={(e) => {
+                                  const hours = Math.floor(unitDurations.oeffentliches_recht_unterricht / 60);
+                                  const mins = parseInt(e.target.value) || 0;
+                                  setUnitDurations({ ...unitDurations, oeffentliches_recht_unterricht: hours * 60 + Math.min(59, Math.max(0, mins)) });
+                                }}
+                                className="w-20 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-center"
+                                min="0"
+                                max="59"
+                                step="5"
+                              />
+                              <span className="text-sm text-gray-500">Min</span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-500 text-center">= {(unitDurations.oeffentliches_recht_unterricht / 60).toFixed(2).replace('.', ',')} Std</p>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1">{formatDuration(unitDurations.oeffentliches_recht_unterricht)}</p>
                       </div>
                     </div>
                   </div>
@@ -2931,18 +3069,42 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                             Zivilrecht
                           </span>
                         </label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            value={unitDurations.zivilrecht_wiederholung}
-                            onChange={(e) => setUnitDurations({ ...unitDurations, zivilrecht_wiederholung: parseInt(e.target.value) || 0 })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                            min="0"
-                            step="5"
-                          />
-                          <span className="text-sm text-gray-500 whitespace-nowrap">Min</span>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1 flex-1">
+                              <input
+                                type="number"
+                                value={Math.floor(unitDurations.zivilrecht_wiederholung / 60)}
+                                onChange={(e) => {
+                                  const hours = parseInt(e.target.value) || 0;
+                                  const mins = unitDurations.zivilrecht_wiederholung % 60;
+                                  setUnitDurations({ ...unitDurations, zivilrecht_wiederholung: hours * 60 + mins });
+                                }}
+                                className="w-20 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-center"
+                                min="0"
+                                max="24"
+                              />
+                              <span className="text-sm text-gray-500">Std</span>
+                            </div>
+                            <div className="flex items-center gap-1 flex-1">
+                              <input
+                                type="number"
+                                value={unitDurations.zivilrecht_wiederholung % 60}
+                                onChange={(e) => {
+                                  const hours = Math.floor(unitDurations.zivilrecht_wiederholung / 60);
+                                  const mins = parseInt(e.target.value) || 0;
+                                  setUnitDurations({ ...unitDurations, zivilrecht_wiederholung: hours * 60 + Math.min(59, Math.max(0, mins)) });
+                                }}
+                                className="w-20 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-center"
+                                min="0"
+                                max="59"
+                                step="5"
+                              />
+                              <span className="text-sm text-gray-500">Min</span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-500 text-center">= {(unitDurations.zivilrecht_wiederholung / 60).toFixed(2).replace('.', ',')} Std</p>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1">{formatDuration(unitDurations.zivilrecht_wiederholung)}</p>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -2951,18 +3113,42 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                             Strafrecht
                           </span>
                         </label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            value={unitDurations.strafrecht_wiederholung}
-                            onChange={(e) => setUnitDurations({ ...unitDurations, strafrecht_wiederholung: parseInt(e.target.value) || 0 })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                            min="0"
-                            step="5"
-                          />
-                          <span className="text-sm text-gray-500 whitespace-nowrap">Min</span>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1 flex-1">
+                              <input
+                                type="number"
+                                value={Math.floor(unitDurations.strafrecht_wiederholung / 60)}
+                                onChange={(e) => {
+                                  const hours = parseInt(e.target.value) || 0;
+                                  const mins = unitDurations.strafrecht_wiederholung % 60;
+                                  setUnitDurations({ ...unitDurations, strafrecht_wiederholung: hours * 60 + mins });
+                                }}
+                                className="w-20 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-center"
+                                min="0"
+                                max="24"
+                              />
+                              <span className="text-sm text-gray-500">Std</span>
+                            </div>
+                            <div className="flex items-center gap-1 flex-1">
+                              <input
+                                type="number"
+                                value={unitDurations.strafrecht_wiederholung % 60}
+                                onChange={(e) => {
+                                  const hours = Math.floor(unitDurations.strafrecht_wiederholung / 60);
+                                  const mins = parseInt(e.target.value) || 0;
+                                  setUnitDurations({ ...unitDurations, strafrecht_wiederholung: hours * 60 + Math.min(59, Math.max(0, mins)) });
+                                }}
+                                className="w-20 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-center"
+                                min="0"
+                                max="59"
+                                step="5"
+                              />
+                              <span className="text-sm text-gray-500">Min</span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-500 text-center">= {(unitDurations.strafrecht_wiederholung / 60).toFixed(2).replace('.', ',')} Std</p>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1">{formatDuration(unitDurations.strafrecht_wiederholung)}</p>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -2971,18 +3157,42 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                             Öffentliches Recht
                           </span>
                         </label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            value={unitDurations.oeffentliches_recht_wiederholung}
-                            onChange={(e) => setUnitDurations({ ...unitDurations, oeffentliches_recht_wiederholung: parseInt(e.target.value) || 0 })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                            min="0"
-                            step="5"
-                          />
-                          <span className="text-sm text-gray-500 whitespace-nowrap">Min</span>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1 flex-1">
+                              <input
+                                type="number"
+                                value={Math.floor(unitDurations.oeffentliches_recht_wiederholung / 60)}
+                                onChange={(e) => {
+                                  const hours = parseInt(e.target.value) || 0;
+                                  const mins = unitDurations.oeffentliches_recht_wiederholung % 60;
+                                  setUnitDurations({ ...unitDurations, oeffentliches_recht_wiederholung: hours * 60 + mins });
+                                }}
+                                className="w-20 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-center"
+                                min="0"
+                                max="24"
+                              />
+                              <span className="text-sm text-gray-500">Std</span>
+                            </div>
+                            <div className="flex items-center gap-1 flex-1">
+                              <input
+                                type="number"
+                                value={unitDurations.oeffentliches_recht_wiederholung % 60}
+                                onChange={(e) => {
+                                  const hours = Math.floor(unitDurations.oeffentliches_recht_wiederholung / 60);
+                                  const mins = parseInt(e.target.value) || 0;
+                                  setUnitDurations({ ...unitDurations, oeffentliches_recht_wiederholung: hours * 60 + Math.min(59, Math.max(0, mins)) });
+                                }}
+                                className="w-20 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-center"
+                                min="0"
+                                max="59"
+                                step="5"
+                              />
+                              <span className="text-sm text-gray-500">Min</span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-500 text-center">= {(unitDurations.oeffentliches_recht_wiederholung / 60).toFixed(2).replace('.', ',')} Std</p>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1">{formatDuration(unitDurations.oeffentliches_recht_wiederholung)}</p>
                       </div>
                     </div>
                   </div>
@@ -3012,15 +3222,15 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <div className="flex items-center justify-between bg-blue-50 rounded-lg p-3">
                         <span className="text-sm font-medium text-gray-900">Zivilrecht</span>
-                        <span className="text-sm text-gray-600">{formatDuration(unitDurations.zivilrecht_unterricht)}</span>
+                        <span className="text-sm text-gray-600">{formatDurationReadable(unitDurations.zivilrecht_unterricht)}</span>
                       </div>
                       <div className="flex items-center justify-between bg-red-50 rounded-lg p-3">
                         <span className="text-sm font-medium text-gray-900">Strafrecht</span>
-                        <span className="text-sm text-gray-600">{formatDuration(unitDurations.strafrecht_unterricht)}</span>
+                        <span className="text-sm text-gray-600">{formatDurationReadable(unitDurations.strafrecht_unterricht)}</span>
                       </div>
                       <div className="flex items-center justify-between bg-green-50 rounded-lg p-3">
                         <span className="text-sm font-medium text-gray-900">Öffentliches Recht</span>
-                        <span className="text-sm text-gray-600">{formatDuration(unitDurations.oeffentliches_recht_unterricht)}</span>
+                        <span className="text-sm text-gray-600">{formatDurationReadable(unitDurations.oeffentliches_recht_unterricht)}</span>
                       </div>
                     </div>
                   </div>
@@ -3029,15 +3239,15 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <div className="flex items-center justify-between bg-blue-50 rounded-lg p-3">
                         <span className="text-sm font-medium text-gray-900">Zivilrecht</span>
-                        <span className="text-sm text-gray-600">{formatDuration(unitDurations.zivilrecht_wiederholung)}</span>
+                        <span className="text-sm text-gray-600">{formatDurationReadable(unitDurations.zivilrecht_wiederholung)}</span>
                       </div>
                       <div className="flex items-center justify-between bg-red-50 rounded-lg p-3">
                         <span className="text-sm font-medium text-gray-900">Strafrecht</span>
-                        <span className="text-sm text-gray-600">{formatDuration(unitDurations.strafrecht_wiederholung)}</span>
+                        <span className="text-sm text-gray-600">{formatDurationReadable(unitDurations.strafrecht_wiederholung)}</span>
                       </div>
                       <div className="flex items-center justify-between bg-green-50 rounded-lg p-3">
                         <span className="text-sm font-medium text-gray-900">Öffentliches Recht</span>
-                        <span className="text-sm text-gray-600">{formatDuration(unitDurations.oeffentliches_recht_wiederholung)}</span>
+                        <span className="text-sm text-gray-600">{formatDurationReadable(unitDurations.oeffentliches_recht_wiederholung)}</span>
                       </div>
                     </div>
                   </div>
@@ -3053,13 +3263,15 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                 <h3 className="text-lg font-medium text-gray-900">Zoom-Links für Rechtsgebiete</h3>
                 <p className="text-sm text-gray-500 mt-1">Permanente Meeting-Links für die 3 Rechtsgebiete</p>
               </div>
-              <button
-                onClick={() => setShowZoomLinksSettings(!showZoomLinksSettings)}
-                className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
-              >
-                <Edit2 className="h-4 w-4 mr-2" />
-                {showZoomLinksSettings ? 'Schließen' : 'Bearbeiten'}
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => setShowZoomLinksSettings(!showZoomLinksSettings)}
+                  className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+                >
+                  <Edit2 className="h-4 w-4 mr-2" />
+                  {showZoomLinksSettings ? 'Schließen' : 'Bearbeiten'}
+                </button>
+              )}
             </div>
             
             {showZoomLinksSettings ? (
@@ -3193,9 +3405,9 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                   <div className="bg-blue-50 rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium text-gray-900">Zivilrecht</span>
-                      {zoomLinks.Zivilrecht.url && (
+                      {(zoomLinks.Zivilrecht?.url || (typeof zoomLinks.Zivilrecht === 'string' && zoomLinks.Zivilrecht)) && (
                         <a
-                          href={zoomLinks.Zivilrecht.url}
+                          href={zoomLinks.Zivilrecht?.url || (typeof zoomLinks.Zivilrecht === 'string' ? zoomLinks.Zivilrecht : '#')}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
@@ -3205,22 +3417,22 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                         </a>
                       )}
                     </div>
-                    {zoomLinks.Zivilrecht.meetingId && (
+                    {zoomLinks.Zivilrecht?.meetingId && (
                       <p className="text-xs text-gray-600">ID: {zoomLinks.Zivilrecht.meetingId}</p>
                     )}
-                    {zoomLinks.Zivilrecht.passcode && (
+                    {zoomLinks.Zivilrecht?.passcode && (
                       <p className="text-xs text-gray-600">Code: {zoomLinks.Zivilrecht.passcode}</p>
                     )}
-                    {!zoomLinks.Zivilrecht.url && !zoomLinks.Zivilrecht.meetingId && (
+                    {!zoomLinks.Zivilrecht?.url && !(typeof zoomLinks.Zivilrecht === 'string' && zoomLinks.Zivilrecht) && !zoomLinks.Zivilrecht?.meetingId && (
                       <span className="text-xs text-gray-400">Kein Link</span>
                     )}
                   </div>
                   <div className="bg-red-50 rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium text-gray-900">Strafrecht</span>
-                      {zoomLinks.Strafrecht.url && (
+                      {(zoomLinks.Strafrecht?.url || (typeof zoomLinks.Strafrecht === 'string' && zoomLinks.Strafrecht)) && (
                         <a
-                          href={zoomLinks.Strafrecht.url}
+                          href={zoomLinks.Strafrecht?.url || (typeof zoomLinks.Strafrecht === 'string' ? zoomLinks.Strafrecht : '#')}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700"
@@ -3230,22 +3442,22 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                         </a>
                       )}
                     </div>
-                    {zoomLinks.Strafrecht.meetingId && (
+                    {zoomLinks.Strafrecht?.meetingId && (
                       <p className="text-xs text-gray-600">ID: {zoomLinks.Strafrecht.meetingId}</p>
                     )}
-                    {zoomLinks.Strafrecht.passcode && (
+                    {zoomLinks.Strafrecht?.passcode && (
                       <p className="text-xs text-gray-600">Code: {zoomLinks.Strafrecht.passcode}</p>
                     )}
-                    {!zoomLinks.Strafrecht.url && !zoomLinks.Strafrecht.meetingId && (
+                    {!zoomLinks.Strafrecht?.url && !(typeof zoomLinks.Strafrecht === 'string' && zoomLinks.Strafrecht) && !zoomLinks.Strafrecht?.meetingId && (
                       <span className="text-xs text-gray-400">Kein Link</span>
                     )}
                   </div>
                   <div className="bg-green-50 rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium text-gray-900">Öffentliches Recht</span>
-                      {zoomLinks['Öffentliches Recht'].url && (
+                      {(zoomLinks['Öffentliches Recht']?.url || (typeof zoomLinks['Öffentliches Recht'] === 'string' && zoomLinks['Öffentliches Recht'])) && (
                         <a
-                          href={zoomLinks['Öffentliches Recht'].url}
+                          href={zoomLinks['Öffentliches Recht']?.url || (typeof zoomLinks['Öffentliches Recht'] === 'string' ? zoomLinks['Öffentliches Recht'] : '#')}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700"
@@ -3255,13 +3467,13 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                         </a>
                       )}
                     </div>
-                    {zoomLinks['Öffentliches Recht'].meetingId && (
+                    {zoomLinks['Öffentliches Recht']?.meetingId && (
                       <p className="text-xs text-gray-600">ID: {zoomLinks['Öffentliches Recht'].meetingId}</p>
                     )}
-                    {zoomLinks['Öffentliches Recht'].passcode && (
+                    {zoomLinks['Öffentliches Recht']?.passcode && (
                       <p className="text-xs text-gray-600">Code: {zoomLinks['Öffentliches Recht'].passcode}</p>
                     )}
-                    {!zoomLinks['Öffentliches Recht'].url && !zoomLinks['Öffentliches Recht'].meetingId && (
+                    {!zoomLinks['Öffentliches Recht']?.url && !(typeof zoomLinks['Öffentliches Recht'] === 'string' && zoomLinks['Öffentliches Recht']) && !zoomLinks['Öffentliches Recht']?.meetingId && (
                       <span className="text-xs text-gray-400">Kein Link</span>
                     )}
                   </div>
@@ -3800,7 +4012,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                 </div>
               </div>
 
-              <div className="mt-6 flex justify-between items-center">
+              <div className="mt-6 flex flex-col-reverse sm:flex-row sm:justify-between items-stretch sm:items-center gap-3">
                 {!isReadOnly && (
                   <button 
                     onClick={() => {
@@ -3810,14 +4022,14 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                         setEditingRelease(null);
                       }
                     }} 
-                    className="px-4 py-2 text-red-700 bg-red-100 rounded-lg hover:bg-red-200 flex items-center"
+                    className="px-4 py-2 text-red-700 bg-red-100 rounded-lg hover:bg-red-200 flex items-center justify-center"
                   >
                     <Trash2 className="h-4 w-4 mr-1" />
                     Löschen
                   </button>
                 )}
                 {isReadOnly && <div></div>}
-                <div className="flex space-x-3">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <button onClick={() => { setShowEditModal(false); setEditingRelease(null); }} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
                     {isReadOnly ? 'Schließen' : 'Abbrechen'}
                   </button>

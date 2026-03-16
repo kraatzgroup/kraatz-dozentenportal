@@ -136,12 +136,13 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
       // Fetch dozent's hourly rates
       const { data: dozentProfile } = await supabase
         .from('profiles')
-        .select('hourly_rate_unterricht, hourly_rate_elite, hourly_rate_sonstige')
+        .select('hourly_rate_unterricht, hourly_rate_elite, hourly_rate_elite_korrektur, hourly_rate_sonstige')
         .eq('id', targetDozentId)
         .single();
 
       const rateUnterricht = dozentProfile?.hourly_rate_unterricht || 0;
       const rateElite = dozentProfile?.hourly_rate_elite || 0;
+      const rateEliteKorrektur = dozentProfile?.hourly_rate_elite_korrektur || 0;
       const rateSonstige = dozentProfile?.hourly_rate_sonstige || 0;
 
       // Fetch participant hours with elite_kleingruppe flag
@@ -167,16 +168,18 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
       // Calculate total hours per category
       const regularHours = (participantHours || []).filter((h: any) => !h.teilnehmer?.elite_kleingruppe);
       const eliteParticipantHours = (participantHours || []).filter((h: any) => h.teilnehmer?.elite_kleingruppe);
-      const eliteDozentHours = (dozentHours || []).filter((h: any) => h.category && h.category.toLowerCase().includes('elite'));
+      const eliteUnterrichtHours = (dozentHours || []).filter((h: any) => h.category && h.category.toLowerCase().includes('elite') && !h.category.toLowerCase().includes('korrektur'));
+      const eliteKorrekturHours = (dozentHours || []).filter((h: any) => h.category && h.category.toLowerCase().includes('elite') && h.category.toLowerCase().includes('korrektur'));
       const sonstigeHours = (dozentHours || []).filter((h: any) => !h.category || !h.category.toLowerCase().includes('elite'));
 
       const totalRegular = regularHours.reduce((sum: number, h: any) => sum + parseFloat(h.hours.toString()), 0);
       const totalElite = eliteParticipantHours.reduce((sum: number, h: any) => sum + parseFloat(h.hours.toString()), 0)
-        + eliteDozentHours.reduce((sum: number, h: any) => sum + parseFloat(h.hours.toString()), 0);
+        + eliteUnterrichtHours.reduce((sum: number, h: any) => sum + parseFloat(h.hours.toString()), 0);
+      const totalEliteKorrektur = eliteKorrekturHours.reduce((sum: number, h: any) => sum + parseFloat(h.hours.toString()), 0);
       const totalSonstige = sonstigeHours.reduce((sum: number, h: any) => sum + parseFloat(h.hours.toString()), 0);
 
       // Calculate total amount based on hourly rates
-      const totalAmount = (totalRegular * rateUnterricht) + (totalElite * rateElite) + (totalSonstige * rateSonstige);
+      const totalAmount = (totalRegular * rateUnterricht) + (totalElite * rateElite) + (totalEliteKorrektur * rateEliteKorrektur) + (totalSonstige * rateSonstige);
 
       // Use atomic stored procedure to create invoice with unique number
       const { data: newInvoice, error } = await supabase

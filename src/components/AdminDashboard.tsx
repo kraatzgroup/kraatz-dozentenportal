@@ -798,7 +798,18 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
 
       if (error) throw error;
       
-      setDozenten(data || []);
+      // Fetch elite korrektur rates via RPC (bypasses PostgREST schema cache)
+      const { data: korrekturRates } = await supabase.rpc('get_elite_korrektur_rates');
+      const korrekturMap: Record<string, number> = {};
+      (korrekturRates || []).forEach((r: any) => { korrekturMap[r.dozent_id] = r.rate; });
+      
+      // Merge korrektur rates into dozent data
+      const enrichedData = (data || []).map((d: any) => ({
+        ...d,
+        hourly_rate_elite_korrektur: korrekturMap[d.id] ?? d.hourly_rate_elite_korrektur ?? null
+      }));
+      
+      setDozenten(enrichedData);
       
       // Batch fetch availability for all dozenten in ONE query
       if (data && data.length > 0) {
@@ -3821,6 +3832,8 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
           }}
           onSaved={() => {
             fetchDozenten();
+            setShowDozentForm(false);
+            setSelectedDozentForEdit(null);
           }}
           onDelete={(d) => {
             handleDeleteDozent(d.id!);

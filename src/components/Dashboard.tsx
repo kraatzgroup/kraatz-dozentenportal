@@ -1443,17 +1443,6 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                           />
                           <span className="ml-2 text-sm text-gray-700">Einzelunterricht</span>
                         </label>
-                        <label className="flex items-center">
-                          <input
-                            type="radio"
-                            name="lesson_type"
-                            value="elite_kleingruppe"
-                            checked={hoursFormData.lesson_type === 'elite_kleingruppe'}
-                            onChange={(e) => setHoursFormData({ ...hoursFormData, lesson_type: e.target.value as 'einzelunterricht' | 'elite_kleingruppe' })}
-                            className="h-4 w-4 text-primary focus:ring-primary border-gray-300"
-                          />
-                          <span className="ml-2 text-sm text-gray-700">Elite-Kleingruppe</span>
-                        </label>
                       </div>
                     </div>
 

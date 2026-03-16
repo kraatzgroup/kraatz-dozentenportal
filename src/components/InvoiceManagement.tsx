@@ -231,7 +231,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         .from('invoices')
         .select(`
           *,
-          dozent:profiles!invoices_dozent_id_fkey(full_name, email, phone, tax_id, bank_name, iban, bic, street, house_number, postal_code, city, hourly_rate_unterricht, hourly_rate_elite, hourly_rate_sonstige)
+          dozent:profiles!invoices_dozent_id_fkey(full_name, email, phone, tax_id, bank_name, iban, bic, street, house_number, postal_code, city, hourly_rate_unterricht, hourly_rate_elite, hourly_rate_elite_korrektur, hourly_rate_sonstige)
         `)
         .eq('id', invoice.id)
         .single();
@@ -417,7 +417,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         .from('invoices')
         .select(`
           *,
-          dozent:profiles!invoices_dozent_id_fkey(full_name, email, phone, tax_id, bank_name, iban, bic, street, house_number, postal_code, city, hourly_rate_unterricht, hourly_rate_elite, hourly_rate_sonstige)
+          dozent:profiles!invoices_dozent_id_fkey(full_name, email, phone, tax_id, bank_name, iban, bic, street, house_number, postal_code, city, hourly_rate_unterricht, hourly_rate_elite, hourly_rate_elite_korrektur, hourly_rate_sonstige)
         `)
         .eq('id', uploadInvoice.id)
         .single();
@@ -926,7 +926,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
                           Stunden für {getMonthName(createFormData.month)} {createFormData.year}
                         </h4>
                         <span className="text-sm font-semibold text-primary">
-                          {createPreviewHours.reduce((sum, h) => sum + h.hours, 0).toFixed(2)} Std.
+                          {createPreviewHours.reduce((sum, h) => sum + h.hours, 0).toFixed(2).replace('.', ',')} Std.
                         </span>
                       </div>
                       {createPreviewLoading ? (
@@ -1110,7 +1110,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
                     <div className="flex justify-between border-t pt-2 mt-2">
                       <span className="text-xs font-medium text-gray-700">Gesamt:</span>
                       <span className="text-xs font-bold text-primary">
-                        {previewHours.reduce((sum, h) => sum + h.hours, 0).toFixed(2)} Std.
+                        {previewHours.reduce((sum, h) => sum + h.hours, 0).toFixed(2).replace('.', ',')} Std.
                       </span>
                     </div>
                   </div>

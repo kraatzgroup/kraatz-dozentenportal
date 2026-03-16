@@ -296,7 +296,19 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
             
             if (response.ok && result.success) {
               console.log('User account created successfully');
-              addToast('Elite-Teilnehmer wurde erfolgreich erstellt und Einladungs-E-Mail wurde gesendet', 'success');
+              
+              // Update teilnehmer entry with full data
+              const { error: updateError } = await supabase
+                .from('teilnehmer')
+                .update(dataToSave)
+                .eq('email', formData.email);
+              
+              if (updateError) {
+                console.error('Error updating teilnehmer data:', updateError);
+                addToast('Benutzer erstellt, aber einige Daten konnten nicht gespeichert werden', 'error');
+              } else {
+                addToast('Elite-Teilnehmer wurde erfolgreich erstellt und Einladungs-E-Mail wurde gesendet', 'success');
+              }
             } else {
               throw new Error(result.error || 'Fehler beim Erstellen des User-Accounts');
             }

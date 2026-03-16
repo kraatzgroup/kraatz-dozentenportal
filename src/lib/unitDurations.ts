@@ -56,9 +56,6 @@ export const getUnitDurationHours = (unitDurations: UnitDurations, unitType: str
 };
 
 export const formatDuration = (minutes: number): string => {
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  if (hours === 0) return `${mins} Min`;
-  if (mins === 0) return `${hours} Std`;
-  return `${hours} Std ${mins} Min`;
+  const decimalHours = minutes / 60;
+  return `${decimalHours.toFixed(2).replace('.', ',')} Std`;
 };

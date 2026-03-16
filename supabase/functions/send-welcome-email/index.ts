@@ -28,7 +28,8 @@ Deno.serve(async (req) => {
 
     // Determine redirect URL based on origin (localhost vs production)
     const origin = body.origin || req.headers.get('origin') || '';
-    const redirectUrl = origin.includes('localhost') ? origin : 'https://portal.kraatz-group.de';
+    const baseUrl = origin.includes('localhost') ? origin : 'https://portal.kraatz-group.de';
+    const redirectUrl = `${baseUrl}/dashboard?tab=dashboard`;
     console.log(`🌐 [${requestId}] Origin: ${origin}, Redirect URL: ${redirectUrl}`);
 
     if (!email || !fullName) {
@@ -177,7 +178,7 @@ Deno.serve(async (req) => {
           <p style="color: #666; font-size: 12px; margin: 5px 0;">Akademie Kraatz GmbH</p>
           <p style="color: #666; font-size: 12px; margin: 5px 0;">Wilmersdorfer Str. 145/146 - 10585 Berlin</p>
           <p style="color: #666; font-size: 12px; margin: 5px 0;">Diese E-Mail wurde automatisch vom Portal gesendet.</p>
-          <p style="color: #666; font-size: 12px; margin: 5px 0;">Bei Fragen wenden Sie sich bitte an <a href="mailto:info@kraatz-group.de" style="color: #2e83c2; text-decoration: none;">info@kraatz-group.de</a></p>
+          <p style="color: #666; font-size: 12px; margin: 5px 0;">Bei Fragen wenden Sie sich bitte an <a href="mailto:charlenenowak@kraatz-group.de" style="color: #2e83c2; text-decoration: none;">charlenenowak@kraatz-group.de</a></p>
         </div>
       </div>`;
 

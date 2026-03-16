@@ -421,7 +421,7 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
                         {isAdmin ? 'Gesamtstunden' : 'Meine Stunden'}
                       </dt>
                       <dd className="text-lg font-medium text-gray-900">
-                        {isAdmin ? totalHours.toFixed(2) : myTotal.toFixed(2)}h
+                        {isAdmin ? totalHours.toFixed(2).replace('.', ',') : myTotal.toFixed(2).replace('.', ',')} Std
                       </dd>
                     </dl>
                   </div>

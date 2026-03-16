@@ -33,6 +33,7 @@ interface Dozent {
   tax_id: string;
   hourly_rate_unterricht: number | null;
   hourly_rate_elite: number | null;
+  hourly_rate_elite_korrektur: number | null;
   hourly_rate_sonstige: number | null;
   elite_kleingruppe_assignments?: EliteKleingruppeAssignment[];
 }
@@ -66,6 +67,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
     tax_id: '',
     hourly_rate_unterricht: null,
     hourly_rate_elite: null,
+    hourly_rate_elite_korrektur: null,
     hourly_rate_sonstige: null
   });
   const [profilePictureFile, setProfilePictureFile] = useState<File | null>(null);
@@ -119,6 +121,16 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
 
   useEffect(() => {
     if (dozent) {
+      console.log('📋 DozentForm: Dozent-Daten beim Laden:', {
+        id: (dozent as any).id,
+        full_name: (dozent as any).full_name,
+        hourly_rate_unterricht: (dozent as any).hourly_rate_unterricht,
+        hourly_rate_elite: (dozent as any).hourly_rate_elite,
+        hourly_rate_elite_korrektur: (dozent as any).hourly_rate_elite_korrektur,
+        hourly_rate_sonstige: (dozent as any).hourly_rate_sonstige,
+        has_korrektur_key: 'hourly_rate_elite_korrektur' in (dozent as any),
+        all_keys: Object.keys(dozent as any).filter(k => k.includes('hourly'))
+      });
       // Split full_name into title, first_name and last_name if needed
       let title = dozent.title || '';
       let firstName = dozent.first_name || '';
@@ -169,6 +181,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         tax_id: (dozent as any).tax_id || '',
         hourly_rate_unterricht: (dozent as any).hourly_rate_unterricht ?? null,
         hourly_rate_elite: (dozent as any).hourly_rate_elite ?? null,
+        hourly_rate_elite_korrektur: (dozent as any).hourly_rate_elite_korrektur ?? null,
         hourly_rate_sonstige: (dozent as any).hourly_rate_sonstige ?? null
       });
       if (dozent.profile_picture_url) {
@@ -273,6 +286,14 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         }
       }
 
+      // Log hourly rates for debugging
+      console.log('💰 Stundensätze vor dem Speichern:', {
+        hourly_rate_unterricht: formData.hourly_rate_unterricht,
+        hourly_rate_elite: formData.hourly_rate_elite,
+        hourly_rate_elite_korrektur: formData.hourly_rate_elite_korrektur,
+        hourly_rate_sonstige: formData.hourly_rate_sonstige
+      });
+
       const dataToSave: any = {
         title: formData.title.trim() || null,
         first_name: formData.first_name.trim(),
@@ -292,20 +313,42 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         tax_id: formData.tax_id.trim() || null,
         hourly_rate_unterricht: formData.hourly_rate_unterricht,
         hourly_rate_elite: formData.hourly_rate_elite,
+        hourly_rate_elite_korrektur: formData.hourly_rate_elite_korrektur,
         hourly_rate_sonstige: formData.hourly_rate_sonstige,
         role: 'dozent'
       };
+
+      console.log('📦 DataToSave Stundensätze:', {
+        hourly_rate_unterricht: dataToSave.hourly_rate_unterricht,
+        hourly_rate_elite: dataToSave.hourly_rate_elite,
+        hourly_rate_elite_korrektur: dataToSave.hourly_rate_elite_korrektur,
+        hourly_rate_sonstige: dataToSave.hourly_rate_sonstige
+      });
 
       let dozentId: string;
 
       if (isEditing && dozent?.id) {
         dozentId = dozent.id;
-        const { error } = await supabase
+        console.log('🔄 UPDATE - Dozent ID:', dozentId);
+        console.log('🔄 UPDATE - Stundensätze:', {
+          hourly_rate_unterricht: dataToSave.hourly_rate_unterricht,
+          hourly_rate_elite: dataToSave.hourly_rate_elite,
+          hourly_rate_elite_korrektur: dataToSave.hourly_rate_elite_korrektur,
+          hourly_rate_sonstige: dataToSave.hourly_rate_sonstige
+        });
+        
+        const { data: updateResult, error } = await supabase
           .from('profiles')
           .update(dataToSave)
-          .eq('id', dozentId);
+          .eq('id', dozentId)
+          .select('hourly_rate_unterricht, hourly_rate_elite, hourly_rate_elite_korrektur, hourly_rate_sonstige');
 
-        if (error) throw error;
+        if (error) {
+          console.error('❌ UPDATE ERROR:', error);
+          throw error;
+        }
+        
+        console.log('✅ UPDATE SUCCESS - Gespeicherte Stundensätze:', updateResult);
         
         // Delete existing assignments before saving new ones
         await supabase.from('elite_kleingruppe_dozenten').delete().eq('dozent_id', dozentId);
@@ -339,7 +382,15 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         // Upsert profile with additional dozent-specific fields
         // The create-user edge function already created the basic profile,
         // but we need to add dozent-specific fields
-        const { error } = await supabase
+        console.log('➕ UPSERT - Dozent ID:', dozentId);
+        console.log('➕ UPSERT - Stundensätze:', {
+          hourly_rate_unterricht: dataToSave.hourly_rate_unterricht,
+          hourly_rate_elite: dataToSave.hourly_rate_elite,
+          hourly_rate_elite_korrektur: dataToSave.hourly_rate_elite_korrektur,
+          hourly_rate_sonstige: dataToSave.hourly_rate_sonstige
+        });
+        
+        const { data: upsertResult, error } = await supabase
           .from('profiles')
           .upsert({
             id: dozentId,
@@ -360,12 +411,19 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
             tax_id: dataToSave.tax_id,
             hourly_rate_unterricht: dataToSave.hourly_rate_unterricht,
             hourly_rate_elite: dataToSave.hourly_rate_elite,
+            hourly_rate_elite_korrektur: dataToSave.hourly_rate_elite_korrektur,
             hourly_rate_sonstige: dataToSave.hourly_rate_sonstige
           }, {
             onConflict: 'id'
-          });
+          })
+          .select('hourly_rate_unterricht, hourly_rate_elite, hourly_rate_elite_korrektur, hourly_rate_sonstige');
 
-        if (error) throw error;
+        if (error) {
+          console.error('❌ UPSERT ERROR:', error);
+          throw error;
+        }
+        
+        console.log('✅ UPSERT SUCCESS - Gespeicherte Stundensätze:', upsertResult);
         addToast('Dozent wurde hinzugefügt und Einladungs-E-Mail wurde gesendet', 'success');
       }
 
@@ -805,7 +863,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Elite-Kleingruppe</label>
+                <label className="block text-xs text-gray-500 mb-1">Elite-Kleingruppe Unterricht</label>
                 <div className="relative">
                   <input
                     type="number"
@@ -813,6 +871,21 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
                     step="0.01"
                     value={formData.hourly_rate_elite ?? ''}
                     onChange={(e) => setFormData({ ...formData, hourly_rate_elite: e.target.value ? parseFloat(e.target.value) : null })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent pr-8"
+                    placeholder="0.00"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">€</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Elite-Kleingruppe Korrektur</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.hourly_rate_elite_korrektur ?? ''}
+                    onChange={(e) => setFormData({ ...formData, hourly_rate_elite_korrektur: e.target.value ? parseFloat(e.target.value) : null })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent pr-8"
                     placeholder="0.00"
                   />

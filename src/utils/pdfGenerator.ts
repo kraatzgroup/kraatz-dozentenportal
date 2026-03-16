@@ -334,7 +334,7 @@ export const generateTeilnehmerStundenPDF = async (data: TeilnehmerPDFData) => {
   
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  addText(`Gesamtstunden: ${data.totalHours.toFixed(2)}h`, margin + 5, yPosition + 20);
+  addText(`Gesamtstunden: ${data.totalHours.toFixed(2).replace('.', ',')} Std`, margin + 5, yPosition + 20);
   addText(`Anzahl Einträge: ${data.hours.length}`, margin + 5, yPosition + 28);
   addText(`Anzahl Dozenten: ${data.uniqueDozenten.length}`, margin + 100, yPosition + 20);
   
@@ -485,7 +485,7 @@ export const generateTeilnehmerStundenPDF = async (data: TeilnehmerPDFData) => {
     doc.setTextColor(0, 0, 0);
     
     // Position total in the right bottom corner
-    const totalText = `GESAMT: ${data.totalHours.toFixed(2)}h`;
+    const totalText = `GESAMT: ${data.totalHours.toFixed(2).replace('.', ',')} Std`;
     const totalTextWidth = doc.getTextWidth(totalText);
     const totalTextX = margin + contentWidth - totalTextWidth - 5;
     addText(totalText, totalTextX, yPosition + 8);
