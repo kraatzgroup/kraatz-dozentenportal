@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Calendar, Clock, User, BookOpen, FileText, Plus, Edit, Trash2 } from 'lucide-react';
+import { Calendar, Clock, User, BookOpen, FileText, Plus, Edit, Trash2, Check, X, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useHoursStore } from '../store/hoursStore';
@@ -43,11 +43,23 @@ interface CombinedHoursEntry {
   type: 'participant' | 'dozent';
 }
 
+interface PendingHoursEntry {
+  id: string;
+  elite_release_id: string;
+  date: string;
+  hours: number;
+  description: string;
+  category: string;
+  status: 'pending' | 'confirmed' | 'rejected';
+  created_at: string;
+}
+
 export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onYearChange, onShowActivityDialog, dozentId }: ActivityReportProps) {
   const { user } = useAuthStore();
   const { dozentHours, fetchDozentHours, createDozentHours } = useDozentHoursStore();
   const [participantHours, setParticipantHours] = useState<ParticipantHoursEntry[]>([]);
   const [combinedHours, setCombinedHours] = useState<CombinedHoursEntry[]>([]);
+  const [pendingHours, setPendingHours] = useState<PendingHoursEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dozentName, setDozentName] = useState<string>('');
@@ -66,6 +78,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
   useEffect(() => {
     fetchDozentName();
     fetchAllHours();
+    fetchPendingHours();
     
     // Setup real-time subscriptions
     const { setupRealtimeSubscription: setupHoursSub, cleanupSubscription: cleanupHoursSub } = useHoursStore.getState();
@@ -74,9 +87,23 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
     setupHoursSub();
     setupDozentHoursSub();
     
+    // Setup realtime subscription for pending hours
+    const pendingChannel = supabase
+      .channel('pending-hours-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'pending_dozent_hours',
+        filter: `dozent_id=eq.${targetDozentId}`
+      }, () => {
+        fetchPendingHours();
+      })
+      .subscribe();
+    
     return () => {
       cleanupHoursSub();
       cleanupDozentHoursSub();
+      pendingChannel.unsubscribe();
     };
   }, [selectedMonth, selectedYear, targetDozentId]);
 
@@ -121,6 +148,24 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
       setDozentName(data.full_name || '');
     } catch (error) {
       console.error('Error fetching dozent name:', error);
+    }
+  };
+
+  const fetchPendingHours = async () => {
+    if (!targetDozentId) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('pending_dozent_hours')
+        .select('*')
+        .eq('dozent_id', targetDozentId)
+        .eq('status', 'pending')
+        .order('date', { ascending: false });
+
+      if (error) throw error;
+      setPendingHours(data || []);
+    } catch (error: any) {
+      console.error('Error fetching pending hours:', error);
     }
   };
 
@@ -280,10 +325,106 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
     }
   };
 
+  const handleConfirmPending = async (pendingId: string) => {
+    try {
+      const { error } = await supabase.rpc('confirm_pending_hours', { pending_id: pendingId });
+      if (error) throw error;
+      
+      await fetchPendingHours();
+      await fetchAllHours();
+    } catch (error: any) {
+      console.error('Error confirming pending hours:', error);
+      alert('Fehler beim Bestätigen: ' + error.message);
+    }
+  };
+
+  const handleRejectPending = async (pendingId: string) => {
+    if (window.confirm('Möchten Sie diesen Eintrag wirklich ablehnen?')) {
+      try {
+        const { error } = await supabase.rpc('reject_pending_hours', { pending_id: pendingId });
+        if (error) throw error;
+        
+        await fetchPendingHours();
+      } catch (error: any) {
+        console.error('Error rejecting pending hours:', error);
+        alert('Fehler beim Ablehnen: ' + error.message);
+      }
+    }
+  };
+
   const totalHours = combinedHours.reduce((sum, entry) => sum + entry.hours, 0);
 
   return (
     <div className="space-y-6">
+      {/* Pending Hours Section */}
+      {pendingHours.length > 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg shadow">
+          <div className="px-6 py-4 border-b border-yellow-200 flex items-center justify-between">
+            <div className="flex items-center">
+              <AlertCircle className="h-5 w-5 text-yellow-600 mr-2" />
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">
+                  Ausstehende Bestätigungen
+                </h3>
+                <p className="text-sm text-gray-600">
+                  Diese Einheiten sind zeitlich vorbei und warten auf Ihre Bestätigung
+                </p>
+              </div>
+            </div>
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
+              {pendingHours.length} {pendingHours.length === 1 ? 'Eintrag' : 'Einträge'}
+            </span>
+          </div>
+          <div className="p-6 space-y-4">
+            {pendingHours.map((pending) => (
+              <div key={pending.id} className="bg-white border border-yellow-200 rounded-lg p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center mb-2">
+                      <Calendar className="h-4 w-4 mr-1 text-gray-500" />
+                      <span className="font-medium text-gray-900">{formatDate(pending.date)}</span>
+                    </div>
+                    <div className="flex items-center space-x-4 mb-2">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        {pending.category}
+                      </span>
+                      <div className="flex items-center text-sm text-gray-900">
+                        <Clock className="h-4 w-4 mr-1 text-primary" />
+                        <span className="font-semibold">{pending.hours} {pending.hours === 1 ? 'Stunde' : 'Stunden'}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start">
+                      <BookOpen className="h-4 w-4 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
+                      <div className="text-sm text-gray-700">
+                        <span className="font-medium">Einheit: </span>
+                        {pending.description}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2 ml-4">
+                    <button
+                      onClick={() => handleConfirmPending(pending.id)}
+                      className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                      title="Bestätigen und zu Tätigkeitsbericht hinzufügen"
+                    >
+                      <Check className="h-4 w-4 mr-1" />
+                      Bestätigen
+                    </button>
+                    <button
+                      onClick={() => handleRejectPending(pending.id)}
+                      className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                      title="Ablehnen (Einheit hat nicht stattgefunden)"
+                    >
+                      <X className="h-4 w-4 mr-1" />
+                      Ablehnen
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {/* Hours Entries */}
       <div className="bg-white rounded-lg shadow">
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">

@@ -43,6 +43,24 @@ const isContractActive = (t: any): boolean => {
   return t.status === 'active';
 };
 
+// Helper function to check if teilnehmer is truly completed
+// For Elite-Kleingruppe: all units must be released (100%)
+// For regular teilnehmer: contract must be expired
+const isTeilnehmerCompleted = (t: any): boolean => {
+  // For Elite-Kleingruppe participants, check if all units are released
+  if (t.is_elite_kleingruppe || t.elite_kleingruppe) {
+    if (t.elite_progress && t.elite_progress.total > 0) {
+      const progressPercent = Math.round((t.elite_progress.released / t.elite_progress.total) * 100);
+      return progressPercent >= 100;
+    }
+    // If no progress data, not completed
+    return false;
+  }
+  
+  // For regular teilnehmer, check if contract is expired
+  return !isContractActive(t);
+};
+
 // Helper function to calculate contract progress percentage
 const getContractProgress = (t: any): { percent: number; daysLeft: number; totalDays: number } => {
   if (!t.contract_start || !t.contract_end) {
@@ -1806,7 +1824,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                   }`}
                   style={teilnehmerFilter === 'abgeschlossen' ? { backgroundColor: '#2d84c1' } : undefined}
                 >
-                  Abgeschl. ({teilnehmer.filter(t => !isContractActive(t)).length})
+                  Abgeschl. ({teilnehmer.filter(t => isTeilnehmerCompleted(t)).length})
                 </button>
                 <div className="h-4 w-px bg-gray-300 mx-1"></div>
                 <button
@@ -1864,7 +1882,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                     .filter(t => {
                       if (teilnehmerFilter === 'alle') return true;
                       if (teilnehmerFilter === 'aktiv') return isContractActive(t);
-                      if (teilnehmerFilter === 'abgeschlossen') return !isContractActive(t);
+                      if (teilnehmerFilter === 'abgeschlossen') return isTeilnehmerCompleted(t);
                       if (teilnehmerFilter === '25') {
                         const progress = getContractProgress(t);
                         return progress.percent >= 20 && progress.percent <= 30 && isContractActive(t);
@@ -1900,8 +1918,10 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                         </div>
                         {t.elite_kleingruppe || t.is_elite_kleingruppe ? (
                           (() => {
-                            const progressPercent = eliteReleases.total > 0 
-                              ? Math.round((eliteReleases.released / eliteReleases.total) * 100) 
+                            // Use individual progress if available, otherwise fall back to global
+                            const progress = t.elite_progress || eliteReleases;
+                            const progressPercent = progress.total > 0 
+                              ? Math.round((progress.released / progress.total) * 100) 
                               : 0;
                             const isComplete = progressPercent >= 100;
                             return (
@@ -2114,7 +2134,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                           .filter(t => {
                             if (teilnehmerFilter === 'alle') return true;
                             if (teilnehmerFilter === 'aktiv') return isContractActive(t);
-                            if (teilnehmerFilter === 'abgeschlossen') return !isContractActive(t);
+                            if (teilnehmerFilter === 'abgeschlossen') return isTeilnehmerCompleted(t);
                             if (teilnehmerFilter === '25') {
                               const progress = getContractProgress(t);
                               return progress.percent >= 20 && progress.percent <= 30 && isContractActive(t);
