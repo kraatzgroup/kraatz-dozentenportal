@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Users, Clock, Calendar, User, Plus } from 'lucide-react';
+import { Users, Clock, Calendar, GraduationCap } from 'lucide-react';
 import { Teilnehmer } from '../store/teilnehmerStore';
 import { useHoursStore } from '../store/hoursStore';
 import { TeilnehmerManagement } from './TeilnehmerManagement';
 import { TeilnehmerDetailView } from './TeilnehmerDetailView';
 
-interface ParticipantHoursSectionProps {
+interface SecondExamHoursSectionProps {
   teilnehmer: Teilnehmer[];
   selectedMonth: number;
   selectedYear: number;
@@ -17,7 +17,7 @@ interface ParticipantHoursSectionProps {
   isAdmin?: boolean;
 }
 
-export function ParticipantHoursSection({
+export function SecondExamHoursSection({
   teilnehmer,
   selectedMonth,
   selectedYear,
@@ -27,7 +27,7 @@ export function ParticipantHoursSection({
   onShowHoursDialog,
   getCurrentMonthHours,
   isAdmin = false
-}: ParticipantHoursSectionProps) {
+}: SecondExamHoursSectionProps) {
   const { monthlySummary } = useHoursStore();
   const [showTeilnehmerManagement, setShowTeilnehmerManagement] = useState(false);
   const [selectedTeilnehmer, setSelectedTeilnehmer] = useState<{ id: string; name: string } | null>(null);
@@ -75,8 +75,9 @@ export function ParticipantHoursSection({
       <div className="px-4 py-5 border-b border-gray-200 sm:px-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           {/* Left: Section Name */}
-          <h3 className="text-lg font-medium text-gray-900">
-            Stunden pro Teilnehmer (1. Staatsexamen)
+          <h3 className="text-lg font-medium text-gray-900 flex items-center">
+            <GraduationCap className="h-5 w-5 mr-2 text-amber-600" />
+            Stunden pro Teilnehmer (2. Staatsexamen)
           </h3>
           
           {/* Right: Month/Year Selection + Action Buttons */}
@@ -120,7 +121,7 @@ export function ParticipantHoursSection({
             <div className="flex gap-2">
               <button
                 onClick={onShowHoursDialog}
-                className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-primary/90"
+                className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-amber-600 hover:bg-amber-700"
               >
                 <Clock className="h-4 w-4 mr-2" />
                 Stunden eintragen
@@ -135,45 +136,60 @@ export function ParticipantHoursSection({
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center">
-              <Calendar className="h-5 w-5 text-primary mr-2" />
+              <Calendar className="h-5 w-5 text-amber-600 mr-2" />
               <span className="text-sm font-medium text-gray-700">
                 {new Date().toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })}
               </span>
             </div>
-            <div className="text-xs text-gray-500">Aktuelle Teilnehmer</div>
+            <div className="text-xs text-gray-500">2. Staatsexamen Teilnehmer</div>
           </div>
         </div>
 
         {(() => {
-          // Use monthlySummary directly - it contains all teilnehmer for which hours were logged
-          const participantsWithHours = monthlySummary.filter(s => s.total_hours > 0);
+          // Filter for only 2. Staatsexamen participants
+          const secondExamParticipants = monthlySummary.filter(s => {
+            // Find the teilnehmer in the teilnehmer array
+            const teilnehmerData = teilnehmer.find(t => t.id === s.teilnehmer_id);
+            // Check if study_goal includes "2. Staatsexamen"
+            return teilnehmerData?.study_goal?.includes('2. Staatsexamen') && s.total_hours > 0;
+          });
           
-          if (participantsWithHours.length > 0) {
+          if (secondExamParticipants.length > 0) {
             // Show participants with hours
             return (
               <div className="space-y-4">
-                {participantsWithHours.map((summary) => {
+                {secondExamParticipants.map((summary) => {
                   const bookedHours = summary.booked_hours || 0;
                   const completedHours = summary.completed_hours || 0;
                   const progressPercent = bookedHours > 0 ? Math.min((completedHours / bookedHours) * 100, 100) : 0;
+                  
+                  // Get additional info from teilnehmer data
+                  const teilnehmerData = teilnehmer.find(t => t.id === summary.teilnehmer_id);
+                  const referendariatsstandort = (teilnehmerData as any)?.referendariatsstandort;
                   
                   return (
                     <div key={summary.teilnehmer_id} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
                       <button
                         onClick={() => setSelectedTeilnehmer({ id: summary.teilnehmer_id, name: summary.teilnehmer_name })}
-                        className="w-full flex items-center justify-between hover:bg-gray-100 transition-colors rounded-lg p-2 -m-2"
+                        className="w-full flex items-center justify-between hover:bg-amber-50 transition-colors rounded-lg p-2 -m-2 border border-transparent hover:border-amber-200"
                       >
                         <div className="flex items-center">
                           <div className="flex-shrink-0">
-                            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                              <Users className="h-5 w-5 text-primary" />
+                            <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center">
+                              <GraduationCap className="h-5 w-5 text-amber-600" />
                             </div>
                           </div>
                           <div className="ml-4">
                             <div className="flex items-center">
                               <h4 className="text-sm font-medium text-gray-900">{summary.teilnehmer_name}</h4>
                             </div>
-                            {/* Contract dates like admin view */}
+                            {/* Referendariatsstandort */}
+                            {referendariatsstandort && (
+                              <div className="text-xs text-amber-700 font-medium">
+                                📍 {referendariatsstandort}
+                              </div>
+                            )}
+                            {/* Contract dates */}
                             {summary.contract_start && summary.contract_end ? (
                               <div className="text-sm text-gray-500">
                                 <Calendar className="h-3 w-3 inline mr-1" />
@@ -190,7 +206,7 @@ export function ParticipantHoursSection({
                                 <div className="flex items-center space-x-2">
                                   <div className="w-24 bg-gray-200 rounded-full h-1.5">
                                     <div 
-                                      className={`h-1.5 rounded-full ${progressPercent >= 100 ? 'bg-green-500' : progressPercent >= 75 ? 'bg-yellow-500' : 'bg-primary'}`}
+                                      className={`h-1.5 rounded-full ${progressPercent >= 100 ? 'bg-green-500' : progressPercent >= 75 ? 'bg-yellow-500' : 'bg-amber-600'}`}
                                       style={{ width: `${progressPercent}%` }}
                                     />
                                   </div>
@@ -201,7 +217,7 @@ export function ParticipantHoursSection({
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="text-lg font-semibold text-primary">
+                          <div className="text-lg font-semibold text-amber-600">
                             {summary.total_hours}h
                           </div>
                           <div className="text-xs text-gray-500">
@@ -222,8 +238,8 @@ export function ParticipantHoursSection({
           // No hours for this month - show empty state
           return (
             <div className="text-center py-8 text-gray-500">
-              <Clock className="mx-auto h-10 w-10 text-gray-300 mb-2" />
-              <p>Keine Stunden für {getMonthName(selectedMonth)} {selectedYear} eingetragen</p>
+              <GraduationCap className="mx-auto h-10 w-10 text-gray-300 mb-2" />
+              <p>Keine Stunden für 2. Staatsexamen Teilnehmer in {getMonthName(selectedMonth)} {selectedYear}</p>
               <p className="text-xs mt-2">Klicken Sie auf "Stunden eintragen" um Stunden hinzuzufügen.</p>
             </div>
           );

@@ -12,6 +12,7 @@ import { Logo } from './Logo';
 import { FileSection } from './FileSection';
 import { ActivitySection } from './ActivitySection';
 import { ParticipantHoursSection } from './ParticipantHoursSection';
+import { SecondExamHoursSection } from './SecondExamHoursSection';
 import { TeilnehmerManagement } from './TeilnehmerManagement';
 import { InvoiceManagement } from './InvoiceManagement';
 
@@ -43,7 +44,7 @@ export function DozentDetail() {
   const [activityReportYear, setActivityReportYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [dozentInfo, setDozentInfo] = useState<{ full_name: string; email: string } | null>(null);
+  const [dozentInfo, setDozentInfo] = useState<{ full_name: string; email: string; exam_types?: string[] } | null>(null);
   const [pendingInvoiceCount, setPendingInvoiceCount] = useState<number>(0);
   const [hoursFormData, setHoursFormData] = useState({
     teilnehmer_id: '',
@@ -55,7 +56,8 @@ export function DozentDetail() {
   const [activityFormData, setActivityFormData] = useState({
     hours: '',
     date: new Date().toISOString().split('T')[0],
-    description: ''
+    description: '',
+    exam_type: '1. Staatsexamen'
   });
   const [duplicateWarning, setDuplicateWarning] = useState<{ show: boolean; existingEntries: any[]; pendingData: any | null }>({
     show: false, existingEntries: [], pendingData: null
@@ -126,7 +128,7 @@ export function DozentDetail() {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('full_name, email')
+        .select('full_name, email, exam_types')
         .eq('id', dozentId)
         .single();
 
@@ -245,19 +247,22 @@ export function DozentDetail() {
       // Import the dozent hours store
       const { useDozentHoursStore } = await import('../store/dozentHoursStore');
       const { createDozentHours } = useDozentHoursStore.getState();
-      
-      await createDozentHours({
-        hours: parseFloat(activityFormData.hours),
-        date: activityFormData.date,
-        description: activityFormData.description,
-        dozent_id: dozentId
-      });
+      const { error } = await supabase
+        .from('dozent_hours')
+        .insert({
+          hours: parseFloat(activityFormData.hours),
+          date: activityFormData.date,
+          description: activityFormData.description,
+          exam_type: activityFormData.exam_type,
+          dozent_id: dozentId
+        });
       
       setShowActivityDialog(false);
       setActivityFormData({
         hours: '',
         date: new Date().toISOString().split('T')[0],
-        description: ''
+        description: '',
+        exam_type: '1. Staatsexamen'
       });
     } catch (error) {
       console.error('Error creating activity:', error);
@@ -576,17 +581,32 @@ export function DozentDetail() {
           {selectedFolder && (
             <>
               {isActiveTeilnehmerFolder ? (
-                <ParticipantHoursSection
-                  teilnehmer={teilnehmer}
-                  selectedMonth={selectedMonth}
-                  selectedYear={selectedYear}
-                  onMonthChange={setSelectedMonth}
-                  onYearChange={setSelectedYear}
-                  onShowTeilnehmerManagement={() => setShowTeilnehmerManagement(true)}
-                  onShowHoursDialog={() => setShowHoursDialog(true)}
-                  getCurrentMonthHours={getDozentMonthHours}
-                  isAdmin={canManageAll}
-                />
+                <div className="space-y-6">
+                  <ParticipantHoursSection
+                    teilnehmer={teilnehmer}
+                    selectedMonth={selectedMonth}
+                    selectedYear={selectedYear}
+                    onMonthChange={setSelectedMonth}
+                    onYearChange={setSelectedYear}
+                    onShowTeilnehmerManagement={() => setShowTeilnehmerManagement(true)}
+                    onShowHoursDialog={() => setShowHoursDialog(true)}
+                    getCurrentMonthHours={getDozentMonthHours}
+                    isAdmin={canManageAll}
+                  />
+                  {dozentInfo?.exam_types?.includes('2. Staatsexamen') && (
+                    <SecondExamHoursSection
+                      teilnehmer={teilnehmer}
+                      selectedMonth={selectedMonth}
+                      selectedYear={selectedYear}
+                      onMonthChange={setSelectedMonth}
+                      onYearChange={setSelectedYear}
+                      onShowTeilnehmerManagement={() => setShowTeilnehmerManagement(true)}
+                      onShowHoursDialog={() => setShowHoursDialog(true)}
+                      getCurrentMonthHours={getDozentMonthHours}
+                      isAdmin={canManageAll}
+                    />
+                  )}
+                </div>
               ) : isRechnungenFolder && canViewRechnungen ? (
                 <div className="space-y-6">
                   <InvoiceManagement
@@ -618,6 +638,7 @@ export function DozentDetail() {
                   onYearChange={setActivityReportYear}
                   onShowActivityDialog={() => setShowActivityDialog(true)}
                   dozentId={dozentId}
+                  showSecondExam={dozentInfo?.exam_types?.includes('2. Staatsexamen')}
                 />
               ) : isProbestundenFolder ? (
                 <div className="bg-white shadow overflow-hidden sm:rounded-lg">
@@ -1052,6 +1073,36 @@ export function DozentDetail() {
                         required
                       />
                     </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Staatsexamen
+                      </label>
+                      <div className="space-y-2">
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            name="exam_type"
+                            value="1. Staatsexamen"
+                            checked={activityFormData.exam_type === '1. Staatsexamen'}
+                            onChange={(e) => setActivityFormData({ ...activityFormData, exam_type: e.target.value })}
+                            className="h-4 w-4 text-primary focus:ring-primary border-gray-300"
+                          />
+                          <span className="ml-2 text-sm text-gray-700">1. Staatsexamen</span>
+                        </label>
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            name="exam_type"
+                            value="2. Staatsexamen"
+                            checked={activityFormData.exam_type === '2. Staatsexamen'}
+                            onChange={(e) => setActivityFormData({ ...activityFormData, exam_type: e.target.value })}
+                            className="h-4 w-4 text-amber-600 focus:ring-amber-600 border-gray-300"
+                          />
+                          <span className="ml-2 text-sm text-gray-700">2. Staatsexamen</span>
+                        </label>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
@@ -1068,7 +1119,8 @@ export function DozentDetail() {
                       setActivityFormData({
                         hours: '',
                         date: new Date().toISOString().split('T')[0],
-                        description: ''
+                        description: '',
+                        exam_type: '1. Staatsexamen'
                       });
                     }}
                     className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"

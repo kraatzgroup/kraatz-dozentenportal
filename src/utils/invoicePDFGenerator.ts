@@ -24,6 +24,7 @@ interface Invoice {
   period_start: string;
   period_end: string;
   total_amount: number;
+  exam_type?: string;
   dozent: {
     full_name: string;
     email: string;
@@ -50,6 +51,7 @@ interface InvoicePDFData {
 }
 
 export const generateInvoicePDF = async (data: InvoicePDFData) => {
+  console.log('🎯 generateInvoicePDF called with exam_type:', data.invoice.exam_type);
   const { jsPDF } = await import('jspdf');
   
   const doc = new jsPDF();
@@ -132,23 +134,38 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
     yPosition += 4;
   }
 
-  // Recipient address
+  // Recipient address - different based on exam type
   yPosition += 4;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  addText('Akademie Kraatz GmbH & Assessor Akademie Kraatz und Heinze GbR', margin, yPosition);
-  yPosition += 5;
   
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  addText('Wilmersdorfer Str. 145 / 146', margin, yPosition);
-  yPosition += 4;
-  addText('10585 Berlin', margin, yPosition);
-  yPosition += 4;
-  addText('Telefon: 030 756 573 97', margin, yPosition);
-  yPosition += 4;
-  addText('E-Mail: info@kraatz-group.de', margin, yPosition);
-  yPosition += 12;
+  console.log('PDF Generation - Invoice exam_type:', data.invoice.exam_type);
+  
+  if (data.invoice.exam_type === '2. Staatsexamen') {
+    // 2. Staatsexamen -> Assessor Akademie Kraatz und Heinze GbR
+    console.log('Using 2. Staatsexamen recipient: Assessor Akademie Kraatz und Heinze GbR');
+    addText('Assessor Akademie Kraatz und Heinze GbR', margin, yPosition);
+    yPosition += 5;
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    addText('Wilmersdorfer Str. 145 / 146', margin, yPosition);
+    yPosition += 4;
+    addText('10585 Berlin', margin, yPosition);
+    yPosition += 8;
+  } else {
+    // 1. Staatsexamen (or no exam_type) -> Akademie Kraatz GmbH
+    console.log('Using 1. Staatsexamen recipient: Akademie Kraatz GmbH');
+    addText('Akademie Kraatz GmbH', margin, yPosition);
+    yPosition += 5;
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    addText('Wilmersdorfer Str. 145 / 146', margin, yPosition);
+    yPosition += 4;
+    addText('10585 Berlin', margin, yPosition);
+    yPosition += 8;
+  }
 
   // Invoice title and details
   doc.setFontSize(14);
@@ -407,21 +424,36 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   }
   yPosition += 6;
 
-  // Recipient
+  // Recipient - different based on exam type
+  console.log('🎯 generateInvoicePDFBlob called with exam_type:', data.invoice.exam_type);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  addText('Akademie Kraatz GmbH & Assessor Akademie Kraatz und Heinze GbR', margin, yPosition);
-  yPosition += 5;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  addText('Wilmersdorfer Str. 145 / 146', margin, yPosition);
-  yPosition += 4;
-  addText('10585 Berlin', margin, yPosition);
-  yPosition += 4;
-  addText('Telefon: 030 756 573 97', margin, yPosition);
-  yPosition += 4;
-  addText('E-Mail: info@kraatz-group.de', margin, yPosition);
-  yPosition += 12;
+  
+  if (data.invoice.exam_type === '2. Staatsexamen') {
+    // 2. Staatsexamen -> Assessor Akademie Kraatz und Heinze GbR
+    console.log('Using 2. Staatsexamen recipient: Assessor Akademie Kraatz und Heinze GbR');
+    addText('Assessor Akademie Kraatz und Heinze GbR', margin, yPosition);
+    yPosition += 5;
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    addText('Wilmersdorfer Str. 145 / 146', margin, yPosition);
+    yPosition += 4;
+    addText('10585 Berlin', margin, yPosition);
+    yPosition += 8;
+  } else {
+    // 1. Staatsexamen (or no exam_type) -> Akademie Kraatz GmbH
+    console.log('Using 1. Staatsexamen recipient: Akademie Kraatz GmbH');
+    addText('Akademie Kraatz GmbH', margin, yPosition);
+    yPosition += 5;
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    addText('Wilmersdorfer Str. 145 / 146', margin, yPosition);
+    yPosition += 4;
+    addText('10585 Berlin', margin, yPosition);
+    yPosition += 8;
+  }
 
   // Invoice title and details
   doc.setFontSize(14);

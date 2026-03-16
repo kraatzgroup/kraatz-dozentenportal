@@ -12,6 +12,7 @@ interface ActivityReportProps {
   onYearChange: (year: number) => void;
   onShowActivityDialog: () => void;
   dozentId?: string;
+  examType?: '1. Staatsexamen' | '2. Staatsexamen';
 }
 
 interface ParticipantHoursEntry {
@@ -21,6 +22,8 @@ interface ParticipantHoursEntry {
   description: string;
   legal_area: string;
   teilnehmer_name: string;
+  study_goal?: string;
+  is_elite_kleingruppe?: boolean;
 }
 
 interface DozentHoursEntry {
@@ -54,7 +57,7 @@ interface PendingHoursEntry {
   created_at: string;
 }
 
-export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onYearChange, onShowActivityDialog, dozentId }: ActivityReportProps) {
+export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onYearChange, onShowActivityDialog, dozentId, examType }: ActivityReportProps) {
   const { user } = useAuthStore();
   const { dozentHours, fetchDozentHours, createDozentHours } = useDozentHoursStore();
   const [participantHours, setParticipantHours] = useState<ParticipantHoursEntry[]>([]);
@@ -108,6 +111,40 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
   }, [selectedMonth, selectedYear, targetDozentId]);
 
   useEffect(() => {
+    // Filter dozent hours by exam type if specified
+    let filteredDozentHours = dozentHours;
+    
+    if (examType === '1. Staatsexamen') {
+      // Show: Elite Kleingruppe entries (category contains 'elite') OR entries with exam_type = '1. Staatsexamen' OR entries without exam_type
+      filteredDozentHours = dozentHours.filter(h => {
+        const category = (h as any).category?.toLowerCase() || '';
+        const entryExamType = (h as any).exam_type;
+        
+        // Elite Kleingruppe entries always go to 1. Staatsexamen
+        if (category.includes('elite')) return true;
+        
+        // Entries with exam_type = '1. Staatsexamen'
+        if (entryExamType === '1. Staatsexamen') return true;
+        
+        // Entries without exam_type (legacy entries) also go to 1. Staatsexamen
+        if (!entryExamType) return true;
+        
+        return false;
+      });
+    } else if (examType === '2. Staatsexamen') {
+      // Only show entries with exam_type = '2. Staatsexamen' (exclude Elite Kleingruppe)
+      filteredDozentHours = dozentHours.filter(h => {
+        const category = (h as any).category?.toLowerCase() || '';
+        const entryExamType = (h as any).exam_type;
+        
+        // Exclude Elite Kleingruppe
+        if (category.includes('elite')) return false;
+        
+        // Only show if exam_type is explicitly '2. Staatsexamen'
+        return entryExamType === '2. Staatsexamen';
+      });
+    }
+    
     // Combine participant hours and dozent hours
     const combined: CombinedHoursEntry[] = [
       ...participantHours.map(h => ({
@@ -119,7 +156,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
         teilnehmer_name: h.teilnehmer_name,
         type: 'participant' as const
       })),
-      ...dozentHours.map(h => ({
+      ...filteredDozentHours.map(h => ({
         id: h.id,
         date: h.date,
         hours: h.hours,
@@ -132,7 +169,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
     // Sort by date (ascending - chronological)
     combined.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     setCombinedHours(combined);
-  }, [participantHours, dozentHours]);
+  }, [participantHours, dozentHours, examType]);
 
   const fetchDozentName = async () => {
     if (!user) return;
@@ -179,7 +216,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
       const startDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
       const endDate = new Date(selectedYear, selectedMonth, 0).toISOString().split('T')[0];
       
-      // Fetch participant hours
+      // Fetch participant hours with study_goal and elite_kleingruppe flag
       const { data, error } = await supabase
         .from('participant_hours')
         .select(`
@@ -188,7 +225,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
           hours,
           description,
           legal_area,
-          teilnehmer:teilnehmer(name)
+          teilnehmer:teilnehmer(name, study_goal, elite_kleingruppe)
         `)
         .eq('dozent_id', targetDozentId)
         .gte('date', startDate)
@@ -197,16 +234,41 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
 
       if (error) throw error;
 
-      const transformedData: ParticipantHoursEntry[] = data?.map(item => ({
-        id: item.id,
-        date: item.date,
-        hours: parseFloat(item.hours.toString()),
-        description: item.description || '',
-        legal_area: item.legal_area || '',
-        teilnehmer_name: item.teilnehmer?.name || 'Unbekannt'
-      })) || [];
+      // Filter participant hours based on exam type and study_goal
+      const allParticipantHours: ParticipantHoursEntry[] = data?.map(item => {
+        // Supabase returns joined relations as arrays, normalize to object
+        const teilnehmer = Array.isArray(item.teilnehmer) ? item.teilnehmer[0] : item.teilnehmer;
+        
+        return {
+          id: item.id,
+          date: item.date,
+          hours: parseFloat(item.hours.toString()),
+          description: item.description || '',
+          legal_area: item.legal_area || '',
+          teilnehmer_name: teilnehmer?.name || 'Unbekannt',
+          study_goal: teilnehmer?.study_goal || '',
+          is_elite_kleingruppe: teilnehmer?.elite_kleingruppe || false
+        };
+      }) || [];
 
-      setParticipantHours(transformedData);
+      // Filter based on examType
+      let filteredParticipantHours = allParticipantHours;
+      if (examType === '2. Staatsexamen') {
+        // Only show if teilnehmer has "2. Staatsexamen" in study_goal
+        // BUT exclude Elite Kleingruppe (they always go to 1. Staatsexamen)
+        filteredParticipantHours = allParticipantHours.filter(h => {
+          const studyGoal = h.study_goal;
+          return !h.is_elite_kleingruppe && studyGoal && studyGoal.includes('2. Staatsexamen');
+        });
+      } else if (examType === '1. Staatsexamen') {
+        // Show Elite Kleingruppe OR no study_goal OR study_goal doesn't include "2. Staatsexamen"
+        filteredParticipantHours = allParticipantHours.filter(h => {
+          const studyGoal = h.study_goal;
+          return h.is_elite_kleingruppe || !studyGoal || !studyGoal.includes('2. Staatsexamen');
+        });
+      }
+
+      setParticipantHours(filteredParticipantHours);
       
       // Fetch dozent hours
       await fetchDozentHours(targetDozentId, startDate, endDate);

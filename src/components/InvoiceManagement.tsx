@@ -35,7 +35,8 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
   const [archiveFilterYear, setArchiveFilterYear] = useState<number>(new Date().getFullYear());
   const [createFormData, setCreateFormData] = useState({
     month: new Date().getMonth() + 1,
-    year: new Date().getFullYear()
+    year: new Date().getFullYear(),
+    examType: '1. Staatsexamen' as '1. Staatsexamen' | '2. Staatsexamen'
   });
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [uploadInvoice, setUploadInvoice] = useState<Invoice | null>(null);
@@ -76,31 +77,51 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
   // Track if we've already checked for auto-create
   const [hasCheckedAutoCreate, setHasCheckedAutoCreate] = useState(false);
 
-  // Auto-create invoice for current month if none exists (only once after initial load)
+  // Auto-create invoices for current month if none exist (only once after initial load)
+  // TEMPORARILY DISABLED FOR TESTING
   useEffect(() => {
-    if (!isLoading && !hasCheckedAutoCreate && dozentId && !isAdmin) {
-      setHasCheckedAutoCreate(true);
-      
-      const hasCurrentMonthInvoice = invoices.some(
-        invoice => invoice.month === currentMonth && invoice.year === currentYear
-      );
-      
-      if (!hasCurrentMonthInvoice) {
-        // Auto-create invoice for current month
-        createInvoice({
-          month: currentMonth,
-          year: currentYear,
-          dozentId: dozentId
-        }).then(() => {
-          addToast('Rechnung für aktuellen Monat erstellt', 'success');
-        }).catch((error) => {
-          // Only show error if it's not a duplicate
-          if (!error.message?.includes('invoices_dozent_month_year_unique')) {
-            console.error('Error auto-creating invoice:', error);
-          }
-        });
-      }
-    }
+    console.log('[Auto-Create] Disabled for testing');
+    // if (!isLoading && !hasCheckedAutoCreate && dozentId && !isAdmin) {
+    //   setHasCheckedAutoCreate(true);
+    //   
+    //   const hasFirstExamInvoice = invoices.some(
+    //     invoice => invoice.month === currentMonth && invoice.year === currentYear && invoice.exam_type === '1. Staatsexamen'
+    //   );
+    //   
+    //   const hasSecondExamInvoice = invoices.some(
+    //     invoice => invoice.month === currentMonth && invoice.year === currentYear && invoice.exam_type === '2. Staatsexamen'
+    //   );
+    //   
+    //   // Create invoice for 1. Staatsexamen if it doesn't exist
+    //   if (!hasFirstExamInvoice) {
+    //     createInvoice({
+    //       month: currentMonth,
+    //       year: currentYear,
+    //       dozentId: dozentId,
+    //       examType: '1. Staatsexamen'
+    //     }).catch((error) => {
+    //       if (!error.message?.includes('invoices_dozent_month_year_exam_type_unique')) {
+    //         console.error('Error auto-creating 1. Staatsexamen invoice:', error);
+    //       }
+    //     });
+    //   }
+    //   
+    //   // Create invoice for 2. Staatsexamen if it doesn't exist
+    //   if (!hasSecondExamInvoice) {
+    //     createInvoice({
+    //       month: currentMonth,
+    //       year: currentYear,
+    //       dozentId: dozentId,
+    //       examType: '2. Staatsexamen'
+    //     }).then(() => {
+    //       addToast('Rechnungen für aktuellen Monat erstellt', 'success');
+    //     }).catch((error) => {
+    //       if (!error.message?.includes('invoices_dozent_month_year_exam_type_unique')) {
+    //         console.error('Error auto-creating 2. Staatsexamen invoice:', error);
+    //       }
+    //     });
+    //   }
+    // }
   }, [isLoading, hasCheckedAutoCreate, invoices, dozentId, isAdmin, currentMonth, currentYear, createInvoice, addToast]);
 
   // Current month invoices only (draft or review status, current month only)
@@ -124,11 +145,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
 
   // Fetch hours preview when create dialog opens or month/year changes
   const fetchCreatePreviewHours = async () => {
-    // Use dozentId if provided (admin view), otherwise use current user
-    const { data: { user: currentUser } } = await supabase.auth.getUser();
-    const targetDozentId = dozentId || currentUser?.id;
-    
-    if (!targetDozentId) return;
+    if (!dozentId) return;
     
     setCreatePreviewLoading(true);
     try {
@@ -137,44 +154,98 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       const startDate = periodStart.toISOString().split('T')[0];
       const endDate = periodEnd.toISOString().split('T')[0];
 
-      const { data: participantHours } = await supabase
+      console.log('Fetching hours for:', { dozentId, startDate, endDate, examType: createFormData.examType });
+
+      // Fetch participant hours with study_goal and elite_kleingruppe
+      const { data: participantHours, error: phError } = await supabase
         .from('participant_hours')
-        .select(`
-          date, hours, description, legal_area,
-          teilnehmer:teilnehmer(name)
-        `)
-        .eq('dozent_id', targetDozentId)
+        .select('date, hours, description, teilnehmer:teilnehmer(name, elite_kleingruppe, study_goal)')
+        .eq('dozent_id', dozentId)
         .gte('date', startDate)
         .lte('date', endDate)
         .order('date', { ascending: true });
 
-      // Also fetch dozent_hours (sonstige Tätigkeiten)
-      const { data: dozentHours } = await supabase
+      console.log('Participant hours raw:', participantHours, 'Error:', phError);
+
+      // Fetch dozent hours with category and exam_type
+      const { data: dozentHours, error: dhError } = await supabase
         .from('dozent_hours')
-        .select('date, hours, description')
-        .eq('dozent_id', targetDozentId)
+        .select('date, hours, description, category, exam_type')
+        .eq('dozent_id', dozentId)
         .gte('date', startDate)
         .lte('date', endDate)
         .order('date', { ascending: true });
 
-      const hours: HourEntry[] = [
-        ...(participantHours || []).map((h: any) => ({
-          date: h.date,
-          hours: h.hours,
-          description: h.description,
-          legal_area: h.legal_area,
-          teilnehmer_name: h.teilnehmer?.name || 'Unbekannt'
-        })),
-        ...(dozentHours || []).map((h: any) => ({
-          date: h.date,
-          hours: h.hours,
-          description: h.description,
-          legal_area: undefined,
-          teilnehmer_name: h.description || 'Sonstige Tätigkeit'
-        }))
-      ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      console.log('Dozent hours raw:', dozentHours, 'Error:', dhError);
 
-      setCreatePreviewHours(hours);
+      // Normalize teilnehmer object
+      const normalizedParticipantHours = (participantHours || []).map((h: any) => ({
+        ...h,
+        teilnehmer: Array.isArray(h.teilnehmer) ? h.teilnehmer[0] : h.teilnehmer
+      }));
+
+      // Filter participant hours by exam_type
+      let filteredParticipantHours = normalizedParticipantHours;
+      if (createFormData.examType === '1. Staatsexamen') {
+        // Show: Elite Kleingruppe OR no study_goal OR study_goal doesn't include "2. Staatsexamen"
+        filteredParticipantHours = normalizedParticipantHours.filter((h: any) => {
+          const studyGoal = h.teilnehmer?.study_goal;
+          return h.teilnehmer?.elite_kleingruppe || !studyGoal || !studyGoal.includes('2. Staatsexamen');
+        });
+      } else if (createFormData.examType === '2. Staatsexamen') {
+        // Show: NOT Elite Kleingruppe AND study_goal includes "2. Staatsexamen"
+        filteredParticipantHours = normalizedParticipantHours.filter((h: any) => {
+          const studyGoal = h.teilnehmer?.study_goal;
+          return !h.teilnehmer?.elite_kleingruppe && studyGoal && studyGoal.includes('2. Staatsexamen');
+        });
+      }
+
+      console.log('Filtered participant hours:', filteredParticipantHours);
+
+      // Filter dozent hours by exam_type and category
+      let filteredDozentHours = dozentHours || [];
+      if (createFormData.examType === '1. Staatsexamen') {
+        filteredDozentHours = (dozentHours || []).filter((h: any) => {
+          const category = h.category?.toLowerCase() || '';
+          const examType = h.exam_type;
+          
+          if (category.includes('elite')) return true;
+          if (examType === '1. Staatsexamen') return true;
+          if (!examType) return true;
+          
+          return false;
+        });
+      } else if (createFormData.examType === '2. Staatsexamen') {
+        filteredDozentHours = (dozentHours || []).filter((h: any) => {
+          const category = h.category?.toLowerCase() || '';
+          const examType = h.exam_type;
+          
+          if (category.includes('elite')) return false;
+          return examType === '2. Staatsexamen';
+        });
+      }
+
+      console.log('Filtered dozent hours:', filteredDozentHours);
+
+      // Combine and format hours
+      const combined: HourEntry[] = [
+        ...filteredParticipantHours.map((h: any) => ({
+          date: h.date,
+          hours: parseFloat(h.hours.toString()),
+          description: h.teilnehmer?.name || 'Unbekannt',
+          type: 'participant' as const
+        })),
+        ...filteredDozentHours.map((h: any) => ({
+          date: h.date,
+          hours: parseFloat(h.hours.toString()),
+          description: h.description || h.category || 'Sonstige Tätigkeit',
+          type: 'dozent' as const
+        }))
+      ];
+
+      combined.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      console.log('Combined hours for preview:', combined);
+      setCreatePreviewHours(combined);
     } catch (error) {
       console.error('Error fetching preview hours:', error);
     } finally {
@@ -182,12 +253,12 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
     }
   };
 
-  // Fetch preview when dialog opens or month/year changes
+  // Fetch preview when dialog opens or month/year/examType changes
   useEffect(() => {
     if (showCreateDialog) {
       fetchCreatePreviewHours();
     }
-  }, [showCreateDialog, createFormData.month, createFormData.year]);
+  }, [showCreateDialog, createFormData.month, createFormData.year, createFormData.examType]);
 
   const handleCreateInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -196,13 +267,15 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       const newInvoice = await createInvoice({
         month: createFormData.month,
         year: createFormData.year,
-        dozentId: dozentId
+        dozentId: dozentId,
+        examType: createFormData.examType
       });
       
       setShowCreateDialog(false);
       setCreateFormData({
         month: new Date().getMonth() + 1,
-        year: new Date().getFullYear()
+        year: new Date().getFullYear(),
+        examType: '1. Staatsexamen'
       });
       
       // Open review modal immediately after creation
@@ -243,33 +316,89 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       // Use the invoice_number from the database - it's already set by the trigger
       const finalInvoiceNumber = invoiceData.invoice_number;
 
-      // Fetch participant hours with elite_kleingruppe flag
+      // Fetch participant hours with elite_kleingruppe flag and study_goal
       const { data: participantHours } = await supabase
         .from('participant_hours')
         .select(`
           date, hours, description, legal_area,
-          teilnehmer:teilnehmer(name, elite_kleingruppe)
+          teilnehmer:teilnehmer(name, elite_kleingruppe, study_goal)
         `)
         .eq('dozent_id', invoiceData.dozent_id)
         .gte('date', invoiceData.period_start)
         .lte('date', invoiceData.period_end)
         .order('date', { ascending: true });
 
-      // Fetch dozent hours with category
+      // Fetch dozent hours with category and exam_type
       const { data: dozentHours } = await supabase
         .from('dozent_hours')
-        .select('date, hours, description, category')
+        .select('date, hours, description, category, exam_type')
         .eq('dozent_id', invoiceData.dozent_id)
         .gte('date', invoiceData.period_start)
         .lte('date', invoiceData.period_end)
         .order('date', { ascending: true });
 
+      // Normalize teilnehmer object (Supabase may return as array)
+      const normalizedParticipantHours = (participantHours || []).map((h: any) => ({
+        ...h,
+        teilnehmer: Array.isArray(h.teilnehmer) ? h.teilnehmer[0] : h.teilnehmer
+      }));
+
+      // Filter participant hours by exam_type
+      let filteredParticipantHours = normalizedParticipantHours;
+      if (invoiceData.exam_type === '1. Staatsexamen') {
+        // Show: Elite Kleingruppe OR no study_goal OR study_goal doesn't include "2. Staatsexamen"
+        filteredParticipantHours = normalizedParticipantHours.filter((h: any) => {
+          const studyGoal = h.teilnehmer?.study_goal;
+          return h.teilnehmer?.elite_kleingruppe || !studyGoal || !studyGoal.includes('2. Staatsexamen');
+        });
+      } else if (invoiceData.exam_type === '2. Staatsexamen') {
+        // Show: NOT Elite Kleingruppe AND study_goal includes "2. Staatsexamen"
+        filteredParticipantHours = normalizedParticipantHours.filter((h: any) => {
+          const studyGoal = h.teilnehmer?.study_goal;
+          return !h.teilnehmer?.elite_kleingruppe && studyGoal && studyGoal.includes('2. Staatsexamen');
+        });
+      }
+
+      // Filter dozent hours by exam_type and category
+      let filteredDozentHours = dozentHours || [];
+      if (invoiceData.exam_type === '1. Staatsexamen') {
+        filteredDozentHours = (dozentHours || []).filter((h: any) => {
+          const category = h.category?.toLowerCase() || '';
+          const examType = h.exam_type;
+          
+          if (category.includes('elite')) return true;
+          if (examType === '1. Staatsexamen') return true;
+          if (!examType) return true;
+          
+          return false;
+        });
+      } else if (invoiceData.exam_type === '2. Staatsexamen') {
+        filteredDozentHours = (dozentHours || []).filter((h: any) => {
+          const category = h.category?.toLowerCase() || '';
+          const examType = h.exam_type;
+          
+          if (category.includes('elite')) return false;
+          return examType === '2. Staatsexamen';
+        });
+      }
+
       // Generate PDF preview with the correct invoice number
+      console.log('Opening review modal - invoiceData.exam_type:', invoiceData.exam_type);
+      console.log('Full invoiceData:', invoiceData);
+      
       const { generateInvoicePDFBlob } = await import('../utils/invoicePDFGenerator');
+      const invoiceForPDF = { 
+        ...invoiceData, 
+        invoice_number: finalInvoiceNumber, 
+        dozent: invoiceData.dozent,
+        exam_type: invoiceData.exam_type 
+      };
+      console.log('Invoice object for PDF:', invoiceForPDF);
+      
       const pdfBlob = await generateInvoicePDFBlob({
-        invoice: { ...invoiceData, invoice_number: finalInvoiceNumber, dozent: invoiceData.dozent },
-        participantHours: (participantHours || []) as any,
-        dozentHours: (dozentHours || []) as any
+        invoice: invoiceForPDF,
+        participantHours: filteredParticipantHours as any,
+        dozentHours: filteredDozentHours as any
       });
 
       const pdfUrl = URL.createObjectURL(pdfBlob);
@@ -682,13 +811,30 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex items-center">
                       <div className="flex-shrink-0">
-                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                          <FileText className="h-5 w-5 text-primary" />
+                        <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
+                          invoice.exam_type === '2. Staatsexamen' 
+                            ? 'bg-amber-100' 
+                            : 'bg-primary/10'
+                        }`}>
+                          <FileText className={`h-5 w-5 ${
+                            invoice.exam_type === '2. Staatsexamen' 
+                              ? 'text-amber-600' 
+                              : 'text-primary'
+                          }`} />
                         </div>
                       </div>
                       <div className="ml-4">
                         <div className="flex items-center gap-2">
                           <h4 className="text-sm font-medium text-gray-900">{invoice.invoice_number}</h4>
+                          {invoice.exam_type && (
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                              invoice.exam_type === '2. Staatsexamen'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-blue-100 text-blue-800'
+                            }`}>
+                              {invoice.exam_type}
+                            </span>
+                          )}
                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(invoice.status)}`}>
                             {getStatusText(invoice.status)}
                           </span>
@@ -917,6 +1063,41 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
                           );
                         })}
                       </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Staatsexamen
+                      </label>
+                      <select
+                        value={createFormData.examType}
+                        onChange={(e) => setCreateFormData({ ...createFormData, examType: e.target.value as '1. Staatsexamen' | '2. Staatsexamen' })}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                        required
+                      >
+                        <option value="1. Staatsexamen">1. Staatsexamen</option>
+                        <option value="2. Staatsexamen">2. Staatsexamen</option>
+                      </select>
+                    </div>
+
+                    {/* Recipient Address Preview */}
+                    <div className="border rounded-lg p-4 bg-blue-50">
+                      <h4 className="text-sm font-medium text-gray-900 mb-2">Rechnungsempfänger:</h4>
+                      <div className="text-sm text-gray-700">
+                        {createFormData.examType === '2. Staatsexamen' ? (
+                          <>
+                            <p className="font-semibold">Assessor Akademie Kraatz und Heinze GbR</p>
+                            <p>Wilmersdorfer Str. 145 / 146</p>
+                            <p>10585 Berlin</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="font-semibold">Akademie Kraatz GmbH</p>
+                            <p>Wilmersdorfer Str. 145 / 146</p>
+                            <p>10585 Berlin</p>
+                          </>
+                        )}
+                      </div>
                     </div>
 
                     {/* Hours Preview */}

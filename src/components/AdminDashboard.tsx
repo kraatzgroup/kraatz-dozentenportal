@@ -178,7 +178,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   const [rechnungenSearch, setRechnungenSearch] = useState<string>('');
   const [invoiceFilterMonth, setInvoiceFilterMonth] = useState<number | 'alle'>('alle');
   const [invoiceFilterYear, setInvoiceFilterYear] = useState<number>(new Date().getFullYear());
-  const [teilnehmerFilter, setTeilnehmerFilter] = useState<'alle' | 'aktiv' | 'abgeschlossen' | '25' | '75' | 'elite'>('alle');
+  const [teilnehmerFilter, setTeilnehmerFilter] = useState<'alle' | 'aktiv' | 'abgeschlossen' | '25' | '75' | 'elite' | '2staatsexamen'>('alle');
   const [editingTeilnehmer, setEditingTeilnehmer] = useState<string | null>(null);
   const [editContractStart, setEditContractStart] = useState<string>('');
   const [editContractEnd, setEditContractEnd] = useState<string>('');
@@ -1878,6 +1878,17 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 >
                   Elite ({teilnehmer.filter(t => t.is_elite_kleingruppe).length})
                 </button>
+                <button
+                  onClick={() => setTeilnehmerFilter('2staatsexamen')}
+                  className={`px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
+                    teilnehmerFilter === '2staatsexamen'
+                      ? 'text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                  style={teilnehmerFilter === '2staatsexamen' ? { backgroundColor: '#2d84c1' } : undefined}
+                >
+                  2. Staatsexamen ({teilnehmer.filter(t => t.study_goal?.includes('2. Staatsexamen')).length})
+                </button>
               </div>
             </div>
             
@@ -1903,6 +1914,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                         return progress.percent >= 70 && progress.percent <= 80 && isContractActive(t);
                       }
                       if (teilnehmerFilter === 'elite') return t.is_elite_kleingruppe === true;
+                      if (teilnehmerFilter === '2staatsexamen') return t.study_goal?.includes('2. Staatsexamen');
                       return true;
                     })
                     .map((t) => (
@@ -2155,6 +2167,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                               return progress.percent >= 70 && progress.percent <= 80 && isContractActive(t);
                             }
                             if (teilnehmerFilter === 'elite') return t.is_elite_kleingruppe === true;
+                            if (teilnehmerFilter === '2staatsexamen') return t.study_goal?.includes('2. Staatsexamen');
                             return true;
                           })
                           .map((t) => (

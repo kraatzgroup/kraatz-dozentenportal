@@ -11,6 +11,7 @@ export interface Invoice {
   period_end: string;
   total_amount: number;
   status: 'draft' | 'review' | 'submitted' | 'sent' | 'paid';
+  exam_type?: '1. Staatsexamen' | '2. Staatsexamen';
   created_at: string;
   updated_at: string;
   submitted_at?: string;
@@ -40,7 +41,7 @@ interface InvoiceState {
   isLoading: boolean;
   error: string | null;
   fetchInvoices: (dozentId?: string) => Promise<void>;
-  createInvoice: (data: { month: number; year: number; dozentId?: string }) => Promise<Invoice>;
+  createInvoice: (data: { month: number; year: number; dozentId?: string; examType?: '1. Staatsexamen' | '2. Staatsexamen' }) => Promise<Invoice>;
   updateInvoice: (id: string, data: Partial<Invoice>) => Promise<void>;
   deleteInvoice: (id: string) => Promise<void>;
   generateInvoicePDF: (invoiceId: string) => Promise<void>;
@@ -73,6 +74,7 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
           period_end,
           total_amount,
           status,
+          exam_type,
           created_at,
           updated_at,
           sent_at,
@@ -145,32 +147,79 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
       const rateEliteKorrektur = dozentProfile?.hourly_rate_elite_korrektur || 0;
       const rateSonstige = dozentProfile?.hourly_rate_sonstige || 0;
 
-      // Fetch participant hours with elite_kleingruppe flag
+      // Fetch participant hours with elite_kleingruppe flag and study_goal
       const { data: participantHours, error: hoursError } = await supabase
         .from('participant_hours')
-        .select('hours, teilnehmer:teilnehmer(elite_kleingruppe)')
+        .select('hours, teilnehmer:teilnehmer(elite_kleingruppe, study_goal)')
         .eq('dozent_id', targetDozentId)
         .gte('date', startDate)
         .lte('date', endDate);
 
       if (hoursError) throw hoursError;
 
-      // Fetch dozent hours with category
+      // Fetch dozent hours with category and exam_type
       const { data: dozentHours, error: dozentHoursError } = await supabase
         .from('dozent_hours')
-        .select('hours, category')
+        .select('hours, category, exam_type')
         .eq('dozent_id', targetDozentId)
         .gte('date', startDate)
         .lte('date', endDate);
 
       if (dozentHoursError) throw dozentHoursError;
 
+      // Normalize teilnehmer object (Supabase may return as array)
+      const normalizedParticipantHours = (participantHours || []).map((h: any) => ({
+        ...h,
+        teilnehmer: Array.isArray(h.teilnehmer) ? h.teilnehmer[0] : h.teilnehmer
+      }));
+
+      // Filter participant hours by exam_type and study_goal
+      let filteredParticipantHours = normalizedParticipantHours;
+      if (data.examType === '1. Staatsexamen') {
+        // Show: Elite Kleingruppe OR no study_goal OR study_goal doesn't include "2. Staatsexamen"
+        filteredParticipantHours = normalizedParticipantHours.filter((h: any) => {
+          const studyGoal = h.teilnehmer?.study_goal;
+          return h.teilnehmer?.elite_kleingruppe || !studyGoal || !studyGoal.includes('2. Staatsexamen');
+        });
+      } else if (data.examType === '2. Staatsexamen') {
+        // Show: NOT Elite Kleingruppe AND study_goal includes "2. Staatsexamen"
+        filteredParticipantHours = normalizedParticipantHours.filter((h: any) => {
+          const studyGoal = h.teilnehmer?.study_goal;
+          return !h.teilnehmer?.elite_kleingruppe && studyGoal && studyGoal.includes('2. Staatsexamen');
+        });
+      }
+
+      // Filter dozent hours by exam_type and category
+      let filteredDozentHours = dozentHours || [];
+      if (data.examType === '1. Staatsexamen') {
+        // Elite Kleingruppe OR exam_type = '1. Staatsexamen' OR no exam_type
+        filteredDozentHours = (dozentHours || []).filter((h: any) => {
+          const category = h.category?.toLowerCase() || '';
+          const examType = h.exam_type;
+          
+          if (category.includes('elite')) return true;
+          if (examType === '1. Staatsexamen') return true;
+          if (!examType) return true;
+          
+          return false;
+        });
+      } else if (data.examType === '2. Staatsexamen') {
+        // NOT Elite Kleingruppe AND exam_type = '2. Staatsexamen'
+        filteredDozentHours = (dozentHours || []).filter((h: any) => {
+          const category = h.category?.toLowerCase() || '';
+          const examType = h.exam_type;
+          
+          if (category.includes('elite')) return false;
+          return examType === '2. Staatsexamen';
+        });
+      }
+
       // Calculate total hours per category
-      const regularHours = (participantHours || []).filter((h: any) => !h.teilnehmer?.elite_kleingruppe);
-      const eliteParticipantHours = (participantHours || []).filter((h: any) => h.teilnehmer?.elite_kleingruppe);
-      const eliteUnterrichtHours = (dozentHours || []).filter((h: any) => h.category && h.category.toLowerCase().includes('elite') && !h.category.toLowerCase().includes('korrektur'));
-      const eliteKorrekturHours = (dozentHours || []).filter((h: any) => h.category && h.category.toLowerCase().includes('elite') && h.category.toLowerCase().includes('korrektur'));
-      const sonstigeHours = (dozentHours || []).filter((h: any) => !h.category || !h.category.toLowerCase().includes('elite'));
+      const regularHours = filteredParticipantHours.filter((h: any) => !h.teilnehmer?.elite_kleingruppe);
+      const eliteParticipantHours = filteredParticipantHours.filter((h: any) => h.teilnehmer?.elite_kleingruppe);
+      const eliteUnterrichtHours = filteredDozentHours.filter((h: any) => h.category && h.category.toLowerCase().includes('elite') && !h.category.toLowerCase().includes('korrektur'));
+      const eliteKorrekturHours = filteredDozentHours.filter((h: any) => h.category && h.category.toLowerCase().includes('elite') && h.category.toLowerCase().includes('korrektur'));
+      const sonstigeHours = filteredDozentHours.filter((h: any) => !h.category || !h.category.toLowerCase().includes('elite'));
 
       const totalRegular = regularHours.reduce((sum: number, h: any) => sum + parseFloat(h.hours.toString()), 0);
       const totalElite = eliteParticipantHours.reduce((sum: number, h: any) => sum + parseFloat(h.hours.toString()), 0)
@@ -190,7 +239,8 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
           p_period_start: startDate,
           p_period_end: endDate,
           p_total_amount: totalAmount,
-          p_status: 'draft'
+          p_status: 'draft',
+          p_exam_type: data.examType || null
         });
 
       if (error) throw error;

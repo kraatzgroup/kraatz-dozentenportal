@@ -22,6 +22,7 @@ interface Dozent {
   email: string;
   phone: string;
   legal_areas: string[];
+  exam_types?: string[];
   street: string;
   house_number: string;
   postal_code: string;
@@ -56,6 +57,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
     email: '',
     phone: '',
     legal_areas: [],
+    exam_types: ['1. Staatsexamen'],
     street: '',
     house_number: '',
     postal_code: '',
@@ -170,6 +172,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         email: dozent.email || '',
         phone: dozent.phone || '',
         legal_areas: dozent.legal_areas || [],
+        exam_types: (dozent as any).exam_types || ['1. Staatsexamen'],
         street: dozent.street || '',
         house_number: dozent.house_number || '',
         postal_code: dozent.postal_code || '',
@@ -484,6 +487,15 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
     }
   };
 
+  const handleExamTypeChange = (examType: string, checked: boolean) => {
+    const currentExamTypes = formData.exam_types || [];
+    if (checked) {
+      setFormData({ ...formData, exam_types: [...currentExamTypes, examType] });
+    } else {
+      setFormData({ ...formData, exam_types: currentExamTypes.filter(t => t !== examType) });
+    }
+  };
+
   return (
     <div 
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
@@ -637,6 +649,33 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
                   <span className="ml-2 text-sm text-gray-700">{area}</span>
                 </label>
               ))}
+            </div>
+          </div>
+
+          {/* Exam Types - Checkboxes */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Staatsexamen
+            </label>
+            <div className="space-y-2">
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={(formData.exam_types || []).includes('1. Staatsexamen')}
+                  onChange={(e) => handleExamTypeChange('1. Staatsexamen', e.target.checked)}
+                  className="h-4 w-4 text-primary border-gray-300 rounded focus:ring-primary"
+                />
+                <span className="ml-2 text-sm text-gray-700">1. Staatsexamen</span>
+              </label>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={(formData.exam_types || []).includes('2. Staatsexamen')}
+                  onChange={(e) => handleExamTypeChange('2. Staatsexamen', e.target.checked)}
+                  className="h-4 w-4 text-amber-600 border-gray-300 rounded focus:ring-amber-600"
+                />
+                <span className="ml-2 text-sm text-gray-700">2. Staatsexamen</span>
+              </label>
             </div>
           </div>
 

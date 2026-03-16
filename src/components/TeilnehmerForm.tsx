@@ -21,6 +21,7 @@ interface Teilnehmer {
   dozent_oeffentliches_recht_id: string | null;
   exam_date: string;
   state_law: string;
+  referendariatsstandort: string;
   street: string;
   house_number: string;
   postal_code: string;
@@ -97,6 +98,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
     dozent_oeffentliches_recht_id: null,
     exam_date: '',
     state_law: '',
+    referendariatsstandort: '',
     street: '',
     house_number: '',
     postal_code: '',
@@ -149,6 +151,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
         dozent_oeffentliches_recht_id: teilnehmer.dozent_oeffentliches_recht_id || null,
         exam_date: teilnehmer.exam_date || '',
         state_law: teilnehmer.state_law || '',
+        referendariatsstandort: (teilnehmer as any).referendariatsstandort || '',
         street: (teilnehmer as any).street || '',
         house_number: (teilnehmer as any).house_number || '',
         postal_code: (teilnehmer as any).postal_code || '',
@@ -525,6 +528,47 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
               ))}
             </select>
           </div>
+
+          {/* Referendariatsstandort - Only shown for 2. Staatsexamen */}
+          {formData.study_goal?.includes('2. Staatsexamen') && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Referendariatsstandort
+              </label>
+              <select
+                value={formData.referendariatsstandort}
+                onChange={(e) => setFormData({ ...formData, referendariatsstandort: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+              >
+                <option value="">Bitte auswählen</option>
+                <option value="Stuttgart">Stuttgart</option>
+                <option value="Karlsruhe">Karlsruhe</option>
+                <option value="München">München</option>
+                <option value="Nürnberg">Nürnberg</option>
+                <option value="Bamberg">Bamberg</option>
+                <option value="Berlin (Kammergericht)">Berlin (Kammergericht)</option>
+                <option value="Brandenburg">Brandenburg</option>
+                <option value="Bremen">Bremen</option>
+                <option value="Hamburg">Hamburg</option>
+                <option value="Frankfurt am Main">Frankfurt am Main</option>
+                <option value="Mecklenburg-Vorpommern">Mecklenburg-Vorpommern</option>
+                <option value="Rostock">Rostock</option>
+                <option value="Celle">Celle</option>
+                <option value="Oldenburg">Oldenburg</option>
+                <option value="Braunschweig">Braunschweig</option>
+                <option value="Düsseldorf">Düsseldorf</option>
+                <option value="Hamm">Hamm</option>
+                <option value="Köln">Köln</option>
+                <option value="Koblenz">Koblenz</option>
+                <option value="Zweibrücken">Zweibrücken</option>
+                <option value="Saarbrücken">Saarbrücken</option>
+                <option value="Dresden">Dresden</option>
+                <option value="Naumburg">Naumburg</option>
+                <option value="Schleswig">Schleswig</option>
+                <option value="Jena">Jena</option>
+              </select>
+            </div>
+          )}
 
           {/* Elite-Kleingruppe Section */}
           <div className="space-y-3 p-4 bg-purple-50 rounded-lg border border-purple-200">

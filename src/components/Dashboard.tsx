@@ -13,6 +13,7 @@ import { supabase } from '../lib/supabase';
 import { FileSection } from './FileSection';
 import { ActivitySection } from './ActivitySection';
 import { ParticipantHoursSection } from './ParticipantHoursSection';
+import { SecondExamHoursSection } from './SecondExamHoursSection';
 import { TeilnehmerManagement } from './TeilnehmerManagement';
 import { InvoiceManagement } from './InvoiceManagement';
 import { AvailabilitySection } from './AvailabilitySection';
@@ -108,10 +109,12 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const [activityFormData, setActivityFormData] = useState({
     hours: '',
     date: new Date().toISOString().split('T')[0],
-    description: ''
+    description: '',
+    exam_type: '1. Staatsexamen'
   });
   const [activityRefreshKey, setActivityRefreshKey] = useState(0);
   const [isEliteKleingruppeDozent, setIsEliteKleingruppeDozent] = useState(false);
+  const [userExamTypes, setUserExamTypes] = useState<string[]>([]);
 
   // Derive EK view state from URL
   const isEliteKleingruppeRoute = location.pathname.startsWith('/dashboard/elite-kleingruppe');
@@ -144,6 +147,14 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       setIsEliteKleingruppeDozent((data && data.length > 0) || false);
     };
     if (isDozent) checkEliteKleingruppeDozent();
+
+    // Fetch user exam_types
+    const fetchUserExamTypes = async () => {
+      if (!user) return;
+      const { data } = await supabase.from('profiles').select('exam_types').eq('id', user.id).single();
+      setUserExamTypes(data?.exam_types || ['1. Staatsexamen']);
+    };
+    fetchUserExamTypes();
 
     // Setup message subscription
     const unsubscribe = setupMessageSubscription();
@@ -421,14 +432,16 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       await createDozentHours({
         hours: parseFloat(activityFormData.hours),
         date: activityFormData.date,
-        description: activityFormData.description
+        description: activityFormData.description,
+        exam_type: activityFormData.exam_type
       });
       
       setShowActivityDialog(false);
       setActivityFormData({
         hours: '',
         date: new Date().toISOString().split('T')[0],
-        description: ''
+        description: '',
+        exam_type: '1. Staatsexamen'
       });
     } catch (error) {
       console.error('Error creating activity:', error);
@@ -828,21 +841,37 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
           {selectedFolder && (
             <>
               {isActiveTeilnehmerFolder ? (
-                <ParticipantHoursSection
-                  teilnehmer={teilnehmer}
-                  selectedMonth={selectedMonth}
-                  selectedYear={selectedYear}
-                  onMonthChange={setSelectedMonth}
-                  onYearChange={setSelectedYear}
-                  onShowTeilnehmerManagement={() => setShowTeilnehmerManagement(true)}
-                  onShowHoursDialog={() => setShowHoursDialog(true)}
-                  getCurrentMonthHours={getCurrentMonthHours}
-                  isAdmin={canManageAll}
-                />
+                <div className="space-y-6">
+                  <ParticipantHoursSection
+                    teilnehmer={teilnehmer}
+                    selectedMonth={selectedMonth}
+                    selectedYear={selectedYear}
+                    onMonthChange={setSelectedMonth}
+                    onYearChange={setSelectedYear}
+                    onShowTeilnehmerManagement={() => setShowTeilnehmerManagement(true)}
+                    onShowHoursDialog={() => setShowHoursDialog(true)}
+                    getCurrentMonthHours={getCurrentMonthHours}
+                    isAdmin={canManageAll}
+                  />
+                  {userExamTypes.includes('2. Staatsexamen') && (
+                    <SecondExamHoursSection
+                      teilnehmer={teilnehmer}
+                      selectedMonth={selectedMonth}
+                      selectedYear={selectedYear}
+                      onMonthChange={setSelectedMonth}
+                      onYearChange={setSelectedYear}
+                      onShowTeilnehmerManagement={() => setShowTeilnehmerManagement(true)}
+                      onShowHoursDialog={() => setShowHoursDialog(true)}
+                      getCurrentMonthHours={getCurrentMonthHours}
+                      isAdmin={canManageAll}
+                    />
+                  )}
+                </div>
               ) : isRechnungenFolder && canViewRechnungen ? (
                 <div className="space-y-6">
                   <InvoiceManagement
                     onBack={handleBackToInvoices}
+                    dozentId={user?.id}
                     isAdmin={canManageAll}
                     selectedMonth={selectedMonth}
                     selectedYear={selectedYear}
@@ -1211,6 +1240,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                     <InvoiceManagement
                       onBack={handleBackToInvoices}
+                      dozentId={user?.id}
                       isAdmin={canManageAll}
                     />
                   </div>
@@ -1570,6 +1600,36 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                         required
                       />
                     </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Staatsexamen
+                      </label>
+                      <div className="space-y-2">
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            name="exam_type"
+                            value="1. Staatsexamen"
+                            checked={activityFormData.exam_type === '1. Staatsexamen'}
+                            onChange={(e) => setActivityFormData({ ...activityFormData, exam_type: e.target.value })}
+                            className="h-4 w-4 text-primary focus:ring-primary border-gray-300"
+                          />
+                          <span className="ml-2 text-sm text-gray-700">1. Staatsexamen</span>
+                        </label>
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            name="exam_type"
+                            value="2. Staatsexamen"
+                            checked={activityFormData.exam_type === '2. Staatsexamen'}
+                            onChange={(e) => setActivityFormData({ ...activityFormData, exam_type: e.target.value })}
+                            className="h-4 w-4 text-amber-600 focus:ring-amber-600 border-gray-300"
+                          />
+                          <span className="ml-2 text-sm text-gray-700">2. Staatsexamen</span>
+                        </label>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
@@ -1586,7 +1646,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                       setActivityFormData({
                         hours: '',
                         date: new Date().toISOString().split('T')[0],
-                        description: ''
+                        description: '',
+                        exam_type: '1. Staatsexamen'
                       });
                     }}
                     className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"
