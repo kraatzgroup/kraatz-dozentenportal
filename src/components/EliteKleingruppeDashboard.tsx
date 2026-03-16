@@ -628,6 +628,9 @@ export function EliteKleingruppeDashboard() {
       
       const path = match[1];
       
+      // Extract file extension from path
+      const fileExt = path.split('.').pop()?.toLowerCase() || 'png';
+      
       // Download using Supabase storage API
       const { data, error } = await supabase.storage
         .from(bucket)
@@ -639,11 +642,11 @@ export function EliteKleingruppeDashboard() {
         return;
       }
       
-      // Create download link with correct blob
+      // Create download link with correct blob and file extension
       const downloadUrl = URL.createObjectURL(data);
       const link = document.createElement('a');
       link.href = downloadUrl;
-      link.download = `Zoom_Hintergrund_${index + 1}.png`;
+      link.download = `Zoom_Hintergrund_${index + 1}.${fileExt}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

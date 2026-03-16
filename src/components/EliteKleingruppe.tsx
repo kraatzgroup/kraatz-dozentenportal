@@ -4704,11 +4704,13 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
 
                       // Upload all files
                       for (const file of zoomBgFiles) {
+                        console.log('📤 Uploading file:', file.name, 'Size:', file.size, 'Type:', file.type);
+                        
                         const fileExt = file.name.split('.').pop()?.toLowerCase();
                         const fileName = `zoom_bg_${selectedTeilnehmerForBg.id}_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
                         const filePath = fileName;
 
-                        // Determine content type from file extension
+                        // Determine correct content type from file extension
                         let contentType = 'image/png';
                         if (fileExt === 'jpg' || fileExt === 'jpeg') {
                           contentType = 'image/jpeg';
@@ -4718,29 +4720,54 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                           contentType = 'image/webp';
                         }
 
-                        const { error: uploadError } = await supabase.storage
-                          .from('zoom-backgrounds')
-                          .upload(filePath, file, {
-                            contentType: contentType,
-                            cacheControl: '3600',
-                            upsert: false
-                          });
+                        console.log('📁 Upload path:', filePath, 'Content-Type:', contentType);
 
-                        if (uploadError) throw uploadError;
+                        // Get auth token
+                        const { data: { session } } = await supabase.auth.getSession();
+                        if (!session) {
+                          throw new Error('No active session');
+                        }
+
+                        // Upload directly via REST API to avoid multipart form data corruption
+                        const uploadUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/zoom-backgrounds/${filePath}`;
+                        console.log('📡 Uploading via REST API to:', uploadUrl);
+
+                        const uploadResponse = await fetch(uploadUrl, {
+                          method: 'POST',
+                          headers: {
+                            'Authorization': `Bearer ${session.access_token}`,
+                            'Content-Type': contentType,
+                            'x-upsert': 'false'
+                          },
+                          body: file
+                        });
+
+                        if (!uploadResponse.ok) {
+                          const errorText = await uploadResponse.text();
+                          console.error('❌ Upload error:', uploadResponse.status, errorText);
+                          throw new Error(`Upload failed: ${uploadResponse.status} ${errorText}`);
+                        }
+
+                        const uploadData = await uploadResponse.json();
+                        console.log('✅ Upload successful:', uploadData);
 
                         const { data: { publicUrl } } = supabase.storage
                           .from('zoom-backgrounds')
                           .getPublicUrl(filePath);
 
+                        console.log('🔗 Public URL:', publicUrl);
                         uploadedUrls.push(publicUrl);
                       }
 
                       // Get existing URLs and append new ones
+                      console.log('📋 Fetching existing URLs for teilnehmer:', selectedTeilnehmerForBg.id);
                       const { data: existingData } = await supabase
                         .from('teilnehmer')
                         .select('zoom_background_url')
                         .eq('id', selectedTeilnehmerForBg.id)
                         .single();
+
+                      console.log('📋 Existing data:', existingData);
 
                       let allUrls = uploadedUrls;
                       if (existingData?.zoom_background_url) {
@@ -4755,12 +4782,20 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                         }
                       }
 
+                      console.log('💾 Saving URLs to database:', allUrls);
+                      console.log('💾 JSON stringified:', JSON.stringify(allUrls));
+
                       const { error: updateError } = await supabase
                         .from('teilnehmer')
                         .update({ zoom_background_url: JSON.stringify(allUrls) })
                         .eq('id', selectedTeilnehmerForBg.id);
 
-                      if (updateError) throw updateError;
+                      if (updateError) {
+                        console.error('❌ Database update error:', updateError);
+                        throw updateError;
+                      }
+
+                      console.log('✅ Database updated successfully!');
 
                       alert(`${zoomBgFiles.length} Zoom-Hintergrund(e) erfolgreich hochgeladen!`);
                       setShowZoomBgModal(false);
