@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { LogOut, Settings, Upload, FileText, PenTool, Calendar, CheckCircle, Clock, AlertCircle, Download, ChevronDown, ChevronUp, Users, ChevronLeft, ChevronRight, Lock, Unlock, BookOpen, Award, Video, FolderOpen, Menu, Info, MessageSquare, HelpCircle } from 'lucide-react';
+import { LogOut, Settings, Upload, FileText, PenTool, Calendar, CheckCircle, Clock, AlertCircle, Download, ChevronDown, ChevronUp, Users, ChevronLeft, ChevronRight, Lock, Unlock, BookOpen, Award, Video, FolderOpen, Menu, Info, MessageSquare, HelpCircle, Bell } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
@@ -151,6 +151,10 @@ export function EliteKleingruppeDashboard() {
   const [tempExamDate, setTempExamDate] = useState('');
   const [courseTimes, setCourseTimes] = useState<CourseTime[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showKlausurDetail, setShowKlausurDetail] = useState<Klausur | null>(null);
+  const [showActivityDropdown, setShowActivityDropdown] = useState(false);
+  const [recentActivities, setRecentActivities] = useState<any[]>([]);
+  const activityDropdownRef = useRef<HTMLDivElement>(null);
   const [zoomBackgrounds, setZoomBackgrounds] = useState<string[]>([]);
   const releasesSubscription = useRef<RealtimeChannel | null>(null);
 
@@ -275,6 +279,79 @@ export function EliteKleingruppeDashboard() {
       }
     }
   };
+
+  // Close activity dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (activityDropdownRef.current && !activityDropdownRef.current.contains(event.target as Node)) {
+        setShowActivityDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Fetch recent activities for teilnehmer
+  const fetchRecentActivities = async () => {
+    if (!user) return;
+    try {
+      // Fetch recent klausur submissions
+      const { data: klausurData } = await supabase
+        .from('elite_kleingruppe_klausur_submissions')
+        .select('id, submitted_at, klausur:elite_kleingruppe_klausuren(title)')
+        .eq('teilnehmer_id', teilnehmerId)
+        .order('submitted_at', { ascending: false })
+        .limit(10);
+
+      // Fetch recent file downloads (we'll track views of materials)
+      const { data: releasesData } = await supabase
+        .from('elite_kleingruppe_releases')
+        .select('id, title, release_date, is_released')
+        .eq('elite_kleingruppe_id', teilnehmerEliteKleingruppeId)
+        .eq('is_released', true)
+        .order('release_date', { ascending: false })
+        .limit(5);
+
+      const activities: any[] = [];
+
+      // Add klausur submission activities
+      (klausurData || []).forEach(k => {
+        activities.push({
+          id: `klausur-${k.id}`,
+          type: 'klausur',
+          title: (k.klausur as any)?.title || 'Klausur eingereicht',
+          subtitle: 'Klausur eingereicht',
+          timestamp: k.submitted_at,
+          icon: 'upload'
+        });
+      });
+
+      // Add release activities
+      (releasesData || []).forEach(r => {
+        activities.push({
+          id: `release-${r.id}`,
+          type: 'release',
+          title: r.title,
+          subtitle: 'Neue Einheit verfügbar',
+          timestamp: r.release_date,
+          icon: 'clock'
+        });
+      });
+
+      // Sort by timestamp and take top 15
+      activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setRecentActivities(activities.slice(0, 15));
+    } catch (error) {
+      console.error('Error fetching recent activities:', error);
+    }
+  };
+
+  // Load activities when dropdown opens
+  useEffect(() => {
+    if (showActivityDropdown) {
+      fetchRecentActivities();
+    }
+  }, [showActivityDropdown]);
 
   const saveExamDate = async () => {
     if (!user || !tempExamDate) return;
@@ -887,13 +964,21 @@ export function EliteKleingruppeDashboard() {
               </div>
             </div>
             <div className="hidden md:flex items-center space-x-2 sm:space-x-4">
+              {/* Activity Bell */}
+              <button
+                onClick={() => setShowActivityDropdown(!showActivityDropdown)}
+                className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition relative"
+              >
+                <Bell className="h-5 w-5" />
+              </button>
+              
               {/* Chat */}
               <button
                 onClick={() => navigate('/messages')}
                 className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition relative"
+                title="Chat"
               >
-                <MessageSquare className="h-5 w-5 sm:mr-2" />
-                <span className="hidden sm:inline">Chat</span>
+                <MessageSquare className="h-5 w-5" />
                 {unreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
                     {unreadCount}
@@ -903,20 +988,27 @@ export function EliteKleingruppeDashboard() {
               {/* Einstellungen */}
               <button 
                 onClick={() => setShowSettingsModal(true)}
-                className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition">
-                <Settings className="h-5 w-5 sm:mr-2" />
-                <span className="hidden sm:inline">Einstellungen</span>
+                className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition"
+                title="Einstellungen"
+              >
+                <Settings className="h-5 w-5" />
               </button>
               {/* Abmelden */}
               <button 
                 onClick={signOut}
                 className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-red-500 hover:text-red-700 focus:outline-none transition"
+                title="Abmelden"
               >
-                <LogOut className="h-5 w-5 sm:mr-2" />
-                <span className="hidden sm:inline">Abmelden</span>
+                <LogOut className="h-5 w-5" />
               </button>
             </div>
-            <div className="md:hidden flex items-center">
+            <div className="md:hidden flex items-center space-x-2">
+              <button
+                onClick={() => setShowActivityDropdown(!showActivityDropdown)}
+                className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
+              >
+                <Bell className="h-6 w-6" />
+              </button>
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
@@ -926,6 +1018,48 @@ export function EliteKleingruppeDashboard() {
             </div>
           </div>
         </div>
+        
+        {/* Activity Dropdown - Works on both desktop and mobile */}
+        {showActivityDropdown && (
+          <div className="absolute right-2 top-16 mt-2 w-80 sm:w-96 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-96 overflow-hidden">
+            <div className="p-3 border-b border-gray-200 bg-gray-50">
+              <h3 className="font-semibold text-gray-900 text-sm">Letzte Aktivitäten</h3>
+            </div>
+            <div className="overflow-y-auto max-h-80">
+              {recentActivities.length === 0 ? (
+                <div className="p-4 text-center text-gray-500 text-sm">
+                  Keine Aktivitäten
+                </div>
+              ) : (
+                recentActivities.map((activity) => (
+                  <div key={activity.id} className="p-3 border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    <div className="flex items-start space-x-3">
+                      <div className={`p-2 rounded-lg flex-shrink-0 ${
+                        activity.icon === 'clock' ? 'bg-blue-100' : 'bg-green-100'
+                      }`}>
+                        {activity.icon === 'clock' && <Clock className="h-4 w-4 text-blue-600" />}
+                        {activity.icon === 'upload' && <Upload className="h-4 w-4 text-green-600" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{activity.title}</p>
+                        <p className="text-xs text-gray-500 truncate">{activity.subtitle}</p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {new Date(activity.timestamp).toLocaleDateString('de-DE', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+        
         {/* Mobile menu */}
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-gray-200">

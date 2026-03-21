@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
-import { MessageSquare, LogOut, Settings, FolderIcon, Plus, Edit, Trash2, Users, FileText, User, Clock, Calendar, X, GraduationCap, Check, AlertTriangle, Menu } from 'lucide-react';
+import { MessageSquare, LogOut, Settings, FolderIcon, Plus, Edit, Trash2, Users, FileText, User, Clock, Calendar, X, GraduationCap, Check, AlertTriangle, Menu, Bell, Upload } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useMessageStore } from '../store/messageStore';
 import { useFolderStore } from '../store/folderStore';
@@ -94,6 +94,9 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showBundeslaenderModal, setShowBundeslaenderModal] = useState(false);
   const [selectedBundeslaender, setSelectedBundeslaender] = useState<string[]>([]);
+  const [showActivityDropdown, setShowActivityDropdown] = useState(false);
+  const [recentActivities, setRecentActivities] = useState<any[]>([]);
+  const activityDropdownRef = React.useRef<HTMLDivElement>(null);
   const [hoursFormData, setHoursFormData] = useState({
     teilnehmer_id: '',
     hours: '',
@@ -157,24 +160,81 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     fetchUserExamTypes();
 
     // Setup message subscription
-    const unsubscribe = setupMessageSubscription();
-    
-    // Setup real-time subscriptions
-    const { setupRealtimeSubscription: setupTeilnehmerSub, cleanupSubscription: cleanupTeilnehmerSub } = useTeilnehmerStore.getState();
-    const { setupRealtimeSubscription: setupHoursSub, cleanupSubscription: cleanupHoursSub } = useHoursStore.getState();
-    const { setupRealtimeSubscription: setupFilesSub, cleanupSubscription: cleanupFilesSub } = useFileStore.getState();
-    
-    setupTeilnehmerSub();
-    setupHoursSub();
-    setupFilesSub();
-    
-    return () => {
-      unsubscribe();
-      cleanupTeilnehmerSub();
-      cleanupHoursSub();
-      cleanupFilesSub();
+    const cleanup = setupMessageSubscription();
+    return cleanup;
+  }, [user, fetchFolders, fetchMessages, fetchMonthlySummary, fetchTeilnehmer, fetchTrialLessons, setupMessageSubscription, selectedYear, selectedMonth, isDozent]);
+
+  // Close activity dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (activityDropdownRef.current && !activityDropdownRef.current.contains(event.target as Node)) {
+        setShowActivityDropdown(false);
+      }
     };
-  }, [user, fetchFolders, fetchMessages, fetchTrialLessons, setupMessageSubscription]);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Fetch recent activities for dozent
+  const fetchRecentActivities = async () => {
+    if (!user) return;
+    try {
+      // Fetch recent hours entries
+      const { data: hoursData } = await supabase
+        .from('participant_hours')
+        .select('id, hours, date, description, created_at')
+        .eq('dozent_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      // Fetch recent file uploads
+      const { data: filesData } = await supabase
+        .from('files')
+        .select('id, name, created_at')
+        .eq('uploaded_by', user.id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      const activities: any[] = [];
+
+      // Add hours activities
+      (hoursData || []).forEach(h => {
+        activities.push({
+          id: `hours-${h.id}`,
+          type: 'hours',
+          title: h.description || 'Stunden eingetragen',
+          subtitle: `${h.hours} Stunden`,
+          timestamp: h.created_at,
+          icon: 'clock'
+        });
+      });
+
+      // Add file activities
+      (filesData || []).forEach(f => {
+        activities.push({
+          id: `file-${f.id}`,
+          type: 'file',
+          title: f.name,
+          subtitle: 'Datei hochgeladen',
+          timestamp: f.created_at,
+          icon: 'upload'
+        });
+      });
+
+      // Sort by timestamp and take top 15
+      activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setRecentActivities(activities.slice(0, 15));
+    } catch (error) {
+      console.error('Error fetching recent activities:', error);
+    }
+  };
+
+  // Load activities when dropdown opens
+  useEffect(() => {
+    if (showActivityDropdown) {
+      fetchRecentActivities();
+    }
+  }, [showActivityDropdown]);
 
   // Refetch monthly summary when month/year changes
   useEffect(() => {
@@ -600,12 +660,21 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                     : 'Verfügbarkeit'}
                 </span>
               </button>
+              {/* Activity Bell */}
+              <button
+                onClick={() => setShowActivityDropdown(!showActivityDropdown)}
+                className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition relative"
+                title="Letzte Aktivitäten"
+              >
+                <Bell className="h-5 w-5" />
+              </button>
+              
               <button
                 onClick={() => navigate('/messages')}
                 className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition relative"
+                title="Nachrichten"
               >
-                <MessageSquare className="h-5 w-5 sm:mr-2" />
-                <span className="hidden sm:inline">Nachrichten</span>
+                <MessageSquare className="h-5 w-5" />
                 {unreadMessages.length > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
                     {unreadMessages.length > 99 ? '99+' : unreadMessages.length}
@@ -615,19 +684,25 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
               <button
                 onClick={() => navigate('/settings')}
                 className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition"
+                title="Einstellungen"
               >
-                <Settings className="h-5 w-5 sm:mr-2" />
-                <span className="hidden sm:inline">Einstellungen</span>
+                <Settings className="h-5 w-5" />
               </button>
               <button
                 onClick={handleSignOut}
                 className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-red-500 hover:text-red-700 focus:outline-none transition"
+                title="Abmelden"
               >
-                <LogOut className="h-5 w-5 sm:mr-2" />
-                <span className="hidden sm:inline">Abmelden</span>
+                <LogOut className="h-5 w-5" />
               </button>
             </div>
-            <div className="md:hidden flex items-center">
+            <div className="md:hidden flex items-center space-x-2">
+              <button
+                onClick={() => setShowActivityDropdown(!showActivityDropdown)}
+                className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
+              >
+                <Bell className="h-6 w-6" />
+              </button>
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
@@ -637,6 +712,48 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
             </div>
           </div>
         </div>
+        
+        {/* Activity Dropdown - Works on both desktop and mobile */}
+        {showActivityDropdown && (
+          <div className="absolute right-2 top-16 mt-2 w-80 sm:w-96 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-96 overflow-hidden">
+            <div className="p-3 border-b border-gray-200 bg-gray-50">
+              <h3 className="font-semibold text-gray-900 text-sm">Letzte Aktivitäten</h3>
+            </div>
+            <div className="overflow-y-auto max-h-80">
+              {recentActivities.length === 0 ? (
+                <div className="p-4 text-center text-gray-500 text-sm">
+                  Keine Aktivitäten
+                </div>
+              ) : (
+                recentActivities.map((activity) => (
+                  <div key={activity.id} className="p-3 border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    <div className="flex items-start space-x-3">
+                      <div className={`p-2 rounded-lg flex-shrink-0 ${
+                        activity.icon === 'clock' ? 'bg-blue-100' : 'bg-green-100'
+                      }`}>
+                        {activity.icon === 'clock' && <Clock className="h-4 w-4 text-blue-600" />}
+                        {activity.icon === 'upload' && <Upload className="h-4 w-4 text-green-600" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{activity.title}</p>
+                        <p className="text-xs text-gray-500 truncate">{activity.subtitle}</p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {new Date(activity.timestamp).toLocaleDateString('de-DE', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+        
         {/* Mobile menu */}
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-gray-200">
