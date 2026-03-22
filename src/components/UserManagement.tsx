@@ -63,7 +63,7 @@ export function UserManagement() {
   const [selectedDozentForEdit, setSelectedDozentForEdit] = useState<any>(null);
   const [showTeilnehmerForm, setShowTeilnehmerForm] = useState(false);
   const [selectedTeilnehmerForEdit, setSelectedTeilnehmerForEdit] = useState<any>(null);
-  const [dozenten, setDozenten] = useState<{ id: string; full_name: string }[]>([]);
+  const [dozenten, setDozenten] = useState<{ id: string; full_name: string; legal_areas?: string[] | null }[]>([]);
   const [confirmation, setConfirmation] = useState<ConfirmationState>({
     show: false,
     title: '',
@@ -107,7 +107,7 @@ export function UserManagement() {
     const fetchDozenten = async () => {
       const { data } = await supabase
         .from('profiles')
-        .select('id, full_name')
+        .select('id, full_name, legal_areas')
         .eq('role', 'dozent')
         .order('full_name');
       if (data) setDozenten(data);

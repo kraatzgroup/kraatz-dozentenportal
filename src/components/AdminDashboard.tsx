@@ -187,6 +187,9 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   const [expandedTeilnehmer, setExpandedTeilnehmer] = useState<string | null>(null);
   const [showStundenzettel, setShowStundenzettel] = useState(false);
   const [selectedTeilnehmerForStundenzettel, setSelectedTeilnehmerForStundenzettel] = useState<any>(null);
+  const [dozentPage, setDozentPage] = useState(1);
+  const DOZENT_PER_PAGE = 10;
+  const [dozentSearch, setDozentSearch] = useState('');
   const [showDozentForm, setShowDozentForm] = useState(false);
   const [selectedDozentForEdit, setSelectedDozentForEdit] = useState<any>(null);
   const [showDozentList, setShowDozentList] = useState(false);
@@ -1718,65 +1721,122 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setShowDozentList(true)}
-                    className="flex items-center px-3 py-1.5 sm:px-4 sm:py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm"
+                    className="flex items-center justify-center p-2 lg:px-4 lg:py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm"
+                    title="Liste anzeigen"
                   >
-                    <Users className="h-4 w-4 mr-1 sm:mr-2" />
-                    <span className="hidden sm:inline">Liste anzeigen</span>
-                    <span className="sm:hidden">Liste</span>
+                    <Users className="h-4 w-4 lg:mr-2" />
+                    <span className="hidden lg:inline">Liste anzeigen</span>
                   </button>
                   <button
                     onClick={() => {
                       setSelectedDozentForEdit(null);
                       setShowDozentForm(true);
                     }}
-                    className="flex items-center px-3 py-1.5 sm:px-4 sm:py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors text-sm"
+                    className="flex items-center justify-center p-2 lg:px-4 lg:py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors text-sm"
+                    title="Dozent hinzufügen"
                   >
-                    <Plus className="h-4 w-4 mr-1 sm:mr-2" />
-                    <span className="hidden sm:inline">Dozent hinzufügen</span>
-                    <span className="sm:hidden">Hinzufügen</span>
+                    <Plus className="h-4 w-4 lg:mr-2" />
+                    <span className="hidden lg:inline">Dozent hinzufügen</span>
                   </button>
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {isLoading ? (
-                  <div className="col-span-full flex justify-center py-6 sm:py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                  </div>
-                ) : dozenten.length === 0 ? (
-                  <div className="col-span-full bg-white shadow rounded-lg p-6 text-center text-gray-500">
-                    Keine Dozenten vorhanden
-                  </div>
-                ) : (
-                  dozenten.map((dozent) => (
-                    <DozentCard 
-                      key={dozent.id} 
-                      dozent={dozent} 
-                      userRole={userRole}
-                      preloadedAvailability={dozentAvailability[dozent.id] || null}
-                      onEdit={(d) => {
-                        setSelectedDozentForEdit(d);
-                        setShowDozentForm(true);
-                      }}
-                      onDelete={(d) => {
-                        if (window.confirm(`Möchten Sie "${d.full_name}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) {
-                          handleDeleteDozent(d.id);
-                        }
-                      }}
-                      onFolderClick={(d, folderType) => {
-                        setSelectedDozentForFiles(d);
-                        setSelectedFolderType(folderType);
-                        if (folderType === 'Tätigkeitsbericht') {
-                          setShowDozentTaetigkeitsbericht(true);
-                        } else if (folderType === 'Aktive Teilnehmer') {
-                          setShowDozentTeilnehmer(true);
-                        } else {
-                          setShowDozentFiles(true);
-                        }
-                      }}
-                    />
-                  ))
-                )}
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Dozent suchen..."
+                  value={dozentSearch}
+                  onChange={(e) => { setDozentSearch(e.target.value); setDozentPage(1); }}
+                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
               </div>
+              {(() => {
+                const filteredDozenten = dozentSearch.trim()
+                  ? dozenten.filter(d => d.full_name?.toLowerCase().includes(dozentSearch.toLowerCase()) || d.email?.toLowerCase().includes(dozentSearch.toLowerCase()))
+                  : dozenten;
+                const totalPages = Math.ceil(filteredDozenten.length / DOZENT_PER_PAGE);
+                const paginatedDozenten = filteredDozenten.slice((dozentPage - 1) * DOZENT_PER_PAGE, dozentPage * DOZENT_PER_PAGE);
+                return (
+                  <>
+                    <div className="grid grid-cols-1 gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                      {isLoading ? (
+                        <div className="col-span-full flex justify-center py-6 sm:py-8">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                        </div>
+                      ) : filteredDozenten.length === 0 ? (
+                        <div className="col-span-full bg-white shadow rounded-lg p-6 text-center text-gray-500">
+                          Keine Dozenten vorhanden
+                        </div>
+                      ) : (
+                        paginatedDozenten.map((dozent) => (
+                          <DozentCard 
+                            key={dozent.id} 
+                            dozent={dozent} 
+                            userRole={userRole}
+                            preloadedAvailability={dozentAvailability[dozent.id] || null}
+                            onEdit={(d) => {
+                              setSelectedDozentForEdit(d);
+                              setShowDozentForm(true);
+                            }}
+                            onDelete={(d) => {
+                              if (window.confirm(`Möchten Sie "${d.full_name}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) {
+                                handleDeleteDozent(d.id);
+                              }
+                            }}
+                            onFolderClick={(d, folderType) => {
+                              setSelectedDozentForFiles(d);
+                              setSelectedFolderType(folderType);
+                              if (folderType === 'Tätigkeitsbericht') {
+                                setShowDozentTaetigkeitsbericht(true);
+                              } else if (folderType === 'Aktive Teilnehmer') {
+                                setShowDozentTeilnehmer(true);
+                              } else {
+                                setShowDozentFiles(true);
+                              }
+                            }}
+                          />
+                        ))
+                      )}
+                    </div>
+                    {totalPages > 1 && (
+                      <div className="flex items-center justify-between mt-6">
+                        <span className="text-sm text-gray-500">
+                          {(dozentPage - 1) * DOZENT_PER_PAGE + 1}–{Math.min(dozentPage * DOZENT_PER_PAGE, filteredDozenten.length)} von {filteredDozenten.length}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setDozentPage(p => Math.max(1, p - 1))}
+                            disabled={dozentPage === 1}
+                            className="px-3 py-1.5 text-sm rounded-md border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            Zurück
+                          </button>
+                          {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                            <button
+                              key={page}
+                              onClick={() => setDozentPage(page)}
+                              className={`px-3 py-1.5 text-sm rounded-md ${
+                                page === dozentPage
+                                  ? 'bg-primary text-white'
+                                  : 'border border-gray-300 bg-white hover:bg-gray-50 text-gray-700'
+                              }`}
+                            >
+                              {page}
+                            </button>
+                          ))}
+                          <button
+                            onClick={() => setDozentPage(p => Math.min(totalPages, p + 1))}
+                            disabled={dozentPage === totalPages}
+                            className="px-3 py-1.5 text-sm rounded-md border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            Weiter
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </>
         )}

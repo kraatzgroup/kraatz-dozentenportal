@@ -227,6 +227,33 @@ export function DozentCard({ dozent, userRole, onEdit, onFolderClick, preloadedF
           </div>
         ) : (
           <>
+            {/* Legal Areas Display */}
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center text-sm text-gray-500">
+                <span>Rechtsgebiete</span>
+              </div>
+              <div className="flex items-center gap-1 flex-wrap justify-end">
+                {dozent.legal_areas && dozent.legal_areas.length > 0 ? (
+                  dozent.legal_areas.map((area, idx) => (
+                    <span
+                      key={idx}
+                      className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        area === 'Zivilrecht' ? 'bg-blue-100 text-blue-800' :
+                        area === 'Strafrecht' ? 'bg-red-100 text-red-800' :
+                        'bg-green-100 text-green-800'
+                      }`}
+                    >
+                      {area === 'Zivilrecht' ? 'ZR' : area === 'Strafrecht' ? 'SR' : 'ÖR'}
+                    </span>
+                  ))
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-300">
+                    Nicht angegeben
+                  </span>
+                )}
+              </div>
+            </div>
+
             {/* Availability Badge */}
             <button
               onClick={() => setShowAvailabilityPopup(true)}

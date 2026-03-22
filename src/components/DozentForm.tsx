@@ -1,7 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Save, UserPlus, Camera, Trash2, Users, BookOpen } from 'lucide-react';
+import { X, Save, UserPlus, Camera, Trash2, Users, BookOpen, Upload } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { useToastStore } from '../store/toastStore';
+
+interface ParsedDozent {
+  name: string;
+  email: string;
+  phone: string;
+  legal_areas: string[];
+  title: string;
+  first_name: string;
+  last_name: string;
+}
 
 interface EliteKleingruppe {
   id: string;
@@ -79,6 +90,9 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
   const [eliteAssignments, setEliteAssignments] = useState<Record<string, string[]>>({});
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const organigrammInputRef = useRef<HTMLInputElement>(null);
+  const [parsedDozenten, setParsedDozenten] = useState<ParsedDozent[]>([]);
+  const [showDozentPicker, setShowDozentPicker] = useState(false);
 
   const isEditing = !!dozent?.id;
 
@@ -218,16 +232,247 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
     }
   };
 
+  const handleImportOrganigramm = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
+
+      const dozentMap = new Map<string, ParsedDozent>();
+
+      const parseName = (raw: string): { title: string; firstName: string; lastName: string } => {
+        let name = raw.trim();
+        // Remove annotations like "(ab 01.10.25)"
+        name = name.replace(/\s*\(.*?\)\s*/g, '').trim();
+        const titlePrefixes = ['Dr.', 'Prof.', 'LL.M.', 'Ass. jur.', 'Dipl. jur.', 'RA'];
+        let title = '';
+        for (const prefix of titlePrefixes) {
+          if (name.startsWith(prefix)) {
+            title = prefix;
+            name = name.substring(prefix.length).trim();
+            break;
+          }
+        }
+        const parts = name.split(' ').filter(p => p.length > 0);
+        const firstName = parts[0] || '';
+        const lastName = parts.slice(1).join(' ') || '';
+        return { title, firstName, lastName };
+      };
+
+      const addDozent = (name: string, email: string, phone: string, area: string) => {
+        if (!name || !name.trim()) return;
+        const cleanName = name.replace(/\s*\(.*?\)\s*/g, '').trim();
+        const key = cleanName.toLowerCase();
+        const existing = dozentMap.get(key);
+        if (existing) {
+          if (!existing.legal_areas.includes(area)) {
+            existing.legal_areas.push(area);
+          }
+          if (!existing.email && email) existing.email = email;
+          if (!existing.phone && phone) existing.phone = phone;
+        } else {
+          const { title, firstName, lastName } = parseName(name);
+          dozentMap.set(key, {
+            name: cleanName,
+            email: (email || '').trim(),
+            phone: (phone || '').trim(),
+            legal_areas: [area],
+            title,
+            first_name: firstName,
+            last_name: lastName
+          });
+        }
+      };
+
+      // Sheet 1 (Tabelle1): A-C = Zivilrecht, D-F = Öff. Recht, G-I = Strafrecht
+      const sheet1 = wb.Sheets[wb.SheetNames[0]];
+      if (sheet1) {
+        const getCellStr = (cell: string): string => {
+          const c = sheet1[cell];
+          return c ? String(c.v || '').trim() : '';
+        };
+        for (let row = 4; row <= 50; row++) {
+          const zrName = getCellStr(`A${row}`);
+          const zrEmail = getCellStr(`B${row}`);
+          const zrPhone = getCellStr(`C${row}`);
+          if (zrName) addDozent(zrName, zrEmail, zrPhone, 'Zivilrecht');
+
+          const orName = getCellStr(`D${row}`);
+          const orEmail = getCellStr(`E${row}`);
+          const orPhone = getCellStr(`F${row}`);
+          if (orName) addDozent(orName, orEmail, orPhone, 'Öffentliches Recht');
+
+          const srName = getCellStr(`G${row}`);
+          const srEmail = getCellStr(`H${row}`);
+          const srPhone = getCellStr(`I${row}`);
+          if (srName) addDozent(srName, srEmail, srPhone, 'Strafrecht');
+        }
+      }
+
+      // Sheet 2 (Dozenten unter 50€/Std): A,B,C,D = ZR (Name,Rate,Email,Phone) | E,F,G,H = ÖR | I,J,K,L = SR
+      if (wb.SheetNames.length > 1) {
+        const sheet2 = wb.Sheets[wb.SheetNames[1]];
+        if (sheet2) {
+          const getCellStr2 = (cell: string): string => {
+            const c = sheet2[cell];
+            return c ? String(c.v || '').trim() : '';
+          };
+          for (let row = 4; row <= 30; row++) {
+            const zrName = getCellStr2(`A${row}`);
+            const zrEmail = getCellStr2(`C${row}`);
+            const zrPhone = getCellStr2(`D${row}`);
+            if (zrName) addDozent(zrName, zrEmail, zrPhone, 'Zivilrecht');
+
+            const orName = getCellStr2(`E${row}`);
+            const orEmail = getCellStr2(`G${row}`);
+            const orPhone = getCellStr2(`H${row}`);
+            if (orName) addDozent(orName, orEmail, orPhone, 'Öffentliches Recht');
+
+            const srName = getCellStr2(`I${row}`);
+            const srEmail = getCellStr2(`K${row}`);
+            const srPhone = getCellStr2(`L${row}`);
+            if (srName) addDozent(srName, srEmail, srPhone, 'Strafrecht');
+          }
+        }
+      }
+
+      const dozentList = Array.from(dozentMap.values()).sort((a, b) => a.last_name.localeCompare(b.last_name));
+      setParsedDozenten(dozentList);
+      setShowDozentPicker(true);
+      addToast(`${dozentList.length} Dozenten aus Organigramm geladen`, 'success');
+    } catch (error) {
+      console.error('Error importing organigramm:', error);
+      addToast('Fehler beim Importieren des Organigramms', 'error');
+    }
+
+    if (organigrammInputRef.current) {
+      organigrammInputRef.current.value = '';
+    }
+  };
+
+  const [existingDozentId, setExistingDozentId] = useState<string | null>(null);
+
+  const bulkImportAll = async () => {
+    if (parsedDozenten.length === 0) return;
+    setIsLoading(true);
+
+    try {
+      // Build profiles array for edge function
+      const profiles = parsedDozenten.map(d => ({
+        full_name: d.title ? `${d.title} ${d.first_name} ${d.last_name}`.trim() : `${d.first_name} ${d.last_name}`.trim(),
+        title: d.title || null,
+        first_name: d.first_name,
+        last_name: d.last_name,
+        email: d.email || null,
+        phone: d.phone || null,
+        legal_areas: d.legal_areas,
+      }));
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bulk-import-profiles`;
+      const response = await fetch(edgeFunctionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ profiles }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Import fehlgeschlagen');
+      }
+
+      const parts = [];
+      if (result.created > 0) parts.push(`${result.created} neu angelegt`);
+      if (result.updated > 0) parts.push(`${result.updated} aktualisiert`);
+      if (result.errors > 0) parts.push(`${result.errors} Fehler`);
+      if (result.failedNames?.length > 0) {
+        console.error('Failed imports:', result.failedNames);
+      }
+      addToast(`Import abgeschlossen: ${parts.join(', ')}`, result.errors > 0 ? 'error' : 'success');
+
+      setShowDozentPicker(false);
+      setParsedDozenten([]);
+      onSaved();
+      onClose();
+    } catch (error: any) {
+      console.error('Bulk import error:', error);
+      addToast(`Fehler beim Import: ${error.message}`, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const selectDozentFromList = async (d: ParsedDozent) => {
+    // Check if dozent already exists in DB
+    const fullName = d.title ? `${d.title} ${d.first_name} ${d.last_name}`.trim() : `${d.first_name} ${d.last_name}`.trim();
+    const { data: existing } = await supabase
+      .from('profiles')
+      .select('id, full_name, email, phone, legal_areas, title, street, house_number, postal_code, city, iban, bic, bank_name, tax_id, hourly_rate_unterricht, hourly_rate_elite, hourly_rate_elite_korrektur, hourly_rate_sonstige, exam_types, profile_picture_url')
+      .eq('role', 'dozent')
+      .eq('full_name', fullName)
+      .maybeSingle();
+
+    if (existing) {
+      // Dozent exists → switch to update mode
+      setExistingDozentId(existing.id);
+      setFormData(prev => ({
+        ...prev,
+        title: d.title || prev.title,
+        first_name: d.first_name,
+        last_name: d.last_name,
+        email: d.email || existing.email || prev.email,
+        phone: d.phone || existing.phone || prev.phone,
+        legal_areas: d.legal_areas.length > 0 ? d.legal_areas : (existing.legal_areas || prev.legal_areas),
+        exam_types: existing.exam_types || prev.exam_types,
+        street: existing.street || prev.street,
+        house_number: existing.house_number || prev.house_number,
+        postal_code: existing.postal_code || prev.postal_code,
+        city: existing.city || prev.city,
+        profile_picture_url: existing.profile_picture_url || prev.profile_picture_url,
+        iban: existing.iban || prev.iban,
+        bic: existing.bic || prev.bic,
+        bank_name: existing.bank_name || prev.bank_name,
+        tax_id: existing.tax_id || prev.tax_id,
+        hourly_rate_unterricht: existing.hourly_rate_unterricht ?? prev.hourly_rate_unterricht,
+        hourly_rate_elite: existing.hourly_rate_elite ?? prev.hourly_rate_elite,
+        hourly_rate_elite_korrektur: existing.hourly_rate_elite_korrektur ?? prev.hourly_rate_elite_korrektur,
+        hourly_rate_sonstige: existing.hourly_rate_sonstige ?? prev.hourly_rate_sonstige,
+      }));
+      if (existing.profile_picture_url) {
+        setProfilePicturePreview(existing.profile_picture_url);
+      }
+      setShowDozentPicker(false);
+      addToast(`${d.name} existiert bereits — Daten werden aktualisiert`, 'success');
+    } else {
+      // New dozent
+      setExistingDozentId(null);
+      setFormData(prev => ({
+        ...prev,
+        title: d.title || prev.title,
+        first_name: d.first_name,
+        last_name: d.last_name,
+        email: d.email || prev.email,
+        phone: d.phone || prev.phone,
+        legal_areas: d.legal_areas.length > 0 ? d.legal_areas : prev.legal_areas,
+        hourly_rate_unterricht: prev.hourly_rate_unterricht
+      }));
+      setShowDozentPicker(false);
+      addToast(`${d.name} ausgewählt`, 'success');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.first_name.trim() || !formData.last_name.trim()) {
       addToast('Bitte Vor- und Nachname eingeben', 'error');
-      return;
-    }
-
-    if (!formData.email.trim()) {
-      addToast('Bitte E-Mail-Adresse eingeben', 'error');
       return;
     }
 
@@ -302,7 +547,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         first_name: formData.first_name.trim(),
         last_name: formData.last_name.trim(),
         full_name: fullName,
-        email: formData.email.trim(),
+        email: formData.email.trim() || null,
         phone: formData.phone.trim() || null,
         legal_areas: formData.legal_areas.length > 0 ? formData.legal_areas : null,
         street: formData.street.trim() || null,
@@ -330,7 +575,20 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
 
       let dozentId: string;
 
-      if (isEditing && dozent?.id) {
+      if (existingDozentId) {
+        // Imported dozent that already exists in DB → update
+        dozentId = existingDozentId;
+        const { error } = await supabase
+          .from('profiles')
+          .update(dataToSave)
+          .eq('id', dozentId);
+
+        if (error) throw error;
+
+        // Delete existing elite assignments before saving new ones
+        await supabase.from('elite_kleingruppe_dozenten').delete().eq('dozent_id', dozentId);
+        addToast('Dozent wurde aktualisiert', 'success');
+      } else if (isEditing && dozent?.id) {
         dozentId = dozent.id;
         console.log('🔄 UPDATE - Dozent ID:', dozentId);
         console.log('🔄 UPDATE - Stundensätze:', {
@@ -339,6 +597,49 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
           hourly_rate_elite_korrektur: dataToSave.hourly_rate_elite_korrektur,
           hourly_rate_sonstige: dataToSave.hourly_rate_sonstige
         });
+        
+        // Check if email was added and user account doesn't exist yet
+        const hadNoEmail = !(dozent as any).email;
+        const nowHasEmail = formData.email.trim();
+        let userAccountCreated = false;
+        
+        if (hadNoEmail && nowHasEmail) {
+          // Check if user account exists in auth.users
+          const { data: { user } } = await supabase.auth.admin.getUserById(dozentId);
+          
+          if (!user) {
+            // Create user account via edge function
+            try {
+              const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`;
+              const response = await fetch(edgeFunctionUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                },
+                body: JSON.stringify({
+                  email: formData.email.trim(),
+                  fullName: fullName,
+                  role: 'dozent',
+                  userId: dozentId // Use existing profile ID
+                }),
+              });
+
+              const result = await response.json();
+
+              if (response.ok && result.success) {
+                userAccountCreated = true;
+                console.log('✅ User account created for existing dozent');
+              } else {
+                console.error('Error creating user account:', result);
+                addToast('Hinweis: Profil wurde aktualisiert, aber Benutzeraccount konnte nicht erstellt werden: ' + (result.error || 'Unbekannter Fehler'), 'error');
+              }
+            } catch (err) {
+              console.error('Exception creating user account:', err);
+              addToast('Hinweis: Profil wurde aktualisiert, aber Benutzeraccount konnte nicht erstellt werden', 'error');
+            }
+          }
+        }
         
         const { data: updateResult, error } = await supabase
           .from('profiles')
@@ -356,31 +657,14 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         // Delete existing assignments before saving new ones
         await supabase.from('elite_kleingruppe_dozenten').delete().eq('dozent_id', dozentId);
         
-        addToast('Dozent wurde aktualisiert', 'success');
-      } else {
-        // Create user via create-user edge function
-        const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`;
-        const response = await fetch(edgeFunctionUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            email: formData.email.trim(),
-            fullName: fullName,
-            role: 'dozent'
-          }),
-        });
-
-        const result = await response.json();
-
-        if (!response.ok || !result.success) {
-          console.error('Error creating user via edge function:', result);
-          throw new Error(result.error || 'Fehler beim Erstellen des Benutzerkontos');
+        if (userAccountCreated) {
+          addToast('Dozent wurde aktualisiert und Benutzeraccount wurde erstellt. Einladungs-E-Mail wurde gesendet.', 'success');
+        } else {
+          addToast('Dozent wurde aktualisiert', 'success');
         }
-
-        dozentId = result.userId;
+      } else {
+        // Create profile without user account (email is stored but no login created)
+        dozentId = crypto.randomUUID();
 
         // Upsert profile with additional dozent-specific fields
         // The create-user edge function already created the basic profile,
@@ -397,7 +681,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
           .from('profiles')
           .upsert({
             id: dozentId,
-            email: formData.email.trim(),
+            email: formData.email.trim() || null,
             full_name: fullName,
             role: 'dozent',
             title: dataToSave.title,
@@ -427,7 +711,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         }
         
         console.log('✅ UPSERT SUCCESS - Gespeicherte Stundensätze:', upsertResult);
-        addToast('Dozent wurde hinzugefügt und Einladungs-E-Mail wurde gesendet', 'success');
+        addToast('Dozent wurde hinzugefügt (ohne Benutzerkonto)', 'success');
       }
 
       // Save Elite-Kleingruppe assignments if enabled
@@ -506,20 +790,107 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white">
+        <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white z-10">
           <div className="flex items-center">
             <UserPlus className="h-5 w-5 text-primary mr-2" />
             <h2 className="text-lg font-semibold text-gray-900">
               {isEditing ? 'Dozent bearbeiten' : 'Dozent hinzufügen'}
             </h2>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 text-gray-400 hover:text-gray-600 rounded"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <input
+              ref={organigrammInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleImportOrganigramm}
+              className="hidden"
+            />
+            {!isEditing && (
+              <button
+                type="button"
+                onClick={() => organigrammInputRef.current?.click()}
+                className="p-1 text-gray-400 hover:text-primary rounded transition-colors"
+                title="Organigramm importieren"
+              >
+                <Upload className="h-5 w-5" />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1 text-gray-400 hover:text-gray-600 rounded"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
+
+        {/* Dozent Picker from Organigramm */}
+        {showDozentPicker && parsedDozenten.length > 0 && (
+          <div className="mx-4 mt-4 border border-blue-200 rounded-lg bg-blue-50/50 max-h-80 overflow-y-auto">
+            <div className="sticky top-0 bg-blue-50 px-3 py-2 border-b border-blue-200 flex items-center justify-between z-10">
+              <span className="text-sm font-medium text-blue-900">
+                {parsedDozenten.length} Dozenten gefunden
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={bulkImportAll}
+                  disabled={isLoading}
+                  className="px-3 py-1 text-xs font-medium bg-primary text-white rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-1"
+                >
+                  {isLoading ? (
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
+                  ) : (
+                    <>
+                      <Upload className="h-3 w-3" />
+                      Alle importieren
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDozentPicker(false)}
+                  className="text-blue-400 hover:text-blue-600"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <div className="divide-y divide-blue-100">
+              {parsedDozenten.map((d, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => selectDozentFromList(d)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-blue-100/70 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <span className="text-sm font-medium text-gray-900">
+                      {d.title ? `${d.title} ` : ''}{d.first_name} {d.last_name}
+                    </span>
+                    {d.email && (
+                      <span className="text-xs text-gray-500 ml-2">{d.email}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                    {d.legal_areas.map((area, i) => (
+                      <span
+                        key={i}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                          area === 'Zivilrecht' ? 'bg-blue-100 text-blue-700' :
+                          area === 'Strafrecht' ? 'bg-red-100 text-red-700' :
+                          'bg-green-100 text-green-700'
+                        }`}
+                      >
+                        {area === 'Zivilrecht' ? 'ZR' : area === 'Strafrecht' ? 'SR' : 'ÖR'}
+                      </span>
+                    ))}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
@@ -749,15 +1120,14 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
           {/* Email */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              E-Mail-Adresse *
+              E-Mail-Adresse (optional)
             </label>
             <input
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-              placeholder="email@beispiel.de"
-              required
+              placeholder="dozent@example.com"
             />
           </div>
 

@@ -1,12 +1,25 @@
-import { useState, useEffect } from 'react';
-import { X, Save, UserPlus, MapPin, Trash2, AlertTriangle } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Save, UserPlus, MapPin, Trash2, AlertTriangle, Upload, Calendar, Clock, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { useToastStore } from '../store/toastStore';
+
+interface ImportedLesson {
+  date: string; // YYYY-MM-DD
+  topic: string;
+  hours: number;
+  grade: number | null;
+  legal_area: string; // 'Zivilrecht' | 'Strafrecht' | 'Öffentliches Recht'
+  dozent_name: string;
+  dozent_id: string | null;
+}
 
 interface Teilnehmer {
   id?: string;
   user_id?: string | null;
+  tn_nummer?: string;
   first_name: string;
+  middle_name?: string;
   last_name: string;
   email: string;
   phone: string;
@@ -62,7 +75,7 @@ interface TeilnehmerFormProps {
   onClose: () => void;
   onSaved: () => void;
   onDelete?: (teilnehmer: Teilnehmer) => void;
-  dozenten: { id: string; full_name: string }[];
+  dozenten: { id: string; full_name: string; legal_areas?: string[] | null }[];
 }
 
 interface EliteKleingruppe {
@@ -75,6 +88,11 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
   const [isLoading, setIsLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [eliteKleingruppen, setEliteKleingruppen] = useState<EliteKleingruppe[]>([]);
+  const [tnNummerError, setTnNummerError] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasImportedData = useRef(false);
+  const [importedLessons, setImportedLessons] = useState<ImportedLesson[]>([]);
+  const [showImportedLessons, setShowImportedLessons] = useState(true);
   
   // Get today's date in YYYY-MM-DD format
   const getTodayDate = () => {
@@ -83,7 +101,9 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
   };
   
   const [formData, setFormData] = useState<Teilnehmer>({
+    tn_nummer: '',
     first_name: '',
+    middle_name: '',
     last_name: '',
     email: '',
     phone: '',
@@ -117,6 +137,393 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
 
   const isEditing = !!teilnehmer?.id;
 
+  const findDozentId = (name: string): string | null => {
+    if (!name) return null;
+    const normalized = name.trim().toLowerCase();
+    const match = dozenten.find(d => d.full_name.toLowerCase() === normalized);
+    if (match) return match.id;
+    const partialMatch = dozenten.find(d => {
+      const parts = normalized.split(' ');
+      return parts.every(p => d.full_name.toLowerCase().includes(p));
+    });
+    return partialMatch?.id || null;
+  };
+
+  const parseContractEnd = (text: string): string => {
+    const match = text.match(/bis\s+(\d{2})\.(\d{2})\.(\d{2,4})/);
+    if (match) {
+      const day = match[1];
+      const month = match[2];
+      const year = match[3].length === 2 ? `20${match[3]}` : match[3];
+      return `${year}-${month}-${day}`;
+    }
+    return '';
+  };
+
+  const parseHoursPerMonth = (text: string): number | null => {
+    if (!text) return null;
+    const match = text.match(/(?:mind\.?|mindestens|min\.?|max\.?|maximal)\s*(\d+[,.]?\d*)\s*(?:Std|Stunden)/i);
+    if (match) {
+      return parseFloat(match[1].replace(',', '.'));
+    }
+    // Fallback: try to find any number followed by Std
+    const fallback = text.match(/(\d+[,.]?\d*)\s*(?:Std|Stunden)/i);
+    if (fallback) {
+      return parseFloat(fallback[1].replace(',', '.'));
+    }
+    return null;
+  };
+
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
+
+      // Sheet 1: "Kontaktdaten + Vertragsggst."
+      const contactSheet = wb.Sheets[wb.SheetNames[0]];
+      if (!contactSheet) {
+        addToast('Ungültiges EU-Vorblatt Format', 'error');
+        return;
+      }
+
+      const getCellValue = (sheet: XLSX.WorkSheet, cell: string): string => {
+        const c = sheet[cell];
+        return c ? String(c.v || '').trim() : '';
+      };
+
+      const getCellNumber = (sheet: XLSX.WorkSheet, cell: string): number | null => {
+        const c = sheet[cell];
+        if (!c) return null;
+        const val = typeof c.v === 'number' ? c.v : parseFloat(String(c.v).replace(',', '.'));
+        return isNaN(val) ? null : val;
+      };
+
+      // Parse contact data
+      const totalHours = getCellNumber(contactSheet, 'C3');
+      
+      // Try to find TN number from multiple possible locations
+      let tnRaw = getCellValue(contactSheet, 'D4');
+      if (!tnRaw) tnRaw = getCellValue(contactSheet, 'C4');
+      if (!tnRaw) tnRaw = getCellValue(contactSheet, 'E4');
+      // Also try to extract from filename (e.g. "Trinker, Sarah_TN2729_...")
+      if (!tnRaw) {
+        const fileNameTnMatch = file.name.match(/TN(\d+)/i);
+        if (fileNameTnMatch) tnRaw = fileNameTnMatch[1];
+      }
+      // Clean up: remove "TN" prefix if already present, remove non-digits
+      const tnDigits = tnRaw.replace(/[^0-9]/g, '');
+      const tnNummer = tnDigits ? `TN${tnDigits.padStart(4, '0')}` : formData.tn_nummer;
+      console.log('EU-Vorblatt Import - TN raw:', tnRaw, 'TN parsed:', tnNummer);
+      const fullName = getCellValue(contactSheet, 'C5');
+      const phone = getCellValue(contactSheet, 'C7');
+      const email = getCellValue(contactSheet, 'C9');
+      const stateLaw = getCellValue(contactSheet, 'F9');
+
+      // Parse name into first, middle, and last
+      let firstName = '';
+      let middleName = '';
+      let lastName = '';
+      if (fullName) {
+        const nameParts = fullName.trim().split(/\s+/).filter(p => p.length > 0);
+        if (nameParts.length === 1) {
+          firstName = nameParts[0];
+        } else if (nameParts.length === 2) {
+          firstName = nameParts[0];
+          lastName = nameParts[1];
+        } else {
+          firstName = nameParts[0];
+          lastName = nameParts[nameParts.length - 1];
+          middleName = nameParts.slice(1, -1).join(' ');
+        }
+      }
+
+      // Parse exam date
+      const examDateRaw = getCellValue(contactSheet, 'F8');
+      let examDate = '';
+      if (examDateRaw) {
+        const dateMatch = examDateRaw.match(/(\d{2})\.(\d{2})\.(\d{2,4})/);
+        if (dateMatch) {
+          const year = dateMatch[3].length === 2 ? `20${dateMatch[3]}` : dateMatch[3];
+          examDate = `${year}-${dateMatch[2]}-${dateMatch[1]}`;
+        }
+      }
+
+      // Parse dozent assignments from rows 16-18
+      const dozentAssignments: { name: string; area: string }[] = [];
+      for (let row = 16; row <= 20; row++) {
+        const dozentName = getCellValue(contactSheet, `A${row}`);
+        const areaRaw = getCellValue(contactSheet, `E${row}`);
+        if (dozentName && areaRaw) {
+          dozentAssignments.push({ name: dozentName, area: areaRaw });
+        }
+      }
+
+      // Determine legal areas and dozent IDs
+      const legalAreas: string[] = [];
+      let dozentZivilrechtId: string | null = null;
+      let dozentStrafrechtId: string | null = null;
+      let dozentOeffentlichesRechtId: string | null = null;
+
+      for (const assignment of dozentAssignments) {
+        const areaLower = assignment.area.toLowerCase();
+        if (areaLower.includes('zivil')) {
+          if (!legalAreas.includes('Zivilrecht')) legalAreas.push('Zivilrecht');
+          dozentZivilrechtId = findDozentId(assignment.name);
+        } else if (areaLower.includes('straf')) {
+          if (!legalAreas.includes('Strafrecht')) legalAreas.push('Strafrecht');
+          dozentStrafrechtId = findDozentId(assignment.name);
+        } else if (areaLower.includes('öff') || areaLower.includes('oeff') || areaLower === 'ör') {
+          if (!legalAreas.includes('Öffentliches Recht')) legalAreas.push('Öffentliches Recht');
+          dozentOeffentlichesRechtId = findDozentId(assignment.name);
+        }
+      }
+
+      // Parse per-subject sheets for hours and frequency
+      let hoursZivilrecht: number | null = null;
+      let hoursStrafrechtVal: number | null = null;
+      let hoursOeffentlichesRecht: number | null = null;
+      let frequencyZivilrecht: number | null = null;
+      let frequencyStrafrechtVal: number | null = null;
+      let frequencyOeffentlichesRecht: number | null = null;
+      let contractEnd = '';
+
+      for (let i = 1; i < wb.SheetNames.length; i++) {
+        const sheetName = wb.SheetNames[i].toLowerCase().trim();
+        const sheet = wb.Sheets[wb.SheetNames[i]];
+        if (!sheet) continue;
+
+        const sheetHours = getCellNumber(sheet, 'B3');
+        const headerB1 = getCellValue(sheet, 'B1');
+        const frequencyText = getCellValue(sheet, 'A4') || getCellValue(sheet, 'B4');
+        const maxHours = parseHoursPerMonth(frequencyText);
+
+        if (!contractEnd && headerB1) {
+          contractEnd = parseContractEnd(headerB1);
+        }
+
+        if (sheetName.includes('zivil')) {
+          hoursZivilrecht = sheetHours;
+          frequencyZivilrecht = maxHours;
+          if (!legalAreas.includes('Zivilrecht')) legalAreas.push('Zivilrecht');
+        } else if (sheetName.includes('straf') || sheetName === 'str') {
+          hoursStrafrechtVal = sheetHours;
+          frequencyStrafrechtVal = maxHours;
+          if (!legalAreas.includes('Strafrecht')) legalAreas.push('Strafrecht');
+        } else if (sheetName.includes('ör') || sheetName.includes('öff') || sheetName.includes('oeff') || sheetName === 'ör') {
+          hoursOeffentlichesRecht = sheetHours;
+          frequencyOeffentlichesRecht = maxHours;
+          if (!legalAreas.includes('Öffentliches Recht')) legalAreas.push('Öffentliches Recht');
+        }
+      }
+
+      // Parse lesson entries from each legal area sheet
+      const lessons: ImportedLesson[] = [];
+      const sheetToArea: Record<string, { area: string; dozentName: string; dozentId: string | null }> = {};
+      
+      // Build mapping: sheet name -> legal area + dozent
+      for (const assignment of dozentAssignments) {
+        const areaLower = assignment.area.toLowerCase();
+        if (areaLower.includes('zivil')) {
+          sheetToArea['zivilrecht'] = { area: 'Zivilrecht', dozentName: assignment.name, dozentId: findDozentId(assignment.name) };
+        } else if (areaLower.includes('straf')) {
+          sheetToArea['strafrecht'] = { area: 'Strafrecht', dozentName: assignment.name, dozentId: findDozentId(assignment.name) };
+        } else if (areaLower.includes('öff') || areaLower.includes('oeff') || areaLower === 'ör') {
+          sheetToArea['oeffentliches_recht'] = { area: 'Öffentliches Recht', dozentName: assignment.name, dozentId: findDozentId(assignment.name) };
+        }
+      }
+
+      for (let i = 1; i < wb.SheetNames.length; i++) {
+        const sheetName = wb.SheetNames[i].toLowerCase().trim();
+        const sheet = wb.Sheets[wb.SheetNames[i]];
+        if (!sheet) continue;
+
+        // Determine which legal area this sheet belongs to
+        let areaInfo: { area: string; dozentName: string; dozentId: string | null } | null = null;
+        if (sheetName.includes('zivil')) {
+          areaInfo = sheetToArea['zivilrecht'] || { area: 'Zivilrecht', dozentName: '', dozentId: null };
+        } else if (sheetName.includes('straf') || sheetName === 'str') {
+          areaInfo = sheetToArea['strafrecht'] || { area: 'Strafrecht', dozentName: '', dozentId: null };
+        } else if (sheetName.includes('ör') || sheetName.includes('öff') || sheetName.includes('oeff')) {
+          areaInfo = sheetToArea['oeffentliches_recht'] || { area: 'Öffentliches Recht', dozentName: '', dozentId: null };
+        }
+        if (!areaInfo) continue;
+
+        // Detect column layout from header row 5
+        // Some sheets have: A=Datum, B=Thema, C=Stunden, D=Reststunden
+        // Others have:       A=Datum, B=Thema, C=Note/Noten, D=Stunden, E=Reststunden
+        let hoursCol = 'C';
+        let gradeCol: string | null = null;
+        let hoursColFound = false;
+        for (let col = 0; col <= 6; col++) {
+          const colLetter = String.fromCharCode(65 + col); // A, B, C, D, E, F, G
+          const headerCell = sheet[`${colLetter}5`];
+          if (headerCell) {
+            const headerVal = String(headerCell.v || '').toLowerCase();
+            if (headerVal.includes('note')) {
+              gradeCol = colLetter;
+            } else if (!hoursColFound && (headerVal.includes('stunden') || headerVal.includes('std')) && !headerVal.includes('rest')) {
+              hoursCol = colLetter;
+              hoursColFound = true;
+            }
+          }
+        }
+
+        // Parse lesson rows starting from row 6
+        for (let row = 6; row <= 50; row++) {
+          const dateCell = sheet[`A${row}`];
+          const topicCell = sheet[`B${row}`];
+          const hoursCell = sheet[`${hoursCol}${row}`];
+          const gradeCellVal = gradeCol ? sheet[`${gradeCol}${row}`] : null;
+
+          // Stop at "vom Dozenten" marker or empty date
+          const cellAValue = dateCell ? String(dateCell.v || '') : '';
+          if (cellAValue.toLowerCase().includes('vom dozenten')) break;
+          if (!dateCell && !topicCell && !hoursCell) continue;
+          if (!dateCell) continue;
+
+          // Parse date
+          let dateStr = '';
+          if (dateCell.v instanceof Date) {
+            const d = dateCell.v;
+            dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          } else {
+            const raw = String(dateCell.v || '').trim();
+            // Try DD.MM.YYYY or DD.MM.YY
+            const fullMatch = raw.match(/(\d{1,2})\.(\d{1,2})\.(\d{2,4})/);
+            if (fullMatch) {
+              const year = fullMatch[3].length === 2 ? `20${fullMatch[3]}` : fullMatch[3];
+              dateStr = `${year}-${fullMatch[2].padStart(2, '0')}-${fullMatch[1].padStart(2, '0')}`;
+            } else {
+              // Try DD.MM. format (no year) - assume current year
+              const shortMatch = raw.match(/(\d{1,2})\.(\d{1,2})\./);
+              if (shortMatch) {
+                const year = new Date().getFullYear();
+                dateStr = `${year}-${shortMatch[2].padStart(2, '0')}-${shortMatch[1].padStart(2, '0')}`;
+              }
+            }
+          }
+          if (!dateStr) continue;
+
+          // Parse hours
+          const hours = hoursCell ? (typeof hoursCell.v === 'number' ? hoursCell.v : parseFloat(String(hoursCell.v).replace(',', '.'))) : 0;
+          if (isNaN(hours) || hours <= 0) continue;
+
+          // Parse topic
+          const topic = topicCell ? String(topicCell.v || '').trim() : '';
+
+          // Parse grade if column exists
+          let grade: number | null = null;
+          if (gradeCellVal && gradeCellVal.v !== undefined && gradeCellVal.v !== null && gradeCellVal.v !== '') {
+            const gradeVal = typeof gradeCellVal.v === 'number' ? gradeCellVal.v : parseFloat(String(gradeCellVal.v).replace(',', '.'));
+            if (!isNaN(gradeVal)) grade = gradeVal;
+          }
+
+          lessons.push({
+            date: dateStr,
+            topic,
+            hours,
+            grade,
+            legal_area: areaInfo.area,
+            dozent_name: areaInfo.dozentName,
+            dozent_id: areaInfo.dozentId
+          });
+        }
+      }
+
+      console.log('Imported lessons:', lessons);
+      setImportedLessons(lessons);
+      if (lessons.length > 0) {
+        setShowImportedLessons(true);
+      }
+
+      // Validate: check if imported hours exceed booked hours per legal area
+      const importedHoursPerArea: Record<string, number> = {};
+      for (const lesson of lessons) {
+        importedHoursPerArea[lesson.legal_area] = (importedHoursPerArea[lesson.legal_area] || 0) + lesson.hours;
+      }
+      const bookedPerArea: Record<string, number | null> = {
+        'Zivilrecht': hoursZivilrecht,
+        'Öffentliches Recht': hoursOeffentlichesRecht,
+        'Strafrecht': hoursStrafrechtVal,
+      };
+      const warnings: string[] = [];
+      for (const [area, imported] of Object.entries(importedHoursPerArea)) {
+        const booked = bookedPerArea[area];
+        if (booked && imported > booked) {
+          warnings.push(`${area}: ${imported} Std. geleistet, aber nur ${booked} Std. gebucht`);
+        }
+      }
+      if (warnings.length > 0) {
+        addToast(`⚠️ Stunden überschritten!\n${warnings.join('\n')}`, 'error');
+      }
+
+      // Parse contract start from filename
+      let contractStart = getTodayDate();
+      const fileNameMatch = file.name.match(/(\d{2})\.(\d{2})\.(\d{2,4})-(\d{2})\.(\d{2})\.(\d{2,4})/);
+      if (fileNameMatch) {
+        const startYear = fileNameMatch[3].length === 2 ? `20${fileNameMatch[3]}` : fileNameMatch[3];
+        contractStart = `${startYear}-${fileNameMatch[2]}-${fileNameMatch[1]}`;
+      }
+
+      setFormData(prev => ({
+        ...prev,
+        tn_nummer: tnNummer || prev.tn_nummer,
+        first_name: firstName || prev.first_name,
+        middle_name: middleName || prev.middle_name,
+        last_name: lastName || prev.last_name,
+        email: email || prev.email,
+        phone: phone || prev.phone,
+        state_law: stateLaw || prev.state_law,
+        booked_hours: totalHours ?? prev.booked_hours,
+        contract_start: contractStart,
+        contract_end: contractEnd || prev.contract_end,
+        exam_date: examDate || prev.exam_date,
+        legal_areas: legalAreas.length > 0 ? legalAreas : prev.legal_areas,
+        dozent_zivilrecht_id: dozentZivilrechtId ?? prev.dozent_zivilrecht_id,
+        dozent_strafrecht_id: dozentStrafrechtId ?? prev.dozent_strafrecht_id,
+        dozent_oeffentliches_recht_id: dozentOeffentlichesRechtId ?? prev.dozent_oeffentliches_recht_id,
+        hours_zivilrecht: hoursZivilrecht ?? prev.hours_zivilrecht,
+        hours_strafrecht: hoursStrafrechtVal ?? prev.hours_strafrecht,
+        hours_oeffentliches_recht: hoursOeffentlichesRecht ?? prev.hours_oeffentliches_recht,
+        frequency_type: 'monthly',
+        frequency_hours_zivilrecht: frequencyZivilrecht ?? prev.frequency_hours_zivilrecht,
+        frequency_hours_strafrecht: frequencyStrafrechtVal ?? prev.frequency_hours_strafrecht,
+        frequency_hours_oeffentliches_recht: frequencyOeffentlichesRecht ?? prev.frequency_hours_oeffentliches_recht,
+      }));
+
+      const unmatchedDozenten = dozentAssignments.filter(a => !findDozentId(a.name));
+      if (unmatchedDozenten.length > 0) {
+        addToast(`Dozenten nicht gefunden: ${unmatchedDozenten.map(d => d.name).join(', ')}. Bitte manuell zuweisen.`, 'error');
+      }
+
+      // Mark that data was imported to prevent auto-fetch from overwriting
+      hasImportedData.current = true;
+      
+      addToast('EU-Vorblatt erfolgreich importiert', 'success');
+    } catch (error) {
+      console.error('Error importing Excel:', error);
+      addToast('Fehler beim Importieren der Excel-Datei', 'error');
+    }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Backspace' && (e.target as HTMLElement).tagName !== 'INPUT' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   useEffect(() => {
     const fetchEliteKleingruppen = async () => {
       const { data, error } = await supabase
@@ -134,9 +541,37 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
   }, []);
 
   useEffect(() => {
+    const fetchNextTnNummer = async () => {
+      // Skip auto-fetch if data was imported from Excel
+      if (hasImportedData.current) return;
+      
+      if (!isEditing && !teilnehmer) {
+        try {
+          const { data, error } = await supabase.rpc('get_next_tn_nummer');
+          if (error) {
+            console.error('Error fetching next TN number:', error);
+            setFormData(prev => ({ ...prev, tn_nummer: 'TN0001' }));
+          } else if (data) {
+            setFormData(prev => ({ ...prev, tn_nummer: data }));
+          } else {
+            setFormData(prev => ({ ...prev, tn_nummer: 'TN0001' }));
+          }
+        } catch (err) {
+          console.error('Exception fetching next TN number:', err);
+          setFormData(prev => ({ ...prev, tn_nummer: 'TN0001' }));
+        }
+      }
+    };
+    
+    fetchNextTnNummer();
+  }, [isEditing, teilnehmer]);
+
+  useEffect(() => {
     if (teilnehmer) {
       setFormData({
+        tn_nummer: (teilnehmer as any).tn_nummer || '',
         first_name: teilnehmer.first_name || '',
+        middle_name: (teilnehmer as any).middle_name || '',
         last_name: teilnehmer.last_name || '',
         email: teilnehmer.email || '',
         phone: (teilnehmer as any).phone || '',
@@ -170,11 +605,52 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
     }
   }, [teilnehmer]);
 
+  const validateTnNummer = async (tnNummer: string): Promise<boolean> => {
+    if (!tnNummer) {
+      setTnNummerError('TN-Nummer ist erforderlich');
+      return false;
+    }
+
+    const tnPattern = /^TN[0-9]{4}$/;
+    if (!tnPattern.test(tnNummer)) {
+      setTnNummerError('TN-Nummer muss im Format TNXXXX sein (z.B. TN0001)');
+      return false;
+    }
+
+    if (!isEditing || tnNummer !== teilnehmer?.tn_nummer) {
+      const { data, error } = await supabase
+        .from('teilnehmer')
+        .select('id')
+        .eq('tn_nummer', tnNummer)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error checking TN number:', error);
+        setTnNummerError('Fehler beim Überprüfen der TN-Nummer');
+        return false;
+      }
+
+      if (data) {
+        setTnNummerError('Diese TN-Nummer existiert bereits');
+        return false;
+      }
+    }
+
+    setTnNummerError('');
+    return true;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.first_name.trim() || !formData.last_name.trim()) {
       addToast('Bitte Vor- und Nachname eingeben', 'error');
+      return;
+    }
+
+    const isTnNummerValid = await validateTnNummer(formData.tn_nummer || '');
+    if (!isTnNummerValid) {
+      addToast('Bitte gültige TN-Nummer eingeben', 'error');
       return;
     }
 
@@ -225,7 +701,9 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
       }
       
       const dataToSave = {
+        tn_nummer: formData.tn_nummer?.trim() || null,
         first_name: formData.first_name.trim(),
+        middle_name: formData.middle_name?.trim() || null,
         last_name: formData.last_name.trim(),
         name: fullName,
         email: formData.email.trim() || null,
@@ -258,6 +736,8 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
         updated_at: new Date().toISOString()
       };
 
+      let savedTeilnehmerId: string | null = null;
+
       if (isEditing && teilnehmer?.id) {
         const { error } = await supabase
           .from('teilnehmer')
@@ -265,6 +745,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
           .eq('id', teilnehmer.id);
 
         if (error) throw error;
+        savedTeilnehmerId = teilnehmer.id;
         addToast('Teilnehmer wurde aktualisiert', 'success');
       } else {
         // For Elite-Kleingruppe participants, create user account first
@@ -310,6 +791,13 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                 console.error('Error updating teilnehmer data:', updateError);
                 addToast('Benutzer erstellt, aber einige Daten konnten nicht gespeichert werden', 'error');
               } else {
+                // Get the created teilnehmer ID
+                const { data: createdTn } = await supabase
+                  .from('teilnehmer')
+                  .select('id')
+                  .eq('email', formData.email)
+                  .maybeSingle();
+                savedTeilnehmerId = createdTn?.id || null;
                 addToast('Elite-Teilnehmer wurde erfolgreich erstellt und Einladungs-E-Mail wurde gesendet', 'success');
               }
             } else {
@@ -318,16 +806,51 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
           }
         } else {
           // Regular teilnehmer without user account
+          const newId = crypto.randomUUID();
           const { error } = await supabase
             .from('teilnehmer')
             .insert({
               ...dataToSave,
-              id: crypto.randomUUID(),
+              id: newId,
               created_at: new Date().toISOString()
             });
 
           if (error) throw error;
+          savedTeilnehmerId = newId;
           addToast('Teilnehmer wurde hinzugefügt', 'success');
+        }
+      }
+
+      // Insert imported lessons into participant_hours
+      if (importedLessons.length > 0 && savedTeilnehmerId) {
+        const hoursToInsert = importedLessons
+          .filter(lesson => lesson.dozent_id) // Only insert lessons with matched dozent
+          .map(lesson => ({
+            teilnehmer_id: savedTeilnehmerId!,
+            dozent_id: lesson.dozent_id!,
+            hours: lesson.hours,
+            date: lesson.date,
+            description: lesson.topic + (lesson.grade !== null ? ` (Note: ${lesson.grade})` : ''),
+            legal_area: lesson.legal_area
+          }));
+
+        if (hoursToInsert.length > 0) {
+          const { error: hoursError } = await supabase
+            .from('participant_hours')
+            .insert(hoursToInsert);
+
+          if (hoursError) {
+            console.error('Error inserting imported hours:', hoursError);
+            addToast(`Teilnehmer gespeichert, aber ${hoursToInsert.length} Stunden konnten nicht importiert werden: ${hoursError.message}`, 'error');
+          } else {
+            addToast(`${hoursToInsert.length} Einheiten wurden in die Tätigkeitsberichte übertragen`, 'success');
+          }
+        }
+
+        // Warn about unmatched dozent lessons
+        const unmatchedLessons = importedLessons.filter(l => !l.dozent_id);
+        if (unmatchedLessons.length > 0) {
+          addToast(`${unmatchedLessons.length} Einheiten konnten nicht übertragen werden (Dozent nicht zugeordnet)`, 'error');
         }
       }
 
@@ -344,11 +867,9 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
   return (
     <div 
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-      onClick={onClose}
     >
       <div 
         className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center">
@@ -357,17 +878,74 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
               {isEditing ? 'Teilnehmer bearbeiten' : 'Neuen Teilnehmer hinzufügen'}
             </h2>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 text-gray-400 hover:text-gray-600 rounded"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleImportExcel}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="p-1 text-gray-400 hover:text-primary rounded transition-colors"
+              title="EU-Vorblatt importieren"
+            >
+              <Upload className="h-5 w-5" />
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1 text-gray-400 hover:text-gray-600 rounded"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          {/* TN-Nummer Field */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              TN-Nummer *
+            </label>
+            <input
+              type="text"
+              value={formData.tn_nummer || ''}
+              onChange={async (e) => {
+                const value = e.target.value.toUpperCase();
+                setFormData({ ...formData, tn_nummer: value });
+                if (value) {
+                  await validateTnNummer(value);
+                } else {
+                  setTnNummerError('');
+                }
+              }}
+              onBlur={() => {
+                if (formData.tn_nummer) {
+                  validateTnNummer(formData.tn_nummer);
+                }
+              }}
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:border-transparent ${
+                tnNummerError 
+                  ? 'border-red-300 focus:ring-red-500' 
+                  : 'border-gray-300 focus:ring-primary'
+              }`}
+              placeholder="TN0001"
+              required
+              maxLength={6}
+              pattern="TN[0-9]{4}"
+            />
+            {tnNummerError && (
+              <p className="mt-1 text-sm text-red-600">{tnNummerError}</p>
+            )}
+            <p className="mt-1 text-xs text-gray-500">
+              Format: TNXXXX (z.B. TN0001, TN0002)
+            </p>
+          </div>
+
           {/* Name Fields */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Vorname *
@@ -379,6 +957,18 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 placeholder="Max"
                 required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Zweitname
+              </label>
+              <input
+                type="text"
+                value={formData.middle_name || ''}
+                onChange={(e) => setFormData({ ...formData, middle_name: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                placeholder="Maria"
               />
             </div>
             <div>
@@ -669,6 +1259,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                       <input
                         type="number"
                         min="0"
+                        step="0.25"
                         max={formData.booked_hours || undefined}
                         value={formData.hours_zivilrecht ?? ''}
                         onChange={(e) => setFormData({ ...formData, hours_zivilrecht: e.target.value ? parseFloat(e.target.value) : null })}
@@ -685,6 +1276,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                       <input
                         type="number"
                         min="0"
+                        step="0.25"
                         max={formData.booked_hours || undefined}
                         value={formData.hours_strafrecht ?? ''}
                         onChange={(e) => setFormData({ ...formData, hours_strafrecht: e.target.value ? parseFloat(e.target.value) : null })}
@@ -701,6 +1293,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                       <input
                         type="number"
                         min="0"
+                        step="0.25"
                         max={formData.booked_hours || undefined}
                         value={formData.hours_oeffentliches_recht ?? ''}
                         onChange={(e) => setFormData({ ...formData, hours_oeffentliches_recht: e.target.value ? parseFloat(e.target.value) : null })}
@@ -815,8 +1408,9 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
             <input
               type="number"
               min="0"
-              value={formData.booked_hours || ''}
-              onChange={(e) => setFormData({ ...formData, booked_hours: e.target.value ? parseInt(e.target.value) : null })}
+              step="0.25"
+              value={formData.booked_hours ?? ''}
+              onChange={(e) => setFormData({ ...formData, booked_hours: e.target.value ? parseFloat(e.target.value) : null })}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
               placeholder="Stundenanzahl"
             />
@@ -838,7 +1432,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                   >
                     <option value="">Kein Dozent zugewiesen</option>
-                    {dozenten.map((d) => (
+                    {dozenten.filter(d => d.legal_areas?.includes('Zivilrecht')).map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.full_name}
                       </option>
@@ -856,7 +1450,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                   >
                     <option value="">Kein Dozent zugewiesen</option>
-                    {dozenten.map((d) => (
+                    {dozenten.filter(d => d.legal_areas?.includes('Strafrecht')).map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.full_name}
                       </option>
@@ -874,12 +1468,97 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                   >
                     <option value="">Kein Dozent zugewiesen</option>
-                    {dozenten.map((d) => (
+                    {dozenten.filter(d => d.legal_areas?.includes('Öffentliches Recht')).map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.full_name}
                       </option>
                     ))}
                   </select>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Imported Lessons Preview */}
+          {importedLessons.length > 0 && (
+            <div className="border border-blue-200 rounded-lg bg-blue-50/50">
+              <button
+                type="button"
+                onClick={() => setShowImportedLessons(!showImportedLessons)}
+                className="w-full flex items-center justify-between p-3 text-left hover:bg-blue-100/50 rounded-t-lg transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-900">
+                    Importierte Einheiten ({importedLessons.length})
+                  </span>
+                  <span className="text-xs text-blue-600">
+                    {importedLessons.reduce((sum, l) => sum + l.hours, 0)} Std. gesamt
+                  </span>
+                </div>
+                {showImportedLessons ? (
+                  <ChevronUp className="h-4 w-4 text-blue-600" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-blue-600" />
+                )}
+              </button>
+              
+              {showImportedLessons && (
+                <div className="px-3 pb-3 space-y-3">
+                  {/* Group by legal area */}
+                  {['Zivilrecht', 'Strafrecht', 'Öffentliches Recht'].map(area => {
+                    const areaLessons = importedLessons.filter(l => l.legal_area === area);
+                    if (areaLessons.length === 0) return null;
+                    const dozentName = areaLessons[0].dozent_name;
+                    const dozentMatched = areaLessons[0].dozent_id !== null;
+                    const totalHoursArea = areaLessons.reduce((sum, l) => sum + l.hours, 0);
+                    
+                    return (
+                      <div key={area} className="bg-white rounded-md border border-gray-200 overflow-hidden">
+                        <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-200">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                              area === 'Zivilrecht' ? 'bg-blue-100 text-blue-800' :
+                              area === 'Strafrecht' ? 'bg-red-100 text-red-800' :
+                              'bg-green-100 text-green-800'
+                            }`}>
+                              {area}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              {dozentName}
+                              {!dozentMatched && dozentName && (
+                                <span className="text-amber-600 ml-1">(nicht zugeordnet)</span>
+                              )}
+                            </span>
+                          </div>
+                          <span className="text-xs font-medium text-gray-700">{totalHoursArea} Std.</span>
+                        </div>
+                        <div className="divide-y divide-gray-100">
+                          {areaLessons.map((lesson, idx) => (
+                            <div key={idx} className="flex items-center justify-between px-3 py-1.5 text-xs">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Calendar className="h-3 w-3 text-gray-400 flex-shrink-0" />
+                                <span className="text-gray-600 flex-shrink-0">
+                                  {new Date(lesson.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                                </span>
+                                <span className="text-gray-900 truncate">{lesson.topic}</span>
+                                {lesson.grade !== null && (
+                                  <span className="text-gray-500 flex-shrink-0">Note: {lesson.grade}</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                                <Clock className="h-3 w-3 text-gray-400" />
+                                <span className="font-medium text-gray-700">{lesson.hours} Std.</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <p className="text-xs text-blue-600 italic">
+                    Diese Einheiten werden beim Speichern in die Tätigkeitsberichte der Dozenten übertragen.
+                  </p>
                 </div>
               )}
             </div>

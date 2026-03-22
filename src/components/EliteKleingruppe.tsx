@@ -183,6 +183,17 @@ interface ScheduledRelease {
   dozent_id: string | null;
   event_type: EventType;
   end_date: string | null;
+  is_canceled: boolean;
+  canceled_at: string | null;
+  canceled_reason: string | null;
+  canceled_by: string | null;
+  is_rescheduled: boolean;
+  rescheduled_at: string | null;
+  rescheduled_to_date: string | null;
+  rescheduled_to_start_time: string | null;
+  rescheduled_to_end_time: string | null;
+  rescheduled_reason: string | null;
+  rescheduled_by: string | null;
 }
 
 interface Klausur {
@@ -419,12 +430,43 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   const [showManageBgModal, setShowManageBgModal] = useState(false);
   const [existingBackgrounds, setExistingBackgrounds] = useState<string[]>([]);
 
+  // Delete/Cancel and Reschedule state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+  const [selectedReleaseForAction, setSelectedReleaseForAction] = useState<ScheduledRelease | null>(null);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [notifyParticipants, setNotifyParticipants] = useState(true);
+  const [rescheduleReason, setRescheduleReason] = useState('');
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleStartTime, setRescheduleStartTime] = useState('');
+  const [rescheduleEndTime, setRescheduleEndTime] = useState('');
+
+  // Pagination state
+  const [einheitenCurrentPage, setEinheitenCurrentPage] = useState(1);
+  const [sonstigesCurrentPage, setSonstigesCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // Reschedule confirmation state (for edit modal)
+  const [showRescheduleConfirmModal, setShowRescheduleConfirmModal] = useState(false);
+  const [notifyParticipantsReschedule, setNotifyParticipantsReschedule] = useState(true);
+  const [pendingUpdateData, setPendingUpdateData] = useState<any>(null);
+  const [isSendingEmails, setIsSendingEmails] = useState(false);
+
   useEffect(() => {
     fetchData();
     if (!isAdmin && user) {
       fetchDozentLegalAreas();
     }
   }, [user, isAdmin]);
+
+  // Reset pagination when search or filter changes
+  useEffect(() => {
+    setEinheitenCurrentPage(1);
+  }, [einheitenSearchQuery, legalAreaFilter]);
+
+  useEffect(() => {
+    setSonstigesCurrentPage(1);
+  }, []);
 
   const fetchDozentLegalAreas = async () => {
     if (!user) return;
@@ -814,7 +856,10 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   const releasesByDate = useMemo(() => {
     const map = new Map<string, ScheduledRelease[]>();
     
-    for (const release of filteredReleases) {
+    // Admins should see ALL releases in calendar, non-admins see filtered releases
+    const calendarReleases = isAdmin ? scheduledReleases : filteredReleases;
+    
+    for (const release of calendarReleases) {
       if (!release.end_date) {
         // Single day event
         const existing = map.get(release.release_date) || [];
@@ -835,7 +880,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
     }
     
     return map;
-  }, [filteredReleases]);
+  }, [filteredReleases, scheduledReleases, isAdmin]);
 
   // Optimized getReleasesForDate using the lookup map
   const getReleasesForDate = (date: Date) => {
@@ -1057,16 +1102,6 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
     } catch (error) { console.error('Error toggling release:', error); }
   };
 
-  const handleDeleteRelease = async (release: ScheduledRelease) => {
-    if (!confirm(`Möchten Sie die Einheit "${release.title}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) {
-      return;
-    }
-    try {
-      await supabase.from('elite_kleingruppe_releases').delete().eq('id', release.id);
-      setExpandedRelease(null);
-      fetchData();
-    } catch (error) { console.error('Error deleting release:', error); }
-  };
 
   const openEditReleaseModal = (release: ScheduledRelease) => {
     setEditingRelease(release);
@@ -1091,26 +1126,43 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   const handleUpdateRelease = async () => {
     if (!editingRelease || !selectedDate) return;
     
-    try {
-      const updateData = {
-        release_date: selectedDate.toISOString().split('T')[0],
-        title: releaseTitle,
-        description: releaseDescription || null,
-        material_ids: selectedMaterials,
-        folder_ids: selectedFolders,
-        legal_area: releaseLegalArea || null,
-        unit_type: releaseUnitType || null,
-        duration_minutes: releaseUnitType ? getUnitDurationFromSettings(unitDurations, releaseUnitType) : null,
-        start_time: releaseStartTime || null,
-        end_time: releaseEndTime || null,
-        zoom_link: releaseZoomLink || null,
-        klausur_folder_id: releaseKlausurFolderId || null,
-        solution_material_ids: releaseSolutionMaterialIds,
-        solution_release_date: solutionReleaseMode === 'custom' && customSolutionReleaseDate ? customSolutionReleaseDate : null,
-        solution_release_time: solutionReleaseMode === 'custom' && customSolutionReleaseTime ? customSolutionReleaseTime : null,
-        elite_kleingruppe_id: selectedEliteGroupId || (eliteGroups.length === 1 ? eliteGroups[0].id : null)
-      };
+    const newDate = selectedDate.toISOString().split('T')[0];
+    const dateChanged = newDate !== editingRelease.release_date;
+    const startTimeChanged = releaseStartTime !== editingRelease.start_time?.slice(0, 5);
+    const endTimeChanged = releaseEndTime !== editingRelease.end_time?.slice(0, 5);
+    
+    const updateData = {
+      release_date: newDate,
+      title: releaseTitle,
+      description: releaseDescription || null,
+      material_ids: selectedMaterials,
+      folder_ids: selectedFolders,
+      legal_area: releaseLegalArea || null,
+      unit_type: releaseUnitType || null,
+      duration_minutes: releaseUnitType ? getUnitDurationFromSettings(unitDurations, releaseUnitType) : null,
+      start_time: releaseStartTime || null,
+      end_time: releaseEndTime || null,
+      zoom_link: releaseZoomLink || null,
+      klausur_folder_id: releaseKlausurFolderId || null,
+      solution_material_ids: releaseSolutionMaterialIds,
+      solution_release_date: solutionReleaseMode === 'custom' && customSolutionReleaseDate ? customSolutionReleaseDate : null,
+      solution_release_time: solutionReleaseMode === 'custom' && customSolutionReleaseTime ? customSolutionReleaseTime : null,
+      elite_kleingruppe_id: selectedEliteGroupId || (eliteGroups.length === 1 ? eliteGroups[0].id : null)
+    };
 
+    // If date or time changed, show reschedule confirmation modal
+    if (dateChanged || startTimeChanged || endTimeChanged) {
+      setPendingUpdateData(updateData);
+      setNotifyParticipantsReschedule(true);
+      setShowEditModal(false); // Close edit modal first
+      setTimeout(() => {
+        setShowRescheduleConfirmModal(true);
+      }, 100); // Small delay to ensure edit modal closes first
+      return;
+    }
+
+    // No date/time change, proceed with normal update
+    try {
       const { error } = await supabase
         .from('elite_kleingruppe_releases')
         .update(updateData)
@@ -1123,6 +1175,286 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       fetchData();
     } catch (error) {
       console.error('Error updating release:', error);
+    }
+  };
+
+  const confirmRescheduleUpdate = async () => {
+    if (!editingRelease || !pendingUpdateData || !user) return;
+    
+    try {
+      setIsSendingEmails(true);
+      
+      const rescheduleData = {
+        ...pendingUpdateData,
+        is_rescheduled: true,
+        rescheduled_at: new Date().toISOString(),
+        rescheduled_to_date: pendingUpdateData.release_date,
+        rescheduled_to_start_time: pendingUpdateData.start_time,
+        rescheduled_to_end_time: pendingUpdateData.end_time,
+        rescheduled_reason: notifyParticipantsReschedule ? 'Terminänderung' : null,
+        rescheduled_by: user.id
+      };
+
+      const { error } = await supabase
+        .from('elite_kleingruppe_releases')
+        .update(rescheduleData)
+        .eq('id', editingRelease.id);
+
+      if (error) throw error;
+
+      // Send notification emails to participants if requested
+      if (notifyParticipantsReschedule) {
+        try {
+          // Get all participants for this elite group
+          const { data: participants, error: participantsError } = await supabase
+            .from('teilnehmer')
+            .select('email, first_name, name')
+            .eq('elite_kleingruppe_id', editingRelease.elite_kleingruppe_id || selectedEliteGroupId);
+
+          if (participantsError) throw participantsError;
+
+          // Get dozent email if assigned
+          let dozentEmail = null;
+          if (editingRelease.dozent_id) {
+            const { data: dozentData } = await supabase
+              .from('profiles')
+              .select('email, first_name, last_name')
+              .eq('id', editingRelease.dozent_id)
+              .single();
+            dozentEmail = dozentData;
+          }
+
+          // Get admin emails
+          const { data: admins } = await supabase
+            .from('profiles')
+            .select('email, first_name, last_name')
+            .eq('role', 'admin');
+
+          // Format dates and times
+          const formatDate = (dateStr: string) => {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          };
+
+          const oldDate = formatDate(editingRelease.release_date);
+          const newDate = formatDate(pendingUpdateData.release_date);
+          const oldTime = editingRelease.start_time && editingRelease.end_time 
+            ? `${editingRelease.start_time.slice(0, 5)}-${editingRelease.end_time.slice(0, 5)}`
+            : '';
+          const newTime = pendingUpdateData.start_time && pendingUpdateData.end_time
+            ? `${pendingUpdateData.start_time.slice(0, 5)}-${pendingUpdateData.end_time.slice(0, 5)}`
+            : '';
+
+          // Combine all recipients
+          const allRecipients = [
+            ...(participants || []).map(p => ({ email: p.email, name: p.name || p.first_name || 'Teilnehmer' })),
+            ...(dozentEmail ? [{ email: dozentEmail.email, name: `${dozentEmail.first_name} ${dozentEmail.last_name}` }] : []),
+            ...(admins || []).map(a => ({ email: a.email, name: `${a.first_name} ${a.last_name}` }))
+          ];
+
+          // Send email to each recipient
+          const emailPromises = allRecipients.map(recipient => 
+            fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reschedule-event-notify`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+              },
+              body: JSON.stringify({
+                teilnehmerEmail: recipient.email,
+                teilnehmerName: recipient.name,
+                eventTitle: editingRelease.title,
+                oldDate,
+                oldTime,
+                newDate,
+                newTime,
+                legalArea: editingRelease.legal_area || 'Allgemein',
+                rescheduleReason: 'Terminänderung'
+              })
+            })
+          );
+
+          await Promise.all(emailPromises);
+          console.log(`Reschedule notification emails sent to ${allRecipients.length} recipients (participants, dozent, admins)`);
+        } catch (emailError) {
+          console.error('Error sending reschedule notification emails:', emailError);
+          // Don't fail the whole operation if emails fail
+        }
+      }
+
+      setIsSendingEmails(false);
+      setShowRescheduleConfirmModal(false);
+      setShowEditModal(false);
+      setEditingRelease(null);
+      setPendingUpdateData(null);
+      fetchData();
+    } catch (error) {
+      console.error('Error rescheduling release:', error);
+      setIsSendingEmails(false);
+    }
+  };
+
+  const openDeleteModal = (release: ScheduledRelease) => {
+    setSelectedReleaseForAction(release);
+    setDeleteReason('');
+    setNotifyParticipants(true);
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteOrCancel = async () => {
+    if (!selectedReleaseForAction || !user) return;
+    
+    try {
+      setIsSendingEmails(true);
+      
+      if (notifyParticipants) {
+        // Cancel (mark as canceled, keep in database for participants to see)
+        const { error } = await supabase
+          .from('elite_kleingruppe_releases')
+          .update({
+            is_canceled: true,
+            canceled_at: new Date().toISOString(),
+            canceled_reason: deleteReason.trim() || null,
+            canceled_by: user.id
+          })
+          .eq('id', selectedReleaseForAction.id);
+
+        if (error) throw error;
+
+        // Send notification emails to participants
+        try {
+          // Get all participants for this elite group
+          const { data: participants, error: participantsError } = await supabase
+            .from('teilnehmer')
+            .select('email, first_name, name')
+            .eq('elite_kleingruppe_id', selectedReleaseForAction.elite_kleingruppe_id || selectedEliteGroupId);
+
+          if (participantsError) throw participantsError;
+
+          // Get dozent email if assigned
+          let dozentEmail = null;
+          if (selectedReleaseForAction.dozent_id) {
+            const { data: dozentData } = await supabase
+              .from('profiles')
+              .select('email, first_name, last_name')
+              .eq('id', selectedReleaseForAction.dozent_id)
+              .single();
+            dozentEmail = dozentData;
+          }
+
+          // Get admin emails
+          const { data: admins } = await supabase
+            .from('profiles')
+            .select('email, first_name, last_name')
+            .eq('role', 'admin');
+
+          // Format date and time
+          const formatDate = (dateStr: string) => {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          };
+
+          const eventDate = formatDate(selectedReleaseForAction.release_date);
+          const eventTime = selectedReleaseForAction.start_time && selectedReleaseForAction.end_time
+            ? `${selectedReleaseForAction.start_time.slice(0, 5)}-${selectedReleaseForAction.end_time.slice(0, 5)}`
+            : '';
+
+          // Combine all recipients
+          const allRecipients = [
+            ...(participants || []).map(p => ({ email: p.email, name: p.name || p.first_name || 'Teilnehmer' })),
+            ...(dozentEmail ? [{ email: dozentEmail.email, name: `${dozentEmail.first_name} ${dozentEmail.last_name}` }] : []),
+            ...(admins || []).map(a => ({ email: a.email, name: `${a.first_name} ${a.last_name}` }))
+          ];
+
+          // Send email to each recipient
+          const emailPromises = allRecipients.map(recipient => 
+            fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cancel-event-notify`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+              },
+              body: JSON.stringify({
+                teilnehmerEmail: recipient.email,
+                teilnehmerName: recipient.name,
+                eventTitle: selectedReleaseForAction.title,
+                eventDate,
+                eventTime,
+                legalArea: selectedReleaseForAction.legal_area || 'Allgemein',
+                cancelReason: deleteReason.trim() || undefined
+              })
+            })
+          );
+
+          await Promise.all(emailPromises);
+          console.log(`Cancel notification emails sent to ${allRecipients.length} recipients (participants, dozent, admins)`);
+        } catch (emailError) {
+          console.error('Error sending cancel notification emails:', emailError);
+          // Don't fail the whole operation if emails fail
+        }
+      } else {
+        // Delete (remove completely from database)
+        const { error } = await supabase
+          .from('elite_kleingruppe_releases')
+          .delete()
+          .eq('id', selectedReleaseForAction.id);
+
+        if (error) throw error;
+      }
+
+      setIsSendingEmails(false);
+      setShowDeleteModal(false);
+      setSelectedReleaseForAction(null);
+      setDeleteReason('');
+      setNotifyParticipants(true);
+      setExpandedRelease(null);
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting/canceling release:', error);
+      setIsSendingEmails(false);
+    }
+  };
+
+  const openRescheduleModal = (release: ScheduledRelease) => {
+    setSelectedReleaseForAction(release);
+    setRescheduleReason('');
+    setRescheduleDate(release.release_date);
+    setRescheduleStartTime(release.start_time?.slice(0, 5) || '09:00');
+    setRescheduleEndTime(release.end_time?.slice(0, 5) || '11:30');
+    setShowRescheduleModal(true);
+  };
+
+  const handleRescheduleRelease = async () => {
+    if (!selectedReleaseForAction || !user || !rescheduleDate) return;
+    
+    try {
+      const { error } = await supabase
+        .from('elite_kleingruppe_releases')
+        .update({
+          is_rescheduled: true,
+          rescheduled_at: new Date().toISOString(),
+          rescheduled_to_date: rescheduleDate,
+          rescheduled_to_start_time: rescheduleStartTime || null,
+          rescheduled_to_end_time: rescheduleEndTime || null,
+          rescheduled_reason: rescheduleReason.trim() || null,
+          rescheduled_by: user.id,
+          release_date: rescheduleDate,
+          start_time: rescheduleStartTime || null,
+          end_time: rescheduleEndTime || null
+        })
+        .eq('id', selectedReleaseForAction.id);
+
+      if (error) throw error;
+
+      setShowRescheduleModal(false);
+      setSelectedReleaseForAction(null);
+      setRescheduleReason('');
+      setRescheduleDate('');
+      setRescheduleStartTime('');
+      setRescheduleEndTime('');
+      fetchData();
+    } catch (error) {
+      console.error('Error rescheduling release:', error);
     }
   };
 
@@ -1383,14 +1715,35 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
               }
               
               const editable = canEditRelease(release);
+              
+              // Override styling for canceled or rescheduled appointments
+              let finalBgColor = bgColor;
+              let finalTextColor = textColor;
+              let statusIcon = null;
+              
+              if (release.is_canceled) {
+                finalBgColor = 'bg-red-100 line-through';
+                finalTextColor = 'text-red-600';
+                statusIcon = '❌';
+              } else if (release.is_rescheduled) {
+                finalBgColor = 'bg-purple-100';
+                finalTextColor = 'text-purple-700';
+                statusIcon = '📅';
+              }
+              
               return (
                 <div 
                   key={release.id} 
                   onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }}
-                  className={`text-xs px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 ${!editable ? 'opacity-60' : ''} ${bgColor} ${textColor}`} 
-                  title={editable ? release.title : `${release.title} (nur Ansicht)`}
+                  className={`text-xs px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 ${!editable ? 'opacity-60' : ''} ${finalBgColor} ${finalTextColor}`} 
+                  title={
+                    release.is_canceled ? `${release.title} (ABGESAGT${release.canceled_reason ? ': ' + release.canceled_reason : ''})` :
+                    release.is_rescheduled ? `${release.title} (VERSCHOBEN auf ${release.rescheduled_to_date}${release.rescheduled_reason ? ': ' + release.rescheduled_reason : ''})` :
+                    editable ? release.title : `${release.title} (nur Ansicht)`
+                  }
                 >
-                  {release.is_released ? <Unlock className="h-3 w-3 inline mr-1" /> : <Lock className="h-3 w-3 inline mr-1" />}
+                  {statusIcon && <span className="mr-0.5">{statusIcon}</span>}
+                  {!statusIcon && (release.is_released ? <Unlock className="h-3 w-3 inline mr-1" /> : <Lock className="h-3 w-3 inline mr-1" />)}
                   {release.event_type === 'einheit' && legalAreaAbbr && <span className="font-semibold">[{legalAreaAbbr}] </span>}
                   {release.title}
                 </div>
@@ -1516,7 +1869,10 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
               </div>
             </div>
             {(() => {
-              let einheitenReleases = filteredReleases.filter(r => r.event_type === 'einheit' && (legalAreaFilter === 'alle' || r.legal_area === legalAreaFilter));
+              // When searching with 'alle' filter, search across ALL releases, not just dozent-filtered ones
+              const baseReleases = (legalAreaFilter === 'alle' || einheitenSearchQuery.trim()) ? scheduledReleases : filteredReleases;
+              
+              let einheitenReleases = baseReleases.filter(r => r.event_type === 'einheit' && (legalAreaFilter === 'alle' || r.legal_area === legalAreaFilter));
               
               // Apply search filter
               if (einheitenSearchQuery.trim()) {
@@ -1530,11 +1886,19 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
               if (einheitenReleases.length === 0) {
                 return <div className="p-8 text-center"><Calendar className="h-12 w-12 text-gray-300 mx-auto mb-4" /><h4 className="text-lg font-medium text-gray-900 mb-2">Keine Einheiten geplant</h4><p className="text-gray-500">Klicken Sie auf ein Datum im Kalender, um Materialien für eine Einheit freizugeben.</p></div>;
               }
+
+              // Pagination logic
+              const totalPages = Math.ceil(einheitenReleases.length / itemsPerPage);
+              const startIndex = (einheitenCurrentPage - 1) * itemsPerPage;
+              const endIndex = startIndex + itemsPerPage;
+              const paginatedReleases = einheitenReleases.slice(startIndex, endIndex);
+
               return (
+                <>
                 <ul className="divide-y divide-gray-200">
-                  {einheitenReleases.map(release => (
+                  {paginatedReleases.map(release => (
                   <li key={release.id} className="p-4">
-                    <div className="flex items-center justify-between cursor-pointer" onClick={() => setExpandedRelease(expandedRelease === release.id ? null : release.id)}>
+                    <div className="flex items-center justify-between cursor-pointer" onClick={() => openEditReleaseModal(release)}>
                       <div className="flex items-center">
                         <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
                           release.legal_area === 'Zivilrecht' ? (release.is_released ? 'bg-blue-100' : 'bg-blue-50') :
@@ -1610,14 +1974,34 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                           {release.folder_ids.map(id => { const f = folders.find(x => x.id === id); return f ? <span key={id} className="inline-flex items-center px-2 py-1 bg-blue-100 rounded text-xs"><FolderOpen className="h-3 w-3 mr-1" />{f.name}</span> : null; })}
                         </div>
                         {canEditRelease(release) && (
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-blue-100 text-blue-700 hover:bg-blue-200">
                               <Edit2 className="h-4 w-4 mr-1" />Bearbeiten
                             </button>
                             <button onClick={(e) => { e.stopPropagation(); handleToggleRelease(release); }} className={"inline-flex items-center px-3 py-1.5 rounded text-sm " + (release.is_released ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200')}>{release.is_released ? <><Lock className="h-4 w-4 mr-1" />Sperren</> : <><Unlock className="h-4 w-4 mr-1" />Jetzt freigeben</>}</button>
-                            <button onClick={(e) => { e.stopPropagation(); handleDeleteRelease(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-red-100 text-red-700 hover:bg-red-200">
-                              <Trash2 className="h-4 w-4 mr-1" />Löschen
+                            {!release.is_canceled && (
+                              <button onClick={(e) => { e.stopPropagation(); openRescheduleModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-purple-100 text-purple-700 hover:bg-purple-200">
+                                <Calendar className="h-4 w-4 mr-1" />Verschieben
+                              </button>
+                            )}
+                            <button onClick={(e) => { e.stopPropagation(); openDeleteModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-red-100 text-red-700 hover:bg-red-200">
+                              <X className="h-4 w-4 mr-1" />Absagen
                             </button>
+                          </div>
+                        )}
+                        {release.is_canceled && (
+                          <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                            <p className="text-sm font-medium text-red-800">❌ Abgesagt</p>
+                            {release.canceled_reason && <p className="text-xs text-red-600 mt-1">Grund: {release.canceled_reason}</p>}
+                            {release.canceled_at && <p className="text-xs text-red-500 mt-1">Abgesagt am: {new Date(release.canceled_at).toLocaleString('de-DE')}</p>}
+                          </div>
+                        )}
+                        {release.is_rescheduled && (
+                          <div className="mt-2 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                            <p className="text-sm font-medium text-purple-800">📅 Verschoben</p>
+                            {release.rescheduled_to_date && <p className="text-xs text-purple-600 mt-1">Neuer Termin: {formatDate(release.rescheduled_to_date)} {release.rescheduled_to_start_time && release.rescheduled_to_end_time ? `${release.rescheduled_to_start_time} - ${release.rescheduled_to_end_time}` : ''}</p>}
+                            {release.rescheduled_reason && <p className="text-xs text-purple-600 mt-1">Grund: {release.rescheduled_reason}</p>}
+                            {release.rescheduled_at && <p className="text-xs text-purple-500 mt-1">Verschoben am: {new Date(release.rescheduled_at).toLocaleString('de-DE')}</p>}
                           </div>
                         )}
                       </div>
@@ -1625,6 +2009,59 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                   </li>
                   ))}
                 </ul>
+                {/* Pagination Controls */}
+                {(() => {
+                  let einheitenReleases = filteredReleases.filter(r => r.event_type === 'einheit' && (legalAreaFilter === 'alle' || r.legal_area === legalAreaFilter));
+                  if (einheitenSearchQuery.trim()) {
+                    const query = einheitenSearchQuery.toLowerCase();
+                    einheitenReleases = einheitenReleases.filter(r => 
+                      r.title.toLowerCase().includes(query) || 
+                      r.description?.toLowerCase().includes(query)
+                    );
+                  }
+                  const totalPages = Math.ceil(einheitenReleases.length / itemsPerPage);
+                  if (totalPages <= 1) return null;
+                  
+                  return (
+                    <div className="p-4 border-t border-gray-200 flex items-center justify-between">
+                      <div className="text-sm text-gray-500">
+                        Zeige {((einheitenCurrentPage - 1) * itemsPerPage) + 1} bis {Math.min(einheitenCurrentPage * itemsPerPage, einheitenReleases.length)} von {einheitenReleases.length} Einheiten
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setEinheitenCurrentPage(p => Math.max(1, p - 1))}
+                          disabled={einheitenCurrentPage === 1}
+                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Zurück
+                        </button>
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                            <button
+                              key={page}
+                              onClick={() => setEinheitenCurrentPage(page)}
+                              className={`px-3 py-1.5 text-sm rounded-lg ${
+                                page === einheitenCurrentPage
+                                  ? 'bg-primary text-white'
+                                  : 'border border-gray-300 hover:bg-gray-50'
+                              }`}
+                            >
+                              {page}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          onClick={() => setEinheitenCurrentPage(p => Math.min(totalPages, p + 1))}
+                          disabled={einheitenCurrentPage === totalPages}
+                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Weiter
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+                </>
               );
             })()}
           </div>
@@ -1640,9 +2077,17 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
               if (sonstigesReleases.length === 0) {
                 return <div className="p-8 text-center text-gray-500">Keine weiteren Ereignisse geplant</div>;
               }
+
+              // Pagination logic
+              const totalPages = Math.ceil(sonstigesReleases.length / itemsPerPage);
+              const startIndex = (sonstigesCurrentPage - 1) * itemsPerPage;
+              const endIndex = startIndex + itemsPerPage;
+              const paginatedSonstiges = sonstigesReleases.slice(startIndex, endIndex);
+
               return (
+                <>
                 <ul className="divide-y divide-gray-200">
-                  {sonstigesReleases.map(release => {
+                  {paginatedSonstiges.map(release => {
                     const eventTypeConfig = {
                       'ferien': { icon: '🌞', label: 'Ferien', color: 'bg-orange-100 text-orange-800' },
                       'dozent_verhinderung': { icon: '🚫', label: 'Dozent verhindert', color: 'bg-red-100 text-red-800' },
@@ -1652,7 +2097,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     
                     return (
                       <li key={release.id} className="p-4">
-                        <div className="flex items-center justify-between cursor-pointer" onClick={() => setExpandedRelease(expandedRelease === release.id ? null : release.id)}>
+                        <div className="flex items-center justify-between cursor-pointer" onClick={() => openEditReleaseModal(release)}>
                           <div className="flex items-center">
                             <div className={`h-10 w-10 rounded-full flex items-center justify-center ${config.color}`}>
                               <span className="text-xl">{config.icon}</span>
@@ -1684,16 +2129,36 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                           <div className="mt-4 pl-14 space-y-4">
                             {release.description && <p className="text-sm text-gray-600">{release.description}</p>}
                             {canEditRelease(release) && (
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-blue-100 text-blue-700 hover:bg-blue-200">
                                   <Edit2 className="h-4 w-4 mr-1" />Bearbeiten
                                 </button>
                                 <button onClick={(e) => { e.stopPropagation(); handleToggleRelease(release); }} className={`inline-flex items-center px-3 py-1.5 rounded text-sm ${release.is_released ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}>
                                   {release.is_released ? <><Lock className="h-4 w-4 mr-1" />Deaktivieren</> : <><Unlock className="h-4 w-4 mr-1" />Aktivieren</>}
                                 </button>
-                                <button onClick={(e) => { e.stopPropagation(); handleDeleteRelease(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-red-100 text-red-700 hover:bg-red-200">
-                                  <Trash2 className="h-4 w-4 mr-1" />Löschen
+                                {!release.is_canceled && (
+                                  <button onClick={(e) => { e.stopPropagation(); openRescheduleModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-purple-100 text-purple-700 hover:bg-purple-200">
+                                    <Calendar className="h-4 w-4 mr-1" />Verschieben
+                                  </button>
+                                )}
+                                <button onClick={(e) => { e.stopPropagation(); openDeleteModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-red-100 text-red-700 hover:bg-red-200">
+                                  <X className="h-4 w-4 mr-1" />Absagen
                                 </button>
+                              </div>
+                            )}
+                            {release.is_canceled && (
+                              <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                <p className="text-sm font-medium text-red-800">❌ Abgesagt</p>
+                                {release.canceled_reason && <p className="text-xs text-red-600 mt-1">Grund: {release.canceled_reason}</p>}
+                                {release.canceled_at && <p className="text-xs text-red-500 mt-1">Abgesagt am: {new Date(release.canceled_at).toLocaleString('de-DE')}</p>}
+                              </div>
+                            )}
+                            {release.is_rescheduled && (
+                              <div className="mt-2 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                                <p className="text-sm font-medium text-purple-800">📅 Verschoben</p>
+                                {release.rescheduled_to_date && <p className="text-xs text-purple-600 mt-1">Neuer Termin: {formatDate(release.rescheduled_to_date)} {release.rescheduled_to_start_time && release.rescheduled_to_end_time ? `${release.rescheduled_to_start_time} - ${release.rescheduled_to_end_time}` : ''}</p>}
+                                {release.rescheduled_reason && <p className="text-xs text-purple-600 mt-1">Grund: {release.rescheduled_reason}</p>}
+                                {release.rescheduled_at && <p className="text-xs text-purple-500 mt-1">Verschoben am: {new Date(release.rescheduled_at).toLocaleString('de-DE')}</p>}
                               </div>
                             )}
                           </div>
@@ -1702,6 +2167,52 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     );
                   })}
                 </ul>
+                {/* Pagination Controls */}
+                {(() => {
+                  const sonstigesReleases = filteredReleases.filter(r => r.event_type !== 'einheit');
+                  const totalPages = Math.ceil(sonstigesReleases.length / itemsPerPage);
+                  if (totalPages <= 1) return null;
+                  
+                  return (
+                    <div className="p-4 border-t border-gray-200 flex items-center justify-between">
+                      <div className="text-sm text-gray-500">
+                        Zeige {((sonstigesCurrentPage - 1) * itemsPerPage) + 1} bis {Math.min(sonstigesCurrentPage * itemsPerPage, sonstigesReleases.length)} von {sonstigesReleases.length} Ereignissen
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setSonstigesCurrentPage(p => Math.max(1, p - 1))}
+                          disabled={sonstigesCurrentPage === 1}
+                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Zurück
+                        </button>
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                            <button
+                              key={page}
+                              onClick={() => setSonstigesCurrentPage(page)}
+                              className={`px-3 py-1.5 text-sm rounded-lg ${
+                                page === sonstigesCurrentPage
+                                  ? 'bg-primary text-white'
+                                  : 'border border-gray-300 hover:bg-gray-50'
+                              }`}
+                            >
+                              {page}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          onClick={() => setSonstigesCurrentPage(p => Math.min(totalPages, p + 1))}
+                          disabled={sonstigesCurrentPage === totalPages}
+                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Weiter
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+                </>
               );
             })()}
           </div>
@@ -2782,6 +3293,231 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         </div>
       )}
 
+      {/* Delete/Cancel Modal */}
+      {showDeleteModal && selectedReleaseForAction && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4">
+            <div className="fixed inset-0 bg-black/50" onClick={() => setShowDeleteModal(false)} />
+            <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Termin löschen</h3>
+                <button onClick={() => setShowDeleteModal(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <p className="text-sm font-medium text-gray-900">{selectedReleaseForAction.title}</p>
+                <p className="text-xs text-gray-500">{formatDate(selectedReleaseForAction.release_date)} {selectedReleaseForAction.start_time && selectedReleaseForAction.end_time ? `${selectedReleaseForAction.start_time} - ${selectedReleaseForAction.end_time}` : ''}</p>
+              </div>
+              <div className="space-y-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <label className="flex items-start cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={notifyParticipants}
+                      onChange={(e) => setNotifyParticipants(e.target.checked)}
+                      className="mt-1 h-4 w-4 text-primary border-gray-300 rounded focus:ring-primary"
+                    />
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-gray-900">Teilnehmer benachrichtigen</p>
+                      <p className="text-xs text-gray-600 mt-1">
+                        {notifyParticipants 
+                          ? 'Der Termin wird als abgesagt markiert und bleibt für Teilnehmer sichtbar im Kalender.'
+                          : 'Der Termin wird komplett gelöscht und ist nicht mehr sichtbar.'}
+                      </p>
+                    </div>
+                  </label>
+                </div>
+                {notifyParticipants && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Grund für die Absage (optional)</label>
+                    <textarea 
+                      value={deleteReason} 
+                      onChange={(e) => setDeleteReason(e.target.value)} 
+                      placeholder="z.B. Krankheit, Feiertag, etc." 
+                      rows={3} 
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                    />
+                  </div>
+                )}
+                {!notifyParticipants && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <p className="text-sm text-red-800">⚠️ Der Termin wird permanent gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.</p>
+                  </div>
+                )}
+              </div>
+              <div className="mt-6 flex justify-end space-x-3">
+                <button 
+                  onClick={() => setShowDeleteModal(false)} 
+                  disabled={isSendingEmails}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Abbrechen
+                </button>
+                <button 
+                  onClick={handleDeleteOrCancel} 
+                  disabled={isSendingEmails}
+                  className={`px-4 py-2 text-white rounded-lg flex items-center disabled:opacity-50 disabled:cursor-not-allowed ${notifyParticipants ? 'bg-orange-600 hover:bg-orange-700' : 'bg-red-600 hover:bg-red-700'}`}
+                >
+                  {isSendingEmails ? (
+                    <>
+                      <span className="animate-spin inline-block h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></span>
+                      E-Mails werden versendet...
+                    </>
+                  ) : (
+                    notifyParticipants ? 'Termin absagen' : 'Termin löschen'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reschedule Confirmation Modal (for Edit Modal date/time changes) */}
+      {showRescheduleConfirmModal && editingRelease && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4">
+            <div className="fixed inset-0 bg-black/50" onClick={() => setShowRescheduleConfirmModal(false)} />
+            <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Terminänderung bestätigen</h3>
+                <button onClick={() => setShowRescheduleConfirmModal(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <p className="text-sm font-medium text-gray-900">{editingRelease.title}</p>
+                <p className="text-xs text-gray-500">
+                  Alt: {formatDate(editingRelease.release_date)} {editingRelease.start_time && editingRelease.end_time ? `${editingRelease.start_time.slice(0, 5)} - ${editingRelease.end_time.slice(0, 5)}` : ''}
+                </p>
+                {pendingUpdateData && (
+                  <p className="text-xs text-purple-600 mt-1">
+                    Neu: {formatDate(pendingUpdateData.release_date)} {pendingUpdateData.start_time && pendingUpdateData.end_time ? `${pendingUpdateData.start_time.slice(0, 5)} - ${pendingUpdateData.end_time.slice(0, 5)}` : ''}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <label className="flex items-start cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={notifyParticipantsReschedule}
+                      onChange={(e) => setNotifyParticipantsReschedule(e.target.checked)}
+                      className="mt-1 h-4 w-4 text-primary border-gray-300 rounded focus:ring-primary"
+                    />
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-gray-900">Teilnehmer über Terminänderung benachrichtigen</p>
+                      <p className="text-xs text-gray-600 mt-1">
+                        {notifyParticipantsReschedule 
+                          ? 'Die Terminänderung wird als Verschiebung markiert und Teilnehmer werden informiert.'
+                          : 'Die Änderung wird ohne Benachrichtigung gespeichert.'}
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end space-x-3">
+                <button 
+                  onClick={() => setShowRescheduleConfirmModal(false)} 
+                  disabled={isSendingEmails}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Abbrechen
+                </button>
+                <button 
+                  onClick={confirmRescheduleUpdate} 
+                  disabled={isSendingEmails}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                  {isSendingEmails ? (
+                    <>
+                      <span className="animate-spin inline-block h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></span>
+                      E-Mails werden versendet...
+                    </>
+                  ) : (
+                    'Änderung speichern'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reschedule Modal */}
+      {showRescheduleModal && selectedReleaseForAction && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4">
+            <div className="fixed inset-0 bg-black/50" onClick={() => setShowRescheduleModal(false)} />
+            <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Termin verschieben</h3>
+                <button onClick={() => setShowRescheduleModal(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <p className="text-sm font-medium text-gray-900">{selectedReleaseForAction.title}</p>
+                <p className="text-xs text-gray-500">Aktuell: {formatDate(selectedReleaseForAction.release_date)} {selectedReleaseForAction.start_time && selectedReleaseForAction.end_time ? `${selectedReleaseForAction.start_time} - ${selectedReleaseForAction.end_time}` : ''}</p>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Neues Datum</label>
+                  <input 
+                    type="date" 
+                    value={rescheduleDate} 
+                    onChange={(e) => setRescheduleDate(e.target.value)} 
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Startzeit</label>
+                    <input 
+                      type="time" 
+                      value={rescheduleStartTime} 
+                      onChange={(e) => setRescheduleStartTime(e.target.value)} 
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Endzeit</label>
+                    <input 
+                      type="time" 
+                      value={rescheduleEndTime} 
+                      onChange={(e) => setRescheduleEndTime(e.target.value)} 
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Grund für die Verschiebung (optional)</label>
+                  <textarea 
+                    value={rescheduleReason} 
+                    onChange={(e) => setRescheduleReason(e.target.value)} 
+                    placeholder="z.B. Terminkonflikt, Raumänderung, etc." 
+                    rows={3} 
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" 
+                  />
+                </div>
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                  <p className="text-sm text-purple-800">📅 Der Termin wird auf das neue Datum verschoben. Die Verschiebung wird im Kalender angezeigt.</p>
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end space-x-3">
+                <button onClick={() => setShowRescheduleModal(false)} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
+                  Zurück
+                </button>
+                <button onClick={handleRescheduleRelease} disabled={!rescheduleDate} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                  Termin verschieben
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Kurszeiten Tab */}
       {activeSubTab === 'kurszeiten' && (
         <div className="space-y-6">
@@ -3656,7 +4392,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="text-lg font-medium text-gray-900">{isReadOnly ? 'Einheit ansehen (nur Lesezugriff)' : 'Einheit bearbeiten'}</h3>
-                  <p className="text-sm text-gray-500 mt-1">{isReadOnly ? 'Details der' : 'Bearbeiten Sie die'} Unterrichtseinheit vom {selectedDate ? formatDate(selectedDate.toISOString()) : ''}</p>
+                  <p className="text-sm text-gray-500 mt-1">{isReadOnly ? 'Details der' : 'Bearbeiten Sie die'} Unterrichtseinheit vom {editingRelease ? formatDate(editingRelease.release_date) : ''}</p>
                   <p className="text-xs text-gray-400 mt-0.5">ID: {editingRelease.id}</p>
                   {isReadOnly && <p className="text-xs text-orange-600 mt-1 font-medium">⚠️ Diese Einheit gehört nicht zu Ihren zugewiesenen Rechtsgebieten</p>}
                 </div>
@@ -3711,7 +4447,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     <label className="block text-sm font-medium text-gray-700 mb-1">Datum</label>
                     <input 
                       type="date" 
-                      value={selectedDate?.toISOString().split('T')[0] || ''} 
+                      value={selectedDate && !isNaN(selectedDate.getTime()) ? selectedDate.toISOString().split('T')[0] : editingRelease?.release_date || ''} 
                       onChange={(e) => setSelectedDate(new Date(e.target.value))} 
                       disabled={isReadOnly}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-100 disabled:cursor-not-allowed" 
@@ -4016,16 +4752,15 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                 {!isReadOnly && (
                   <button 
                     onClick={() => {
-                      if (editingRelease && confirm(`Möchten Sie die Einheit "${editingRelease.title}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) {
-                        handleDeleteRelease(editingRelease);
+                      if (editingRelease) {
                         setShowEditModal(false);
-                        setEditingRelease(null);
+                        openDeleteModal(editingRelease);
                       }
                     }} 
                     className="px-4 py-2 text-red-700 bg-red-100 rounded-lg hover:bg-red-200 flex items-center justify-center"
                   >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    Löschen
+                    <X className="h-4 w-4 mr-1" />
+                    Absagen
                   </button>
                 )}
                 {isReadOnly && <div></div>}
