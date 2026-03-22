@@ -61,6 +61,12 @@ const isTeilnehmerCompleted = (t: any): boolean => {
   return !isContractActive(t);
 };
 
+// Helper function to calculate hours consumption percentage
+const getHoursConsumption = (t: any): number => {
+  if (!t.booked_hours || t.booked_hours <= 0) return 0;
+  return Math.round(((t.completed_hours || 0) / t.booked_hours) * 100);
+};
+
 // Helper function to calculate contract progress percentage
 const getContractProgress = (t: any): { percent: number; daysLeft: number; totalDays: number } => {
   if (!t.contract_start || !t.contract_end) {
@@ -1908,8 +1914,8 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                   style={teilnehmerFilter === '25' ? { backgroundColor: '#2d84c1' } : undefined}
                 >
                   25% ({teilnehmer.filter(t => {
-                    const progress = getContractProgress(t);
-                    return progress.percent >= 20 && progress.percent <= 30 && isContractActive(t);
+                    const consumption = getHoursConsumption(t);
+                    return consumption >= 25 && consumption < 75 && isContractActive(t);
                   }).length})
                 </button>
                 <button
@@ -1922,8 +1928,8 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                   style={teilnehmerFilter === '75' ? { backgroundColor: '#2d84c1' } : undefined}
                 >
                   75% ({teilnehmer.filter(t => {
-                    const progress = getContractProgress(t);
-                    return progress.percent >= 70 && progress.percent <= 80 && isContractActive(t);
+                    const consumption = getHoursConsumption(t);
+                    return consumption >= 75 && isContractActive(t);
                   }).length})
                 </button>
                 <div className="h-4 w-px bg-gray-300 mx-1"></div>
@@ -1966,12 +1972,12 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                       if (teilnehmerFilter === 'aktiv') return isContractActive(t);
                       if (teilnehmerFilter === 'abgeschlossen') return isTeilnehmerCompleted(t);
                       if (teilnehmerFilter === '25') {
-                        const progress = getContractProgress(t);
-                        return progress.percent >= 20 && progress.percent <= 30 && isContractActive(t);
+                        const consumption = getHoursConsumption(t);
+                        return consumption >= 25 && consumption < 75 && isContractActive(t);
                       }
                       if (teilnehmerFilter === '75') {
-                        const progress = getContractProgress(t);
-                        return progress.percent >= 70 && progress.percent <= 80 && isContractActive(t);
+                        const consumption = getHoursConsumption(t);
+                        return consumption >= 75 && isContractActive(t);
                       }
                       if (teilnehmerFilter === 'elite') return t.is_elite_kleingruppe === true;
                       if (teilnehmerFilter === '2staatsexamen') return t.study_goal?.includes('2. Staatsexamen');
@@ -2219,12 +2225,12 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                             if (teilnehmerFilter === 'aktiv') return isContractActive(t);
                             if (teilnehmerFilter === 'abgeschlossen') return isTeilnehmerCompleted(t);
                             if (teilnehmerFilter === '25') {
-                              const progress = getContractProgress(t);
-                              return progress.percent >= 20 && progress.percent <= 30 && isContractActive(t);
+                              const consumption = getHoursConsumption(t);
+                              return consumption >= 25 && consumption < 75 && isContractActive(t);
                             }
                             if (teilnehmerFilter === '75') {
-                              const progress = getContractProgress(t);
-                              return progress.percent >= 70 && progress.percent <= 80 && isContractActive(t);
+                              const consumption = getHoursConsumption(t);
+                              return consumption >= 75 && isContractActive(t);
                             }
                             if (teilnehmerFilter === 'elite') return t.is_elite_kleingruppe === true;
                             if (teilnehmerFilter === '2staatsexamen') return t.study_goal?.includes('2. Staatsexamen');
