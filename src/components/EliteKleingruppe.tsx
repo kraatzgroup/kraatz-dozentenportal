@@ -3233,14 +3233,24 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                           <FileText className="h-5 w-5 text-green-600 flex-shrink-0" />
                           <span className="ml-2 text-sm text-gray-700 flex-1">Bereits hochgeladen</span>
                           <button 
-                            onClick={() => {
-                              const link = document.createElement('a');
-                              link.href = selectedKlausur.corrected_file_url!;
-                              link.download = `${selectedKlausur.title}_Korrektur.pdf`;
-                              link.target = '_blank';
-                              document.body.appendChild(link);
-                              link.click();
-                              document.body.removeChild(link);
+                            onClick={async () => {
+                              try {
+                                const urlParts = selectedKlausur.corrected_file_url!.split('/object/public/elite-kleingruppe/');
+                                const filePath = urlParts[1];
+                                const { data, error } = await supabase.storage.from('elite-kleingruppe').download(filePath);
+                                if (error) throw error;
+                                const url = window.URL.createObjectURL(data);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `${selectedKlausur.title}_Korrektur.pdf`;
+                                document.body.appendChild(a);
+                                a.click();
+                                window.URL.revokeObjectURL(url);
+                                document.body.removeChild(a);
+                              } catch (error) {
+                                console.error('Error downloading file:', error);
+                                alert('Fehler beim Herunterladen der Datei');
+                              }
                             }}
                             className="ml-2 p-1 text-primary hover:bg-primary/10 rounded flex-shrink-0"
                             title="Datei herunterladen"
@@ -3297,14 +3307,24 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                           <FileText className="h-5 w-5 text-green-600 flex-shrink-0" />
                           <span className="ml-2 text-sm text-gray-700 flex-1">Bereits hochgeladen</span>
                           <button 
-                            onClick={() => {
-                              const link = document.createElement('a');
-                              link.href = selectedKlausur.corrected_excel_url!;
-                              link.download = `${selectedKlausur.title}_Bewertung.xlsx`;
-                              link.target = '_blank';
-                              document.body.appendChild(link);
-                              link.click();
-                              document.body.removeChild(link);
+                            onClick={async () => {
+                              try {
+                                const urlParts = selectedKlausur.corrected_excel_url!.split('/object/public/elite-kleingruppe/');
+                                const filePath = urlParts[1];
+                                const { data, error } = await supabase.storage.from('elite-kleingruppe').download(filePath);
+                                if (error) throw error;
+                                const url = window.URL.createObjectURL(data);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `${selectedKlausur.title}_Bewertung.xlsx`;
+                                document.body.appendChild(a);
+                                a.click();
+                                window.URL.revokeObjectURL(url);
+                                document.body.removeChild(a);
+                              } catch (error) {
+                                console.error('Error downloading file:', error);
+                                alert('Fehler beim Herunterladen der Datei');
+                              }
                             }}
                             className="ml-2 p-1 text-primary hover:bg-primary/10 rounded flex-shrink-0"
                             title="Datei herunterladen"
