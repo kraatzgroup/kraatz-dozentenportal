@@ -3232,15 +3232,21 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                         <div className="flex items-center p-3 bg-green-50 border border-green-200 rounded-lg">
                           <FileText className="h-5 w-5 text-green-600 flex-shrink-0" />
                           <span className="ml-2 text-sm text-gray-700 flex-1">Bereits hochgeladen</span>
-                          <a 
-                            href={selectedKlausur.corrected_file_url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
+                          <button 
+                            onClick={() => {
+                              const link = document.createElement('a');
+                              link.href = selectedKlausur.corrected_file_url!;
+                              link.download = `${selectedKlausur.title}_Korrektur.pdf`;
+                              link.target = '_blank';
+                              document.body.appendChild(link);
+                              link.click();
+                              document.body.removeChild(link);
+                            }}
                             className="ml-2 p-1 text-primary hover:bg-primary/10 rounded flex-shrink-0"
-                            title="Datei ansehen"
+                            title="Datei herunterladen"
                           >
                             <Download className="h-4 w-4" />
-                          </a>
+                          </button>
                         </div>
                         <label className="cursor-pointer block">
                           <div className="flex items-center justify-center px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-primary/50 transition-colors">
@@ -3290,15 +3296,21 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                         <div className="flex items-center p-3 bg-green-50 border border-green-200 rounded-lg">
                           <FileText className="h-5 w-5 text-green-600 flex-shrink-0" />
                           <span className="ml-2 text-sm text-gray-700 flex-1">Bereits hochgeladen</span>
-                          <a 
-                            href={selectedKlausur.corrected_excel_url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
+                          <button 
+                            onClick={() => {
+                              const link = document.createElement('a');
+                              link.href = selectedKlausur.corrected_excel_url!;
+                              link.download = `${selectedKlausur.title}_Bewertung.xlsx`;
+                              link.target = '_blank';
+                              document.body.appendChild(link);
+                              link.click();
+                              document.body.removeChild(link);
+                            }}
                             className="ml-2 p-1 text-primary hover:bg-primary/10 rounded flex-shrink-0"
-                            title="Datei ansehen"
+                            title="Datei herunterladen"
                           >
                             <Download className="h-4 w-4" />
-                          </a>
+                          </button>
                         </div>
                         <label className="cursor-pointer block">
                           <div className="flex items-center justify-center px-3 py-2 border-2 border-dashed border-green-300 rounded-lg hover:border-green-500/50 transition-colors bg-green-50/30">
