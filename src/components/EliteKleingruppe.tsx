@@ -1933,7 +1933,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                 <ul className="divide-y divide-gray-200">
                   {paginatedReleases.map(release => (
                   <li key={release.id} className="p-4">
-                    <div className="flex items-center justify-between cursor-pointer" onClick={() => openEditReleaseModal(release)}>
+                    <div className="flex items-center justify-between cursor-pointer" onClick={() => setExpandedRelease(expandedRelease === release.id ? null : release.id)}>
                       <div className="flex items-center">
                         <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
                           release.legal_area === 'Zivilrecht' ? (release.is_released ? 'bg-blue-100' : 'bg-blue-50') :
@@ -2132,7 +2132,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     
                     return (
                       <li key={release.id} className="p-4">
-                        <div className="flex items-center justify-between cursor-pointer" onClick={() => openEditReleaseModal(release)}>
+                        <div className="flex items-center justify-between cursor-pointer" onClick={() => setExpandedRelease(expandedRelease === release.id ? null : release.id)}>
                           <div className="flex items-center">
                             <div className={`h-10 w-10 rounded-full flex items-center justify-center ${config.color}`}>
                               <span className="text-xl">{config.icon}</span>
