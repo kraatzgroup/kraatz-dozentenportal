@@ -1463,6 +1463,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
     if (!selectedReleaseForAction || !user || !rescheduleDate) return;
     
     try {
+      setIsSendingEmails(true);
+      
       const { error } = await supabase
         .from('elite_kleingruppe_releases')
         .update({
@@ -1481,6 +1483,85 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
 
       if (error) throw error;
 
+      // Send notification emails to participants, dozent, and admins
+      try {
+        // Get all participants for this elite group
+        const { data: participants, error: participantsError } = await supabase
+          .from('teilnehmer')
+          .select('email, first_name, name')
+          .eq('elite_kleingruppe_id', selectedReleaseForAction.elite_kleingruppe_id || selectedEliteGroupId);
+
+        if (participantsError) throw participantsError;
+
+        // Get dozent email if assigned
+        let dozentEmail = null;
+        if (selectedReleaseForAction.dozent_id) {
+          const { data: dozentData } = await supabase
+            .from('profiles')
+            .select('email, first_name, last_name')
+            .eq('id', selectedReleaseForAction.dozent_id)
+            .single();
+          dozentEmail = dozentData;
+        }
+
+        // Get admin emails
+        const { data: admins } = await supabase
+          .from('profiles')
+          .select('email, first_name, last_name')
+          .eq('role', 'admin');
+
+        // Format date and time
+        const formatDate = (dateStr: string) => {
+          const date = new Date(dateStr);
+          return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        };
+
+        const oldDate = formatDate(selectedReleaseForAction.release_date);
+        const newDate = formatDate(rescheduleDate);
+        const oldTime = selectedReleaseForAction.start_time && selectedReleaseForAction.end_time 
+          ? `${selectedReleaseForAction.start_time.slice(0, 5)}-${selectedReleaseForAction.end_time.slice(0, 5)}`
+          : '';
+        const newTime = rescheduleStartTime && rescheduleEndTime
+          ? `${rescheduleStartTime}-${rescheduleEndTime}`
+          : '';
+
+        // Combine all recipients
+        const allRecipients = [
+          ...(participants || []).map(p => ({ email: p.email, name: p.name || p.first_name || 'Teilnehmer' })),
+          ...(dozentEmail ? [{ email: dozentEmail.email, name: `${dozentEmail.first_name} ${dozentEmail.last_name}` }] : []),
+          ...(admins || []).map(a => ({ email: a.email, name: `${a.first_name} ${a.last_name}` }))
+        ];
+
+        // Send email to each recipient
+        const emailPromises = allRecipients.map(recipient => 
+          fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reschedule-event-notify`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            },
+            body: JSON.stringify({
+              teilnehmerEmail: recipient.email,
+              teilnehmerName: recipient.name,
+              eventTitle: selectedReleaseForAction.title,
+              oldDate,
+              oldTime,
+              newDate,
+              newTime,
+              legalArea: selectedReleaseForAction.legal_area || 'Allgemein',
+              rescheduleReason: rescheduleReason.trim() || undefined
+            })
+          })
+        );
+
+        await Promise.all(emailPromises);
+        console.log(`Reschedule notification emails sent to ${allRecipients.length} recipients (participants, dozent, admins)`);
+      } catch (emailError) {
+        console.error('Error sending reschedule notification emails:', emailError);
+        // Don't fail the whole operation if emails fail
+      }
+
+      setIsSendingEmails(false);
       setShowRescheduleModal(false);
       setSelectedReleaseForAction(null);
       setRescheduleReason('');
@@ -1490,6 +1571,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       fetchData();
     } catch (error) {
       console.error('Error rescheduling release:', error);
+      setIsSendingEmails(false);
     }
   };
 
@@ -3737,11 +3819,26 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                 </div>
               </div>
               <div className="mt-6 flex justify-end space-x-3">
-                <button onClick={() => setShowRescheduleModal(false)} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
+                <button 
+                  onClick={() => setShowRescheduleModal(false)} 
+                  disabled={isSendingEmails}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   Zurück
                 </button>
-                <button onClick={handleRescheduleRelease} disabled={!rescheduleDate} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                  Termin verschieben
+                <button 
+                  onClick={handleRescheduleRelease} 
+                  disabled={!rescheduleDate || isSendingEmails} 
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                  {isSendingEmails ? (
+                    <>
+                      <span className="animate-spin inline-block h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></span>
+                      E-Mails werden versendet...
+                    </>
+                  ) : (
+                    'Termin verschieben'
+                  )}
                 </button>
               </div>
             </div>
