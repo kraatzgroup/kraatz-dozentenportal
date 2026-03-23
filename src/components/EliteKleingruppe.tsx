@@ -4736,8 +4736,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       )}
 
       {/* Einheit Bearbeiten Modal */}
-      {showEditModal && editingRelease && (
-        (() => {
+      {showEditModal && editingRelease && (() => {
         const isReadOnly = !canEditRelease(editingRelease);
         return (
         <div className="fixed inset-0 z-50 overflow-y-auto">
