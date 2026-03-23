@@ -3227,6 +3227,34 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                           <X className="h-4 w-4" />
                         </button>
                       </div>
+                    ) : selectedKlausur.corrected_file_url ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center p-3 bg-green-50 border border-green-200 rounded-lg">
+                          <FileText className="h-5 w-5 text-green-600 flex-shrink-0" />
+                          <span className="ml-2 text-sm text-gray-700 flex-1">Bereits hochgeladen</span>
+                          <a 
+                            href={selectedKlausur.corrected_file_url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="ml-2 p-1 text-primary hover:bg-primary/10 rounded flex-shrink-0"
+                            title="Datei ansehen"
+                          >
+                            <Download className="h-4 w-4" />
+                          </a>
+                        </div>
+                        <label className="cursor-pointer block">
+                          <div className="flex items-center justify-center px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-primary/50 transition-colors">
+                            <Upload className="h-4 w-4 text-gray-400 mr-2" />
+                            <span className="text-sm text-gray-500">Neue PDF hochladen</span>
+                          </div>
+                          <input 
+                            type="file" 
+                            accept=".pdf" 
+                            className="hidden" 
+                            onChange={(e) => setKorrekturFile(e.target.files?.[0] || null)} 
+                          />
+                        </label>
+                      </div>
                     ) : (
                       <label className="cursor-pointer block">
                         <div className="flex items-center justify-center px-3 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-primary/50 transition-colors">
@@ -3256,6 +3284,34 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                         >
                           <X className="h-4 w-4" />
                         </button>
+                      </div>
+                    ) : selectedKlausur.corrected_excel_url ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center p-3 bg-green-50 border border-green-200 rounded-lg">
+                          <FileText className="h-5 w-5 text-green-600 flex-shrink-0" />
+                          <span className="ml-2 text-sm text-gray-700 flex-1">Bereits hochgeladen</span>
+                          <a 
+                            href={selectedKlausur.corrected_excel_url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="ml-2 p-1 text-primary hover:bg-primary/10 rounded flex-shrink-0"
+                            title="Datei ansehen"
+                          >
+                            <Download className="h-4 w-4" />
+                          </a>
+                        </div>
+                        <label className="cursor-pointer block">
+                          <div className="flex items-center justify-center px-3 py-2 border-2 border-dashed border-green-300 rounded-lg hover:border-green-500/50 transition-colors bg-green-50/30">
+                            <Upload className="h-4 w-4 text-green-500 mr-2" />
+                            <span className="text-sm text-gray-500">Neue Excel hochladen</span>
+                          </div>
+                          <input 
+                            type="file" 
+                            accept=".xlsx,.xls,.csv" 
+                            className="hidden" 
+                            onChange={(e) => setKorrekturExcelFile(e.target.files?.[0] || null)} 
+                          />
+                        </label>
                       </div>
                     ) : (
                       <label className="cursor-pointer block">
