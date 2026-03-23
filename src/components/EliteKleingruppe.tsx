@@ -93,6 +93,36 @@ export const formatDurationReadable = (minutes: number): string => {
   return `${hours} Std ${mins} Min`;
 };
 
+// Helper function to check for time conflicts
+const checkTimeConflict = (
+  date1: string,
+  start1: string | null,
+  end1: string | null,
+  date2: string,
+  start2: string | null,
+  end2: string | null
+): boolean => {
+  // If dates are different, no conflict
+  if (date1 !== date2) return false;
+  
+  // If either event has no time (all-day events), consider it a conflict on the same date
+  if (!start1 || !end1 || !start2 || !end2) return true;
+  
+  // Convert times to minutes for comparison
+  const toMinutes = (time: string) => {
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+  };
+  
+  const start1Min = toMinutes(start1);
+  const end1Min = toMinutes(end1);
+  const start2Min = toMinutes(start2);
+  const end2Min = toMinutes(end2);
+  
+  // Check if time ranges overlap
+  return (start1Min < end2Min && end1Min > start2Min);
+};
+
 export const calculateEndTime = (startTime: string, durationMinutes: number): string => {
   const [hours, minutes] = startTime.split(':').map(Number);
   const totalMinutes = hours * 60 + minutes + durationMinutes;
@@ -968,10 +998,66 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
     }
   };
 
+  // Check for scheduling conflicts
+  const checkSchedulingConflict = (
+    eliteGroupId: string,
+    date: string,
+    startTime: string | null,
+    endTime: string | null,
+    excludeReleaseId?: string
+  ): { hasConflict: boolean; conflictingRelease?: ScheduledRelease } => {
+    const conflicts = scheduledReleases.filter(release => {
+      // Skip the release being edited
+      if (excludeReleaseId && release.id === excludeReleaseId) return false;
+      
+      // Only check releases in the same elite group
+      if ((release as any).elite_kleingruppe_id !== eliteGroupId) return false;
+      
+      // Skip canceled releases
+      if (release.is_canceled) return false;
+      
+      // Check for time conflict
+      return checkTimeConflict(
+        date,
+        startTime,
+        endTime,
+        release.release_date,
+        release.start_time,
+        release.end_time
+      );
+    });
+    
+    return {
+      hasConflict: conflicts.length > 0,
+      conflictingRelease: conflicts[0]
+    };
+  };
+
   const handleCreateRelease = async () => {
     // Validation: title is always required, unit_type only for 'einheit' events
     if (!selectedDate || !releaseTitle.trim()) return;
     if (releaseEventType === 'einheit' && !releaseUnitType) return;
+    
+    // Check for conflicts
+    const eliteGroupId = selectedEliteGroupId || (eliteGroups.length === 1 ? eliteGroups[0].id : null);
+    if (eliteGroupId) {
+      const dateStr = selectedDate.toISOString().split('T')[0];
+      const startTime = (releaseEventType === 'einheit' || !isAllDay) ? (releaseStartTime || null) : null;
+      const endTime = (releaseEventType === 'einheit' || !isAllDay) ? (releaseEndTime || null) : null;
+      
+      const { hasConflict, conflictingRelease } = checkSchedulingConflict(
+        eliteGroupId,
+        dateStr,
+        startTime,
+        endTime
+      );
+      
+      if (hasConflict && conflictingRelease) {
+        alert(`⚠️ Terminkonflikt!\n\nEs existiert bereits eine Einheit zur gleichen Zeit:\n\n"${conflictingRelease.title}"\n${conflictingRelease.legal_area || 'Kein Rechtsgebiet'}\n${formatDate(conflictingRelease.release_date)} ${conflictingRelease.start_time ? `${conflictingRelease.start_time.slice(0, 5)} - ${conflictingRelease.end_time?.slice(0, 5)}` : '(ganztägig)'}\n\nBitte wählen Sie einen anderen Termin.`);
+        return;
+      }
+    }
+    
     setIsUploadingDocument(true);
     try {
       let additionalMaterialId: string | null = null;
@@ -1151,8 +1237,24 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       elite_kleingruppe_id: selectedEliteGroupId || (eliteGroups.length === 1 ? eliteGroups[0].id : null)
     };
 
-    // If date or time changed, show reschedule confirmation modal
+    // If date or time changed, check for conflicts first
     if (dateChanged || startTimeChanged || endTimeChanged) {
+      const eliteGroupId = updateData.elite_kleingruppe_id;
+      if (eliteGroupId) {
+        const { hasConflict, conflictingRelease } = checkSchedulingConflict(
+          eliteGroupId,
+          newDate,
+          releaseStartTime || null,
+          releaseEndTime || null,
+          editingRelease.id // Exclude current release from conflict check
+        );
+        
+        if (hasConflict && conflictingRelease) {
+          alert(`⚠️ Terminkonflikt!\n\nEs existiert bereits eine Einheit zur gleichen Zeit:\n\n"${conflictingRelease.title}"\n${conflictingRelease.legal_area || 'Kein Rechtsgebiet'}\n${formatDate(conflictingRelease.release_date)} ${conflictingRelease.start_time ? `${conflictingRelease.start_time.slice(0, 5)} - ${conflictingRelease.end_time?.slice(0, 5)}` : '(ganztägig)'}\n\nBitte wählen Sie einen anderen Termin.`);
+          return;
+        }
+      }
+      
       setPendingUpdateData(updateData);
       setNotifyParticipantsReschedule(true);
       setShowEditModal(false); // Close edit modal first
@@ -1181,6 +1283,26 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
 
   const confirmRescheduleUpdate = async () => {
     if (!editingRelease || !pendingUpdateData || !user) return;
+    
+    // Check for conflicts before confirming reschedule
+    const eliteGroupId = pendingUpdateData.elite_kleingruppe_id;
+    if (eliteGroupId) {
+      const { hasConflict, conflictingRelease } = checkSchedulingConflict(
+        eliteGroupId,
+        pendingUpdateData.release_date,
+        pendingUpdateData.start_time,
+        pendingUpdateData.end_time,
+        editingRelease.id
+      );
+      
+      if (hasConflict && conflictingRelease) {
+        alert(`⚠️ Terminkonflikt!\n\nEs existiert bereits eine Einheit zur gleichen Zeit:\n\n"${conflictingRelease.title}"\n${conflictingRelease.legal_area || 'Kein Rechtsgebiet'}\n${formatDate(conflictingRelease.release_date)} ${conflictingRelease.start_time ? `${conflictingRelease.start_time.slice(0, 5)} - ${conflictingRelease.end_time?.slice(0, 5)}` : '(ganztägig)'}\n\nBitte wählen Sie einen anderen Termin.`);
+        setIsSendingEmails(false);
+        setShowRescheduleConfirmModal(false);
+        setShowEditModal(true); // Return to edit modal
+        return;
+      }
+    }
     
     try {
       setIsSendingEmails(true);
@@ -1461,6 +1583,24 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
 
   const handleRescheduleRelease = async () => {
     if (!selectedReleaseForAction || !user || !rescheduleDate) return;
+    
+    // Check for conflicts before rescheduling
+    const eliteGroupId = (selectedReleaseForAction as any).elite_kleingruppe_id || selectedEliteGroupId;
+    if (eliteGroupId) {
+      const { hasConflict, conflictingRelease } = checkSchedulingConflict(
+        eliteGroupId,
+        rescheduleDate,
+        rescheduleStartTime || null,
+        rescheduleEndTime || null,
+        selectedReleaseForAction.id
+      );
+      
+      if (hasConflict && conflictingRelease) {
+        alert(`⚠️ Terminkonflikt!\n\nEs existiert bereits eine Einheit zur gleichen Zeit:\n\n"${conflictingRelease.title}"\n${conflictingRelease.legal_area || 'Kein Rechtsgebiet'}\n${formatDate(conflictingRelease.release_date)} ${conflictingRelease.start_time ? `${conflictingRelease.start_time.slice(0, 5)} - ${conflictingRelease.end_time?.slice(0, 5)}` : '(ganztägig)'}\n\nBitte wählen Sie einen anderen Termin.`);
+        setIsSendingEmails(false);
+        return;
+      }
+    }
     
     try {
       setIsSendingEmails(true);
