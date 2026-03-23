@@ -432,6 +432,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
 
   // Delete/Cancel and Reschedule state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [selectedReleaseForAction, setSelectedReleaseForAction] = useState<ScheduledRelease | null>(null);
   const [deleteReason, setDeleteReason] = useState('');
@@ -1304,6 +1305,13 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   const handleDeleteOrCancel = async () => {
     if (!selectedReleaseForAction || !user) return;
     
+    // If permanent delete (no notification) and user is admin, show confirmation
+    if (!notifyParticipants && isAdmin) {
+      setShowDeleteModal(false);
+      setShowDeleteConfirmModal(true);
+      return;
+    }
+    
     try {
       setIsSendingEmails(true);
       
@@ -1411,6 +1419,33 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       fetchData();
     } catch (error) {
       console.error('Error deleting/canceling release:', error);
+      setIsSendingEmails(false);
+    }
+  };
+
+  const confirmPermanentDelete = async () => {
+    if (!selectedReleaseForAction || !user) return;
+    
+    try {
+      setIsSendingEmails(true);
+      
+      // Delete (remove completely from database)
+      const { error } = await supabase
+        .from('elite_kleingruppe_releases')
+        .delete()
+        .eq('id', selectedReleaseForAction.id);
+
+      if (error) throw error;
+
+      setIsSendingEmails(false);
+      setShowDeleteConfirmModal(false);
+      setSelectedReleaseForAction(null);
+      setDeleteReason('');
+      setNotifyParticipants(true);
+      setExpandedRelease(null);
+      fetchData();
+    } catch (error) {
+      console.error('Error permanently deleting release:', error);
       setIsSendingEmails(false);
     }
   };
@@ -3405,6 +3440,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                       checked={notifyParticipants}
                       onChange={(e) => setNotifyParticipants(e.target.checked)}
                       className="mt-1 h-4 w-4 text-primary border-gray-300 rounded focus:ring-primary"
+                      disabled={!isAdmin}
                     />
                     <div className="ml-3">
                       <p className="text-sm font-medium text-gray-900">Teilnehmer benachrichtigen</p>
@@ -3413,6 +3449,9 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                           ? 'Der Termin wird als abgesagt markiert und bleibt für Teilnehmer sichtbar im Kalender.'
                           : 'Der Termin wird komplett gelöscht und ist nicht mehr sichtbar.'}
                       </p>
+                      {!isAdmin && (
+                        <p className="text-xs text-orange-600 mt-1 font-medium">⚠️ Nur Admins können Termine permanent löschen</p>
+                      )}
                     </div>
                   </label>
                 </div>
@@ -3428,7 +3467,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     />
                   </div>
                 )}
-                {!notifyParticipants && (
+                {!notifyParticipants && isAdmin && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                     <p className="text-sm text-red-800">⚠️ Der Termin wird permanent gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.</p>
                   </div>
@@ -3454,6 +3493,88 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     </>
                   ) : (
                     notifyParticipants ? 'Termin absagen' : 'Termin löschen'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Permanent Delete Confirmation Modal */}
+      {showDeleteConfirmModal && selectedReleaseForAction && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4">
+            <div className="fixed inset-0 bg-black/50" onClick={() => setShowDeleteConfirmModal(false)} />
+            <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-red-900">⚠️ Permanentes Löschen bestätigen</h3>
+                <button onClick={() => setShowDeleteConfirmModal(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <p className="text-sm font-medium text-gray-900">{selectedReleaseForAction.title}</p>
+                <p className="text-xs text-gray-500">{formatDate(selectedReleaseForAction.release_date)} {selectedReleaseForAction.start_time && selectedReleaseForAction.end_time ? `${selectedReleaseForAction.start_time} - ${selectedReleaseForAction.end_time}` : ''}</p>
+              </div>
+              <div className="space-y-4">
+                <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4">
+                  <div className="flex items-start">
+                    <div className="flex-shrink-0">
+                      <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-red-800">Achtung: Diese Aktion ist unwiderruflich!</h3>
+                      <div className="mt-2 text-sm text-red-700">
+                        <ul className="list-disc list-inside space-y-1">
+                          <li>Die Einheit wird <strong>permanent aus der Datenbank gelöscht</strong></li>
+                          <li>Sie wird für <strong>alle Benutzergruppen unsichtbar</strong> (Studenten, Dozenten, Admins)</li>
+                          <li>Alle zugehörigen Materialien bleiben erhalten, sind aber nicht mehr verknüpft</li>
+                          <li><strong>Keine E-Mail-Benachrichtigungen</strong> werden versendet</li>
+                          <li>Diese Aktion <strong>kann nicht rückgängig gemacht werden</strong></li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                  <p className="text-sm text-yellow-800">
+                    💡 <strong>Tipp:</strong> Wenn Sie Teilnehmer informieren möchten, verwenden Sie stattdessen die Option "Termin absagen" (mit Benachrichtigung).
+                  </p>
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end space-x-3">
+                <button 
+                  onClick={() => {
+                    setShowDeleteConfirmModal(false);
+                    setShowDeleteModal(true);
+                  }} 
+                  disabled={isSendingEmails}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Zurück
+                </button>
+                <button 
+                  onClick={confirmPermanentDelete} 
+                  disabled={isSendingEmails}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSendingEmails ? (
+                    <>
+                      <span className="animate-spin inline-block h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></span>
+                      Wird gelöscht...
+                    </>
+                  ) : (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 mr-2">
+                        <path d="M3 6h18"></path>
+                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                      </svg>
+                      Ja, permanent löschen
+                    </>
                   )}
                 </button>
               </div>
