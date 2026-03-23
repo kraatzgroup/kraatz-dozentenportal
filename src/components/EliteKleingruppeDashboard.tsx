@@ -56,6 +56,8 @@ interface Klausur {
   feedback?: string;
   submitted_at: string;
   corrected_at?: string;
+  corrected_file_url?: string;
+  corrected_excel_url?: string;
 }
 
 interface CourseTime {
@@ -799,6 +801,24 @@ export function EliteKleingruppeDashboard() {
     } catch (error) {
       console.error('Error downloading file:', error);
       alert('Fehler beim Herunterladen der Datei');
+    }
+  };
+
+  const downloadCorrectionFile = async (fileUrl: string, fileName: string) => {
+    try {
+      const response = await fetch(fileUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error downloading correction file:', error);
+      alert('Fehler beim Herunterladen der Korrektur-Datei');
     }
   };
 
@@ -3124,15 +3144,37 @@ export function EliteKleingruppeDashboard() {
                         </div>
                         <div className="flex items-center space-x-4">
                           {getStatusBadge(klausur.status)}
-                          <button onClick={() => downloadKlausur(klausur)} className="text-primary hover:text-primary/80">
+                          <button onClick={() => downloadKlausur(klausur)} className="text-primary hover:text-primary/80" title="Originale Klausur herunterladen">
                             <Download className="h-4 w-4" />
                           </button>
                         </div>
                       </div>
-                      {klausur.status === 'completed' && (klausur.score !== undefined || klausur.feedback) && (
+                      {klausur.status === 'completed' && (klausur.score !== undefined || klausur.feedback || klausur.corrected_file_url || klausur.corrected_excel_url) && (
                         <div className="mt-3 ml-14 p-3 bg-green-50 rounded-lg">
                           {klausur.score !== undefined && <p className="text-sm font-medium text-green-800">Punktzahl: {klausur.score}</p>}
                           {klausur.feedback && <p className="text-sm text-green-700 mt-1">{klausur.feedback}</p>}
+                          {(klausur.corrected_file_url || klausur.corrected_excel_url) && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {klausur.corrected_file_url && (
+                                <button
+                                  onClick={() => downloadCorrectionFile(klausur.corrected_file_url!, `${klausur.title}_Korrektur.pdf`)}
+                                  className="inline-flex items-center px-3 py-1.5 bg-white border border-green-300 rounded-lg text-sm text-green-700 hover:bg-green-50 transition-colors"
+                                >
+                                  <Download className="h-3.5 w-3.5 mr-1.5" />
+                                  Korrigierte Klausur (PDF)
+                                </button>
+                              )}
+                              {klausur.corrected_excel_url && (
+                                <button
+                                  onClick={() => downloadCorrectionFile(klausur.corrected_excel_url!, `${klausur.title}_Bewertung.xlsx`)}
+                                  className="inline-flex items-center px-3 py-1.5 bg-white border border-green-300 rounded-lg text-sm text-green-700 hover:bg-green-50 transition-colors"
+                                >
+                                  <Download className="h-3.5 w-3.5 mr-1.5" />
+                                  Bewertungstabelle (Excel)
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </li>
