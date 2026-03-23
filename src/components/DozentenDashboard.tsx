@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useToastStore } from '../store/toastStore';
-import { GraduationCap, Plus, Edit2, Trash2, ChevronDown, ChevronUp, X, Play, FileText, ExternalLink, Info, Pin, AlertTriangle, Clock, Upload, Eye, GripVertical, LayoutGrid, Download, Search, Users, Copy } from 'lucide-react';
+import { GraduationCap, Plus, Edit2, Trash2, ChevronDown, ChevronUp, X, Play, FileText, ExternalLink, Info, Pin, AlertTriangle, Clock, Upload, Eye, GripVertical, LayoutGrid, Download, Search, Users, Copy, HelpCircle, Video, MessageSquare } from 'lucide-react';
 import { EliteKleingruppe } from './EliteKleingruppe';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
@@ -20,6 +20,8 @@ interface LinkPreview { title: string; description: string; image: string; url: 
 interface DashboardSection { id: string; title: string | null; columns: number; position: number; is_active: boolean; }
 interface TeachingMaterial { id: string; title: string; description: string | null; file_url: string; file_name: string; file_type: string; file_size: number | null; category: string | null; position: number; is_active: boolean; folder_id: string | null; updated_at?: string; created_at?: string; }
 interface MaterialFolder { id: string; name: string; parent_id: string | null; position: number; is_active: boolean; }
+interface FAQ { id: string; question: string; answer: string; category: string; order_index: number; is_active: boolean; created_at: string; updated_at: string; }
+interface SupportVideo { id: string; title: string; description: string | null; video_url: string; thumbnail_url: string | null; category: string; order_index: number; is_active: boolean; created_at: string; updated_at: string; }
 
 function SortableWidget({ id, children, isEditMode }: { id: string; children: React.ReactNode; isEditMode: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -496,6 +498,17 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
   const [expandedLessons, setExpandedLessons] = useState<Set<string>>(new Set());
   const [showMasterclassView, setShowMasterclassView] = useState(false);
+  const [showSupportView, setShowSupportView] = useState(false);
+  const [supportFaqs, setSupportFaqs] = useState<FAQ[]>([]);
+  const [supportVideos, setSupportVideos] = useState<SupportVideo[]>([]);
+  const [expandedFaq, setExpandedFaq] = useState<string | null>(null);
+  const [supportActiveSection, setSupportActiveSection] = useState<'faq' | 'videos'>('faq');
+  const [showSupportFaqModal, setShowSupportFaqModal] = useState(false);
+  const [editingSupportFaq, setEditingSupportFaq] = useState<FAQ | null>(null);
+  const [supportFaqForm, setSupportFaqForm] = useState({ question: '', answer: '', category: 'Allgemein' });
+  const [showSupportVideoModal, setShowSupportVideoModal] = useState(false);
+  const [editingSupportVideo, setEditingSupportVideo] = useState<SupportVideo | null>(null);
+  const [supportVideoForm, setSupportVideoForm] = useState({ title: '', description: '', video_url: '', category: 'Allgemein' });
   const [showChapterModal, setShowChapterModal] = useState(false);
   const [showLessonModal, setShowLessonModal] = useState(false);
   const [editingChapter, setEditingChapter] = useState<Chapter | null>(null);
@@ -994,6 +1007,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     fetchMaterials();
     fetchFolders();
     checkEliteKleingruppeDozent();
+    fetchSupportContent();
   }, []);
 
   const checkEliteKleingruppeDozent = async () => {
@@ -1071,6 +1085,97 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   const fetchFolders = async () => {
     const { data } = await supabase.from('material_folders').select('*').eq('is_active', true).order('position');
     setFolders(data || []);
+  };
+
+  const fetchSupportContent = async () => {
+    const { data: faqData } = await supabase.from('dozenten_support_faqs').select('*').eq('is_active', true).order('order_index');
+    setSupportFaqs(faqData || []);
+    const { data: videoData } = await supabase.from('dozenten_support_videos').select('*').eq('is_active', true).order('order_index');
+    setSupportVideos(videoData || []);
+  };
+
+  // Support FAQ CRUD
+  const handleSaveSupportFaq = async () => {
+    if (!supportFaqForm.question.trim() || !supportFaqForm.answer.trim()) return;
+    try {
+      if (editingSupportFaq) {
+        await supabase.from('dozenten_support_faqs').update({
+          question: supportFaqForm.question, answer: supportFaqForm.answer, category: supportFaqForm.category, updated_at: new Date().toISOString()
+        }).eq('id', editingSupportFaq.id);
+      } else {
+        const { data: maxOrder } = await supabase.from('dozenten_support_faqs').select('order_index').order('order_index', { ascending: false }).limit(1).maybeSingle();
+        await supabase.from('dozenten_support_faqs').insert({
+          question: supportFaqForm.question, answer: supportFaqForm.answer, category: supportFaqForm.category, order_index: (maxOrder?.order_index || 0) + 1, is_active: true
+        });
+      }
+      setShowSupportFaqModal(false); setEditingSupportFaq(null); setSupportFaqForm({ question: '', answer: '', category: 'Allgemein' });
+      fetchSupportContent(); addToast('FAQ gespeichert', 'success');
+    } catch (error) { console.error('Error saving FAQ:', error); addToast('Fehler beim Speichern', 'error'); }
+  };
+
+  const handleDeleteSupportFaq = async (id: string) => {
+    if (!confirm('Möchten Sie diese FAQ wirklich löschen?')) return;
+    await supabase.from('dozenten_support_faqs').update({ is_active: false }).eq('id', id);
+    fetchSupportContent();
+  };
+
+  const openEditSupportFaqModal = (faq: FAQ) => {
+    setEditingSupportFaq(faq); setSupportFaqForm({ question: faq.question, answer: faq.answer, category: faq.category }); setShowSupportFaqModal(true);
+  };
+
+  const openCreateSupportFaqModal = () => {
+    setEditingSupportFaq(null); setSupportFaqForm({ question: '', answer: '', category: 'Allgemein' }); setShowSupportFaqModal(true);
+  };
+
+  // Support Video CRUD
+  const handleSaveSupportVideo = async () => {
+    if (!supportVideoForm.title.trim() || !supportVideoForm.video_url.trim()) return;
+    try {
+      if (editingSupportVideo) {
+        await supabase.from('dozenten_support_videos').update({
+          title: supportVideoForm.title, description: supportVideoForm.description || null, video_url: supportVideoForm.video_url, category: supportVideoForm.category, updated_at: new Date().toISOString()
+        }).eq('id', editingSupportVideo.id);
+      } else {
+        const { data: maxOrder } = await supabase.from('dozenten_support_videos').select('order_index').order('order_index', { ascending: false }).limit(1).maybeSingle();
+        await supabase.from('dozenten_support_videos').insert({
+          title: supportVideoForm.title, description: supportVideoForm.description || null, video_url: supportVideoForm.video_url, category: supportVideoForm.category, order_index: (maxOrder?.order_index || 0) + 1, is_active: true
+        });
+      }
+      setShowSupportVideoModal(false); setEditingSupportVideo(null); setSupportVideoForm({ title: '', description: '', video_url: '', category: 'Allgemein' });
+      fetchSupportContent(); addToast('Video gespeichert', 'success');
+    } catch (error) { console.error('Error saving video:', error); addToast('Fehler beim Speichern', 'error'); }
+  };
+
+  const handleDeleteSupportVideo = async (id: string) => {
+    if (!confirm('Möchten Sie dieses Video wirklich löschen?')) return;
+    await supabase.from('dozenten_support_videos').update({ is_active: false }).eq('id', id);
+    fetchSupportContent();
+  };
+
+  const openEditSupportVideoModal = (video: SupportVideo) => {
+    setEditingSupportVideo(video); setSupportVideoForm({ title: video.title, description: video.description || '', video_url: video.video_url, category: video.category }); setShowSupportVideoModal(true);
+  };
+
+  const openCreateSupportVideoModal = () => {
+    setEditingSupportVideo(null); setSupportVideoForm({ title: '', description: '', video_url: '', category: 'Allgemein' }); setShowSupportVideoModal(true);
+  };
+
+  const getSupportEmbedUrl = (url: string): { type: 'iframe' | 'video'; embedUrl: string } => {
+    if (url.includes('loom.com')) {
+      const match = url.match(/loom\.com\/share\/([a-zA-Z0-9]+)/);
+      if (match) return { type: 'iframe', embedUrl: `https://www.loom.com/embed/${match[1]}` };
+    }
+    if (url.includes('youtube.com') || url.includes('youtu.be')) {
+      let videoId = '';
+      if (url.includes('youtube.com/watch')) { const urlParams = new URLSearchParams(url.split('?')[1]); videoId = urlParams.get('v') || ''; }
+      else if (url.includes('youtu.be/')) { videoId = url.split('youtu.be/')[1].split('?')[0]; }
+      if (videoId) return { type: 'iframe', embedUrl: `https://www.youtube.com/embed/${videoId}` };
+    }
+    if (url.includes('vimeo.com')) {
+      const match = url.match(/vimeo\.com\/(\d+)/);
+      if (match) return { type: 'iframe', embedUrl: `https://player.vimeo.com/video/${match[1]}` };
+    }
+    return { type: 'video', embedUrl: url };
   };
 
   const openMaterialModal = (m?: TeachingMaterial) => {
@@ -2425,6 +2530,198 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   );
   }
 
+  if (showSupportView) return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-xl shadow-md p-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setShowSupportView(false)} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronDown className="h-5 w-5 rotate-90" /></button>
+          <HelpCircle className="h-6 w-6 text-primary" /><h1 className="text-lg font-semibold">Support für Dozenten</h1>
+        </div>
+        {canEdit && (
+          <div className="flex items-center gap-2">
+            <select value={supportActiveSection} onChange={(e) => setSupportActiveSection(e.target.value as 'faq' | 'videos')} className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white">
+              <option value="faq">FAQ bearbeiten</option>
+              <option value="videos">Videos bearbeiten</option>
+            </select>
+            <button onClick={supportActiveSection === 'faq' ? openCreateSupportFaqModal : openCreateSupportVideoModal} className="inline-flex items-center px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm">
+              <Plus className="h-4 w-4 mr-1" />{supportActiveSection === 'faq' ? 'FAQ hinzufügen' : 'Video hinzufügen'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Videos Section */}
+      {(supportActiveSection === 'videos' || !canEdit) && supportVideos.length > 0 && (
+        <div className="bg-white rounded-lg shadow">
+          <div className="p-4 border-b border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900 flex items-center gap-2"><Video className="h-5 w-5 text-primary" />Hilfsvideos</h3>
+            <p className="text-sm text-gray-500 mt-1">Videos mit Anleitungen und Erklärungen</p>
+          </div>
+          <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {supportVideos.map((video) => {
+              const { type, embedUrl } = getSupportEmbedUrl(video.video_url);
+              return (
+                <div key={video.id} className="bg-gray-50 rounded-lg overflow-hidden border border-gray-200">
+                  <div className="aspect-video bg-black">
+                    {type === 'iframe' ? (
+                      <iframe src={embedUrl} className="w-full h-full" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+                    ) : (
+                      <video src={embedUrl} controls className="w-full h-full" poster={video.thumbnail_url || undefined} />
+                    )}
+                  </div>
+                  <div className="p-3">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600 mb-2">{video.category}</span>
+                    <h4 className="text-sm font-medium text-gray-900 mb-1">{video.title}</h4>
+                    {video.description && <p className="text-xs text-gray-500 line-clamp-2">{video.description}</p>}
+                    {canEdit && (
+                      <div className="mt-3 flex items-center gap-2">
+                        <button onClick={() => openEditSupportVideoModal(video)} className="inline-flex items-center px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"><Edit2 className="h-3 w-3 mr-1" />Bearbeiten</button>
+                        <button onClick={() => handleDeleteSupportVideo(video.id)} className="inline-flex items-center px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"><Trash2 className="h-3 w-3 mr-1" />Löschen</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* FAQ Section */}
+      {(supportActiveSection === 'faq' || !canEdit) && (
+        <div className="bg-white rounded-lg shadow">
+          <div className="p-4 border-b border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900 flex items-center gap-2"><HelpCircle className="h-5 w-5 text-primary" />Häufig gestellte Fragen</h3>
+            <p className="text-sm text-gray-500 mt-1">Antworten auf die wichtigsten Fragen</p>
+          </div>
+          {supportFaqs.length === 0 ? (
+            <div className="p-8 text-center">
+              <HelpCircle className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+              <h4 className="text-lg font-medium text-gray-900 mb-2">Noch keine FAQs vorhanden</h4>
+              <p className="text-gray-500">{canEdit ? 'Fügen Sie FAQs hinzu, um Dozenten schnell Antworten zu geben.' : 'Der Support-Bereich wird bald mit Inhalten gefüllt.'}</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-200">
+              {supportFaqs.map((faq) => (
+                <div key={faq.id} className="p-4">
+                  <button onClick={() => setExpandedFaq(expandedFaq === faq.id ? null : faq.id)} className="w-full flex items-start justify-between text-left">
+                    <div className="flex-1">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600 mb-2">{faq.category}</span>
+                      <h4 className="text-sm font-medium text-gray-900">{faq.question}</h4>
+                    </div>
+                    {expandedFaq === faq.id ? <ChevronUp className="h-5 w-5 text-gray-400 flex-shrink-0 ml-2" /> : <ChevronDown className="h-5 w-5 text-gray-400 flex-shrink-0 ml-2" />}
+                  </button>
+                  {expandedFaq === faq.id && (
+                    <div className="mt-3 pl-0">
+                      <p className="text-sm text-gray-600 whitespace-pre-wrap">{faq.answer}</p>
+                      {canEdit && (
+                        <div className="mt-3 flex items-center gap-2">
+                          <button onClick={() => openEditSupportFaqModal(faq)} className="inline-flex items-center px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"><Edit2 className="h-3 w-3 mr-1" />Bearbeiten</button>
+                          <button onClick={() => handleDeleteSupportFaq(faq.id)} className="inline-flex items-center px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"><Trash2 className="h-3 w-3 mr-1" />Löschen</button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Empty state for videos tab when no videos */}
+      {supportActiveSection === 'videos' && supportVideos.length === 0 && canEdit && (
+        <div className="bg-white rounded-lg shadow p-8 text-center">
+          <Video className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+          <h4 className="text-lg font-medium text-gray-900 mb-2">Noch keine Videos vorhanden</h4>
+          <p className="text-gray-500">Fügen Sie Videos hinzu, um Dozenten visuelle Anleitungen zu geben.</p>
+        </div>
+      )}
+
+      {/* FAQ Modal */}
+      {showSupportFaqModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4">
+            <div className="fixed inset-0 bg-black/50" onClick={() => setShowSupportFaqModal(false)} />
+            <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">{editingSupportFaq ? 'FAQ bearbeiten' : 'Neue FAQ hinzufügen'}</h3>
+                <button onClick={() => setShowSupportFaqModal(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Kategorie</label>
+                  <select value={supportFaqForm.category} onChange={(e) => setSupportFaqForm({ ...supportFaqForm, category: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                    <option value="Allgemein">Allgemein</option>
+                    <option value="Einheiten">Einheiten</option>
+                    <option value="Materialien">Materialien</option>
+                    <option value="Technisch">Technisch</option>
+                    <option value="Abrechnung">Abrechnung</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Frage *</label>
+                  <input type="text" value={supportFaqForm.question} onChange={(e) => setSupportFaqForm({ ...supportFaqForm, question: e.target.value })} placeholder="z.B. Wie reiche ich meine Stunden ein?" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Antwort *</label>
+                  <textarea value={supportFaqForm.answer} onChange={(e) => setSupportFaqForm({ ...supportFaqForm, answer: e.target.value })} rows={4} placeholder="Die ausführliche Antwort..." className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" />
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end space-x-3">
+                <button onClick={() => setShowSupportFaqModal(false)} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Abbrechen</button>
+                <button onClick={handleSaveSupportFaq} className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90">Speichern</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Video Modal */}
+      {showSupportVideoModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4">
+            <div className="fixed inset-0 bg-black/50" onClick={() => setShowSupportVideoModal(false)} />
+            <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">{editingSupportVideo ? 'Video bearbeiten' : 'Neues Video hinzufügen'}</h3>
+                <button onClick={() => setShowSupportVideoModal(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Kategorie</label>
+                  <select value={supportVideoForm.category} onChange={(e) => setSupportVideoForm({ ...supportVideoForm, category: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                    <option value="Allgemein">Allgemein</option>
+                    <option value="Einheiten">Einheiten</option>
+                    <option value="Materialien">Materialien</option>
+                    <option value="Technisch">Technisch</option>
+                    <option value="Abrechnung">Abrechnung</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Titel *</label>
+                  <input type="text" value={supportVideoForm.title} onChange={(e) => setSupportVideoForm({ ...supportVideoForm, title: e.target.value })} placeholder="z.B. Einführung ins Portal" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Video-URL * (YouTube, Loom, Vimeo oder direkter Link)</label>
+                  <input type="text" value={supportVideoForm.video_url} onChange={(e) => setSupportVideoForm({ ...supportVideoForm, video_url: e.target.value })} placeholder="https://www.youtube.com/watch?v=..." className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Beschreibung</label>
+                  <textarea value={supportVideoForm.description} onChange={(e) => setSupportVideoForm({ ...supportVideoForm, description: e.target.value })} rows={3} placeholder="Kurze Beschreibung des Videos..." className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" />
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end space-x-3">
+                <button onClick={() => setShowSupportVideoModal(false)} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Abbrechen</button>
+                <button onClick={handleSaveSupportVideo} className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90">Speichern</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   if (showMasterclassView) return (
     <div className="space-y-6">
       <div className="bg-white rounded-xl shadow-md p-4 flex items-center justify-between">
@@ -2542,6 +2839,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
                     }`}>
                     {sectionWidgets.map(w => {
                       const isOnboarding = w.title.toLowerCase().includes('onboarding');
+                      const isSupport = w.title.toLowerCase().includes('support');
                       const isHtmlWidget = w.widget_type === 'html';
                       const isYoutubeWidget = w.widget_type === 'youtube';
                       const isLinkWidget = w.widget_type === 'link';
@@ -2593,6 +2891,21 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
                             )
                           ) : isOnboarding ? (
                             <div onClick={() => setShowMasterclassView(true)} className={`group relative block rounded-xl overflow-hidden shadow-lg hover:shadow-xl cursor-pointer w-full ${w.image_height === 'small' ? 'h-32' : w.image_height === 'large' ? 'h-64' : 'h-48'}`}>
+                              {w.image_url ? <img src={w.image_url} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-gradient-to-br from-primary/80 to-primary" />}
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
+                              <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
+                                <h3 className="text-xl font-bold">{w.title}</h3>
+                                {w.description && <p className="text-sm text-white/80">{w.description}</p>}
+                              </div>
+                              {isEditMode && (
+                                <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100">
+                                  <button onClick={e => { e.stopPropagation(); openWidgetModal(w); }} className="p-1.5 bg-white/90 rounded-lg"><Edit2 className="h-4 w-4 text-gray-700" /></button>
+                                  <button onClick={e => { e.stopPropagation(); deleteWidget(w.id); }} className="p-1.5 bg-white/90 rounded-lg"><Trash2 className="h-4 w-4 text-red-500" /></button>
+                                </div>
+                              )}
+                            </div>
+                          ) : isSupport ? (
+                            <div onClick={() => setShowSupportView(true)} className={`group relative block rounded-xl overflow-hidden shadow-lg hover:shadow-xl cursor-pointer w-full ${w.image_height === 'small' ? 'h-32' : w.image_height === 'large' ? 'h-64' : 'h-48'}`}>
                               {w.image_url ? <img src={w.image_url} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-gradient-to-br from-primary/80 to-primary" />}
                               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
                               <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
@@ -2668,17 +2981,22 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-4">
-                  {widgets.filter(w => !w.section_id).map(w => (
-                    <SortableWidget key={w.id} id={w.id} isEditMode={isEditMode}>
-                      <div className="group relative block rounded-xl overflow-hidden shadow-lg hover:shadow-xl cursor-pointer h-48 w-full">
-                        {w.image_url ? <img src={w.image_url} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-gradient-to-br from-primary/80 to-primary" />}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
-                        <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
-                          <h3 className="text-xl font-bold">{w.title}</h3>
+                  {widgets.filter(w => !w.section_id).map(w => {
+                    const clickHandler = w.title.toLowerCase().includes('support') ? () => setShowSupportView(true)
+                      : w.title.toLowerCase().includes('onboarding') ? () => setShowMasterclassView(true)
+                      : undefined;
+                    return (
+                      <SortableWidget key={w.id} id={w.id} isEditMode={isEditMode}>
+                        <div onClick={clickHandler} className="group relative block rounded-xl overflow-hidden shadow-lg hover:shadow-xl cursor-pointer h-48 w-full">
+                          {w.image_url ? <img src={w.image_url} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-gradient-to-br from-primary/80 to-primary" />}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
+                          <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
+                            <h3 className="text-xl font-bold">{w.title}</h3>
+                          </div>
                         </div>
-                      </div>
-                    </SortableWidget>
-                  ))}
+                      </SortableWidget>
+                    );
+                  })}
                 </div>
               </div>
             )}
