@@ -107,8 +107,8 @@ Deno.serve(async (req) => {
     const emailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <!-- Header -->
-        <div style="background-color: white; padding: 30px; text-align: center; border-bottom: 3px solid #9333ea;">
-          <h1 style="color: #9333ea; margin: 0; font-size: 28px;">Kraatz Group Portal</h1>
+        <div style="background-color: white; padding: 30px; text-align: center; border-bottom: 3px solid #2e83c2;">
+          <h1 style="color: #2e83c2; margin: 0; font-size: 28px;">Kraatz Group Portal</h1>
         </div>
         
         <!-- Main Content -->
@@ -120,13 +120,13 @@ Deno.serve(async (req) => {
           </p>
           
           <!-- Event Info Box -->
-          <div style="background-color: #faf5ff; border-left: 4px solid #9333ea; padding: 20px; margin: 20px 0;">
-            <h3 style="color: #9333ea; margin-top: 0; font-size: 18px;">Verschobene Einheit</h3>
+          <div style="background-color: #e8f4f8; border-left: 4px solid #2e83c2; padding: 20px; margin: 20px 0;">
+            <h3 style="color: #2e83c2; margin-top: 0; font-size: 18px;">Verschobene Einheit</h3>
             <p style="margin: 10px 0; color: #333;"><strong>Titel:</strong> ${eventTitle}</p>
             <p style="margin: 10px 0; color: #333;"><strong>Rechtsgebiet:</strong> ${legalArea}</p>
             
             <!-- Old Time -->
-            <div style="background-color: #fff; border: 1px solid #e9d5ff; padding: 15px; margin-top: 15px; border-radius: 5px;">
+            <div style="background-color: #fff; border: 1px solid #b3d9e8; padding: 15px; margin-top: 15px; border-radius: 5px;">
               <p style="margin: 0; color: #666; font-size: 14px;"><strong>Alter Termin:</strong></p>
               <p style="margin: 5px 0 0 0; color: #dc2626; text-decoration: line-through;">
                 ${oldDate} um ${oldTime}
@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
             </div>
             
             <!-- New Time -->
-            <div style="background-color: #fff; border: 2px solid #9333ea; padding: 15px; margin-top: 10px; border-radius: 5px;">
+            <div style="background-color: #fff; border: 2px solid #2e83c2; padding: 15px; margin-top: 10px; border-radius: 5px;">
               <p style="margin: 0; color: #666; font-size: 14px;"><strong>Neuer Termin:</strong></p>
               <p style="margin: 5px 0 0 0; color: #16a34a; font-size: 18px; font-weight: bold;">
                 ${newDate} um ${newTime}
@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
             </div>
             
             ${rescheduleReason ? `
-            <div style="background-color: #fff; border: 1px solid #e9d5ff; padding: 15px; margin-top: 15px; border-radius: 5px;">
+            <div style="background-color: #fff; border: 1px solid #b3d9e8; padding: 15px; margin-top: 15px; border-radius: 5px;">
               <p style="margin: 0; color: #333;"><strong>Grund:</strong> ${rescheduleReason}</p>
             </div>
             ` : ''}
