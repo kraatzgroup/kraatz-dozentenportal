@@ -5120,7 +5120,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Support Tab */}
       {activeSubTab === 'support' && (
