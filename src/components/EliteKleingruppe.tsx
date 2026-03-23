@@ -4969,7 +4969,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     className="px-4 py-2 text-red-700 bg-red-100 rounded-lg hover:bg-red-200 flex items-center justify-center"
                   >
                     <X className="h-4 w-4 mr-1" />
-                    Absagen
+                    Absagen / Löschen
                   </button>
                 )}
                 {isReadOnly && <div></div>}
