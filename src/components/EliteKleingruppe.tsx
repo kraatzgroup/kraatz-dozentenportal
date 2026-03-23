@@ -5103,66 +5103,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                 </div>
               </div>
 
-              <div className="mt-6 flex flex-col-reverse sm:flex-row sm:justify-between items-stretch sm:items-center gap-3">
-                {!isReadOnly && (
-                  <button 
-                    onClick={() => {
-                      if (editingRelease) {
-                        if (isAdmin) {
-                          setShowEditModal(false);
-                          openDeleteModal(editingRelease);
-                        } else {
-                          // For dozenten: trigger reschedule by checking if date/time changed
-                          const dateChanged = releaseDate !== editingRelease.release_date;
-                          const timeChanged = releaseStartTime !== editingRelease.start_time?.slice(0, 5) || 
-                                             releaseEndTime !== editingRelease.end_time?.slice(0, 5);
-                          
-                          if (dateChanged || timeChanged) {
-                            // Date/time changed - show reschedule confirmation
-                            const updateData = {
-                              title: releaseTitle.trim(),
-                              unit_type: releaseUnitType,
-                              legal_area: releaseLegalArea,
-                              release_date: releaseDate,
-                              start_time: releaseStartTime || null,
-                              end_time: releaseEndTime || null,
-                              zoom_link: releaseZoomLink.trim() || null,
-                              klausur_folder_id: releaseKlausurFolderId || null,
-                              material_ids: releaseMaterialIds,
-                              folder_ids: releaseFolderIds,
-                              solution_material_ids: releaseSolutionMaterialIds,
-                              description: releaseDescription.trim() || null
-                            };
-                            setPendingUpdateData(updateData);
-                            setNotifyParticipantsReschedule(true);
-                            setShowEditModal(false);
-                            setTimeout(() => {
-                              setShowRescheduleConfirmModal(true);
-                            }, 100);
-                          } else {
-                            // No date/time change - just save normally
-                            handleUpdateRelease();
-                          }
-                        }
-                      }
-                    }} 
-                    className={`px-4 py-2 rounded-lg flex items-center justify-center ${isAdmin ? 'text-red-700 bg-red-100 hover:bg-red-200' : 'text-orange-700 bg-orange-100 hover:bg-orange-200'}`}
-                  >
-                    {isAdmin ? (
-                      <>
-                        <X className="h-4 w-4 mr-1" />
-                        Absagen / Löschen
-                      </>
-                    ) : (
-                      <>
-                        <Calendar className="h-4 w-4 mr-1" />
-                        Verschieben
-                      </>
-                    )}
-                  </button>
-                )}
-                {isReadOnly && <div></div>}
-                <div className="flex flex-col sm:flex-row gap-3">
+              <div className="mt-6 flex justify-end gap-3">
                   <button onClick={() => { setShowEditModal(false); setEditingRelease(null); }} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
                     {isReadOnly ? 'Schließen' : 'Abbrechen'}
                   </button>
@@ -5181,8 +5122,6 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
             </div>
           </div>
         </div>
-        );
-        })()
       )}
 
       {/* Support Tab */}
