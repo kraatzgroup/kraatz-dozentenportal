@@ -4963,13 +4963,26 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     onClick={() => {
                       if (editingRelease) {
                         setShowEditModal(false);
-                        openDeleteModal(editingRelease);
+                        if (isAdmin) {
+                          openDeleteModal(editingRelease);
+                        } else {
+                          openRescheduleModal(editingRelease);
+                        }
                       }
                     }} 
-                    className="px-4 py-2 text-red-700 bg-red-100 rounded-lg hover:bg-red-200 flex items-center justify-center"
+                    className={`px-4 py-2 rounded-lg flex items-center justify-center ${isAdmin ? 'text-red-700 bg-red-100 hover:bg-red-200' : 'text-orange-700 bg-orange-100 hover:bg-orange-200'}`}
                   >
-                    <X className="h-4 w-4 mr-1" />
-                    Absagen / Löschen
+                    {isAdmin ? (
+                      <>
+                        <X className="h-4 w-4 mr-1" />
+                        Absagen / Löschen
+                      </>
+                    ) : (
+                      <>
+                        <Calendar className="h-4 w-4 mr-1" />
+                        Verschieben
+                      </>
+                    )}
                   </button>
                 )}
                 {isReadOnly && <div></div>}
