@@ -16,6 +16,7 @@ const DozentenRechnungen = lazy(() => import('./components/dozent/DozentenRechnu
 const DozentenTaetigkeitsbericht = lazy(() => import('./components/dozent/DozentenTaetigkeitsbericht').then(m => ({ default: m.DozentenTaetigkeitsbericht })));
 const DozentenTeilnehmer = lazy(() => import('./components/dozent/DozentenTeilnehmer').then(m => ({ default: m.DozentenTeilnehmer })));
 const DozentenProbestunden = lazy(() => import('./components/dozent/DozentenProbestunden').then(m => ({ default: m.DozentenProbestunden })));
+const DozentenTutorials = lazy(() => import('./components/DozentenTutorials').then(m => ({ default: m.DozentenTutorials })));
 import { useAuthStore } from './store/authStore';
 import { usePreviewStore } from './store/previewStore';
 import { PreviewBanner } from './components/PreviewBanner';
@@ -184,6 +185,7 @@ function App() {
           <Route path="/taetigkeitsbericht/:id" element={<DozentenTaetigkeitsbericht />} />
           <Route path="/teilnehmer/:id" element={<DozentenTeilnehmer />} />
           <Route path="/probestunden/:id" element={<DozentenProbestunden />} />
+          <Route path="/tutorials" element={<DozentenTutorials />} />
           
           <Route 
             path="/integrationen" 
