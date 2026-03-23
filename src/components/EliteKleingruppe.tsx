@@ -1484,14 +1484,20 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       if (error) throw error;
 
       // Send notification emails to participants, dozent, and admins
+      console.log('🔔 Starting reschedule notification process...');
       try {
         // Get all participants for this elite group
+        console.log('📋 Fetching participants for elite group:', selectedReleaseForAction.elite_kleingruppe_id || selectedEliteGroupId);
         const { data: participants, error: participantsError } = await supabase
           .from('teilnehmer')
           .select('email, first_name, name')
           .eq('elite_kleingruppe_id', selectedReleaseForAction.elite_kleingruppe_id || selectedEliteGroupId);
 
-        if (participantsError) throw participantsError;
+        if (participantsError) {
+          console.error('❌ Error fetching participants:', participantsError);
+          throw participantsError;
+        }
+        console.log(`✅ Found ${participants?.length || 0} participants`);
 
         // Get dozent email if assigned
         let dozentEmail = null;
@@ -1532,32 +1538,53 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
           ...(admins || []).map(a => ({ email: a.email, name: `${a.first_name} ${a.last_name}` }))
         ];
 
+        console.log(`📧 Preparing to send emails to ${allRecipients.length} recipients:`, allRecipients.map(r => r.email));
+        console.log('📅 Old date/time:', oldDate, oldTime);
+        console.log('📅 New date/time:', newDate, newTime);
+        console.log('🔗 Edge function URL:', `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reschedule-event-notify`);
+
         // Send email to each recipient
-        const emailPromises = allRecipients.map(recipient => 
-          fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reschedule-event-notify`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-            },
-            body: JSON.stringify({
-              teilnehmerEmail: recipient.email,
-              teilnehmerName: recipient.name,
-              eventTitle: selectedReleaseForAction.title,
-              oldDate,
-              oldTime,
-              newDate,
-              newTime,
-              legalArea: selectedReleaseForAction.legal_area || 'Allgemein',
-              rescheduleReason: rescheduleReason.trim() || undefined
-            })
-          })
-        );
+        const emailPromises = allRecipients.map(async (recipient, index) => {
+          console.log(`📤 Sending email ${index + 1}/${allRecipients.length} to:`, recipient.email);
+          try {
+            const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reschedule-event-notify`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+              },
+              body: JSON.stringify({
+                teilnehmerEmail: recipient.email,
+                teilnehmerName: recipient.name,
+                eventTitle: selectedReleaseForAction.title,
+                oldDate,
+                oldTime,
+                newDate,
+                newTime,
+                legalArea: selectedReleaseForAction.legal_area || 'Allgemein',
+                rescheduleReason: rescheduleReason.trim() || undefined
+              })
+            });
+            
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error(`❌ Email ${index + 1} failed:`, response.status, errorText);
+              throw new Error(`Failed to send email: ${response.status}`);
+            }
+            
+            const result = await response.json();
+            console.log(`✅ Email ${index + 1} sent successfully to:`, recipient.email);
+            return result;
+          } catch (error) {
+            console.error(`❌ Error sending email ${index + 1} to ${recipient.email}:`, error);
+            throw error;
+          }
+        });
 
         await Promise.all(emailPromises);
-        console.log(`Reschedule notification emails sent to ${allRecipients.length} recipients (participants, dozent, admins)`);
+        console.log(`✅ All ${allRecipients.length} reschedule notification emails sent successfully!`);
       } catch (emailError) {
-        console.error('Error sending reschedule notification emails:', emailError);
+        console.error('❌ Error sending reschedule notification emails:', emailError);
         // Don't fail the whole operation if emails fail
       }
 
