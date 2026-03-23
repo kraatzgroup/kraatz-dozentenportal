@@ -5108,11 +5108,41 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                   <button 
                     onClick={() => {
                       if (editingRelease) {
-                        setShowEditModal(false);
                         if (isAdmin) {
+                          setShowEditModal(false);
                           openDeleteModal(editingRelease);
                         } else {
-                          openRescheduleModal(editingRelease);
+                          // For dozenten: trigger reschedule by checking if date/time changed
+                          const dateChanged = releaseDate !== editingRelease.release_date;
+                          const timeChanged = releaseStartTime !== editingRelease.start_time?.slice(0, 5) || 
+                                             releaseEndTime !== editingRelease.end_time?.slice(0, 5);
+                          
+                          if (dateChanged || timeChanged) {
+                            // Date/time changed - show reschedule confirmation
+                            const updateData = {
+                              title: releaseTitle.trim(),
+                              unit_type: releaseUnitType,
+                              legal_area: releaseLegalArea,
+                              release_date: releaseDate,
+                              start_time: releaseStartTime || null,
+                              end_time: releaseEndTime || null,
+                              zoom_link: releaseZoomLink.trim() || null,
+                              klausur_folder_id: releaseKlausurFolderId || null,
+                              material_ids: releaseMaterialIds,
+                              folder_ids: releaseFolderIds,
+                              solution_material_ids: releaseSolutionMaterialIds,
+                              description: releaseDescription.trim() || null
+                            };
+                            setPendingUpdateData(updateData);
+                            setNotifyParticipantsReschedule(true);
+                            setShowEditModal(false);
+                            setTimeout(() => {
+                              setShowRescheduleConfirmModal(true);
+                            }, 100);
+                          } else {
+                            // No date/time change - just save normally
+                            handleUpdateRelease();
+                          }
                         }
                       }
                     }} 
