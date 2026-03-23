@@ -1868,27 +1868,46 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       
       // E-Mail-Benachrichtigung an Teilnehmer senden
       try {
-        const teilnehmer = teilnehmerList.find(t => t.id === selectedKlausur.teilnehmer_id);
-        if (teilnehmer?.email) {
+        console.log('📧 Attempting to send correction notification...');
+        const foundTeilnehmer = teilnehmer.find(t => t.id === selectedKlausur.teilnehmer_id);
+        console.log('👤 Found teilnehmer:', foundTeilnehmer);
+        
+        if (foundTeilnehmer?.email) {
+          console.log('📨 Sending email to:', foundTeilnehmer.email);
           const { data: { session } } = await supabase.auth.getSession();
-          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/klausur-correction-notify`, {
+          
+          const emailPayload = {
+            teilnehmerEmail: foundTeilnehmer.email,
+            teilnehmerName: foundTeilnehmer.name,
+            klausurTitle: selectedKlausur.title,
+            legalArea: selectedKlausur.legal_area,
+            score: korrekturScore ? parseInt(korrekturScore) : undefined,
+            feedback: korrekturFeedback || undefined
+          };
+          console.log('📦 Email payload:', emailPayload);
+          
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/klausur-correction-notify`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${session?.access_token}`
             },
-            body: JSON.stringify({
-              teilnehmerEmail: teilnehmer.email,
-              teilnehmerName: teilnehmer.name,
-              klausurTitle: selectedKlausur.title,
-              legalArea: selectedKlausur.legal_area,
-              score: korrekturScore ? parseInt(korrekturScore) : undefined,
-              feedback: korrekturFeedback || undefined
-            })
+            body: JSON.stringify(emailPayload)
           });
+          
+          const responseData = await response.json();
+          console.log('📬 Email notification response:', responseData);
+          
+          if (!response.ok) {
+            console.error('❌ Email notification failed:', responseData);
+          } else {
+            console.log('✅ Email notification sent successfully');
+          }
+        } else {
+          console.warn('⚠️ No email found for teilnehmer:', selectedKlausur.teilnehmer_id);
         }
       } catch (emailError) {
-        console.error('Error sending notification email:', emailError);
+        console.error('❌ Error sending notification email:', emailError);
       }
       
       // Tätigkeitsbericht-Eintrag erstellen falls Dauer angegeben
