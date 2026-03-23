@@ -483,6 +483,15 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   const [pendingUpdateData, setPendingUpdateData] = useState<any>(null);
   const [isSendingEmails, setIsSendingEmails] = useState(false);
 
+  // Conflict modal state
+  const [showConflictModal, setShowConflictModal] = useState(false);
+  const [conflictDetails, setConflictDetails] = useState<{
+    title: string;
+    legalArea: string;
+    date: string;
+    time: string;
+  } | null>(null);
+
   useEffect(() => {
     fetchData();
     if (!isAdmin && user) {
@@ -1053,7 +1062,13 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       );
       
       if (hasConflict && conflictingRelease) {
-        alert(`⚠️ Terminkonflikt!\n\nEs existiert bereits eine Einheit zur gleichen Zeit:\n\n"${conflictingRelease.title}"\n${conflictingRelease.legal_area || 'Kein Rechtsgebiet'}\n${formatDate(conflictingRelease.release_date)} ${conflictingRelease.start_time ? `${conflictingRelease.start_time.slice(0, 5)} - ${conflictingRelease.end_time?.slice(0, 5)}` : '(ganztägig)'}\n\nBitte wählen Sie einen anderen Termin.`);
+        setConflictDetails({
+          title: conflictingRelease.title,
+          legalArea: conflictingRelease.legal_area || 'Kein Rechtsgebiet',
+          date: formatDate(conflictingRelease.release_date),
+          time: conflictingRelease.start_time ? `${conflictingRelease.start_time.slice(0, 5)} - ${conflictingRelease.end_time?.slice(0, 5)}` : '(ganztägig)'
+        });
+        setShowConflictModal(true);
         return;
       }
     }
@@ -1250,7 +1265,13 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         );
         
         if (hasConflict && conflictingRelease) {
-          alert(`⚠️ Terminkonflikt!\n\nEs existiert bereits eine Einheit zur gleichen Zeit:\n\n"${conflictingRelease.title}"\n${conflictingRelease.legal_area || 'Kein Rechtsgebiet'}\n${formatDate(conflictingRelease.release_date)} ${conflictingRelease.start_time ? `${conflictingRelease.start_time.slice(0, 5)} - ${conflictingRelease.end_time?.slice(0, 5)}` : '(ganztägig)'}\n\nBitte wählen Sie einen anderen Termin.`);
+          setConflictDetails({
+            title: conflictingRelease.title,
+            legalArea: conflictingRelease.legal_area || 'Kein Rechtsgebiet',
+            date: formatDate(conflictingRelease.release_date),
+            time: conflictingRelease.start_time ? `${conflictingRelease.start_time.slice(0, 5)} - ${conflictingRelease.end_time?.slice(0, 5)}` : '(ganztägig)'
+          });
+          setShowConflictModal(true);
           return;
         }
       }
@@ -1296,7 +1317,13 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       );
       
       if (hasConflict && conflictingRelease) {
-        alert(`⚠️ Terminkonflikt!\n\nEs existiert bereits eine Einheit zur gleichen Zeit:\n\n"${conflictingRelease.title}"\n${conflictingRelease.legal_area || 'Kein Rechtsgebiet'}\n${formatDate(conflictingRelease.release_date)} ${conflictingRelease.start_time ? `${conflictingRelease.start_time.slice(0, 5)} - ${conflictingRelease.end_time?.slice(0, 5)}` : '(ganztägig)'}\n\nBitte wählen Sie einen anderen Termin.`);
+        setConflictDetails({
+          title: conflictingRelease.title,
+          legalArea: conflictingRelease.legal_area || 'Kein Rechtsgebiet',
+          date: formatDate(conflictingRelease.release_date),
+          time: conflictingRelease.start_time ? `${conflictingRelease.start_time.slice(0, 5)} - ${conflictingRelease.end_time?.slice(0, 5)}` : '(ganztägig)'
+        });
+        setShowConflictModal(true);
         setIsSendingEmails(false);
         setShowRescheduleConfirmModal(false);
         setShowEditModal(true); // Return to edit modal
@@ -1596,7 +1623,13 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       );
       
       if (hasConflict && conflictingRelease) {
-        alert(`⚠️ Terminkonflikt!\n\nEs existiert bereits eine Einheit zur gleichen Zeit:\n\n"${conflictingRelease.title}"\n${conflictingRelease.legal_area || 'Kein Rechtsgebiet'}\n${formatDate(conflictingRelease.release_date)} ${conflictingRelease.start_time ? `${conflictingRelease.start_time.slice(0, 5)} - ${conflictingRelease.end_time?.slice(0, 5)}` : '(ganztägig)'}\n\nBitte wählen Sie einen anderen Termin.`);
+        setConflictDetails({
+          title: conflictingRelease.title,
+          legalArea: conflictingRelease.legal_area || 'Kein Rechtsgebiet',
+          date: formatDate(conflictingRelease.release_date),
+          time: conflictingRelease.start_time ? `${conflictingRelease.start_time.slice(0, 5)} - ${conflictingRelease.end_time?.slice(0, 5)}` : '(ganztägig)'
+        });
+        setShowConflictModal(true);
         setIsSendingEmails(false);
         return;
       }
@@ -6156,6 +6189,56 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                   className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
                 >
                   Schließen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Conflict Modal */}
+      {showConflictModal && conflictDetails && (
+        <div className="fixed inset-0 z-[70] overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4">
+            <div className="fixed inset-0 bg-black/50" onClick={() => setShowConflictModal(false)} />
+            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+              <div className="flex items-start mb-4">
+                <div className="flex-shrink-0">
+                  <AlertCircle className="h-6 w-6 text-orange-500" />
+                </div>
+                <div className="ml-3 flex-1">
+                  <h3 className="text-lg font-medium text-gray-900">Terminkonflikt!</h3>
+                </div>
+              </div>
+              
+              <div className="mb-6">
+                <p className="text-sm text-gray-600 mb-4">
+                  Es existiert bereits eine Einheit zur gleichen Zeit:
+                </p>
+                
+                <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">"{conflictDetails.title}"</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">{conflictDetails.legalArea}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">{conflictDetails.date} {conflictDetails.time}</p>
+                  </div>
+                </div>
+                
+                <p className="text-sm text-gray-600 mt-4">
+                  Bitte wählen Sie einen anderen Termin.
+                </p>
+              </div>
+              
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowConflictModal(false)}
+                  className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                >
+                  OK
                 </button>
               </div>
             </div>
