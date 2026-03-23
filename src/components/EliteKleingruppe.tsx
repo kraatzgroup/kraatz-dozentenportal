@@ -2009,19 +2009,30 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                           {release.folder_ids.map(id => { const f = folders.find(x => x.id === id); return f ? <span key={id} className="inline-flex items-center px-2 py-1 bg-blue-100 rounded text-xs"><FolderOpen className="h-3 w-3 mr-1" />{f.name}</span> : null; })}
                         </div>
                         {canEditRelease(release) && (
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-blue-100 text-blue-700 hover:bg-blue-200">
-                              <Edit2 className="h-4 w-4 mr-1" />Bearbeiten
-                            </button>
-                            <button onClick={(e) => { e.stopPropagation(); handleToggleRelease(release); }} className={"inline-flex items-center px-3 py-1.5 rounded text-sm " + (release.is_released ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200')}>{release.is_released ? <><Lock className="h-4 w-4 mr-1" />Sperren</> : <><Unlock className="h-4 w-4 mr-1" />Jetzt freigeben</>}</button>
-                            {!release.is_canceled && (
-                              <button onClick={(e) => { e.stopPropagation(); openRescheduleModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-purple-100 text-purple-700 hover:bg-purple-200">
-                                <Calendar className="h-4 w-4 mr-1" />Verschieben
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-blue-100 text-blue-700 hover:bg-blue-200">
+                                <Edit2 className="h-4 w-4 mr-1" />Bearbeiten
                               </button>
+                              <button onClick={(e) => { e.stopPropagation(); handleToggleRelease(release); }} className={"inline-flex items-center px-3 py-1.5 rounded text-sm " + (release.is_released ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200')}>{release.is_released ? <><Lock className="h-4 w-4 mr-1" />Sperren</> : <><Unlock className="h-4 w-4 mr-1" />Jetzt freigeben</>}</button>
+                              {!release.is_canceled && (
+                                <button onClick={(e) => { e.stopPropagation(); openRescheduleModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-purple-100 text-purple-700 hover:bg-purple-200">
+                                  <Calendar className="h-4 w-4 mr-1" />Verschieben
+                                </button>
+                              )}
+                              {isAdmin && (
+                                <button onClick={(e) => { e.stopPropagation(); openDeleteModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-red-100 text-red-700 hover:bg-red-200">
+                                  <X className="h-4 w-4 mr-1" />Absagen
+                                </button>
+                              )}
+                            </div>
+                            {!isAdmin && (
+                              <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+                                <p className="text-xs text-blue-700">
+                                  🛈 <strong>Hinweis:</strong> Termine können nur verschoben werden. Zum vollständigen Absagen wenden Sie sich bitte an einen Admin.
+                                </p>
+                              </div>
                             )}
-                            <button onClick={(e) => { e.stopPropagation(); openDeleteModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-red-100 text-red-700 hover:bg-red-200">
-                              <X className="h-4 w-4 mr-1" />Absagen
-                            </button>
                           </div>
                         )}
                         {release.is_canceled && (
@@ -2164,21 +2175,32 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                           <div className="mt-4 pl-14 space-y-4">
                             {release.description && <p className="text-sm text-gray-600">{release.description}</p>}
                             {canEditRelease(release) && (
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-blue-100 text-blue-700 hover:bg-blue-200">
-                                  <Edit2 className="h-4 w-4 mr-1" />Bearbeiten
-                                </button>
-                                <button onClick={(e) => { e.stopPropagation(); handleToggleRelease(release); }} className={`inline-flex items-center px-3 py-1.5 rounded text-sm ${release.is_released ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}>
-                                  {release.is_released ? <><Lock className="h-4 w-4 mr-1" />Deaktivieren</> : <><Unlock className="h-4 w-4 mr-1" />Aktivieren</>}
-                                </button>
-                                {!release.is_canceled && (
-                                  <button onClick={(e) => { e.stopPropagation(); openRescheduleModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-purple-100 text-purple-700 hover:bg-purple-200">
-                                    <Calendar className="h-4 w-4 mr-1" />Verschieben
+                              <div className="space-y-3">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-blue-100 text-blue-700 hover:bg-blue-200">
+                                    <Edit2 className="h-4 w-4 mr-1" />Bearbeiten
                                   </button>
+                                  <button onClick={(e) => { e.stopPropagation(); handleToggleRelease(release); }} className={`inline-flex items-center px-3 py-1.5 rounded text-sm ${release.is_released ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}>
+                                    {release.is_released ? <><Lock className="h-4 w-4 mr-1" />Deaktivieren</> : <><Unlock className="h-4 w-4 mr-1" />Aktivieren</>}
+                                  </button>
+                                  {!release.is_canceled && (
+                                    <button onClick={(e) => { e.stopPropagation(); openRescheduleModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-purple-100 text-purple-700 hover:bg-purple-200">
+                                      <Calendar className="h-4 w-4 mr-1" />Verschieben
+                                    </button>
+                                  )}
+                                  {isAdmin && (
+                                    <button onClick={(e) => { e.stopPropagation(); openDeleteModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-red-100 text-red-700 hover:bg-red-200">
+                                      <X className="h-4 w-4 mr-1" />Absagen
+                                    </button>
+                                  )}
+                                </div>
+                                {!isAdmin && (
+                                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+                                    <p className="text-xs text-blue-700">
+                                      🛈 <strong>Hinweis:</strong> Termine können nur verschoben werden. Zum vollständigen Absagen wenden Sie sich bitte an einen Admin.
+                                    </p>
+                                  </div>
                                 )}
-                                <button onClick={(e) => { e.stopPropagation(); openDeleteModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-red-100 text-red-700 hover:bg-red-200">
-                                  <X className="h-4 w-4 mr-1" />Absagen
-                                </button>
                               </div>
                             )}
                             {release.is_canceled && (
