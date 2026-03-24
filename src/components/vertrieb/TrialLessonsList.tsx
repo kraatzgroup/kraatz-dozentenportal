@@ -53,7 +53,7 @@ export function TrialLessonsList({ trialLessons, onUpdate, onCreate, onDelete }:
   }, []);
 
   const fetchDozenten = async () => {
-    const { data } = await supabase.from('profiles').select('id, full_name, email, legal_areas').eq('role', 'dozent');
+    const { data } = await supabase.from('profiles').select('id, full_name, email, legal_areas').eq('role', 'dozent').eq('is_archived', false);
     setDozenten((data || []).map(d => ({ id: d.id, name: d.full_name, email: d.email, legal_areas: d.legal_areas || [] })));
   };
 

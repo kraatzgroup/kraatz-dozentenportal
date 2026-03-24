@@ -35,6 +35,7 @@ export const useUserStore = create<UserState>((set, get) => ({
       const { data, error } = await supabase
         .from('profiles')
         .select('id, email, full_name, role, additional_roles, profile_picture_url, last_login, created_at, title, first_name, last_name, phone, legal_areas, street, house_number, postal_code, city, iban, bic, bank_name, tax_id, hourly_rate_unterricht, hourly_rate_elite, hourly_rate_sonstige')
+        .eq('is_archived', false)
         .order('role', { ascending: false })
         .order('full_name', { ascending: true });
 

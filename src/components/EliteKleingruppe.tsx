@@ -623,7 +623,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       setDozentAssignments(assignmentsData || []);
       
       // Fetch all dozenten for assignment
-      const { data: dozentenData } = await supabase.from('profiles').select('id, full_name, email').eq('role', 'dozent');
+      const { data: dozentenData } = await supabase.from('profiles').select('id, full_name, email').eq('role', 'dozent').eq('is_archived', false);
       setAllDozenten((dozentenData || []).map(d => ({ id: d.id, name: d.full_name || d.email, email: d.email })));
       
       // Fetch course times
