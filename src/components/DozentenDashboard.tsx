@@ -2544,7 +2544,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
                     }`}>
                     {sectionWidgets.map(w => {
                       const isOnboarding = w.title.toLowerCase().includes('onboarding');
-                      const isSupport = w.title.toLowerCase().includes('support');
+                      const isSupport = w.title.toLowerCase().includes('support') || w.title.toLowerCase().includes('tutorial');
                       const isHtmlWidget = w.widget_type === 'html';
                       const isYoutubeWidget = w.widget_type === 'youtube';
                       const isLinkWidget = w.widget_type === 'link';
@@ -2687,7 +2687,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
                 )}
                 <div className="grid grid-cols-2 gap-4">
                   {widgets.filter(w => !w.section_id).map(w => {
-                    const clickHandler = w.title.toLowerCase().includes('support') ? () => navigate('/tutorials')
+                    const clickHandler = (w.title.toLowerCase().includes('support') || w.title.toLowerCase().includes('tutorial')) ? () => navigate('/tutorials')
                       : w.title.toLowerCase().includes('onboarding') ? () => setShowMasterclassView(true)
                       : undefined;
                     return (
