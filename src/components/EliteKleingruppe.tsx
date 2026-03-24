@@ -2477,7 +2477,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                           {release.material_ids.map(id => { const m = materials.find(x => x.id === id); return m ? <span key={id} className="inline-flex items-center px-2 py-1 bg-gray-100 rounded text-xs"><FileText className="h-3 w-3 mr-1" />{m.title}</span> : null; })}
                           {release.folder_ids.map(id => { const f = folders.find(x => x.id === id); return f ? <span key={id} className="inline-flex items-center px-2 py-1 bg-blue-100 rounded text-xs"><FolderOpen className="h-3 w-3 mr-1" />{f.name}</span> : null; })}
                         </div>
-                        {canEditRelease(release) ? (
+                        {canEditRelease(release) && (
                           <div className="space-y-3">
                             <div className="flex items-center gap-2 flex-wrap">
                               <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-blue-100 text-blue-700 hover:bg-blue-200">
@@ -2502,12 +2502,6 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                                 </p>
                               </div>
                             )}
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-green-100 text-green-700 hover:bg-green-200">
-                              <FileText className="h-4 w-4 mr-1" />Dokumente teilen
-                            </button>
                           </div>
                         )}
                         {release.is_canceled && (
@@ -2649,7 +2643,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                         {expandedRelease === release.id && (
                           <div className="mt-4 pl-14 space-y-4">
                             {release.description && <p className="text-sm text-gray-600">{release.description}</p>}
-                            {canEditRelease(release) ? (
+                            {canEditRelease(release) && (
                               <div className="space-y-3">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-blue-100 text-blue-700 hover:bg-blue-200">
@@ -2676,12 +2670,6 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                                     </p>
                                   </div>
                                 )}
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-2">
-                                <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-green-100 text-green-700 hover:bg-green-200">
-                                  <FileText className="h-4 w-4 mr-1" />Dokumente teilen
-                                </button>
                               </div>
                             )}
                             {release.is_canceled && (
