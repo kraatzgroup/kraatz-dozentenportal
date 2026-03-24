@@ -883,8 +883,11 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   // Check if a release belongs to the dozent's own legal areas (or if admin)
   const canEditRelease = (release: ScheduledRelease) => {
     if (isAdmin) return true;
-    if (dozentLegalAreas.length === 0) return true;
+    // Dozent without assigned legal areas cannot edit
+    if (dozentLegalAreas.length === 0) return false;
+    // Release without legal area can be edited by any dozent
     if (!release.legal_area) return true;
+    // Only allow editing if dozent is assigned to this legal area
     return dozentLegalAreas.includes(release.legal_area);
   };
 
