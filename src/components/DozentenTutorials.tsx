@@ -51,7 +51,19 @@ const getEmbedUrl = (url: string): { type: 'iframe' | 'video'; embedUrl: string 
   return { type: 'video', embedUrl: url };
 };
 
-export function DozentenTutorials() {
+interface TutorialsProps {
+  faqTable?: string;
+  videoTable?: string;
+  pageTitle?: string;
+  pageSubtitle?: string;
+}
+
+export function DozentenTutorials({
+  faqTable = 'dozenten_support_faqs',
+  videoTable = 'dozenten_support_videos',
+  pageTitle = 'Tutorials & Support',
+  pageSubtitle = 'Videos mit Anleitungen und Erklärungen',
+}: TutorialsProps = {}) {
   const navigate = useNavigate();
   const { isAdmin } = useAuthStore();
   const { addToast } = useToastStore();
@@ -75,9 +87,9 @@ export function DozentenTutorials() {
 
   const fetchContent = async () => {
     setIsLoading(true);
-    const { data: faqData } = await supabase.from('dozenten_support_faqs').select('*').eq('is_active', true).order('order_index');
+    const { data: faqData } = await supabase.from(faqTable).select('*').eq('is_active', true).order('order_index');
     setFaqs(faqData || []);
-    const { data: videoData } = await supabase.from('dozenten_support_videos').select('*').eq('is_active', true).order('order_index');
+    const { data: videoData } = await supabase.from(videoTable).select('*').eq('is_active', true).order('order_index');
     setVideos(videoData || []);
     setIsLoading(false);
   };
@@ -87,12 +99,12 @@ export function DozentenTutorials() {
     if (!faqForm.question.trim() || !faqForm.answer.trim()) return;
     try {
       if (editingFaq) {
-        await supabase.from('dozenten_support_faqs').update({
+        await supabase.from(faqTable).update({
           question: faqForm.question, answer: faqForm.answer, category: faqForm.category, updated_at: new Date().toISOString()
         }).eq('id', editingFaq.id);
       } else {
-        const { data: maxOrder } = await supabase.from('dozenten_support_faqs').select('order_index').order('order_index', { ascending: false }).limit(1).maybeSingle();
-        await supabase.from('dozenten_support_faqs').insert({
+        const { data: maxOrder } = await supabase.from(faqTable).select('order_index').order('order_index', { ascending: false }).limit(1).maybeSingle();
+        await supabase.from(faqTable).insert({
           question: faqForm.question, answer: faqForm.answer, category: faqForm.category, order_index: (maxOrder?.order_index || 0) + 1, is_active: true
         });
       }
@@ -103,7 +115,7 @@ export function DozentenTutorials() {
 
   const handleDeleteFaq = async (id: string) => {
     if (!confirm('Möchten Sie diese FAQ wirklich löschen?')) return;
-    await supabase.from('dozenten_support_faqs').update({ is_active: false }).eq('id', id);
+    await supabase.from(faqTable).update({ is_active: false }).eq('id', id);
     fetchContent();
   };
 
@@ -112,12 +124,12 @@ export function DozentenTutorials() {
     if (!videoForm.title.trim() || !videoForm.video_url.trim()) return;
     try {
       if (editingVideo) {
-        await supabase.from('dozenten_support_videos').update({
+        await supabase.from(videoTable).update({
           title: videoForm.title, description: videoForm.description || null, video_url: videoForm.video_url, category: videoForm.category, updated_at: new Date().toISOString()
         }).eq('id', editingVideo.id);
       } else {
-        const { data: maxOrder } = await supabase.from('dozenten_support_videos').select('order_index').order('order_index', { ascending: false }).limit(1).maybeSingle();
-        await supabase.from('dozenten_support_videos').insert({
+        const { data: maxOrder } = await supabase.from(videoTable).select('order_index').order('order_index', { ascending: false }).limit(1).maybeSingle();
+        await supabase.from(videoTable).insert({
           title: videoForm.title, description: videoForm.description || null, video_url: videoForm.video_url, category: videoForm.category, order_index: (maxOrder?.order_index || 0) + 1, is_active: true
         });
       }
@@ -128,7 +140,7 @@ export function DozentenTutorials() {
 
   const handleDeleteVideo = async (id: string) => {
     if (!confirm('Möchten Sie dieses Video wirklich löschen?')) return;
-    await supabase.from('dozenten_support_videos').update({ is_active: false }).eq('id', id);
+    await supabase.from(videoTable).update({ is_active: false }).eq('id', id);
     fetchContent();
   };
 
@@ -149,7 +161,7 @@ export function DozentenTutorials() {
             <ChevronLeft className="h-5 w-5" />
           </button>
           <HelpCircle className="h-6 w-6 text-primary" />
-          <h1 className="text-lg font-semibold">Tutorials & Support</h1>
+          <h1 className="text-lg font-semibold">{pageTitle}</h1>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => navigate('/messages')} className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium whitespace-nowrap">
@@ -179,7 +191,7 @@ export function DozentenTutorials() {
                   Hilfsvideos
                 </h2>
                 <p className="text-sm text-gray-500 mt-1">
-                  Videos mit Anleitungen und Erklärungen
+                  {pageSubtitle}
                 </p>
               </div>
             </div>
@@ -299,7 +311,7 @@ export function DozentenTutorials() {
       {videos.length === 0 && faqs.length === 0 && (
         <div className="bg-white rounded-lg shadow p-8 text-center">
           <HelpCircle className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-xl font-medium text-gray-900 mb-2">Tutorials & Support</h3>
+          <h3 className="text-xl font-medium text-gray-900 mb-2">{pageTitle}</h3>
           <p className="text-gray-500 max-w-md mx-auto">
             Hier findest du bald hilfreiche Videos und Antworten auf häufig gestellte Fragen.
           </p>

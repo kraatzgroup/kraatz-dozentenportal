@@ -2554,7 +2554,8 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
                     }`}>
                     {sectionWidgets.map(w => {
                       const isOnboarding = w.title.toLowerCase().includes('onboarding');
-                      const isSupport = w.title.toLowerCase().includes('support') || w.title.toLowerCase().includes('tutorial');
+                      const isTutorial = w.title.toLowerCase().includes('tutorial');
+                      const isSupport = w.title.toLowerCase().includes('support') || isTutorial;
                       const isHtmlWidget = w.widget_type === 'html';
                       const isYoutubeWidget = w.widget_type === 'youtube';
                       const isLinkWidget = w.widget_type === 'link';
@@ -2620,7 +2621,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
                               )}
                             </div>
                           ) : isSupport ? (
-                            <div onClick={() => navigate('/tutorials')} className={`group relative block rounded-xl overflow-hidden shadow-lg hover:shadow-xl cursor-pointer w-full ${w.image_height === 'small' ? 'h-32' : w.image_height === 'large' ? 'h-64' : 'h-48'}`}>
+                            <div onClick={() => navigate(isTutorial ? '/tutorials-dozenten-portal' : '/tutorials')} className={`group relative block rounded-xl overflow-hidden shadow-lg hover:shadow-xl cursor-pointer w-full ${w.image_height === 'small' ? 'h-32' : w.image_height === 'large' ? 'h-64' : 'h-48'}`}>
                               {w.image_url ? <img src={w.image_url} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-gradient-to-br from-primary/80 to-primary" />}
                               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
                               <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
@@ -2700,7 +2701,8 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
                 )}
                 <div className="grid grid-cols-2 gap-4">
                   {widgets.filter(w => !w.section_id).map(w => {
-                    const clickHandler = (w.title.toLowerCase().includes('support') || w.title.toLowerCase().includes('tutorial')) ? () => navigate('/tutorials')
+                    const clickHandler = w.title.toLowerCase().includes('tutorial') ? () => navigate('/tutorials-dozenten-portal')
+                      : w.title.toLowerCase().includes('support') ? () => navigate('/tutorials')
                       : w.title.toLowerCase().includes('onboarding') ? () => setShowMasterclassView(true)
                       : undefined;
                     return (

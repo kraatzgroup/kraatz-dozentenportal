@@ -17,6 +17,14 @@ const DozentenTaetigkeitsbericht = lazy(() => import('./components/dozent/Dozent
 const DozentenTeilnehmer = lazy(() => import('./components/dozent/DozentenTeilnehmer').then(m => ({ default: m.DozentenTeilnehmer })));
 const DozentenProbestunden = lazy(() => import('./components/dozent/DozentenProbestunden').then(m => ({ default: m.DozentenProbestunden })));
 const DozentenTutorials = lazy(() => import('./components/DozentenTutorials').then(m => ({ default: m.DozentenTutorials })));
+const DozentenPortalTutorials = lazy(() => import('./components/DozentenTutorials').then(m => ({
+  default: () => m.DozentenTutorials({
+    faqTable: 'dozenten_portal_tutorial_faqs',
+    videoTable: 'dozenten_portal_tutorial_videos',
+    pageTitle: 'Dozenten-Portal: Tutorials',
+    pageSubtitle: 'Videos mit Anleitungen und Erklärungen für das Dozenten-Portal',
+  })
+})));
 import { useAuthStore } from './store/authStore';
 import { usePreviewStore } from './store/previewStore';
 import { PreviewBanner } from './components/PreviewBanner';
@@ -186,6 +194,7 @@ function App() {
           <Route path="/teilnehmer/:id" element={<DozentenTeilnehmer />} />
           <Route path="/probestunden/:id" element={<DozentenProbestunden />} />
           <Route path="/tutorials" element={<DozentenTutorials />} />
+          <Route path="/tutorials-dozenten-portal" element={<DozentenPortalTutorials />} />
           
           <Route 
             path="/integrationen" 
