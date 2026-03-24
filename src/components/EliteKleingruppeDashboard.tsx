@@ -7,6 +7,16 @@ import { useChatStore } from '../store/chatStore';
 import { Logo } from './Logo';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
+interface AdditionalDocument {
+  id: string;
+  file_url: string;
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  uploaded_at: string;
+  uploaded_by: string | null;
+}
+
 interface ScheduledRelease {
   id: string;
   release_date: string;
@@ -28,6 +38,7 @@ interface ScheduledRelease {
   solution_release_time: string | null;
   event_type: string;
   end_date: string | null;
+  additional_documents: AdditionalDocument[];
 }
 
 interface TeachingMaterial {
@@ -2839,6 +2850,9 @@ export function EliteKleingruppeDashboard() {
                                 visibleMaterialCount += folderNonSolutionCount;
                               });
                               
+                              // Zusätzliche Dokumente mitzählen
+                              visibleMaterialCount += (release.additional_documents || []).length;
+                              
                               return visibleMaterialCount;
                             })()} Materialien
                           </span>
@@ -2962,6 +2976,20 @@ export function EliteKleingruppeDashboard() {
                                 </div>
                               );
                             })}
+                            {/* Zusätzliche Dokumente */}
+                            {release.additional_documents && release.additional_documents.length > 0 && release.additional_documents.map(doc => (
+                              <a
+                                key={doc.id}
+                                href={doc.file_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-start p-3 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors border border-emerald-200 gap-3"
+                              >
+                                <Upload className="h-5 w-5 text-emerald-500 flex-shrink-0" />
+                                <span className="text-sm text-gray-900 flex-1 break-words">{doc.file_name}</span>
+                                <Download className="h-5 w-5 text-emerald-600 flex-shrink-0" />
+                              </a>
+                            ))}
                           </div>
 
                           {/* Lösungen - nur wenn freigegeben */}
@@ -3604,6 +3632,31 @@ export function EliteKleingruppeDashboard() {
                         </div>
                       );
                     })}
+                  </div>
+                </div>
+              )}
+
+              {/* Zusätzliche Dokumente */}
+              {selectedReleaseForDetail.is_released && selectedReleaseForDetail.additional_documents && selectedReleaseForDetail.additional_documents.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+                    <Upload className="h-4 w-4 mr-2" />
+                    Zusätzliche Dokumente ({selectedReleaseForDetail.additional_documents.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {selectedReleaseForDetail.additional_documents.map(doc => (
+                      <a
+                        key={doc.id}
+                        href={doc.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-start w-full p-3 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors border border-emerald-200 gap-3"
+                      >
+                        <FileText className="h-5 w-5 text-emerald-500 flex-shrink-0" />
+                        <span className="text-sm text-gray-900 flex-1 break-words">{doc.file_name}</span>
+                        <Download className="h-5 w-5 text-emerald-600 flex-shrink-0" />
+                      </a>
+                    ))}
                   </div>
                 </div>
               )}

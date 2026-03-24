@@ -185,6 +185,16 @@ interface MaterialFolder {
   parent_id: string | null;
 }
 
+interface AdditionalDocument {
+  id: string;
+  file_url: string;
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  uploaded_at: string;
+  uploaded_by: string | null;
+}
+
 interface ScheduledRelease {
   id: string;
   release_date: string;
@@ -224,6 +234,7 @@ interface ScheduledRelease {
   rescheduled_to_end_time: string | null;
   rescheduled_reason: string | null;
   rescheduled_by: string | null;
+  additional_documents: AdditionalDocument[];
 }
 
 interface Klausur {
@@ -385,6 +396,10 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   const [additionalDocument, setAdditionalDocument] = useState<File | null>(null);
   const [additionalDocumentTitle, setAdditionalDocumentTitle] = useState<string>('');
   const [isUploadingDocument, setIsUploadingDocument] = useState(false);
+  const [editAdditionalDocuments, setEditAdditionalDocuments] = useState<AdditionalDocument[]>([]);
+  const [editAdditionalDocument, setEditAdditionalDocument] = useState<File | null>(null);
+  const [editAdditionalDocumentTitle, setEditAdditionalDocumentTitle] = useState<string>('');
+  const [isUploadingEditDocument, setIsUploadingEditDocument] = useState(false);
   const [editingRelease, setEditingRelease] = useState<ScheduledRelease | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [klausurenFilter, setKlausurenFilter] = useState<string>('alle');
@@ -782,16 +797,16 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       if (videoFile) {
         const fileExt = videoFile.name.split('.').pop();
         const fileName = `${Date.now()}_${videoForm.title.replace(/[^a-zA-Z0-9]/g, '_')}.${fileExt}`;
-        const filePath = `elite-videos/${fileName}`;
+        const filePath = `materials/elite-videos/${fileName}`;
         
         const { error: uploadError } = await supabase.storage
-          .from('teaching-materials')
+          .from('masterclass')
           .upload(filePath, videoFile);
         
         if (uploadError) throw uploadError;
         
         const { data: urlData } = supabase.storage
-          .from('teaching-materials')
+          .from('masterclass')
           .getPublicUrl(filePath);
         
         videoUrl = urlData.publicUrl;
@@ -1081,16 +1096,16 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       if (additionalDocument && additionalDocumentTitle.trim()) {
         const fileExt = additionalDocument.name.split('.').pop();
         const fileName = `${Date.now()}_${additionalDocumentTitle.replace(/[^a-zA-Z0-9]/g, '_')}.${fileExt}`;
-        const filePath = `elite-kleingruppe/zusatzmaterial/${fileName}`;
+        const filePath = `materials/elite-kleingruppe/zusatzmaterial/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
-          .from('teaching-materials')
+          .from('masterclass')
           .upload(filePath, additionalDocument);
 
         if (uploadError) throw uploadError;
 
         const { data: urlData } = supabase.storage
-          .from('teaching-materials')
+          .from('masterclass')
           .getPublicUrl(filePath);
 
         // Material in der Datenbank erstellen
@@ -1222,7 +1237,103 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
     setSolutionReleaseMode(release.solution_release_date ? 'custom' : 'auto');
     setCustomSolutionReleaseDate(release.solution_release_date || '');
     setCustomSolutionReleaseTime(release.solution_release_time?.slice(0, 5) || '');
+    setEditAdditionalDocuments(release.additional_documents || []);
+    setEditAdditionalDocument(null);
+    setEditAdditionalDocumentTitle('');
     setShowEditModal(true);
+  };
+
+  const handleUploadEditDocument = async () => {
+    console.log('handleUploadEditDocument called', { 
+      hasFile: !!editAdditionalDocument, 
+      title: editAdditionalDocumentTitle, 
+      releaseId: editingRelease?.id 
+    });
+    if (!editAdditionalDocument || !editAdditionalDocumentTitle.trim() || !editingRelease) {
+      console.warn('handleUploadEditDocument: guard failed', { 
+        hasFile: !!editAdditionalDocument, 
+        hasTitle: !!editAdditionalDocumentTitle.trim(), 
+        hasRelease: !!editingRelease 
+      });
+      return;
+    }
+    
+    setIsUploadingEditDocument(true);
+    try {
+      const fileExt = editAdditionalDocument.name.split('.').pop();
+      const fileName = `${Date.now()}_${editAdditionalDocumentTitle.replace(/[^a-zA-Z0-9]/g, '_')}.${fileExt}`;
+      const filePath = `materials/elite-kleingruppe/zusatzmaterial/${fileName}`;
+
+      console.log('Uploading to storage:', filePath);
+      const { error: uploadError } = await supabase.storage
+        .from('masterclass')
+        .upload(filePath, editAdditionalDocument);
+
+      if (uploadError) {
+        console.error('Storage upload error:', uploadError);
+        alert(`Fehler beim Hochladen: ${uploadError.message}`);
+        return;
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('masterclass')
+        .getPublicUrl(filePath);
+
+      console.log('File uploaded, public URL:', urlData.publicUrl);
+
+      const newDoc: AdditionalDocument = {
+        id: crypto.randomUUID(),
+        file_url: urlData.publicUrl,
+        file_name: editAdditionalDocument.name,
+        file_type: editAdditionalDocument.type || 'application/octet-stream',
+        file_size: editAdditionalDocument.size,
+        uploaded_at: new Date().toISOString(),
+        uploaded_by: user?.id || null
+      };
+
+      const updatedDocs = [...editAdditionalDocuments, newDoc];
+      
+      console.log('Saving to DB, release ID:', editingRelease.id, 'docs count:', updatedDocs.length);
+      const { error: dbError } = await supabase
+        .from('elite_kleingruppe_releases')
+        .update({ additional_documents: updatedDocs })
+        .eq('id', editingRelease.id);
+
+      if (dbError) {
+        console.error('DB update error:', dbError);
+        alert(`Fehler beim Speichern: ${dbError.message}`);
+        return;
+      }
+
+      console.log('Document saved successfully');
+      setEditAdditionalDocuments(updatedDocs);
+      setEditAdditionalDocument(null);
+      setEditAdditionalDocumentTitle('');
+      fetchData();
+    } catch (error: any) {
+      console.error('Error uploading document:', error);
+      alert(`Fehler: ${error?.message || 'Unbekannter Fehler'}`);
+    } finally {
+      setIsUploadingEditDocument(false);
+    }
+  };
+
+  const handleRemoveEditDocument = async (docId: string) => {
+    if (!editingRelease) return;
+    const updatedDocs = editAdditionalDocuments.filter(d => d.id !== docId);
+    try {
+      const { error } = await supabase
+        .from('elite_kleingruppe_releases')
+        .update({ additional_documents: updatedDocs })
+        .eq('id', editingRelease.id);
+
+      if (error) throw error;
+
+      setEditAdditionalDocuments(updatedDocs);
+      fetchData();
+    } catch (error) {
+      console.error('Error removing document:', error);
+    }
   };
 
   const handleUpdateRelease = async () => {
@@ -1249,7 +1360,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       solution_material_ids: releaseSolutionMaterialIds,
       solution_release_date: solutionReleaseMode === 'custom' && customSolutionReleaseDate ? customSolutionReleaseDate : null,
       solution_release_time: solutionReleaseMode === 'custom' && customSolutionReleaseTime ? customSolutionReleaseTime : null,
-      elite_kleingruppe_id: selectedEliteGroupId || (eliteGroups.length === 1 ? eliteGroups[0].id : null)
+      elite_kleingruppe_id: selectedEliteGroupId || (eliteGroups.length === 1 ? eliteGroups[0].id : null),
+      additional_documents: editAdditionalDocuments
     };
 
     // If date or time changed, check for conflicts first
@@ -2309,7 +2421,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                           {release.material_ids.map(id => { const m = materials.find(x => x.id === id); return m ? <span key={id} className="inline-flex items-center px-2 py-1 bg-gray-100 rounded text-xs"><FileText className="h-3 w-3 mr-1" />{m.title}</span> : null; })}
                           {release.folder_ids.map(id => { const f = folders.find(x => x.id === id); return f ? <span key={id} className="inline-flex items-center px-2 py-1 bg-blue-100 rounded text-xs"><FolderOpen className="h-3 w-3 mr-1" />{f.name}</span> : null; })}
                         </div>
-                        {canEditRelease(release) && (
+                        {canEditRelease(release) ? (
                           <div className="space-y-3">
                             <div className="flex items-center gap-2 flex-wrap">
                               <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-blue-100 text-blue-700 hover:bg-blue-200">
@@ -2334,6 +2446,12 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                                 </p>
                               </div>
                             )}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-green-100 text-green-700 hover:bg-green-200">
+                              <FileText className="h-4 w-4 mr-1" />Dokumente teilen
+                            </button>
                           </div>
                         )}
                         {release.is_canceled && (
@@ -2475,7 +2593,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                         {expandedRelease === release.id && (
                           <div className="mt-4 pl-14 space-y-4">
                             {release.description && <p className="text-sm text-gray-600">{release.description}</p>}
-                            {canEditRelease(release) && (
+                            {canEditRelease(release) ? (
                               <div className="space-y-3">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-blue-100 text-blue-700 hover:bg-blue-200">
@@ -2502,6 +2620,12 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                                     </p>
                                   </div>
                                 )}
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <button onClick={(e) => { e.stopPropagation(); openEditReleaseModal(release); }} className="inline-flex items-center px-3 py-1.5 rounded text-sm bg-green-100 text-green-700 hover:bg-green-200">
+                                  <FileText className="h-4 w-4 mr-1" />Dokumente teilen
+                                </button>
                               </div>
                             )}
                             {release.is_canceled && (
@@ -4940,13 +5064,15 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                   <h3 className="text-lg font-medium text-gray-900">{isReadOnly ? 'Einheit ansehen (nur Lesezugriff)' : 'Einheit bearbeiten'}</h3>
                   <p className="text-sm text-gray-500 mt-1">{isReadOnly ? 'Details der' : 'Bearbeiten Sie die'} Unterrichtseinheit vom {editingRelease ? formatDate(editingRelease.release_date) : ''}</p>
                   <p className="text-xs text-gray-400 mt-0.5">ID: {editingRelease.id}</p>
-                  {isReadOnly && <p className="text-xs text-orange-600 mt-1 font-medium">⚠️ Diese Einheit gehört nicht zu Ihren zugewiesenen Rechtsgebieten</p>}
+                  {isReadOnly && <p className="text-xs text-orange-600 mt-1 font-medium">⚠️ Diese Einheit gehört nicht zu Ihren zugewiesenen Rechtsgebieten – Dokumente können dennoch geteilt werden</p>}
                 </div>
                 <button onClick={() => { setShowEditModal(false); setEditingRelease(null); }} className="text-gray-400 hover:text-gray-600">
                   <X className="h-5 w-5" />
                 </button>
               </div>
               
+              <div className="space-y-6">
+              {/* Read-only wrapper for unit fields (not document sharing) */}
               <div className={`space-y-6 ${isReadOnly ? 'pointer-events-none opacity-60' : ''}`}>
                 {/* Typ der Einheit */}
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -5042,13 +5168,15 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                   />
                 </div>
 
-                {/* Klausur-Ordner Auswahl */}
+              </div>
+
+                {/* Klausur-Ordner Auswahl - always editable for document sharing */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Welche Klausur wird besprochen?</label>
                   <select 
                     value={releaseKlausurFolderId} 
                     onChange={(e) => setReleaseKlausurFolderId(e.target.value)} 
-                    disabled={isReadOnly || !releaseLegalArea}
+                    disabled={!releaseLegalArea}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-100 disabled:cursor-not-allowed"
                   >
                     <option value="">{releaseLegalArea ? 'Keine Klausur auswählen...' : 'Bitte zuerst Einheitstyp wählen...'}</option>
@@ -5268,6 +5396,98 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                   );
                 })()}
 
+                {/* Zusätzliche Dokumente hochladen */}
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+                  <label className="block text-sm font-medium text-emerald-900 mb-1">
+                    <Upload className="h-4 w-4 inline mr-1" />
+                    Zusätzliche Dokumente hochladen
+                  </label>
+                  <p className="text-xs text-emerald-600 mb-3">
+                    Laden Sie hier Dokumente hoch, die zusätzlich mit den Teilnehmern geteilt werden sollen.
+                  </p>
+
+                  {/* Bereits hochgeladene Dokumente */}
+                  {editAdditionalDocuments.length > 0 && (
+                    <div className="space-y-2 mb-3">
+                      {editAdditionalDocuments.map(doc => (
+                        <div key={doc.id} className="flex items-center justify-between bg-white border border-emerald-200 rounded-lg p-2">
+                          <div className="flex items-center min-w-0">
+                            <FileText className="h-4 w-4 text-emerald-600 flex-shrink-0 mr-2" />
+                            <div className="min-w-0">
+                              <a href={doc.file_url} target="_blank" rel="noopener noreferrer" className="text-sm text-emerald-800 hover:underline truncate block">{doc.file_name}</a>
+                              <p className="text-xs text-emerald-500">{(doc.file_size / 1024 / 1024).toFixed(2)} MB</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveEditDocument(doc.id)}
+                            className="text-red-400 hover:text-red-600 ml-2 flex-shrink-0"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Upload-Bereich */}
+                  {editAdditionalDocument ? (
+                    <div className="bg-white border border-emerald-200 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center min-w-0">
+                          <FileText className="h-5 w-5 text-emerald-600 mr-2 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-emerald-800 truncate">{editAdditionalDocument.name}</p>
+                            <p className="text-xs text-emerald-500">{(editAdditionalDocument.size / 1024 / 1024).toFixed(2)} MB</p>
+                          </div>
+                        </div>
+                        <button type="button" onClick={() => { setEditAdditionalDocument(null); setEditAdditionalDocumentTitle(''); }} className="text-red-500 hover:text-red-700">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <div className="mb-2">
+                        <label className="block text-xs font-medium text-emerald-700 mb-1">Titel des Dokuments</label>
+                        <input
+                          type="text"
+                          value={editAdditionalDocumentTitle}
+                          onChange={(e) => setEditAdditionalDocumentTitle(e.target.value)}
+                          placeholder="z.B. Zusatzmaterial zur Einheit"
+                          className="w-full px-3 py-2 text-sm border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleUploadEditDocument}
+                        disabled={!editAdditionalDocumentTitle.trim() || isUploadingEditDocument}
+                        className="w-full px-3 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                      >
+                        {isUploadingEditDocument ? (
+                          <><div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" /> Wird hochgeladen...</>
+                        ) : (
+                          <><Upload className="h-4 w-4 mr-1" /> Dokument hochladen</>
+                        )}
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-emerald-300 rounded-lg cursor-pointer hover:bg-emerald-100 transition-colors">
+                      <Upload className="h-5 w-5 text-emerald-400 mr-2" />
+                      <span className="text-sm text-emerald-600">Datei auswählen</span>
+                      <input
+                        type="file"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setEditAdditionalDocument(file);
+                            setEditAdditionalDocumentTitle(file.name.replace(/\.[^/.]+$/, ''));
+                          }
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+
                 {/* Beschreibung */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Beschreibung (optional)</label>
@@ -5290,24 +5510,23 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     <div>Dauer: <strong>{releaseUnitType ? formatDuration(getUnitDurationFromSettings(unitDurations, releaseUnitType)) : '-'}</strong></div>
                     {releaseKlausurFolderId && <div className="col-span-2">Klausur: <strong>{folders.find(f => f.id === releaseKlausurFolderId)?.name || '-'}</strong></div>}
                     {releaseSolutionMaterialIds.length > 0 && <div className="col-span-2">Lösungen (nach Termin): <strong>{releaseSolutionMaterialIds.length} Dateien</strong></div>}
+                    {editAdditionalDocuments.length > 0 && <div className="col-span-2 text-emerald-700">Zusatzdokumente: <strong>{editAdditionalDocuments.length} Dateien</strong></div>}
                   </div>
                 </div>
               </div>
 
               <div className="mt-6 flex justify-end gap-3">
                 <button onClick={() => { setShowEditModal(false); setEditingRelease(null); }} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
-                  {isReadOnly ? 'Schließen' : 'Abbrechen'}
+                  Abbrechen
                 </button>
-                {!isReadOnly && (
                   <button 
                     onClick={handleUpdateRelease} 
                     disabled={!releaseTitle.trim() || !releaseUnitType} 
                     className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Save className="h-4 w-4 inline mr-1" />
-                    Änderungen speichern
+                    {isReadOnly ? 'Dokumente aktualisieren' : 'Änderungen speichern'}
                   </button>
-                )}
               </div>
             </div>
           </div>
