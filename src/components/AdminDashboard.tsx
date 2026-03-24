@@ -888,15 +888,23 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
 
   const handleDeleteDozent = async (dozentId: string) => {
     try {
-      // Delete the dozent profile
-      const { error } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', dozentId);
+      const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-user`;
+      const response = await fetch(edgeFunctionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ userId: dozentId }),
+      });
 
-      if (error) throw error;
+      const result = await response.json();
 
-      addToast('Dozent erfolgreich gelöscht', 'success');
+      if (!response.ok) {
+        throw new Error(result.error || 'Fehler beim Löschen');
+      }
+
+      addToast('Dozent und Benutzerkonto erfolgreich gelöscht', 'success');
       fetchDozenten();
     } catch (error) {
       console.error('Error deleting dozent:', error);

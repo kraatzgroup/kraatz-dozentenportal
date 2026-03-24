@@ -61,6 +61,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
   const { addToast } = useToastStore();
   const [isLoading, setIsLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [formData, setFormData] = useState<Dozent>({
     title: '',
     first_name: '',
@@ -1034,8 +1035,8 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
           </div>
         )}
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+        {/* Form - hidden when dozent picker is shown */}
+        <form onSubmit={handleSubmit} className={`p-4 space-y-4 ${showDozentPicker && parsedDozenten.length > 0 ? 'hidden' : ''}`}>
           {/* Profile Picture */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1126,8 +1127,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
                 value={formData.first_name}
                 onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                placeholder="Vorname"
-                required
+                placeholder="Vorname *"
               />
             </div>
             <div>
@@ -1139,8 +1139,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
                 value={formData.last_name}
                 onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                placeholder="Nachname"
-                required
+                placeholder="Nachname *"
               />
             </div>
           </div>
@@ -1502,36 +1501,65 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         </form>
 
         {/* Delete Confirmation Modal */}
-        {showDeleteConfirm && dozent && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowDeleteConfirm(false)}>
-            <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Dozent löschen?</h3>
-              <p className="text-gray-600 mb-4">
-                Möchten Sie <strong>{dozent.first_name} {dozent.last_name}</strong> wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.
-              </p>
-              <div className="flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-                >
-                  Abbrechen
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowDeleteConfirm(false);
-                    if (onDelete) onDelete(dozent as Dozent);
-                  }}
-                  className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors flex items-center"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Löschen
-                </button>
+        {showDeleteConfirm && dozent && (() => {
+          const expectedName = formData.title 
+            ? `${formData.title} ${formData.first_name} ${formData.last_name}`.trim()
+            : `${formData.first_name} ${formData.last_name}`.trim();
+          const isMatch = deleteConfirmText === expectedName;
+          return (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+              <div className="bg-white rounded-lg shadow-xl p-6 max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+                <h3 className="text-lg font-semibold text-red-600 mb-2 flex items-center gap-2">
+                  <Trash2 className="h-5 w-5" />
+                  Dozent endgültig löschen?
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  Dies löscht das Profil, den Benutzeraccount und alle verknüpften Daten unwiderruflich.
+                </p>
+                <p className="text-sm text-gray-700 mb-2">
+                  Bitte geben Sie den vollständigen Namen ein, um zu bestätigen:
+                </p>
+                <p className="text-sm font-mono font-semibold text-gray-900 bg-gray-100 px-3 py-1.5 rounded mb-3">
+                  {expectedName}
+                </p>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  onPaste={(e) => e.preventDefault()}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent mb-4"
+                  placeholder="Name eingeben..."
+                  autoFocus
+                />
+                <div className="flex gap-3 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDeleteConfirm(false);
+                      setDeleteConfirmText('');
+                    }}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!isMatch}
+                    onClick={() => {
+                      setShowDeleteConfirm(false);
+                      setDeleteConfirmText('');
+                      if (onDelete) onDelete(dozent as Dozent);
+                    }}
+                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors flex items-center disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Endgültig löschen
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

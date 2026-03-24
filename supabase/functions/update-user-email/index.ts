@@ -64,18 +64,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Update auth user email
-    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
-      userId,
-      { email: newEmail }
-    );
-
-    if (updateError) {
-      console.error(`❌ [${requestId}] Error updating auth user:`, updateError);
-      throw updateError;
-    }
-
-    // Update profile email
+    // Update profile email FIRST to prevent race conditions
+    // (auth email change can trigger side effects that check profiles)
+    console.log(`📝 [${requestId}] Updating profile email first...`);
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .update({ email: newEmail })
@@ -85,6 +76,22 @@ Deno.serve(async (req) => {
       console.error(`❌ [${requestId}] Error updating profile:`, profileError);
       throw profileError;
     }
+    console.log(`✅ [${requestId}] Profile email updated`);
+
+    // Then update auth user email
+    console.log(`🔑 [${requestId}] Updating auth user email...`);
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+      userId,
+      { email: newEmail }
+    );
+
+    if (updateError) {
+      console.error(`❌ [${requestId}] Error updating auth user:`, updateError);
+      // Rollback profile email
+      await supabaseAdmin.from('profiles').update({ email: userId }).eq('id', userId);
+      throw updateError;
+    }
+    console.log(`✅ [${requestId}] Auth user email updated`);
 
     console.log(`✅ [${requestId}] Email updated successfully`);
     

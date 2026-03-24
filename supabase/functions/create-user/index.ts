@@ -43,6 +43,9 @@ Deno.serve(async (req) => {
   console.log('🚀 create-user function started');
   console.log('📥 Request method:', req.method);
   console.log('🆔 Request ID:', requestId);
+  console.log('📍 Request origin:', req.headers.get('origin'));
+  console.log('📍 Request referer:', req.headers.get('referer'));
+  console.log('📍 User-Agent:', req.headers.get('user-agent'));
   
   // Handle CORS
   if (req.method === 'OPTIONS') {
@@ -236,7 +239,28 @@ Deno.serve(async (req) => {
     }
 
     // Create/update profile for the user
-    console.log(`� [${requestId}] Creating/updating profile for user...`);
+    console.log(`📝 [${requestId}] Creating/updating profile for user ${userId}...`);
+    
+    // GUARD: Check if a profile with this email already exists under a DIFFERENT ID
+    const { data: existingEmailProfiles } = await supabaseAdmin
+      .from('profiles')
+      .select('id, email, is_archived')
+      .eq('email', email)
+      .neq('id', userId);
+    
+    if (existingEmailProfiles && existingEmailProfiles.length > 0) {
+      console.warn(`⚠️ [${requestId}] GUARD: Profile with email ${email} already exists under different ID(s):`, existingEmailProfiles.map((p: any) => p.id));
+      console.warn(`⚠️ [${requestId}] GUARD: Skipping profile creation to prevent duplicate. Returning existing user.`);
+      return new Response(
+        JSON.stringify({
+          success: true,
+          userId: existingEmailProfiles[0].id,
+          message: 'Profile already exists with this email',
+          guarded: true
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     
     // If we're migrating from an old profile, use the old profile data
     const profileData = oldProfileData ? {
