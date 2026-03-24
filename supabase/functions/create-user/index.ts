@@ -286,7 +286,26 @@ Deno.serve(async (req) => {
         .from('teilnehmer')
         .update({ profile_id: userId })
         .eq('profile_id', oldProfileId);
-      console.log(`✅ [${requestId}] Migrated teilnehmer`);
+      console.log(`✅ [${requestId}] Migrated teilnehmer (profile_id)`);
+      
+      // Update teilnehmer subject-specific dozent columns
+      await supabaseAdmin
+        .from('teilnehmer')
+        .update({ dozent_zivilrecht_id: userId })
+        .eq('dozent_zivilrecht_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated teilnehmer (dozent_zivilrecht_id)`);
+      
+      await supabaseAdmin
+        .from('teilnehmer')
+        .update({ dozent_strafrecht_id: userId })
+        .eq('dozent_strafrecht_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated teilnehmer (dozent_strafrecht_id)`);
+      
+      await supabaseAdmin
+        .from('teilnehmer')
+        .update({ dozent_oeffentliches_recht_id: userId })
+        .eq('dozent_oeffentliches_recht_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated teilnehmer (dozent_oeffentliches_recht_id)`);
       
       // Update elite_kleingruppe_dozenten
       await supabaseAdmin
