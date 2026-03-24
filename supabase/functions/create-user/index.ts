@@ -255,7 +255,8 @@ Deno.serve(async (req) => {
       bank_name: oldProfileData.bank_name,
       iban: oldProfileData.iban,
       tax_id: oldProfileData.tax_id,
-      created_at: oldProfileData.created_at
+      created_at: oldProfileData.created_at,
+      migrated_from_profile_id: oldProfileId
     } : {
       id: userId,
       email: email,
