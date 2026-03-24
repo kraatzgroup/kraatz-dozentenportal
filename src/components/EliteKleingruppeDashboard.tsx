@@ -947,6 +947,39 @@ export function EliteKleingruppeDashboard() {
 
       if (insertError) throw insertError;
 
+      // Notify dozent for this legal area
+      try {
+        const dozentForArea = dozenten.find(d => d.legal_areas?.includes(uploadLegalArea));
+        if (dozentForArea) {
+          const teilnehmerName = user.user_metadata?.full_name || user.email || 'Teilnehmer';
+          console.log(`📧 Sending klausur notification to dozent ${dozentForArea.name} (${dozentForArea.email}) for ${uploadLegalArea}`);
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/klausur-notify`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            },
+            body: JSON.stringify({
+              dozentEmail: dozentForArea.email,
+              dozentName: dozentForArea.name,
+              teilnehmerName,
+              klausurTitle: uploadTitle,
+              legalArea: uploadLegalArea,
+              dozentId: dozentForArea.id
+            })
+          });
+          if (response.ok) {
+            console.log('✅ Klausur notification sent successfully');
+          } else {
+            console.error('❌ Klausur notification failed:', await response.text());
+          }
+        } else {
+          console.warn('⚠️ No dozent found for legal area:', uploadLegalArea);
+        }
+      } catch (notifyError) {
+        console.error('Error sending klausur notification (non-blocking):', notifyError);
+      }
+
       // Reset form and refresh
       setShowUploadModal(false);
       setUploadTitle('');
