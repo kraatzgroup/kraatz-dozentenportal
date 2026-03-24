@@ -2457,7 +2457,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                               ) : null;
                             })()}
                             <span className="ml-2 text-gray-400">
-                              {release.material_ids.length} Materialien, {release.folder_ids.length} Ordner
+                              {release.material_ids.length} Materialien, {release.folder_ids.length} Ordner{(release.additional_documents?.length || 0) > 0 ? `, ${release.additional_documents.length} Zusatzdok.` : ''}
                             </span>
                           </p>
                         </div>
