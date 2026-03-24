@@ -51,6 +51,15 @@ function DroppableSection({ id, children, isOver }: { id: string; children: Reac
   );
 }
 
+function DroppablePlaceholder({ sectionId, index }: { sectionId: string; index: number }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `section-${sectionId}-placeholder-${index}` });
+  return (
+    <div ref={setNodeRef} className={`rounded-xl border-2 border-dashed h-48 flex items-center justify-center text-sm transition-colors ${isOver ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 text-gray-400 bg-gray-50/50 hover:border-primary/50 hover:text-primary/50'}`}>
+      <Plus className="h-5 w-5 mr-1" />Widget hierher ziehen
+    </div>
+  );
+}
+
 function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdit, onDelete, canEdit, isDownloadingZip, selectedFolders, onToggleSelection, activeDragId }: {
   folder: MaterialFolder;
   onOpen: (id: string) => void;
@@ -928,9 +937,10 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   const handleDragOver = (event: DragOverEvent) => {
     const { over } = event;
     if (over && over.id.toString().startsWith('section-')) {
-      setActiveOverSection(over.id.toString().replace('section-', ''));
+      // Extract section ID from both "section-{id}" and "section-{id}-placeholder-{n}"
+      const parts = over.id.toString().replace('section-', '').split('-placeholder-');
+      setActiveOverSection(parts[0]);
     } else if (over) {
-      // Check if over a widget, get its section
       const overWidget = widgets.find(w => w.id === over.id);
       if (overWidget) {
         setActiveOverSection(overWidget.section_id);
@@ -949,9 +959,9 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     const activeWidget = widgets.find(w => w.id === active.id);
     if (!activeWidget) return;
 
-    // Check if dropped on a section
+    // Check if dropped on a section or placeholder
     if (over.id.toString().startsWith('section-')) {
-      const newSectionId = over.id.toString().replace('section-', '');
+      const newSectionId = over.id.toString().replace('section-', '').split('-placeholder-')[0];
       if (activeWidget.section_id !== newSectionId) {
         await moveWidgetToSection(activeWidget.id, newSectionId);
       }
@@ -2537,7 +2547,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
                   <DroppableSection id={`section-${section.id}`} isOver={activeOverSection === section.id}>
                     <div className={`grid gap-4 items-stretch ${
                       section.columns === 1 ? 'grid-cols-1' :
-                      section.columns === 2 ? 'grid-cols-1 md:grid-cols-3' :
+                      section.columns === 2 ? 'grid-cols-1 md:grid-cols-2' :
                       section.columns === 3 ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' :
                       section.columns === 4 ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4' :
                       'grid-cols-1 md:grid-cols-2 lg:grid-cols-5'
@@ -2671,6 +2681,9 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
                         </SortableWidget>
                       );
                     })}
+                    {isEditMode && sectionWidgets.length < section.columns && Array.from({ length: section.columns - sectionWidgets.length }).map((_, i) => (
+                      <DroppablePlaceholder key={`placeholder-${section.id}-${i}`} sectionId={section.id} index={i} />
+                    ))}
                     </div>
                   </DroppableSection>
                 </div>
