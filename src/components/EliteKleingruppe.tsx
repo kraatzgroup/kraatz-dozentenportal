@@ -221,6 +221,7 @@ interface ScheduledRelease {
   recurrence_count: number | null;
   parent_release_id: string | null;
   dozent_id: string | null;
+  elite_kleingruppe_id: string | null;
   event_type: EventType;
   end_date: string | null;
   is_canceled: boolean;
@@ -1310,6 +1311,31 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       setEditAdditionalDocument(null);
       setEditAdditionalDocumentTitle('');
       fetchData();
+
+      // Notify participants about new document (fire and forget)
+      if (editingRelease.is_released) {
+        try {
+          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/unit-update-notify`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            },
+            body: JSON.stringify({
+              releaseId: editingRelease.id,
+              eventTitle: editingRelease.title,
+              legalArea: editingRelease.legal_area || 'Allgemein',
+              releaseDate: editingRelease.release_date,
+              eliteKleingruppeId: editingRelease.elite_kleingruppe_id || selectedEliteGroupId,
+              updateType: 'document_added',
+              documentName: editAdditionalDocument.name
+            })
+          });
+          console.log('Participant notification sent for document upload');
+        } catch (notifyError) {
+          console.error('Error sending notification (non-blocking):', notifyError);
+        }
+      }
     } catch (error: any) {
       console.error('Error uploading document:', error);
       alert(`Fehler: ${error?.message || 'Unbekannter Fehler'}`);
@@ -1399,12 +1425,39 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
 
     // No date/time change, proceed with normal update
     try {
+      const descriptionChanged = (releaseDescription || '') !== (editingRelease.description || '');
+
       const { error } = await supabase
         .from('elite_kleingruppe_releases')
         .update(updateData)
         .eq('id', editingRelease.id);
 
       if (error) throw error;
+
+      // Notify participants if description was changed on a released unit
+      if (descriptionChanged && releaseDescription && editingRelease.is_released) {
+        try {
+          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/unit-update-notify`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            },
+            body: JSON.stringify({
+              releaseId: editingRelease.id,
+              eventTitle: editingRelease.title,
+              legalArea: editingRelease.legal_area || 'Allgemein',
+              releaseDate: editingRelease.release_date,
+              eliteKleingruppeId: editingRelease.elite_kleingruppe_id || selectedEliteGroupId,
+              updateType: 'description_changed',
+              description: releaseDescription
+            })
+          });
+          console.log('Participant notification sent for description change');
+        } catch (notifyError) {
+          console.error('Error sending description notification (non-blocking):', notifyError);
+        }
+      }
 
       setShowEditModal(false);
       setEditingRelease(null);
