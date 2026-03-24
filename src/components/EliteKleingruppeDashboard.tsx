@@ -908,8 +908,11 @@ export function EliteKleingruppeDashboard() {
     }
   };
 
+  const isSubmittingKlausurRef = useRef(false);
   const handleSubmitKlausur = async () => {
     if (!uploadFile || !uploadTitle || !uploadLegalArea || !teilnehmerId || !user) return;
+    if (isSubmittingKlausurRef.current) return;
+    isSubmittingKlausurRef.current = true;
     
     setIsUploading(true);
     try {
@@ -991,6 +994,7 @@ export function EliteKleingruppeDashboard() {
       alert('Fehler beim Hochladen der Klausur');
     } finally {
       setIsUploading(false);
+      isSubmittingKlausurRef.current = false;
     }
   };
 
