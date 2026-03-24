@@ -12,6 +12,7 @@ interface CreateUserRequest {
   role?: 'admin' | 'buchhaltung' | 'verwaltung' | 'vertrieb' | 'dozent' | 'teilnehmer';
   additionalRoles?: string[];
   eliteKleingruppe?: string;
+  userId?: string; // Optional: Use existing profile ID instead of creating new one
 }
 
 // Generate a secure random password
@@ -68,8 +69,8 @@ Deno.serve(async (req) => {
     );
 
     console.log(`📋 [${requestId}] Parsing request body...`);
-    const { email, fullName, role = 'dozent', additionalRoles = [], eliteKleingruppe } = await req.json() as CreateUserRequest;
-    console.log(`📋 [${requestId}] Request data:`, { email, fullName, role, additionalRoles, eliteKleingruppe });
+    const { email, fullName, role = 'dozent', additionalRoles = [], eliteKleingruppe, userId: requestedUserId } = await req.json() as CreateUserRequest;
+    console.log(`📋 [${requestId}] Request data:`, { email, fullName, role, additionalRoles, eliteKleingruppe, requestedUserId });
 
     // Validate input
     if (!email || !fullName) {
@@ -83,31 +84,35 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if user already exists in profiles
-    console.log(`🔍 [${requestId}] Checking if user already exists...`);
-    const { data: existingProfiles, error: existingUserError } = await supabaseAdmin
-      .from('profiles')
-      .select('id, email')
-      .eq('email', email);
-
-    if (existingUserError) {
-      console.error(`❌ [${requestId}] Error checking existing user:`, existingUserError);
-      throw existingUserError;
-    }
-
     let userId: string;
     let isNewUser = false;
     let shouldSendEmail = false;
+    let oldProfileId: string | null = null;
+    let oldProfileData: any = null;
 
-    if (existingProfiles && existingProfiles.length > 0) {
-      // User already exists - just update the profile
-      console.log(`ℹ️ [${requestId}] User already exists, updating profile...`);
-      userId = existingProfiles[0].id;
-      // Send welcome email for existing profile (re-invitation)
-      shouldSendEmail = true;
-    } else {
-      // Create the user without sending default email
-      console.log(`👤 [${requestId}] Creating user in Supabase Auth...`);
+    // If userId is provided, we're adding email to an existing profile
+    // We need to create a new auth user and migrate the data
+    if (requestedUserId) {
+      console.log(`🔗 [${requestId}] Adding email to existing profile: ${requestedUserId}`);
+      oldProfileId = requestedUserId;
+      
+      // Fetch the existing profile data to migrate
+      const { data: existingProfile, error: fetchError } = await supabaseAdmin
+        .from('profiles')
+        .select('*')
+        .eq('id', requestedUserId)
+        .single();
+      
+      if (fetchError || !existingProfile) {
+        console.error(`❌ [${requestId}] Could not fetch existing profile:`, fetchError);
+        throw new Error('Existing profile not found');
+      }
+      
+      oldProfileData = existingProfile;
+      console.log(`📋 [${requestId}] Fetched existing profile data for migration`);
+      
+      // Create new auth user (will get new UUID)
+      console.log(`👤 [${requestId}] Creating new auth user for existing profile...`);
       const tempPassword = generateSecurePassword();
       const { data: userData, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
         email: email,
@@ -120,31 +125,79 @@ Deno.serve(async (req) => {
       });
 
       if (createUserError) {
-        // Check if user exists in auth but not in profiles
-        if (createUserError.code === 'email_exists' || createUserError.message?.includes('already registered')) {
-          console.log(`ℹ️ [${requestId}] User exists in auth, fetching user...`);
-          const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers();
-          const existingAuthUser = authUsers?.users?.find(u => u.email === email);
-          if (existingAuthUser) {
-            userId = existingAuthUser.id;
-            isNewUser = true;
-            shouldSendEmail = true;
-            console.log(`ℹ️ [${requestId}] Found existing auth user, will create profile: ${userId}`);
+        console.error(`❌ [${requestId}] Error creating auth user:`, createUserError);
+        throw createUserError;
+      }
+      
+      if (!userData?.user) {
+        console.error(`❌ [${requestId}] Auth user creation failed - no user returned`);
+        throw new Error('Auth user creation failed');
+      }
+      
+      userId = userData.user.id;
+      isNewUser = true;
+      shouldSendEmail = false; // Don't send email for profile migrations
+      console.log(`✅ [${requestId}] New auth user created: ${userId}, will migrate from old profile: ${oldProfileId} (no email will be sent)`);
+    } else {
+      // Check if user already exists in profiles by email
+      console.log(`🔍 [${requestId}] Checking if user already exists...`);
+      const { data: existingProfiles, error: existingUserError } = await supabaseAdmin
+        .from('profiles')
+        .select('id, email')
+        .eq('email', email);
+
+      if (existingUserError) {
+        console.error(`❌ [${requestId}] Error checking existing user:`, existingUserError);
+        throw existingUserError;
+      }
+
+      if (existingProfiles && existingProfiles.length > 0) {
+        // User already exists - just update the profile
+        console.log(`ℹ️ [${requestId}] User already exists, updating profile...`);
+        userId = existingProfiles[0].id;
+        // Send welcome email for existing profile (re-invitation)
+        shouldSendEmail = true;
+      } else {
+        // Create the user without sending default email
+        console.log(`👤 [${requestId}] Creating user in Supabase Auth...`);
+        const tempPassword = generateSecurePassword();
+        const { data: userData, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
+          email: email,
+          password: tempPassword,
+          email_confirm: true,
+          user_metadata: { 
+            full_name: fullName,
+            role: role
+          }
+        });
+
+        if (createUserError) {
+          // Check if user exists in auth but not in profiles
+          if (createUserError.code === 'email_exists' || createUserError.message?.includes('already registered')) {
+            console.log(`ℹ️ [${requestId}] User exists in auth, fetching user...`);
+            const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers();
+            const existingAuthUser = authUsers?.users?.find((u: any) => u.email === email);
+            if (existingAuthUser) {
+              userId = existingAuthUser.id;
+              isNewUser = true;
+              shouldSendEmail = true;
+              console.log(`ℹ️ [${requestId}] Found existing auth user, will create profile: ${userId}`);
+            } else {
+              throw createUserError;
+            }
           } else {
+            console.error(`❌ [${requestId}] Error creating user:`, createUserError);
             throw createUserError;
           }
+        } else if (!userData?.user) {
+          console.error(`❌ [${requestId}] User creation failed - no user returned`);
+          throw new Error('User creation failed');
         } else {
-          console.error(`❌ [${requestId}] Error creating user:`, createUserError);
-          throw createUserError;
+          userId = userData.user.id;
+          isNewUser = true;
+          shouldSendEmail = true;
+          console.log(`✅ [${requestId}] User created successfully:`, userId);
         }
-      } else if (!userData?.user) {
-        console.error(`❌ [${requestId}] User creation failed - no user returned`);
-        throw new Error('User creation failed');
-      } else {
-        userId = userData.user.id;
-        isNewUser = true;
-        shouldSendEmail = true;
-        console.log(`✅ [${requestId}] User created successfully:`, userId);
       }
     }
 
@@ -183,16 +236,37 @@ Deno.serve(async (req) => {
     }
 
     // Create/update profile for the user
-    console.log(`👤 [${requestId}] Creating/updating profile for user...`);
+    console.log(`� [${requestId}] Creating/updating profile for user...`);
+    
+    // If we're migrating from an old profile, use the old profile data
+    const profileData = oldProfileData ? {
+      id: userId,
+      email: email,
+      full_name: oldProfileData.full_name || fullName,
+      role: oldProfileData.role || role,
+      additional_roles: oldProfileData.additional_roles || (additionalRoles.length > 0 ? additionalRoles : null),
+      hourly_rate_unterricht: oldProfileData.hourly_rate_unterricht,
+      hourly_rate_elite: oldProfileData.hourly_rate_elite,
+      hourly_rate_elite_korrektur: oldProfileData.hourly_rate_elite_korrektur,
+      hourly_rate_sonstige: oldProfileData.hourly_rate_sonstige,
+      profile_picture_url: oldProfileData.profile_picture_url,
+      phone: oldProfileData.phone,
+      address: oldProfileData.address,
+      bank_name: oldProfileData.bank_name,
+      iban: oldProfileData.iban,
+      tax_id: oldProfileData.tax_id,
+      created_at: oldProfileData.created_at
+    } : {
+      id: userId,
+      email: email,
+      full_name: fullName,
+      role: role,
+      additional_roles: additionalRoles.length > 0 ? additionalRoles : null
+    };
+    
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
-      .upsert([{
-        id: userId,
-        email: email,
-        full_name: fullName,
-        role: role,
-        additional_roles: additionalRoles.length > 0 ? additionalRoles : null
-      }], {
+      .upsert([profileData], {
         onConflict: 'id'
       });
 
@@ -202,6 +276,184 @@ Deno.serve(async (req) => {
     }
 
     console.log(`✅ [${requestId}] Profile created successfully`);
+    
+    // If we migrated from an old profile, update all foreign key references
+    if (oldProfileId && userId !== oldProfileId) {
+      console.log(`🔄 [${requestId}] Migrating data from old profile ${oldProfileId} to new profile ${userId}`);
+      
+      // Update teilnehmer (profile_id)
+      await supabaseAdmin
+        .from('teilnehmer')
+        .update({ profile_id: userId })
+        .eq('profile_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated teilnehmer`);
+      
+      // Update elite_kleingruppe_dozenten
+      await supabaseAdmin
+        .from('elite_kleingruppe_dozenten')
+        .update({ dozent_id: userId })
+        .eq('dozent_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated elite_kleingruppe_dozenten`);
+      
+      // Update elite_kleingruppe_dozent_assignments
+      await supabaseAdmin
+        .from('elite_kleingruppe_dozent_assignments')
+        .update({ dozent_id: userId })
+        .eq('dozent_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated elite_kleingruppe_dozent_assignments`);
+      
+      // Update elite_kleingruppe_releases (dozent_id)
+      await supabaseAdmin
+        .from('elite_kleingruppe_releases')
+        .update({ dozent_id: userId })
+        .eq('dozent_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated elite_kleingruppe_releases (dozent_id)`);
+      
+      // Update elite_kleingruppe_releases (canceled_by)
+      await supabaseAdmin
+        .from('elite_kleingruppe_releases')
+        .update({ canceled_by: userId })
+        .eq('canceled_by', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated elite_kleingruppe_releases (canceled_by)`);
+      
+      // Update elite_kleingruppe_releases (rescheduled_by)
+      await supabaseAdmin
+        .from('elite_kleingruppe_releases')
+        .update({ rescheduled_by: userId })
+        .eq('rescheduled_by', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated elite_kleingruppe_releases (rescheduled_by)`);
+      
+      // Update folders
+      await supabaseAdmin
+        .from('folders')
+        .update({ owner_id: userId })
+        .eq('owner_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated folders`);
+      
+      // Update files
+      await supabaseAdmin
+        .from('files')
+        .update({ uploaded_by: userId })
+        .eq('uploaded_by', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated files`);
+      
+      // Update messages (sender)
+      await supabaseAdmin
+        .from('messages')
+        .update({ sender_id: userId })
+        .eq('sender_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated messages (sender)`);
+      
+      // Update messages (receiver)
+      await supabaseAdmin
+        .from('messages')
+        .update({ receiver_id: userId })
+        .eq('receiver_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated messages (receiver)`);
+      
+      // Update dozent_hours
+      await supabaseAdmin
+        .from('dozent_hours')
+        .update({ dozent_id: userId })
+        .eq('dozent_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated dozent_hours`);
+      
+      // Update participant_hours
+      await supabaseAdmin
+        .from('participant_hours')
+        .update({ dozent_id: userId })
+        .eq('dozent_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated participant_hours`);
+      
+      // Update pending_dozent_hours
+      await supabaseAdmin
+        .from('pending_dozent_hours')
+        .update({ dozent_id: userId })
+        .eq('dozent_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated pending_dozent_hours`);
+      
+      // Update invoices
+      await supabaseAdmin
+        .from('invoices')
+        .update({ dozent_id: userId })
+        .eq('dozent_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated invoices`);
+      
+      // Update trial_lessons (dozent_id)
+      await supabaseAdmin
+        .from('trial_lessons')
+        .update({ dozent_id: userId })
+        .eq('dozent_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated trial_lessons (dozent_id)`);
+      
+      // Update trial_lessons (vertrieb_user_id)
+      await supabaseAdmin
+        .from('trial_lessons')
+        .update({ vertrieb_user_id: userId })
+        .eq('vertrieb_user_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated trial_lessons (vertrieb_user_id)`);
+      
+      // Update sales_calls
+      await supabaseAdmin
+        .from('sales_calls')
+        .update({ vertrieb_user_id: userId })
+        .eq('vertrieb_user_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated sales_calls`);
+      
+      // Update follow_ups
+      await supabaseAdmin
+        .from('follow_ups')
+        .update({ vertrieb_user_id: userId })
+        .eq('vertrieb_user_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated follow_ups`);
+      
+      // Update sales
+      await supabaseAdmin
+        .from('sales')
+        .update({ vertrieb_user_id: userId })
+        .eq('vertrieb_user_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated sales`);
+      
+      // Update upsells
+      await supabaseAdmin
+        .from('upsells')
+        .update({ vertrieb_user_id: userId })
+        .eq('vertrieb_user_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated upsells`);
+      
+      // Update sales_kpis
+      await supabaseAdmin
+        .from('sales_kpis')
+        .update({ vertrieb_user_id: userId })
+        .eq('vertrieb_user_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated sales_kpis`);
+      
+      // Update chat_groups (created_by)
+      await supabaseAdmin
+        .from('chat_groups')
+        .update({ created_by: userId })
+        .eq('created_by', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated chat_groups`);
+      
+      // Update chat_group_members (user_id)
+      await supabaseAdmin
+        .from('chat_group_members')
+        .update({ user_id: userId })
+        .eq('user_id', oldProfileId);
+      console.log(`✅ [${requestId}] Migrated chat_group_members`);
+      
+      // Delete the old profile
+      const { error: deleteError } = await supabaseAdmin
+        .from('profiles')
+        .delete()
+        .eq('id', oldProfileId);
+      
+      if (deleteError) {
+        console.error(`⚠️ [${requestId}] Could not delete old profile:`, deleteError);
+      } else {
+        console.log(`✅ [${requestId}] Deleted old profile ${oldProfileId}`);
+      }
+    }
 
     // If user is a teilnehmer with an elite_kleingruppe, create entry in teilnehmer table
     if (role === 'teilnehmer' && eliteKleingruppe) {

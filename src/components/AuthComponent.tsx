@@ -18,6 +18,18 @@ export function AuthComponent() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    // Check URL parameters for tab=reset and email
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('tab') === 'reset') {
+      setShowPasswordReset(true);
+      const emailParam = urlParams.get('email');
+      if (emailParam) {
+        setResetEmail(emailParam);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     // Handle auth callback from URL hash (for password reset, email confirmation, etc.)
     const handleAuthCallback = async () => {
       const hashParams = new URLSearchParams(window.location.hash.substring(1));

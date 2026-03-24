@@ -136,14 +136,39 @@ export const useChatStore = create<ChatState>((set, get) => ({
         data = allMessages;
         error = null;
       } else {
-        // Fetch only unread messages for notifications
-        const result = await query
-          .eq('receiver_id', user.id)
-          .is('read_at', null)
-          .order('created_at', { ascending: true });
-        
-        data = result.data;
-        error = result.error;
+        // Fetch all messages (sent and received) to show all conversations
+        const [sentMessages, receivedMessages] = await Promise.all([
+          // Messages sent by user
+          supabase
+            .from('messages')
+            .select(`
+              *,
+              sender:profiles!messages_sender_id_fkey(full_name)
+            `)
+            .eq('sender_id', user.id)
+            .is('group_id', null)
+            .order('created_at', { ascending: true }),
+          // Messages received by user
+          supabase
+            .from('messages')
+            .select(`
+              *,
+              sender:profiles!messages_sender_id_fkey(full_name)
+            `)
+            .eq('receiver_id', user.id)
+            .is('group_id', null)
+            .order('created_at', { ascending: true })
+        ]);
+
+        if (sentMessages.error) throw sentMessages.error;
+        if (receivedMessages.error) throw receivedMessages.error;
+
+        // Merge and sort by created_at
+        const allMessages = [...(sentMessages.data || []), ...(receivedMessages.data || [])]
+          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+        data = allMessages;
+        error = null;
       }
 
       if (error) throw error;
@@ -172,7 +197,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  sendMessage: async (message: { content: string; receiver_id: string }) => {
+  sendMessage: async (message: { 
+    content: string; 
+    receiver_id: string;
+    file_url?: string | null;
+    file_name?: string | null;
+    file_type?: string | null;
+    file_size?: number | null;
+  }) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -185,7 +217,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
         .insert([{
           content: message.content,
           sender_id: user.id,
-          receiver_id: message.receiver_id
+          receiver_id: message.receiver_id,
+          file_url: message.file_url,
+          file_name: message.file_name,
+          file_type: message.file_type,
+          file_size: message.file_size
         }])
         .select()
         .single();
@@ -218,11 +254,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (senderProfile.data && recipientProfile.data) {
           const origin = window.location.origin;
           
+          // Handle file-only messages (empty content)
+          const messageText = message.content || '[Dateianhang]';
+          
           console.log('📤 Calling new-message-notify edge function with:', {
             recipientEmail: recipientProfile.data.email,
             recipientName: recipientProfile.data.full_name,
             senderName: senderProfile.data.full_name,
-            messageLength: message.content.length,
+            messageLength: messageText.length,
             origin
           });
           
@@ -232,7 +271,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
               recipientEmail: recipientProfile.data.email,
               recipientName: recipientProfile.data.full_name,
               senderName: senderProfile.data.full_name,
-              messageContent: message.content,
+              messageContent: messageText,
               recipientId: message.receiver_id,
               origin
             }

@@ -18,6 +18,10 @@ export function Settings() {
     email: '',
     profile_picture_url: null as string | null,
     phone: '',
+    street: '',
+    house_number: '',
+    postal_code: '',
+    city: '',
     tax_id: '',
     bank_name: '',
     iban: '',
@@ -41,7 +45,7 @@ export function Settings() {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('full_name, email, profile_picture_url, phone, tax_id, bank_name, iban, bic, role, additional_roles')
+        .select('full_name, email, profile_picture_url, phone, street, house_number, postal_code, city, tax_id, bank_name, iban, bic, role, additional_roles')
         .eq('id', user.id)
         .single();
 
@@ -52,6 +56,10 @@ export function Settings() {
         email: data.email || '',
         profile_picture_url: data.profile_picture_url,
         phone: data.phone || '',
+        street: data.street || '',
+        house_number: data.house_number || '',
+        postal_code: data.postal_code || '',
+        city: data.city || '',
         tax_id: data.tax_id || '',
         bank_name: data.bank_name || '',
         iban: data.iban || '',
@@ -91,6 +99,10 @@ export function Settings() {
           full_name: profile.full_name,
           email: profile.email,
           phone: profile.phone,
+          street: profile.street,
+          house_number: profile.house_number,
+          postal_code: profile.postal_code,
+          city: profile.city,
           tax_id: profile.tax_id,
           bank_name: profile.bank_name,
           iban: profile.iban,
@@ -282,18 +294,75 @@ export function Settings() {
                     Kontaktinformationen
                   </h4>
                   
-                  <div>
-                    <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
-                      Telefonnummer
-                    </label>
-                    <input
-                      type="tel"
-                      id="phone"
-                      value={profile.phone}
-                      onChange={(e) => setProfile(prev => ({ ...prev, phone: e.target.value }))}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
-                      placeholder="+49 30 12345678"
-                    />
+                  <div className="space-y-4">
+                    <div>
+                      <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
+                        Telefonnummer
+                      </label>
+                      <input
+                        type="tel"
+                        id="phone"
+                        value={profile.phone}
+                        onChange={(e) => setProfile(prev => ({ ...prev, phone: e.target.value }))}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                        placeholder="+49 30 12345678"
+                      />
+                    </div>
+
+                    {/* Address Section */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-3">
+                        Anschrift
+                      </label>
+                      
+                      {/* Street and House Number */}
+                      <div className="grid grid-cols-3 gap-4 mb-3">
+                        <div className="col-span-2">
+                          <input
+                            type="text"
+                            id="street"
+                            value={profile.street}
+                            onChange={(e) => setProfile(prev => ({ ...prev, street: e.target.value }))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                            placeholder="Straße"
+                          />
+                        </div>
+                        <div>
+                          <input
+                            type="text"
+                            id="house_number"
+                            value={profile.house_number}
+                            onChange={(e) => setProfile(prev => ({ ...prev, house_number: e.target.value }))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                            placeholder="Nr."
+                          />
+                        </div>
+                      </div>
+
+                      {/* PLZ and City */}
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <input
+                            type="text"
+                            id="postal_code"
+                            value={profile.postal_code}
+                            onChange={(e) => setProfile(prev => ({ ...prev, postal_code: e.target.value }))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                            placeholder="PLZ"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <input
+                            type="text"
+                            id="city"
+                            value={profile.city}
+                            onChange={(e) => setProfile(prev => ({ ...prev, city: e.target.value }))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                            placeholder="Ort"
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 

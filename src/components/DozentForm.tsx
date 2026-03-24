@@ -598,13 +598,96 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
           hourly_rate_sonstige: dataToSave.hourly_rate_sonstige
         });
         
-        // Check if email was added and user account doesn't exist yet
-        const hadNoEmail = !(dozent as any).email;
-        const nowHasEmail = formData.email.trim();
+        // Check if email was changed
+        const oldEmail = (dozent as any).email;
+        const newEmail = formData.email.trim();
+        const hadNoEmail = !oldEmail;
+        const nowHasEmail = newEmail;
+        const emailChanged = oldEmail && newEmail && oldEmail !== newEmail;
         let userAccountCreated = false;
         
+        // Handle email change for existing auth user
+        if (emailChanged) {
+          console.log('📧 Email changed from', oldEmail, 'to', newEmail);
+          
+          // Update auth user email via edge function
+          try {
+            const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/update-user-email`;
+            const response = await fetch(edgeFunctionUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              },
+              body: JSON.stringify({
+                userId: dozentId,
+                newEmail: newEmail
+              }),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+              if (response.status === 409) {
+                addToast('Diese E-Mail-Adresse wird bereits von einem anderen Benutzer verwendet.', 'error');
+              } else {
+                addToast('Fehler beim Aktualisieren der E-Mail-Adresse: ' + (result.error || 'Unbekannter Fehler'), 'error');
+              }
+              setIsLoading(false);
+              return;
+            }
+            
+            console.log('✅ Auth user and profile email updated successfully');
+            // Email is already updated in profile by edge function, so we skip the profile update below
+            dataToSave.email = newEmail;
+          } catch (err) {
+            console.error('Exception updating auth user email:', err);
+            addToast('Fehler beim Aktualisieren der E-Mail-Adresse', 'error');
+            setIsLoading(false);
+            return;
+          }
+        }
+        
+        // Handle adding email to profile without auth user
         if (hadNoEmail && nowHasEmail) {
-          // Check if user account exists in auth.users
+          // First check if an auth user already exists with this email
+          const { data: authUsers } = await supabase.auth.admin.listUsers();
+          const existingAuthUser = authUsers?.users?.find(u => u.email === formData.email.trim());
+          
+          if (existingAuthUser) {
+            addToast('Ein Benutzer mit dieser E-Mail existiert bereits. Bitte verwenden Sie eine andere E-Mail-Adresse.', 'error');
+            setIsLoading(false);
+            return;
+          }
+          
+          // Show confirmation dialog explaining what will be migrated
+          const confirmMessage = `⚠️ PROFIL-MIGRATION ERFORDERLICH\n\n` +
+            `Sie fügen eine E-Mail zu einem bestehenden Profil hinzu.\n\n` +
+            `Dies wird folgende Aktionen durchführen:\n\n` +
+            `1. Neuen Auth-Benutzer erstellen (neue ID)\n` +
+            `2. Alle Profildaten übertragen:\n` +
+            `   • Persönliche Daten & Bankverbindung\n` +
+            `   • Stundensätze\n` +
+            `   • Profilbild\n\n` +
+            `3. Alle verknüpften Daten migrieren:\n` +
+            `   • Elite-Kleingruppen-Zuweisungen\n` +
+            `   • Dozentenstunden & Rechnungen\n` +
+            `   • Dateien & Ordner\n` +
+            `   • Nachrichten\n` +
+            `   • Probestunden\n` +
+            `   • Chat-Gruppen\n\n` +
+            `4. Altes Profil löschen\n\n` +
+            `⚠️ WICHTIG: Dieser Vorgang kann nicht rückgängig gemacht werden!\n\n` +
+            `Möchten Sie fortfahren?`;
+          
+          const confirmed = window.confirm(confirmMessage);
+          
+          if (!confirmed) {
+            setIsLoading(false);
+            return;
+          }
+          
+          // Check if user account exists in auth.users for this profile ID
           const { data: { user } } = await supabase.auth.admin.getUserById(dozentId);
           
           if (!user) {
@@ -621,7 +704,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
                   email: formData.email.trim(),
                   fullName: fullName,
                   role: 'dozent',
-                  userId: dozentId // Use existing profile ID
+                  userId: dozentId // Use existing profile ID for migration
                 }),
               });
 
@@ -629,7 +712,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
 
               if (response.ok && result.success) {
                 userAccountCreated = true;
-                console.log('✅ User account created for existing dozent');
+                console.log('✅ User account created and profile migrated for existing dozent');
               } else {
                 console.error('Error creating user account:', result);
                 addToast('Hinweis: Profil wurde aktualisiert, aber Benutzeraccount konnte nicht erstellt werden: ' + (result.error || 'Unbekannter Fehler'), 'error');
@@ -663,55 +746,115 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
           addToast('Dozent wurde aktualisiert', 'success');
         }
       } else {
-        // Create profile without user account (email is stored but no login created)
-        dozentId = crypto.randomUUID();
-
-        // Upsert profile with additional dozent-specific fields
-        // The create-user edge function already created the basic profile,
-        // but we need to add dozent-specific fields
-        console.log('➕ UPSERT - Dozent ID:', dozentId);
-        console.log('➕ UPSERT - Stundensätze:', {
-          hourly_rate_unterricht: dataToSave.hourly_rate_unterricht,
-          hourly_rate_elite: dataToSave.hourly_rate_elite,
-          hourly_rate_elite_korrektur: dataToSave.hourly_rate_elite_korrektur,
-          hourly_rate_sonstige: dataToSave.hourly_rate_sonstige
-        });
+        // Create new dozent
+        console.log('➕ CREATE - New Dozent');
         
-        const { data: upsertResult, error } = await supabase
-          .from('profiles')
-          .upsert({
-            id: dozentId,
-            email: formData.email.trim() || null,
-            full_name: fullName,
-            role: 'dozent',
-            title: dataToSave.title,
-            phone: dataToSave.phone,
-            legal_areas: dataToSave.legal_areas,
-            street: dataToSave.street,
-            house_number: dataToSave.house_number,
-            postal_code: dataToSave.postal_code,
-            city: dataToSave.city,
-            profile_picture_url: dataToSave.profile_picture_url,
-            iban: dataToSave.iban,
-            bic: dataToSave.bic,
-            bank_name: dataToSave.bank_name,
-            tax_id: dataToSave.tax_id,
-            hourly_rate_unterricht: dataToSave.hourly_rate_unterricht,
-            hourly_rate_elite: dataToSave.hourly_rate_elite,
-            hourly_rate_elite_korrektur: dataToSave.hourly_rate_elite_korrektur,
-            hourly_rate_sonstige: dataToSave.hourly_rate_sonstige
-          }, {
-            onConflict: 'id'
-          })
-          .select('hourly_rate_unterricht, hourly_rate_elite, hourly_rate_elite_korrektur, hourly_rate_sonstige');
+        // If email is provided, create auth user first, then profile will be created by edge function
+        if (formData.email.trim()) {
+          console.log('📧 Email provided, creating auth user via edge function');
+          
+          try {
+            const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`;
+            const response = await fetch(edgeFunctionUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              },
+              body: JSON.stringify({
+                email: formData.email.trim(),
+                fullName: fullName,
+                role: 'dozent'
+                // No userId - this is a new user, not a migration
+              }),
+            });
 
-        if (error) {
-          console.error('❌ UPSERT ERROR:', error);
-          throw error;
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+              dozentId = result.userId;
+              console.log('✅ Auth user and profile created:', dozentId);
+              
+              // Update the profile with additional dozent-specific fields
+              const { error: updateError } = await supabase
+                .from('profiles')
+                .update({
+                  title: dataToSave.title,
+                  phone: dataToSave.phone,
+                  legal_areas: dataToSave.legal_areas,
+                  exam_types: formData.exam_types,
+                  street: dataToSave.street,
+                  house_number: dataToSave.house_number,
+                  postal_code: dataToSave.postal_code,
+                  city: dataToSave.city,
+                  profile_picture_url: dataToSave.profile_picture_url,
+                  iban: dataToSave.iban,
+                  bic: dataToSave.bic,
+                  bank_name: dataToSave.bank_name,
+                  tax_id: dataToSave.tax_id,
+                  hourly_rate_unterricht: dataToSave.hourly_rate_unterricht,
+                  hourly_rate_elite: dataToSave.hourly_rate_elite,
+                  hourly_rate_elite_korrektur: dataToSave.hourly_rate_elite_korrektur,
+                  hourly_rate_sonstige: dataToSave.hourly_rate_sonstige
+                })
+                .eq('id', dozentId);
+              
+              if (updateError) {
+                console.error('❌ Error updating profile with dozent fields:', updateError);
+                throw updateError;
+              }
+              
+              addToast('Dozent wurde hinzugefügt und Benutzeraccount erstellt', 'success');
+            } else {
+              console.error('Error creating user account:', result);
+              throw new Error(result.error || 'Fehler beim Erstellen des Benutzeraccounts');
+            }
+          } catch (err) {
+            console.error('Exception creating user account:', err);
+            throw err;
+          }
+        } else {
+          // No email provided - create profile without auth user
+          dozentId = crypto.randomUUID();
+          console.log('📝 No email, creating profile only:', dozentId);
+          
+          const { data: upsertResult, error } = await supabase
+            .from('profiles')
+            .upsert({
+              id: dozentId,
+              email: null,
+              full_name: fullName,
+              role: 'dozent',
+              title: dataToSave.title,
+              phone: dataToSave.phone,
+              legal_areas: dataToSave.legal_areas,
+              exam_types: formData.exam_types,
+              street: dataToSave.street,
+              house_number: dataToSave.house_number,
+              postal_code: dataToSave.postal_code,
+              city: dataToSave.city,
+              profile_picture_url: dataToSave.profile_picture_url,
+              iban: dataToSave.iban,
+              bic: dataToSave.bic,
+              bank_name: dataToSave.bank_name,
+              tax_id: dataToSave.tax_id,
+              hourly_rate_unterricht: dataToSave.hourly_rate_unterricht,
+              hourly_rate_elite: dataToSave.hourly_rate_elite,
+              hourly_rate_elite_korrektur: dataToSave.hourly_rate_elite_korrektur,
+              hourly_rate_sonstige: dataToSave.hourly_rate_sonstige
+            }, {
+              onConflict: 'id'
+            })
+            .select('hourly_rate_unterricht, hourly_rate_elite, hourly_rate_elite_korrektur, hourly_rate_sonstige');
+
+          if (error) {
+            console.error('❌ UPSERT ERROR:', error);
+            throw error;
+          }
+          
+          console.log('✅ UPSERT SUCCESS - Gespeicherte Stundensätze:', upsertResult);
+          addToast('Dozent wurde hinzugefügt (ohne Benutzerkonto)', 'success');
         }
-        
-        console.log('✅ UPSERT SUCCESS - Gespeicherte Stundensätze:', upsertResult);
-        addToast('Dozent wurde hinzugefügt (ohne Benutzerkonto)', 'success');
       }
 
       // Save Elite-Kleingruppe assignments if enabled

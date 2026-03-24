@@ -772,8 +772,8 @@ export function UserManagement() {
                                    user.role === 'vertrieb' ? 'vertrieb' :
                                    user.role === 'teilnehmer' ? 'teilnehmer' : 'dozent';
                   const additionalRolesText = (user.additional_roles || []).join(' ').toLowerCase();
-                  return user.full_name.toLowerCase().includes(query) ||
-                         user.email.toLowerCase().includes(query) ||
+                  return (user.full_name?.toLowerCase().includes(query) ?? false) ||
+                         (user.email?.toLowerCase().includes(query) ?? false) ||
                          roleText.includes(query) ||
                          additionalRolesText.includes(query);
                 }).sort((a, b) => {

@@ -26,11 +26,10 @@ Deno.serve(async (req) => {
     const { email, fullName } = body;
     console.log(`📋 [${requestId}] Request data:`, { email, fullName });
 
-    // Determine redirect URL based on origin (localhost vs production)
+    // Determine base URL based on origin (localhost vs production)
     const origin = body.origin || req.headers.get('origin') || '';
     const baseUrl = origin.includes('localhost') ? origin : 'https://portal.kraatz-group.de';
-    const redirectUrl = `${baseUrl}/dashboard?tab=dashboard`;
-    console.log(`🌐 [${requestId}] Origin: ${origin}, Redirect URL: ${redirectUrl}`);
+    console.log(`🌐 [${requestId}] Origin: ${origin}, Base URL: ${baseUrl}`);
 
     if (!email || !fullName) {
       return new Response(
@@ -41,48 +40,9 @@ Deno.serve(async (req) => {
 
     console.log(`🎉 [${requestId}] Sending welcome email to: ${email}`);
 
-    // Initialize Supabase admin client
-    const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      serviceRoleKey,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
-    );
-
-    // Generate magic link for direct login
-    console.log(`🔗 [${requestId}] Generating magic login link for: ${email}`);
-
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'magiclink',
-      email: email,
-      options: {
-        redirectTo: redirectUrl
-      }
-    });
-
-    if (authError) {
-      console.error(`❌ [${requestId}] Error generating magic link: ${authError.message}`);
-      return new Response(
-        JSON.stringify({ error: 'Fehler beim Generieren des Login-Links', details: authError.message }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const magicLink = authData?.properties?.action_link;
-    if (!magicLink) {
-      console.error(`❌ [${requestId}] No magic link generated`);
-      return new Response(
-        JSON.stringify({ error: 'Fehler beim Generieren des Login-Links' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`✅ [${requestId}] Magic link generated successfully`);
+    // Create password reset link with email pre-filled
+    const resetLink = `${baseUrl}/?tab=reset&email=${encodeURIComponent(email)}`;
+    console.log(`🔗 [${requestId}] Password reset link created: ${resetLink}`);
 
     // Send email via Mailgun
     console.log(`📧 [${requestId}] Sending welcome email via Mailgun...`);
@@ -126,14 +86,18 @@ Deno.serve(async (req) => {
           </div>
           
           <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
-            <strong>Direkt loslegen:</strong> Klicken Sie auf den Button unten, um sich automatisch anzumelden und Ihr Passwort festzulegen:
+            <strong>Direkt loslegen:</strong> Klicken Sie auf den Button & fordern Sie über die "Passwort vergessen" einen sog. Magic Link an.
+          </p>
+          
+          <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
+            Sie erhalten dann einen Link per E-Mail, über den Sie automatisch eingeloggt werden. Im Anschluss müssen Sie in den Einstellungen ein Passwort festlegen.
           </p>
           
           <!-- Action Button -->
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${magicLink}" 
+            <a href="${resetLink}" 
                style="display: inline-block; background-color: #2e83c2; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold;">
-              Account aktivieren &amp; Passwort festlegen
+              Zum Portal &amp; Passwort anfordern
             </a>
           </div>
           
@@ -143,24 +107,16 @@ Deno.serve(async (req) => {
               <strong>Alternative:</strong> Falls der Button nicht funktioniert, können Sie diesen Link kopieren:
             </p>
             <div style="background-color: #ffffff; padding: 10px; border-radius: 4px; border: 1px solid #ced4da; word-break: break-all; font-family: monospace; font-size: 12px; color: #495057;">
-              ${magicLink}
+              ${resetLink}
             </div>
           </div>
           
           <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #2e83c2;">
             <h4 style="margin: 0 0 15px 0; color: #333; font-size: 16px;">Nächste Schritte:</h4>
             <p style="margin: 8px 0; color: #555; font-size: 14px;">1. Klicken Sie auf den blauen Button oben</p>
-            <p style="margin: 8px 0; color: #555; font-size: 14px;">2. Sie werden automatisch angemeldet</p>
-            <p style="margin: 8px 0; color: #555; font-size: 14px;">3. Legen Sie Ihr persönliches Passwort fest</p>
-            <p style="margin: 8px 0; color: #555; font-size: 14px;">4. Erkunden Sie das Portal</p>
-          </div>
-          
-          <div style="background-color: #fff3cd; padding: 15px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #ffc107;">
-            <p style="margin: 0; color: #856404; font-size: 14px;">
-              <strong>Sicherheitshinweis:</strong><br>
-              Dieser Login-Link ist nur für Sie bestimmt und läuft nach <strong>24 Stunden</strong> ab. 
-              Teilen Sie diesen Link nicht mit anderen Personen.
-            </p>
+            <p style="margin: 8px 0; color: #555; font-size: 14px;">2. Fordern Sie über "Passwort vergessen" einen Magic Link an</p>
+            <p style="margin: 8px 0; color: #555; font-size: 14px;">3. Klicken Sie auf den Link in der E-Mail</p>
+            <p style="margin: 8px 0; color: #555; font-size: 14px;">4. Legen Sie in den Einstellungen Ihr Passwort fest</p>
           </div>
           
           <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
