@@ -461,16 +461,16 @@ Deno.serve(async (req) => {
         .eq('user_id', oldProfileId);
       console.log(`✅ [${requestId}] Migrated chat_group_members`);
       
-      // Delete the old profile
-      const { error: deleteError } = await supabaseAdmin
+      // Archive the old profile instead of deleting it
+      const { error: archiveError } = await supabaseAdmin
         .from('profiles')
-        .delete()
+        .update({ is_archived: true })
         .eq('id', oldProfileId);
       
-      if (deleteError) {
-        console.error(`⚠️ [${requestId}] Could not delete old profile:`, deleteError);
+      if (archiveError) {
+        console.error(`⚠️ [${requestId}] Could not archive old profile:`, archiveError);
       } else {
-        console.log(`✅ [${requestId}] Deleted old profile ${oldProfileId}`);
+        console.log(`✅ [${requestId}] Archived old profile ${oldProfileId}`);
       }
     }
 
