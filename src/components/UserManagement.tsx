@@ -878,15 +878,13 @@ export function UserManagement() {
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
-                          {!user.last_login && (
-                            <button
-                              onClick={() => handleResendWelcomeEmail(user.email, user.full_name, user.id)}
-                              className="p-2 border border-orange-300 shadow-sm rounded-md text-orange-700 bg-orange-50 hover:bg-orange-100"
-                              title="Willkommens-E-Mail erneut senden"
-                            >
-                              <Mail className="h-4 w-4" />
-                            </button>
-                          )}
+                          <button
+                            onClick={() => handleResendWelcomeEmail(user.email, user.full_name, user.id)}
+                            className="p-2 border border-orange-300 shadow-sm rounded-md text-orange-700 bg-orange-50 hover:bg-orange-100"
+                            title="Willkommens-E-Mail erneut senden"
+                          >
+                            <Mail className="h-4 w-4" />
+                          </button>
                           <button
                             onClick={() => handleResetPasswordForUser(user.email, user.full_name)}
                             className="p-2 border border-gray-300 shadow-sm rounded-md text-gray-700 bg-white hover:bg-gray-50"
