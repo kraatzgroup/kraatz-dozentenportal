@@ -51,10 +51,15 @@ export function Settings() {
 
       if (error) throw error;
       
+      // Add cache buster to profile picture URL to avoid stale browser cache
+      const pictureUrl = data.profile_picture_url 
+        ? `${data.profile_picture_url}?t=${Date.now()}`
+        : null;
+      
       setProfile({
         full_name: data.full_name || '',
         email: data.email || '',
-        profile_picture_url: data.profile_picture_url,
+        profile_picture_url: pictureUrl,
         phone: data.phone || '',
         street: data.street || '',
         house_number: data.house_number || '',
@@ -159,11 +164,6 @@ export function Settings() {
     const urlWithCacheBuster = `${url}?t=${Date.now()}`;
     setProfile(prev => ({ ...prev, profile_picture_url: urlWithCacheBuster }));
     setSuccess('Profilbild erfolgreich aktualisiert');
-    
-    // Refresh profile after a short delay to get the clean URL from database
-    setTimeout(() => {
-      fetchProfile();
-    }, 1000);
   };
 
   if (isLoading) {
