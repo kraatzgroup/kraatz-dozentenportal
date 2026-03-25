@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Camera } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -68,6 +68,16 @@ export function ProfilePicture({
       // Upload new avatar with file extension
       const fileExt = file.name.split('.').pop();
       const filePath = `${userId}/avatar.${fileExt}`;
+      
+      console.log('📤 Starting upload:', {
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        fileExt,
+        filePath,
+        userId
+      });
+      
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, file, {
@@ -75,14 +85,25 @@ export function ProfilePicture({
           contentType: file.type
         });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error('❌ Upload error:', uploadError);
+        throw uploadError;
+      }
+      
+      console.log('✅ Upload successful, getting public URL...');
 
       // Get the public URL
-      const { data: { publicUrl }, error: urlError } = await supabase.storage
+      const { data } = supabase.storage
         .from('avatars')
         .getPublicUrl(filePath);
+      
+      const publicUrl = data.publicUrl;
 
-      if (urlError) throw urlError;
+      console.log('📍 Public URL generated:', {
+        filePath,
+        publicUrl,
+        hasExtension: publicUrl.includes('.jpg') || publicUrl.includes('.png') || publicUrl.includes('.jpeg') || publicUrl.includes('.gif')
+      });
 
       // Validate the generated URL uses the correct domain
       if (!publicUrl.includes('gkkveloqajxghhflkfru.supabase.co')) {
@@ -148,7 +169,7 @@ export function ProfilePicture({
     return imageUrl;
   };
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const { getRootProps, getInputProps } = useDropzone({
     onDrop,
     accept: {
       'image/*': ['.png', '.jpg', '.jpeg', '.gif']
