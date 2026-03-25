@@ -155,8 +155,15 @@ export function Settings() {
   };
 
   const handleProfilePictureUpdate = (url: string) => {
-    setProfile(prev => ({ ...prev, profile_picture_url: url }));
+    // Add cache buster to force browser to reload the image
+    const urlWithCacheBuster = `${url}?t=${Date.now()}`;
+    setProfile(prev => ({ ...prev, profile_picture_url: urlWithCacheBuster }));
     setSuccess('Profilbild erfolgreich aktualisiert');
+    
+    // Refresh profile after a short delay to get the clean URL from database
+    setTimeout(() => {
+      fetchProfile();
+    }, 1000);
   };
 
   if (isLoading) {
