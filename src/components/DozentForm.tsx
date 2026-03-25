@@ -499,42 +499,6 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         }
       }
 
-      let profilePictureUrl = formData.profile_picture_url || null;
-
-      // Upload profile picture if a new one was selected
-      if (profilePictureFile) {
-        const dozentId = isEditing && dozent?.id ? dozent.id : crypto.randomUUID();
-        const fileExt = profilePictureFile.name.split('.').pop();
-        const fileName = `${dozentId}/avatar.${fileExt}`;
-
-        // First delete existing file if any
-        await supabase.storage
-          .from('avatars')
-          .remove([fileName]);
-
-        // Read file as ArrayBuffer to ensure proper upload
-        const arrayBuffer = await profilePictureFile.arrayBuffer();
-        const uint8Array = new Uint8Array(arrayBuffer);
-
-        const { error: uploadError } = await supabase.storage
-          .from('avatars')
-          .upload(fileName, uint8Array, { 
-            cacheControl: '3600',
-            contentType: profilePictureFile.type,
-            upsert: false
-          });
-
-        if (uploadError) {
-          console.error('Upload error:', uploadError);
-          // Continue without profile picture
-        } else {
-          const { data: urlData } = supabase.storage
-            .from('avatars')
-            .getPublicUrl(fileName);
-          profilePictureUrl = urlData.publicUrl;
-        }
-      }
-
       // Log hourly rates for debugging
       console.log('💰 Stundensätze vor dem Speichern:', {
         hourly_rate_unterricht: formData.hourly_rate_unterricht,
@@ -856,6 +820,43 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
           
           console.log('✅ UPSERT SUCCESS - Gespeicherte Stundensätze:', upsertResult);
           addToast('Dozent wurde hinzugefügt (ohne Benutzerkonto)', 'success');
+        }
+      }
+
+      // Upload profile picture if a new one was selected
+      if (profilePictureFile && dozentId) {
+        const fileExt = profilePictureFile.name.split('.').pop();
+        const fileName = `${dozentId}/avatar.${fileExt}`;
+
+        // First delete existing file if any
+        await supabase.storage
+          .from('avatars')
+          .remove([fileName]);
+
+        // Read file as ArrayBuffer to ensure proper upload
+        const arrayBuffer = await profilePictureFile.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+
+        const { error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(fileName, uint8Array, { 
+            cacheControl: '3600',
+            contentType: profilePictureFile.type,
+            upsert: false
+          });
+
+        if (uploadError) {
+          console.error('Upload error:', uploadError);
+        } else {
+          const { data: urlData } = supabase.storage
+            .from('avatars')
+            .getPublicUrl(fileName);
+          
+          // Update profile with new picture URL
+          await supabase
+            .from('profiles')
+            .update({ profile_picture_url: urlData.publicUrl })
+            .eq('id', dozentId);
         }
       }
 
