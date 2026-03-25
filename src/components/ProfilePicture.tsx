@@ -45,7 +45,16 @@ export function ProfilePicture({
     if (acceptedFiles.length === 0) return;
 
     const file = acceptedFiles[0];
+    
+    console.log('📥 File received:', {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      lastModified: file.lastModified
+    });
+    
     if (!file.type.startsWith('image/')) {
+      console.error('❌ Invalid file type:', file.type);
       setError('Please upload an image file');
       return;
     }
@@ -60,18 +69,34 @@ export function ProfilePicture({
         .list(userId);
 
       if (existingFiles && existingFiles.length > 0) {
+        console.log('🗑️ Deleting existing files:', existingFiles.map(f => f.name));
         await supabase.storage
           .from('avatars')
           .remove(existingFiles.map(f => `${userId}/${f.name}`));
       }
 
       // Upload new avatar with file extension
-      const fileExt = file.name.split('.').pop();
+      const fileExt = file.name.split('.').pop()?.toLowerCase();
       const filePath = `${userId}/avatar.${fileExt}`;
+      
+      // Determine correct content type
+      let contentType = file.type;
+      if (!contentType || contentType === 'application/octet-stream') {
+        // Fallback based on extension
+        const extMap: Record<string, string> = {
+          'jpg': 'image/jpeg',
+          'jpeg': 'image/jpeg',
+          'png': 'image/png',
+          'gif': 'image/gif',
+          'webp': 'image/webp'
+        };
+        contentType = extMap[fileExt || ''] || 'image/jpeg';
+      }
       
       console.log('📤 Starting upload:', {
         fileName: file.name,
-        fileType: file.type,
+        originalType: file.type,
+        contentType,
         fileSize: file.size,
         fileExt,
         filePath,
@@ -82,7 +107,7 @@ export function ProfilePicture({
         .from('avatars')
         .upload(filePath, file, {
           upsert: true,
-          contentType: file.type
+          contentType: contentType
         });
 
       if (uploadError) {
