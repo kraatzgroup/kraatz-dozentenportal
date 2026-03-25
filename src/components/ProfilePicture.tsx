@@ -95,16 +95,17 @@ export function ProfilePicture({
         contentType = extMap[fileExt || ''] || 'image/jpeg';
       }
       
-      // Read file as ArrayBuffer to ensure proper binary upload
+      // Create a Blob with the correct MIME type to ensure proper upload
       const arrayBuffer = await file.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
+      const blob = new Blob([arrayBuffer], { type: contentType });
       
       console.log('📤 Starting upload:', {
         fileName: file.name,
         originalType: file.type,
         contentType,
+        blobType: blob.type,
         fileSize: file.size,
-        binarySize: uint8Array.byteLength,
+        blobSize: blob.size,
         fileExt,
         filePath,
         userId
@@ -112,7 +113,7 @@ export function ProfilePicture({
       
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(filePath, uint8Array, {
+        .upload(filePath, blob, {
           upsert: true,
           contentType: contentType
         });
