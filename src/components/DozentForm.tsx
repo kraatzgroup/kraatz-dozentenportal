@@ -505,11 +505,11 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
       if (profilePictureFile) {
         const dozentId = isEditing && dozent?.id ? dozent.id : crypto.randomUUID();
         const fileExt = profilePictureFile.name.split('.').pop();
-        const fileName = `${dozentId}/profile.${fileExt}`;
+        const fileName = `${dozentId}/avatar.${fileExt}`;
 
         // First delete existing file if any
         await supabase.storage
-          .from('profile-pictures')
+          .from('avatars')
           .remove([fileName]);
 
         // Read file as ArrayBuffer to ensure proper upload
@@ -517,7 +517,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         const uint8Array = new Uint8Array(arrayBuffer);
 
         const { error: uploadError } = await supabase.storage
-          .from('profile-pictures')
+          .from('avatars')
           .upload(fileName, uint8Array, { 
             cacheControl: '3600',
             contentType: profilePictureFile.type,
@@ -529,7 +529,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
           // Continue without profile picture
         } else {
           const { data: urlData } = supabase.storage
-            .from('profile-pictures')
+            .from('avatars')
             .getPublicUrl(fileName);
           profilePictureUrl = urlData.publicUrl;
         }
