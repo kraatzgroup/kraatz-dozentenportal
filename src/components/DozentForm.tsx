@@ -852,11 +852,18 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
             .from('avatars')
             .getPublicUrl(fileName);
           
-          // Update profile with new picture URL
+          // Add cache buster to force browser to reload the image
+          const newProfileUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+          
+          // Update profile with new picture URL (without cache buster for storage)
           await supabase
             .from('profiles')
             .update({ profile_picture_url: urlData.publicUrl })
             .eq('id', dozentId);
+          
+          // Update form data and preview with new URL (with cache buster for immediate display)
+          setFormData(prev => ({ ...prev, profile_picture_url: urlData.publicUrl }));
+          setProfilePicturePreview(newProfileUrl);
         }
       }
 
