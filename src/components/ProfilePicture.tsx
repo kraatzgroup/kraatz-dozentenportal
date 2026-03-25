@@ -25,6 +25,8 @@ export function ProfilePicture({
 }: ProfilePictureProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
   const sizeClasses = {
     sm: 'h-10 w-10',
@@ -206,6 +208,14 @@ export function ProfilePicture({
   // Get validated image URL
   const validatedUrl = getValidatedImageUrl(url);
 
+  // Reset image state when URL changes
+  const [prevUrl, setPrevUrl] = useState(url);
+  if (url !== prevUrl) {
+    setPrevUrl(url);
+    setImageLoaded(false);
+    setImageError(false);
+  }
+
   const content = isAdmin ? (
     <div className={`${sizeClasses[size]} rounded-full bg-white flex items-center justify-center p-1 overflow-hidden`}>
       <Logo />
@@ -213,35 +223,32 @@ export function ProfilePicture({
   ) : validatedUrl ? (
     <div className={`${sizeClasses[size]} rounded-full relative overflow-hidden flex-shrink-0`}>
       <img
+        key={validatedUrl}
         src={validatedUrl} 
         alt="Profile"
         className="w-full h-full rounded-full object-cover"
-        onError={(e) => {
-          // Hide the broken image
-          e.currentTarget.style.display = 'none';
-          // Show fallback
-          const fallback = e.currentTarget.nextElementSibling;
-          if (fallback) {
-            (fallback as HTMLElement).style.display = 'flex';
-          }
+        style={{ display: imageError ? 'none' : 'block' }}
+        onError={() => {
+          console.log('❌ Image failed to load:', validatedUrl);
+          setImageError(true);
+          setImageLoaded(false);
         }}
-        onLoad={(e) => {
-          // Hide fallback when image loads successfully
-          const fallback = (e.currentTarget as HTMLImageElement).nextElementSibling;
-          if (fallback) {
-            (fallback as HTMLElement).style.display = 'none';
-          }
+        onLoad={() => {
+          console.log('✅ Image loaded successfully:', validatedUrl);
+          setImageLoaded(true);
+          setImageError(false);
         }}
       />
-      {/* Fallback initials - positioned exactly the same as image */}
-      <div 
-        className="w-full h-full rounded-full bg-primary/10 flex items-center justify-center absolute inset-0"
-        style={{ display: 'none' }}
-      >
-        <span className="text-primary font-medium text-lg">
-          {fullName ? getInitials(fullName) : userId.charAt(0).toUpperCase()}
-        </span>
-      </div>
+      {/* Fallback initials - shown when image fails or hasn't loaded */}
+      {(!imageLoaded || imageError) && (
+        <div 
+          className="w-full h-full rounded-full bg-primary/10 flex items-center justify-center absolute inset-0"
+        >
+          <span className="text-primary font-medium text-lg">
+            {fullName ? getInitials(fullName) : userId.charAt(0).toUpperCase()}
+          </span>
+        </div>
+      )}
     </div>
   ) : (
     <div className={`${sizeClasses[size]} rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 overflow-hidden`}>
