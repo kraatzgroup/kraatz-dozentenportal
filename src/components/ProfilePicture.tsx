@@ -65,8 +65,9 @@ export function ProfilePicture({
           .remove(existingFiles.map(f => `${userId}/${f.name}`));
       }
 
-      // Upload new avatar
-      const filePath = `${userId}/avatar`;
+      // Upload new avatar with file extension
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${userId}/avatar.${fileExt}`;
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, file, {
