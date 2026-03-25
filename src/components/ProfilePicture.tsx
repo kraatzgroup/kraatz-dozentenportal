@@ -95,42 +95,47 @@ export function ProfilePicture({
         contentType = extMap[fileExt || ''] || 'image/jpeg';
       }
       
-      // Create a Blob with the correct MIME type to ensure proper upload
-      const arrayBuffer = await file.arrayBuffer();
-      const blob = new Blob([arrayBuffer], { type: contentType });
-      
       console.log('📤 Starting upload:', {
         fileName: file.name,
         originalType: file.type,
         contentType,
-        blobType: blob.type,
         fileSize: file.size,
-        blobSize: blob.size,
         fileExt,
         filePath,
         userId
       });
       
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, blob, {
-          upsert: true,
-          contentType: contentType
-        });
-
-      if (uploadError) {
-        console.error('❌ Upload error:', uploadError);
-        throw uploadError;
+      // Use direct fetch API to upload - the Supabase JS client serializes incorrectly
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      if (!token) {
+        throw new Error('No auth token available');
+      }
+      
+      const uploadUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/avatars/${filePath}`;
+      
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': contentType,
+          'x-upsert': 'true',
+          'Cache-Control': 'max-age=3600'
+        },
+        body: file
+      });
+      
+      if (!uploadResponse.ok) {
+        const errorData = await uploadResponse.json();
+        console.error('❌ Upload error:', errorData);
+        throw new Error(errorData.message || 'Upload failed');
       }
       
       console.log('✅ Upload successful, getting public URL...');
 
-      // Get the public URL
-      const { data } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath);
-      
-      const publicUrl = data.publicUrl;
+      // Construct the public URL directly
+      const publicUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/avatars/${filePath}`;
 
       console.log('📍 Public URL generated:', {
         filePath,
