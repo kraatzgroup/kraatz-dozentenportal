@@ -95,11 +95,16 @@ export function ProfilePicture({
         contentType = extMap[fileExt || ''] || 'image/jpeg';
       }
       
+      // Read file as ArrayBuffer to ensure proper binary upload
+      const arrayBuffer = await file.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
       console.log('📤 Starting upload:', {
         fileName: file.name,
         originalType: file.type,
         contentType,
         fileSize: file.size,
+        binarySize: uint8Array.byteLength,
         fileExt,
         filePath,
         userId
@@ -107,7 +112,7 @@ export function ProfilePicture({
       
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(filePath, file, {
+        .upload(filePath, uint8Array, {
           upsert: true,
           contentType: contentType
         });
