@@ -825,45 +825,61 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
 
       // Upload profile picture if a new one was selected
       if (profilePictureFile && dozentId) {
-        const fileExt = profilePictureFile.name.split('.').pop();
+        const fileExt = profilePictureFile.name.split('.').pop()?.toLowerCase();
         const fileName = `${dozentId}/avatar.${fileExt}`;
 
-        // First delete existing file if any
-        await supabase.storage
-          .from('avatars')
-          .remove([fileName]);
+        // Determine correct content type
+        let contentType = profilePictureFile.type;
+        if (!contentType || contentType === 'application/octet-stream') {
+          const extMap: Record<string, string> = {
+            'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+            'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp'
+          };
+          contentType = extMap[fileExt || ''] || 'image/jpeg';
+        }
 
-        // Read file as ArrayBuffer to ensure proper upload
-        const arrayBuffer = await profilePictureFile.arrayBuffer();
-        const uint8Array = new Uint8Array(arrayBuffer);
-
-        const { error: uploadError } = await supabase.storage
+        // First delete existing files
+        const { data: existingFiles } = await supabase.storage
           .from('avatars')
-          .upload(fileName, uint8Array, { 
-            cacheControl: '3600',
-            contentType: profilePictureFile.type,
-            upsert: false
+          .list(dozentId);
+        if (existingFiles && existingFiles.length > 0) {
+          await supabase.storage
+            .from('avatars')
+            .remove(existingFiles.map(f => `${dozentId}/${f.name}`));
+        }
+
+        // Use direct fetch API to upload - Supabase JS client has MIME type issues
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+
+        if (token) {
+          const uploadUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/avatars/${fileName}`;
+          const uploadResponse = await fetch(uploadUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': contentType,
+              'x-upsert': 'true',
+              'Cache-Control': 'max-age=3600'
+            },
+            body: profilePictureFile
           });
 
-        if (uploadError) {
-          console.error('Upload error:', uploadError);
-        } else {
-          const { data: urlData } = supabase.storage
-            .from('avatars')
-            .getPublicUrl(fileName);
-          
-          // Add cache buster to force browser to reload the image
-          const newProfileUrl = `${urlData.publicUrl}?t=${Date.now()}`;
-          
-          // Update profile with new picture URL (without cache buster for storage)
-          await supabase
-            .from('profiles')
-            .update({ profile_picture_url: urlData.publicUrl })
-            .eq('id', dozentId);
-          
-          // Update form data and preview with new URL (with cache buster for immediate display)
-          setFormData(prev => ({ ...prev, profile_picture_url: urlData.publicUrl }));
-          setProfilePicturePreview(newProfileUrl);
+          if (!uploadResponse.ok) {
+            const errorData = await uploadResponse.json();
+            console.error('Upload error:', errorData);
+          } else {
+            const publicUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/avatars/${fileName}`;
+            const newProfileUrl = `${publicUrl}?t=${Date.now()}`;
+
+            await supabase
+              .from('profiles')
+              .update({ profile_picture_url: publicUrl })
+              .eq('id', dozentId);
+
+            setFormData(prev => ({ ...prev, profile_picture_url: publicUrl }));
+            setProfilePicturePreview(newProfileUrl);
+          }
         }
       }
 
