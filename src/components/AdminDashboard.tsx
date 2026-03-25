@@ -122,6 +122,11 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDozent, setSelectedDozent] = useState<Profile | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [showNotesModal, setShowNotesModal] = useState(false);
+  const [selectedTeilnehmerForNotes, setSelectedTeilnehmerForNotes] = useState<any>(null);
+  const [teilnehmerNotes, setTeilnehmerNotes] = useState<any[]>([]);
+  const [newNoteContent, setNewNoteContent] = useState('');
+  const [isAddingNote, setIsAddingNote] = useState(false);
   const [isCheckingDocuments, setIsCheckingDocuments] = useReactState(false);
   const [checkResult, setCheckResult] = useReactState<any>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -185,6 +190,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   const [invoiceFilterMonth, setInvoiceFilterMonth] = useState<number | 'alle'>('alle');
   const [invoiceFilterYear, setInvoiceFilterYear] = useState<number>(new Date().getFullYear());
   const [teilnehmerFilter, setTeilnehmerFilter] = useState<'alle' | 'aktiv' | 'abgeschlossen' | '25' | '75' | 'elite' | '2staatsexamen'>('alle');
+  const [teilnehmerSearch, setTeilnehmerSearch] = useState<string>('');
   const [editingTeilnehmer, setEditingTeilnehmer] = useState<string | null>(null);
   const [editContractStart, setEditContractStart] = useState<string>('');
   const [editContractEnd, setEditContractEnd] = useState<string>('');
@@ -405,8 +411,26 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
     const { setupRealtimeSubscription, cleanupSubscription } = useFileStore.getState();
     setupRealtimeSubscription(); // No folder ID for admin dashboard
     
+    // Setup real-time subscription for participant_hours to update completed hours
+    const hoursChannel = supabase
+      .channel('admin-participant-hours')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'participant_hours'
+        },
+        () => {
+          // Refresh teilnehmer data when hours change
+          fetchTeilnehmer();
+        }
+      )
+      .subscribe();
+    
     return () => {
       cleanupSubscription();
+      supabase.removeChannel(hoursChannel);
     };
   }, []);
 
@@ -544,8 +568,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
       // Fetch completed hours from participant_hours table - only sum, not all records
       const { data: hoursData, error: hoursError } = await supabase
         .from('participant_hours')
-        .select('teilnehmer_id, hours')
-        .limit(5000);
+        .select('teilnehmer_id, hours');
 
       if (hoursError) throw hoursError;
 
@@ -909,6 +932,87 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
     } catch (error) {
       console.error('Error deleting dozent:', error);
       addToast('Fehler beim Löschen des Dozenten', 'error');
+    }
+  };
+
+  const fetchTeilnehmerNotes = async (teilnehmerId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('teilnehmer_notes')
+        .select(`
+          *,
+          author:profiles!teilnehmer_notes_author_id_fkey(full_name)
+        `)
+        .eq('teilnehmer_id', teilnehmerId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setTeilnehmerNotes(data || []);
+    } catch (error) {
+      console.error('Error fetching notes:', error);
+      addToast('Fehler beim Laden der Notizen', 'error');
+    }
+  };
+
+  const addTeilnehmerNote = async () => {
+    if (!newNoteContent.trim() || !selectedTeilnehmerForNotes) return;
+    
+    setIsAddingNote(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .single();
+
+      const authorShort = profile?.full_name
+        ?.split(' ')
+        .map(n => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 3) || 'N/A';
+
+      const { error } = await supabase
+        .from('teilnehmer_notes')
+        .insert({
+          teilnehmer_id: selectedTeilnehmerForNotes.id,
+          author_id: user.id,
+          author_short: authorShort,
+          content: newNoteContent.trim()
+        });
+
+      if (error) throw error;
+
+      setNewNoteContent('');
+      await fetchTeilnehmerNotes(selectedTeilnehmerForNotes.id);
+      addToast('Notiz hinzugefügt', 'success');
+    } catch (error) {
+      console.error('Error adding note:', error);
+      addToast('Fehler beim Hinzufügen der Notiz', 'error');
+    } finally {
+      setIsAddingNote(false);
+    }
+  };
+
+  const deleteTeilnehmerNote = async (noteId: string) => {
+    if (!confirm('Möchten Sie diese Notiz wirklich löschen?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('teilnehmer_notes')
+        .delete()
+        .eq('id', noteId);
+
+      if (error) throw error;
+
+      await fetchTeilnehmerNotes(selectedTeilnehmerForNotes.id);
+      addToast('Notiz gelöscht', 'success');
+    } catch (error) {
+      console.error('Error deleting note:', error);
+      addToast('Fehler beim Löschen der Notiz', 'error');
     }
   };
 
@@ -1876,6 +1980,27 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                   <span className="sm:hidden">Hinzufügen</span>
                 </button>
               </div>
+              
+              {/* Search Bar */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Studenten suchen (Name, Email, TN-Nummer)..."
+                  value={teilnehmerSearch}
+                  onChange={(e) => setTeilnehmerSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                />
+                {teilnehmerSearch && (
+                  <button
+                    onClick={() => setTeilnehmerSearch('')}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              
               {/* Filter Buttons - scrollable on mobile */}
               <div className="flex items-center space-x-2 overflow-x-auto pb-1">
                 <button
@@ -1976,6 +2101,16 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 <div className="sm:hidden space-y-3">
                   {teilnehmer
                     .filter(t => {
+                      // Search filter
+                      if (teilnehmerSearch) {
+                        const searchLower = teilnehmerSearch.toLowerCase();
+                        const matchesName = t.name?.toLowerCase().includes(searchLower);
+                        const matchesEmail = t.email?.toLowerCase().includes(searchLower);
+                        const matchesTnNummer = t.tn_nummer?.toLowerCase().includes(searchLower);
+                        if (!matchesName && !matchesEmail && !matchesTnNummer) return false;
+                      }
+                      
+                      // Category filter
                       if (teilnehmerFilter === 'alle') return true;
                       if (teilnehmerFilter === 'aktiv') return isContractActive(t);
                       if (teilnehmerFilter === 'abgeschlossen') return isTeilnehmerCompleted(t);
@@ -2229,6 +2364,16 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                       <tbody className="bg-white divide-y divide-gray-200">
                         {teilnehmer
                           .filter(t => {
+                            // Search filter
+                            if (teilnehmerSearch) {
+                              const searchLower = teilnehmerSearch.toLowerCase();
+                              const matchesName = t.name?.toLowerCase().includes(searchLower);
+                              const matchesEmail = t.email?.toLowerCase().includes(searchLower);
+                              const matchesTnNummer = t.tn_nummer?.toLowerCase().includes(searchLower);
+                              if (!matchesName && !matchesEmail && !matchesTnNummer) return false;
+                            }
+                            
+                            // Category filter
                             if (teilnehmerFilter === 'alle') return true;
                             if (teilnehmerFilter === 'aktiv') return isContractActive(t);
                             if (teilnehmerFilter === 'abgeschlossen') return isTeilnehmerCompleted(t);
@@ -2457,6 +2602,17 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                             </td>
                             <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-right">
                               <div className="flex items-center justify-end gap-1">
+                                <button
+                                  onClick={() => {
+                                    setSelectedTeilnehmerForNotes(t);
+                                    fetchTeilnehmerNotes(t.id);
+                                    setShowNotesModal(true);
+                                  }}
+                                  className="p-1.5 text-gray-400 hover:text-primary hover:bg-gray-100 rounded transition-colors"
+                                  title="Notizen anzeigen"
+                                >
+                                  <FileText className="h-4 w-4" />
+                                </button>
                                 <button
                                   onClick={() => {
                                     setSelectedTeilnehmerForEdit(t);
@@ -4686,6 +4842,120 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                   className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"
                 >
                   Abbrechen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Teilnehmer Notes Modal */}
+      {showNotesModal && selectedTeilnehmerForNotes && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+          <div className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">
+                  Notizen: {selectedTeilnehmerForNotes.name}
+                </h3>
+                <p className="text-sm text-gray-500 mt-1">{selectedTeilnehmerForNotes.email}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowNotesModal(false);
+                  setSelectedTeilnehmerForNotes(null);
+                  setTeilnehmerNotes([]);
+                  setNewNoteContent('');
+                }}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            {/* Notes List */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {teilnehmerNotes.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                  <p>Noch keine Notizen vorhanden</p>
+                </div>
+              ) : (
+                teilnehmerNotes.map((note) => (
+                  <div key={note.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          <span className="text-primary font-medium text-sm">{note.author_short}</span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{note.author?.full_name || 'Unbekannt'}</p>
+                          <p className="text-xs text-gray-500">
+                            {new Date(note.created_at).toLocaleString('de-DE', {
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => deleteTeilnehmerNote(note.id)}
+                        className="text-gray-400 hover:text-red-600 transition-colors"
+                        title="Notiz löschen"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{note.content}</p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Add Note Form */}
+            <div className="border-t border-gray-200 p-6 bg-gray-50">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Neue Notiz hinzufügen
+              </label>
+              <textarea
+                value={newNoteContent}
+                onChange={(e) => setNewNoteContent(e.target.value)}
+                placeholder="Notiz eingeben..."
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
+              />
+              <div className="flex justify-end gap-2 mt-3">
+                <button
+                  onClick={() => {
+                    setShowNotesModal(false);
+                    setSelectedTeilnehmerForNotes(null);
+                    setTeilnehmerNotes([]);
+                    setNewNoteContent('');
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+                >
+                  Schließen
+                </button>
+                <button
+                  onClick={addTeilnehmerNote}
+                  disabled={!newNoteContent.trim() || isAddingNote}
+                  className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isAddingNote ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Speichern...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4" />
+                      Notiz hinzufügen
+                    </>
+                  )}
                 </button>
               </div>
             </div>

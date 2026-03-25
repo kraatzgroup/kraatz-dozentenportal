@@ -15,6 +15,8 @@ interface ParticipantHoursSectionProps {
   onShowHoursDialog: () => void;
   getCurrentMonthHours: (teilnehmerId: string) => number;
   isAdmin?: boolean;
+  studyGoal?: '1. Staatsexamen' | '2. Staatsexamen';
+  dozentId?: string;
 }
 
 export function ParticipantHoursSection({
@@ -26,7 +28,9 @@ export function ParticipantHoursSection({
   onShowTeilnehmerManagement,
   onShowHoursDialog,
   getCurrentMonthHours,
-  isAdmin = false
+  isAdmin = false,
+  studyGoal = '1. Staatsexamen',
+  dozentId
 }: ParticipantHoursSectionProps) {
   const { monthlySummary } = useHoursStore();
   const [showTeilnehmerManagement, setShowTeilnehmerManagement] = useState(false);
@@ -76,7 +80,7 @@ export function ParticipantHoursSection({
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           {/* Left: Section Name */}
           <h3 className="text-lg font-medium text-gray-900">
-            Stunden pro Teilnehmer (1. Staatsexamen)
+            Stunden pro Teilnehmer ({studyGoal})
           </h3>
           
           {/* Right: Month/Year Selection + Action Buttons */}
@@ -145,22 +149,58 @@ export function ParticipantHoursSection({
         </div>
 
         {(() => {
-          // Use monthlySummary directly - it contains all teilnehmer for which hours were logged
-          const participantsWithHours = monthlySummary.filter(s => s.total_hours > 0);
+          // Filter active teilnehmer by study goal and dozent assignment
+          const isContractActive = (t: Teilnehmer) => {
+            if (!t.contract_start || !t.contract_end) return false;
+            const now = new Date();
+            const start = new Date(t.contract_start);
+            const end = new Date(t.contract_end);
+            return now >= start && now <= end;
+          };
+
+          const filteredTeilnehmer = teilnehmer.filter(t => {
+            // Filter by study goal
+            if (t.study_goal !== studyGoal) return false;
+            
+            // Filter by active contract
+            if (!isContractActive(t)) return false;
+            
+            // If dozentId is provided, filter by dozent assignment
+            if (dozentId) {
+              const isAssigned = 
+                t.dozent_zivilrecht_id === dozentId ||
+                t.dozent_strafrecht_id === dozentId ||
+                t.dozent_oeffentliches_recht_id === dozentId;
+              if (!isAssigned) return false;
+            }
+            
+            return true;
+          });
+
+          // Get hours from monthlySummary for each teilnehmer
+          const teilnehmerWithHours = filteredTeilnehmer.map(t => {
+            const summary = monthlySummary.find(s => s.teilnehmer_id === t.id);
+            return {
+              ...t,
+              monthly_hours: summary?.total_hours || 0,
+              days_worked: summary?.days_worked || 0
+            };
+          });
           
-          if (participantsWithHours.length > 0) {
-            // Show participants with hours
+          if (teilnehmerWithHours.length > 0) {
+            // Show all active participants
             return (
               <div className="space-y-4">
-                {participantsWithHours.map((summary) => {
-                  const bookedHours = summary.booked_hours || 0;
-                  const completedHours = summary.completed_hours || 0;
+                {teilnehmerWithHours.map((teilnehmer) => {
+                  const bookedHours = teilnehmer.booked_hours || 0;
+                  const completedHours = teilnehmer.completed_hours || 0;
                   const progressPercent = bookedHours > 0 ? Math.min((completedHours / bookedHours) * 100, 100) : 0;
+                  const hasMonthlyHours = teilnehmer.monthly_hours > 0;
                   
                   return (
-                    <div key={summary.teilnehmer_id} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
+                    <div key={teilnehmer.id} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
                       <button
-                        onClick={() => setSelectedTeilnehmer({ id: summary.teilnehmer_id, name: summary.teilnehmer_name })}
+                        onClick={() => setSelectedTeilnehmer({ id: teilnehmer.id, name: teilnehmer.name })}
                         className="w-full flex items-center justify-between hover:bg-gray-100 transition-colors rounded-lg p-2 -m-2"
                       >
                         <div className="flex items-center">
@@ -171,17 +211,17 @@ export function ParticipantHoursSection({
                           </div>
                           <div className="ml-4">
                             <div className="flex items-center">
-                              <h4 className="text-sm font-medium text-gray-900">{summary.teilnehmer_name}</h4>
+                              <h4 className="text-sm font-medium text-gray-900">{teilnehmer.name}</h4>
                             </div>
-                            {/* Contract dates like admin view */}
-                            {summary.contract_start && summary.contract_end ? (
+                            {/* Contract dates */}
+                            {teilnehmer.contract_start && teilnehmer.contract_end ? (
                               <div className="text-sm text-gray-500">
                                 <Calendar className="h-3 w-3 inline mr-1" />
-                                {new Date(summary.contract_start).toLocaleDateString('de-DE')} - {new Date(summary.contract_end).toLocaleDateString('de-DE')}
+                                {new Date(teilnehmer.contract_start).toLocaleDateString('de-DE')} - {new Date(teilnehmer.contract_end).toLocaleDateString('de-DE')}
                               </div>
                             ) : (
                               <div className="text-sm text-gray-500">
-                                {summary.days_worked} Tag(e) gearbeitet
+                                {teilnehmer.days_worked} Tag(e) gearbeitet
                               </div>
                             )}
                             {/* Hours progress bar */}
@@ -201,15 +241,31 @@ export function ParticipantHoursSection({
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="text-lg font-semibold text-primary">
-                            {summary.total_hours}h
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {getMonthName(selectedMonth)}
-                          </div>
-                          <div className="text-xs text-green-600">
-                            Stunden eingetragen
-                          </div>
+                          {hasMonthlyHours ? (
+                            <>
+                              <div className="text-lg font-semibold text-primary">
+                                {teilnehmer.monthly_hours}h
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {getMonthName(selectedMonth)}
+                              </div>
+                              <div className="text-xs text-green-600">
+                                Stunden eingetragen
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-lg font-semibold text-gray-400">
+                                0h
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {getMonthName(selectedMonth)}
+                              </div>
+                              <div className="text-xs text-gray-400">
+                                Keine Stunden
+                              </div>
+                            </>
+                          )}
                         </div>
                       </button>
                     </div>
@@ -219,12 +275,12 @@ export function ParticipantHoursSection({
             );
           }
           
-          // No hours for this month - show empty state
+          // No active participants for this study goal
           return (
             <div className="text-center py-8 text-gray-500">
-              <Clock className="mx-auto h-10 w-10 text-gray-300 mb-2" />
-              <p>Keine Stunden für {getMonthName(selectedMonth)} {selectedYear} eingetragen</p>
-              <p className="text-xs mt-2">Klicken Sie auf "Stunden eintragen" um Stunden hinzuzufügen.</p>
+              <Users className="mx-auto h-10 w-10 text-gray-300 mb-2" />
+              <p>Keine aktiven Teilnehmer ({studyGoal})</p>
+              <p className="text-xs mt-2">Es sind derzeit keine Teilnehmer mit diesem Studienziel zugewiesen.</p>
             </div>
           );
         })()}

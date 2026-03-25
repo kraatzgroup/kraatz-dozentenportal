@@ -15,6 +15,7 @@ interface SecondExamHoursSectionProps {
   onShowHoursDialog: () => void;
   getCurrentMonthHours: (teilnehmerId: string) => number;
   isAdmin?: boolean;
+  dozentId?: string;
 }
 
 export function SecondExamHoursSection({
@@ -26,7 +27,8 @@ export function SecondExamHoursSection({
   onShowTeilnehmerManagement,
   onShowHoursDialog,
   getCurrentMonthHours,
-  isAdmin = false
+  isAdmin = false,
+  dozentId
 }: SecondExamHoursSectionProps) {
   const { monthlySummary } = useHoursStore();
   const [showTeilnehmerManagement, setShowTeilnehmerManagement] = useState(false);
@@ -146,31 +148,59 @@ export function SecondExamHoursSection({
         </div>
 
         {(() => {
-          // Filter for only 2. Staatsexamen participants
-          const secondExamParticipants = monthlySummary.filter(s => {
-            // Find the teilnehmer in the teilnehmer array
-            const teilnehmerData = teilnehmer.find(t => t.id === s.teilnehmer_id);
-            // Check if study_goal includes "2. Staatsexamen"
-            return teilnehmerData?.study_goal?.includes('2. Staatsexamen') && s.total_hours > 0;
+          // Filter active teilnehmer by study goal and dozent assignment
+          const isContractActive = (t: Teilnehmer) => {
+            if (!t.contract_start || !t.contract_end) return false;
+            const now = new Date();
+            const start = new Date(t.contract_start);
+            const end = new Date(t.contract_end);
+            return now >= start && now <= end;
+          };
+
+          const filteredTeilnehmer = teilnehmer.filter(t => {
+            // Filter by study goal (2. Staatsexamen)
+            if (t.study_goal !== '2. Staatsexamen') return false;
+            
+            // Filter by active contract
+            if (!isContractActive(t)) return false;
+            
+            // If dozentId is provided, filter by dozent assignment
+            if (dozentId) {
+              const isAssigned = 
+                t.dozent_zivilrecht_id === dozentId ||
+                t.dozent_strafrecht_id === dozentId ||
+                t.dozent_oeffentliches_recht_id === dozentId;
+              if (!isAssigned) return false;
+            }
+            
+            return true;
+          });
+
+          // Get hours from monthlySummary for each teilnehmer
+          const teilnehmerWithHours = filteredTeilnehmer.map(t => {
+            const summary = monthlySummary.find(s => s.teilnehmer_id === t.id);
+            return {
+              ...t,
+              monthly_hours: summary?.total_hours || 0,
+              days_worked: summary?.days_worked || 0
+            };
           });
           
-          if (secondExamParticipants.length > 0) {
-            // Show participants with hours
+          if (teilnehmerWithHours.length > 0) {
+            // Show all active participants
             return (
               <div className="space-y-4">
-                {secondExamParticipants.map((summary) => {
-                  const bookedHours = summary.booked_hours || 0;
-                  const completedHours = summary.completed_hours || 0;
+                {teilnehmerWithHours.map((teilnehmer) => {
+                  const bookedHours = teilnehmer.booked_hours || 0;
+                  const completedHours = teilnehmer.completed_hours || 0;
                   const progressPercent = bookedHours > 0 ? Math.min((completedHours / bookedHours) * 100, 100) : 0;
-                  
-                  // Get additional info from teilnehmer data
-                  const teilnehmerData = teilnehmer.find(t => t.id === summary.teilnehmer_id);
-                  const referendariatsstandort = (teilnehmerData as any)?.referendariatsstandort;
+                  const hasMonthlyHours = teilnehmer.monthly_hours > 0;
+                  const referendariatsstandort = (teilnehmer as any)?.referendariatsstandort;
                   
                   return (
-                    <div key={summary.teilnehmer_id} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
+                    <div key={teilnehmer.id} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
                       <button
-                        onClick={() => setSelectedTeilnehmer({ id: summary.teilnehmer_id, name: summary.teilnehmer_name })}
+                        onClick={() => setSelectedTeilnehmer({ id: teilnehmer.id, name: teilnehmer.name })}
                         className="w-full flex items-center justify-between hover:bg-amber-50 transition-colors rounded-lg p-2 -m-2 border border-transparent hover:border-amber-200"
                       >
                         <div className="flex items-center">
@@ -181,7 +211,7 @@ export function SecondExamHoursSection({
                           </div>
                           <div className="ml-4">
                             <div className="flex items-center">
-                              <h4 className="text-sm font-medium text-gray-900">{summary.teilnehmer_name}</h4>
+                              <h4 className="text-sm font-medium text-gray-900">{teilnehmer.name}</h4>
                             </div>
                             {/* Referendariatsstandort */}
                             {referendariatsstandort && (
@@ -190,14 +220,14 @@ export function SecondExamHoursSection({
                               </div>
                             )}
                             {/* Contract dates */}
-                            {summary.contract_start && summary.contract_end ? (
+                            {teilnehmer.contract_start && teilnehmer.contract_end ? (
                               <div className="text-sm text-gray-500">
                                 <Calendar className="h-3 w-3 inline mr-1" />
-                                {new Date(summary.contract_start).toLocaleDateString('de-DE')} - {new Date(summary.contract_end).toLocaleDateString('de-DE')}
+                                {new Date(teilnehmer.contract_start).toLocaleDateString('de-DE')} - {new Date(teilnehmer.contract_end).toLocaleDateString('de-DE')}
                               </div>
                             ) : (
                               <div className="text-sm text-gray-500">
-                                {summary.days_worked} Tag(e) gearbeitet
+                                {teilnehmer.days_worked} Tag(e) gearbeitet
                               </div>
                             )}
                             {/* Hours progress bar */}
@@ -217,15 +247,31 @@ export function SecondExamHoursSection({
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="text-lg font-semibold text-amber-600">
-                            {summary.total_hours}h
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {getMonthName(selectedMonth)}
-                          </div>
-                          <div className="text-xs text-green-600">
-                            Stunden eingetragen
-                          </div>
+                          {hasMonthlyHours ? (
+                            <>
+                              <div className="text-lg font-semibold text-amber-600">
+                                {teilnehmer.monthly_hours}h
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {getMonthName(selectedMonth)}
+                              </div>
+                              <div className="text-xs text-green-600">
+                                Stunden eingetragen
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-lg font-semibold text-gray-400">
+                                0h
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {getMonthName(selectedMonth)}
+                              </div>
+                              <div className="text-xs text-gray-400">
+                                Keine Stunden
+                              </div>
+                            </>
+                          )}
                         </div>
                       </button>
                     </div>
@@ -235,12 +281,12 @@ export function SecondExamHoursSection({
             );
           }
           
-          // No hours for this month - show empty state
+          // No active participants for 2. Staatsexamen
           return (
             <div className="text-center py-8 text-gray-500">
               <GraduationCap className="mx-auto h-10 w-10 text-gray-300 mb-2" />
-              <p>Keine Stunden für 2. Staatsexamen Teilnehmer in {getMonthName(selectedMonth)} {selectedYear}</p>
-              <p className="text-xs mt-2">Klicken Sie auf "Stunden eintragen" um Stunden hinzuzufügen.</p>
+              <p>Keine aktiven Teilnehmer (2. Staatsexamen)</p>
+              <p className="text-xs mt-2">Es sind derzeit keine Teilnehmer mit diesem Studienziel zugewiesen.</p>
             </div>
           );
         })()}

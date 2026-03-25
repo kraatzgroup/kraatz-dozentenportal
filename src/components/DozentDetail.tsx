@@ -592,6 +592,8 @@ export function DozentDetail() {
                     onShowHoursDialog={() => setShowHoursDialog(true)}
                     getCurrentMonthHours={getDozentMonthHours}
                     isAdmin={canManageAll}
+                    studyGoal="1. Staatsexamen"
+                    dozentId={dozentId}
                   />
                   {dozentInfo?.exam_types?.includes('2. Staatsexamen') && (
                     <SecondExamHoursSection
@@ -604,6 +606,7 @@ export function DozentDetail() {
                       onShowHoursDialog={() => setShowHoursDialog(true)}
                       getCurrentMonthHours={getDozentMonthHours}
                       isAdmin={canManageAll}
+                      dozentId={dozentId}
                     />
                   )}
                 </div>

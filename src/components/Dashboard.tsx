@@ -969,6 +969,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                     onShowHoursDialog={() => setShowHoursDialog(true)}
                     getCurrentMonthHours={getCurrentMonthHours}
                     isAdmin={canManageAll}
+                    studyGoal="1. Staatsexamen"
+                    dozentId={user?.id}
                   />
                   {userExamTypes.includes('2. Staatsexamen') && (
                     <SecondExamHoursSection
@@ -981,6 +983,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                       onShowHoursDialog={() => setShowHoursDialog(true)}
                       getCurrentMonthHours={getCurrentMonthHours}
                       isAdmin={canManageAll}
+                      dozentId={user?.id}
                     />
                   )}
                 </div>
