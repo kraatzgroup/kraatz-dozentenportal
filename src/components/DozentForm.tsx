@@ -520,7 +520,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         house_number: formData.house_number.trim() || null,
         postal_code: formData.postal_code.trim() || null,
         city: formData.city.trim() || null,
-        profile_picture_url: profilePictureUrl,
+        profile_picture_url: formData.profile_picture_url || null,
         iban: formData.iban.trim() || null,
         bic: formData.bic.trim() || null,
         bank_name: formData.bank_name.trim() || null,
