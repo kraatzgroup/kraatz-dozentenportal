@@ -159,9 +159,6 @@ export function ParticipantHoursSection({
           };
 
           const filteredTeilnehmer = teilnehmer.filter(t => {
-            // Filter by study goal
-            if (t.study_goal !== studyGoal) return false;
-            
             // Filter by active contract
             if (!isContractActive(t)) return false;
             
@@ -172,6 +169,19 @@ export function ParticipantHoursSection({
                 t.dozent_strafrecht_id === dozentId ||
                 t.dozent_oeffentliches_recht_id === dozentId;
               if (!isAssigned) return false;
+            }
+            
+            // Filter by study goal
+            if (studyGoal === '2. Staatsexamen') {
+              // Only show if study_goal includes "2. Staatsexamen" and NOT elite_kleingruppe
+              return !t.elite_kleingruppe && t.study_goal && t.study_goal.includes('2. Staatsexamen');
+            } else if (studyGoal === '1. Staatsexamen') {
+              // Show if: elite_kleingruppe OR study_goal includes "1. Staatsexamen" OR no study_goal OR study_goal doesn't include "2. Staatsexamen"
+              if (t.elite_kleingruppe) return true;
+              if (!t.study_goal) return true;
+              if (t.study_goal.includes('1. Staatsexamen')) return true;
+              // Exclude only if explicitly "2. Staatsexamen"
+              return !t.study_goal.includes('2. Staatsexamen');
             }
             
             return true;

@@ -215,7 +215,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
       }
       // Clean up: remove "TN" prefix if already present, remove non-digits
       const tnDigits = tnRaw.replace(/[^0-9]/g, '');
-      const tnNummer = tnDigits ? `TN${tnDigits.padStart(4, '0')}` : formData.tn_nummer;
+      const tnNummer = tnDigits ? `TN${tnDigits.padStart(5, '0')}` : formData.tn_nummer;
       console.log('EU-Vorblatt Import - TN raw:', tnRaw, 'TN parsed:', tnNummer);
       const fullName = getCellValue(contactSheet, 'C5');
       const phone = getCellValue(contactSheet, 'C7');
@@ -611,9 +611,9 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
       return false;
     }
 
-    const tnPattern = /^TN[0-9]{4}$/;
+    const tnPattern = /^TN[0-9]{4,5}$/;
     if (!tnPattern.test(tnNummer)) {
-      setTnNummerError('TN-Nummer muss im Format TNXXXX sein (z.B. TN0001)');
+      setTnNummerError('TN-Nummer muss im Format TNXXXX oder TNXXXXX sein (z.B. TN0001, TN10000)');
       return false;
     }
 
@@ -824,6 +824,18 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
       // Insert imported lessons into participant_hours
       if (importedLessons.length > 0 && savedTeilnehmerId) {
         const hoursToInsert = importedLessons
+          .map(lesson => {
+            // Use manually assigned dozent ID from form, fallback to parsed dozent ID from EU-Vorblatt
+            let dozentId = lesson.dozent_id;
+            if (lesson.legal_area === 'Zivilrecht' && formData.dozent_zivilrecht_id) {
+              dozentId = formData.dozent_zivilrecht_id;
+            } else if (lesson.legal_area === 'Strafrecht' && formData.dozent_strafrecht_id) {
+              dozentId = formData.dozent_strafrecht_id;
+            } else if (lesson.legal_area === 'Öffentliches Recht' && formData.dozent_oeffentliches_recht_id) {
+              dozentId = formData.dozent_oeffentliches_recht_id;
+            }
+            return { ...lesson, dozent_id: dozentId };
+          })
           .filter(lesson => lesson.dozent_id) // Only insert lessons with matched dozent
           .map(lesson => ({
             teilnehmer_id: savedTeilnehmerId!,
@@ -931,16 +943,16 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                   ? 'border-red-300 focus:ring-red-500' 
                   : 'border-gray-300 focus:ring-primary'
               }`}
-              placeholder="TN0001"
+              placeholder="TN00001"
               required
-              maxLength={6}
-              pattern="TN[0-9]{4}"
+              maxLength={7}
+              pattern="TN[0-9]{4,5}"
             />
             {tnNummerError && (
               <p className="mt-1 text-sm text-red-600">{tnNummerError}</p>
             )}
             <p className="mt-1 text-xs text-gray-500">
-              Format: TNXXXX (z.B. TN0001, TN0002)
+              Format: TNXXXX oder TNXXXXX (z.B. TN0001, TN10000)
             </p>
           </div>
 
@@ -1509,8 +1521,24 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                   {['Zivilrecht', 'Strafrecht', 'Öffentliches Recht'].map(area => {
                     const areaLessons = importedLessons.filter(l => l.legal_area === area);
                     if (areaLessons.length === 0) return null;
-                    const dozentName = areaLessons[0].dozent_name;
-                    const dozentMatched = areaLessons[0].dozent_id !== null;
+                    
+                    // Determine which dozent will be used: manual assignment takes priority
+                    let dozentId = areaLessons[0].dozent_id;
+                    let dozentName = areaLessons[0].dozent_name;
+                    if (area === 'Zivilrecht' && formData.dozent_zivilrecht_id) {
+                      dozentId = formData.dozent_zivilrecht_id;
+                      const manualDozent = dozenten.find(d => d.id === formData.dozent_zivilrecht_id);
+                      if (manualDozent) dozentName = manualDozent.full_name;
+                    } else if (area === 'Strafrecht' && formData.dozent_strafrecht_id) {
+                      dozentId = formData.dozent_strafrecht_id;
+                      const manualDozent = dozenten.find(d => d.id === formData.dozent_strafrecht_id);
+                      if (manualDozent) dozentName = manualDozent.full_name;
+                    } else if (area === 'Öffentliches Recht' && formData.dozent_oeffentliches_recht_id) {
+                      dozentId = formData.dozent_oeffentliches_recht_id;
+                      const manualDozent = dozenten.find(d => d.id === formData.dozent_oeffentliches_recht_id);
+                      if (manualDozent) dozentName = manualDozent.full_name;
+                    }
+                    const dozentMatched = dozentId !== null;
                     const totalHoursArea = areaLessons.reduce((sum, l) => sum + l.hours, 0);
                     
                     return (

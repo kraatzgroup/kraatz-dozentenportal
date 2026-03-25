@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Calendar, Clock, User, BookOpen, FileText, Plus, Edit, Trash2, Check, X, AlertCircle } from 'lucide-react';
+import { Calendar, Clock, User, BookOpen, FileText, Plus, Edit, Trash2, Check, X, AlertCircle, Users } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useHoursStore } from '../store/hoursStore';
 import { useDozentHoursStore } from '../store/dozentHoursStore';
+import { Teilnehmer } from '../store/teilnehmerStore';
 
 interface ActivityReportProps {
   selectedMonth: number;
@@ -57,6 +58,10 @@ interface PendingHoursEntry {
   created_at: string;
 }
 
+interface TeilnehmerWithHours extends Teilnehmer {
+  monthly_hours: number;
+}
+
 export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onYearChange, onShowActivityDialog, dozentId, examType }: ActivityReportProps) {
   const { user } = useAuthStore();
   const { dozentHours, fetchDozentHours, createDozentHours } = useDozentHoursStore();
@@ -68,6 +73,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
   const [dozentName, setDozentName] = useState<string>('');
   const [editingEntry, setEditingEntry] = useState<CombinedHoursEntry | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [activeTeilnehmer, setActiveTeilnehmer] = useState<TeilnehmerWithHours[]>([]);
   const [editFormData, setEditFormData] = useState({
     hours: '',
     date: '',
@@ -82,6 +88,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
     fetchDozentName();
     fetchAllHours();
     fetchPendingHours();
+    fetchActiveTeilnehmer();
     
     // Setup real-time subscriptions
     const { setupRealtimeSubscription: setupHoursSub, cleanupSubscription: cleanupHoursSub } = useHoursStore.getState();
@@ -203,6 +210,71 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
       setPendingHours(data || []);
     } catch (error: any) {
       console.error('Error fetching pending hours:', error);
+    }
+  };
+
+  const fetchActiveTeilnehmer = async () => {
+    if (!targetDozentId) return;
+    
+    try {
+      const startDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
+      const endDate = new Date(selectedYear, selectedMonth, 0).toISOString().split('T')[0];
+      
+      // Fetch all teilnehmer assigned to this dozent
+      const { data: teilnehmerData, error: teilnehmerError } = await supabase
+        .from('teilnehmer')
+        .select('*')
+        .or(`dozent_zivilrecht_id.eq.${targetDozentId},dozent_strafrecht_id.eq.${targetDozentId},dozent_oeffentliches_recht_id.eq.${targetDozentId}`);
+      
+      if (teilnehmerError) throw teilnehmerError;
+      
+      // Filter by exam type and active contract
+      const filteredTeilnehmer = (teilnehmerData || []).filter(t => {
+        // Check if contract is active
+        if (!t.contract_start || !t.contract_end) return false;
+        const now = new Date();
+        const start = new Date(t.contract_start);
+        const end = new Date(t.contract_end);
+        if (!(now >= start && now <= end)) return false;
+        
+        // Filter by exam type
+        if (examType === '2. Staatsexamen') {
+          // Only show if study_goal includes "2. Staatsexamen" and NOT elite_kleingruppe
+          return !t.elite_kleingruppe && t.study_goal && t.study_goal.includes('2. Staatsexamen');
+        } else if (examType === '1. Staatsexamen') {
+          // Show if: elite_kleingruppe OR study_goal includes "1. Staatsexamen" OR no study_goal OR study_goal doesn't include "2. Staatsexamen"
+          if (t.elite_kleingruppe) return true;
+          if (!t.study_goal) return true;
+          if (t.study_goal.includes('1. Staatsexamen')) return true;
+          // Exclude only if explicitly "2. Staatsexamen"
+          return !t.study_goal.includes('2. Staatsexamen');
+        }
+        return true;
+      });
+      
+      // Fetch hours for each teilnehmer for the selected month
+      const teilnehmerWithHours: TeilnehmerWithHours[] = await Promise.all(
+        filteredTeilnehmer.map(async (t) => {
+          const { data: hoursData } = await supabase
+            .from('participant_hours')
+            .select('hours')
+            .eq('teilnehmer_id', t.id)
+            .eq('dozent_id', targetDozentId)
+            .gte('date', startDate)
+            .lte('date', endDate);
+          
+          const monthly_hours = (hoursData || []).reduce((sum, h) => sum + parseFloat(h.hours.toString()), 0);
+          
+          return {
+            ...t,
+            monthly_hours
+          };
+        })
+      );
+      
+      setActiveTeilnehmer(teilnehmerWithHours);
+    } catch (error: any) {
+      console.error('Error fetching active teilnehmer:', error);
     }
   };
 
@@ -418,6 +490,97 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
 
   return (
     <div className="space-y-6">
+      {/* Active Participants Section */}
+      <div className="bg-white shadow overflow-hidden sm:rounded-md">
+        <div className="px-4 py-5 border-b border-gray-200 sm:px-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-medium text-gray-900">
+              Aktive Teilnehmer ({examType})
+            </h3>
+            <div className="text-xs text-gray-500">
+              {getMonthName(selectedMonth)} {selectedYear}
+            </div>
+          </div>
+        </div>
+        <div className="p-6">
+          {activeTeilnehmer.length > 0 ? (
+            <div className="space-y-3">
+              {activeTeilnehmer.map((teilnehmer) => {
+                const bookedHours = teilnehmer.booked_hours || 0;
+                const completedHours = teilnehmer.completed_hours || 0;
+                const progressPercent = bookedHours > 0 ? Math.min((completedHours / bookedHours) * 100, 100) : 0;
+                const hasMonthlyHours = teilnehmer.monthly_hours > 0;
+                
+                return (
+                  <div key={teilnehmer.id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition-colors">
+                    <div className="flex items-center flex-1">
+                      <div className="flex-shrink-0">
+                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                          <User className="h-5 w-5 text-primary" />
+                        </div>
+                      </div>
+                      <div className="ml-4 flex-1">
+                        <div className="flex items-center">
+                          <h4 className="text-sm font-medium text-gray-900">{teilnehmer.name}</h4>
+                        </div>
+                        {teilnehmer.contract_start && teilnehmer.contract_end && (
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            <Calendar className="h-3 w-3 inline mr-1" />
+                            {new Date(teilnehmer.contract_start).toLocaleDateString('de-DE')} - {new Date(teilnehmer.contract_end).toLocaleDateString('de-DE')}
+                          </div>
+                        )}
+                        {bookedHours > 0 && (
+                          <div className="mt-1.5">
+                            <div className="flex items-center space-x-2">
+                              <div className="w-32 bg-gray-200 rounded-full h-1.5">
+                                <div 
+                                  className={`h-1.5 rounded-full ${
+                                    progressPercent >= 100 ? 'bg-green-500' : 
+                                    progressPercent >= 75 ? 'bg-yellow-500' : 'bg-primary'
+                                  }`}
+                                  style={{ width: `${progressPercent}%` }}
+                                />
+                              </div>
+                              <span className="text-xs text-gray-500">{completedHours}/{bookedHours}h gesamt</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right ml-4">
+                      {hasMonthlyHours ? (
+                        <>
+                          <div className="text-lg font-semibold text-primary">
+                            {teilnehmer.monthly_hours}h
+                          </div>
+                          <div className="text-xs text-green-600">
+                            {getMonthName(selectedMonth)}
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-lg font-semibold text-gray-400">
+                            0h
+                          </div>
+                          <div className="text-xs text-gray-400">
+                            Keine Stunden
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <Users className="mx-auto h-10 w-10 text-gray-300 mb-2" />
+              <p>Keine aktiven Teilnehmer ({examType})</p>
+              <p className="text-xs mt-2">Es sind derzeit keine Teilnehmer mit diesem Studienziel zugewiesen.</p>
+            </div>
+          )}
+        </div>
+      </div>
       {/* Pending Hours Section */}
       {pendingHours.length > 0 && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg shadow">

@@ -158,9 +158,6 @@ export function SecondExamHoursSection({
           };
 
           const filteredTeilnehmer = teilnehmer.filter(t => {
-            // Filter by study goal (2. Staatsexamen)
-            if (t.study_goal !== '2. Staatsexamen') return false;
-            
             // Filter by active contract
             if (!isContractActive(t)) return false;
             
@@ -172,6 +169,14 @@ export function SecondExamHoursSection({
                 t.dozent_oeffentliches_recht_id === dozentId;
               if (!isAssigned) return false;
             }
+            
+            // Filter by study goal - include all 2. Staatsexamen variants
+            // Must have study_goal set and include "2. Staatsexamen"
+            // Variants: Erstversuch, Wiederholungsversuch, Verbesserungsversuch, Letztversuch
+            if (!t.study_goal || !t.study_goal.includes('2. Staatsexamen')) return false;
+            
+            // Exclude elite_kleingruppe (they belong to 1. Staatsexamen)
+            if (t.elite_kleingruppe) return false;
             
             return true;
           });

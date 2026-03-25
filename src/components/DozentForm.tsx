@@ -551,6 +551,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         email: formData.email.trim() || null,
         phone: formData.phone.trim() || null,
         legal_areas: formData.legal_areas.length > 0 ? formData.legal_areas : null,
+        exam_types: formData.exam_types,
         street: formData.street.trim() || null,
         house_number: formData.house_number.trim() || null,
         postal_code: formData.postal_code.trim() || null,
