@@ -195,6 +195,59 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
         .order('created_at', { ascending: false })
         .limit(5);
 
+      // Fetch recent Klausur submissions from Teilnehmer (for dozent's legal areas)
+      let klausurActivities: any[] = [];
+      try {
+        // Get dozent's legal areas
+        const legalAreas = new Set<string>();
+        const { data: assignments } = await supabase
+          .from('elite_kleingruppe_dozent_assignments')
+          .select('legal_areas')
+          .eq('dozent_id', user.id);
+        if (assignments) {
+          assignments.forEach(a => (a.legal_areas || []).forEach((la: string) => legalAreas.add(la)));
+        }
+        if (legalAreas.size === 0) {
+          const { data: oldAssignments } = await supabase
+            .from('elite_kleingruppe_dozenten')
+            .select('legal_area')
+            .eq('dozent_id', user.id);
+          (oldAssignments || []).forEach(d => legalAreas.add(d.legal_area));
+        }
+
+        if (legalAreas.size > 0) {
+          const { data: klausurenData } = await supabase
+            .from('elite_kleingruppe_klausuren')
+            .select('id, title, legal_area, submitted_at, teilnehmer_id, status')
+            .in('legal_area', Array.from(legalAreas))
+            .order('submitted_at', { ascending: false })
+            .limit(10);
+
+          if (klausurenData && klausurenData.length > 0) {
+            // Fetch teilnehmer names
+            const tIds = [...new Set(klausurenData.map(k => k.teilnehmer_id))];
+            const { data: tNames } = await supabase
+              .from('teilnehmer')
+              .select('id, name')
+              .in('id', tIds);
+            const nameMap = new Map((tNames || []).map(t => [t.id, t.name]));
+
+            klausurenData.forEach(k => {
+              klausurActivities.push({
+                id: `klausur-${k.id}`,
+                type: 'klausur',
+                title: `${nameMap.get(k.teilnehmer_id) || 'Teilnehmer'}: ${k.title}`,
+                subtitle: `Klausur eingereicht (${k.legal_area})`,
+                timestamp: k.submitted_at,
+                icon: 'klausur'
+              });
+            });
+          }
+        }
+      } catch (e) {
+        console.error('Error fetching klausur activities:', e);
+      }
+
       const activities: any[] = [];
 
       // Add hours activities
@@ -220,6 +273,9 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
           icon: 'upload'
         });
       });
+
+      // Add klausur activities
+      activities.push(...klausurActivities);
 
       // Sort by timestamp and take top 15
       activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -740,10 +796,11 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   <div key={activity.id} className="p-3 border-b border-gray-100 hover:bg-gray-50 transition-colors">
                     <div className="flex items-start space-x-3">
                       <div className={`p-2 rounded-lg flex-shrink-0 ${
-                        activity.icon === 'clock' ? 'bg-blue-100' : 'bg-green-100'
+                        activity.icon === 'clock' ? 'bg-blue-100' : activity.icon === 'klausur' ? 'bg-orange-100' : 'bg-green-100'
                       }`}>
                         {activity.icon === 'clock' && <Clock className="h-4 w-4 text-blue-600" />}
                         {activity.icon === 'upload' && <Upload className="h-4 w-4 text-green-600" />}
+                        {activity.icon === 'klausur' && <FileText className="h-4 w-4 text-orange-600" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900 truncate">{activity.title}</p>
