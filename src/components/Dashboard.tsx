@@ -809,17 +809,15 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                 <div className="p-6 flex justify-center">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
                 </div>
-              ) : recentActivities.length === 0 ? (
+              ) : unreadActivities.length === 0 ? (
                 <div className="p-4 text-center text-gray-500 text-sm">
-                  Keine Aktivitäten
+                  Keine neuen Aktivitäten
                 </div>
               ) : (
-                recentActivities.map((activity) => {
-                  const isDismissed = dismissedActivityIds.has(activity.id);
-                  return (
-                  <div key={activity.id} className={`p-3 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer ${isDismissed ? 'opacity-50' : ''}`}
+                unreadActivities.map((activity) => (
+                  <div key={activity.id} className="p-3 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer"
                     onClick={() => {
-                      if (!isDismissed) dismissActivity(activity.id);
+                      dismissActivity(activity.id);
                       if (activity.link) {
                         setShowActivityDropdown(false);
                         navigate(activity.link);
@@ -827,16 +825,15 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                     }}
                   >
                     <div className="flex items-start space-x-3">
-                      {!isDismissed && <div className="mt-2 h-2 w-2 rounded-full bg-red-500 flex-shrink-0" />}
+                      <div className="mt-2 h-2 w-2 rounded-full bg-red-500 flex-shrink-0" />
                       <div className={`p-2 rounded-lg flex-shrink-0 ${
-                        activity.icon === 'clock' ? 'bg-blue-100' : activity.icon === 'klausur' ? 'bg-orange-100' : 'bg-green-100'
+                        activity.icon === 'klausur' ? 'bg-orange-100' : 'bg-green-100'
                       }`}>
-                        {activity.icon === 'clock' && <Clock className="h-4 w-4 text-blue-600" />}
                         {activity.icon === 'upload' && <Upload className="h-4 w-4 text-green-600" />}
                         {activity.icon === 'klausur' && <FileText className="h-4 w-4 text-orange-600" />}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium truncate ${isDismissed ? 'text-gray-500' : 'text-gray-900'}`}>{activity.title}</p>
+                        <p className="text-sm font-medium truncate text-gray-900">{activity.title}</p>
                         <p className="text-xs text-gray-500 truncate">{activity.subtitle}</p>
                         <p className="text-xs text-gray-400 mt-1">
                           {new Date(activity.timestamp).toLocaleDateString('de-DE', {
@@ -847,15 +844,12 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                           })}
                         </p>
                       </div>
-                      {!isDismissed && (
-                        <button onClick={(e) => { e.stopPropagation(); dismissActivity(activity.id); }} className="text-gray-400 hover:text-gray-600 flex-shrink-0 mt-1">
-                          <X className="h-4 w-4" />
-                        </button>
-                      )}
+                      <button onClick={(e) => { e.stopPropagation(); dismissActivity(activity.id); }} className="text-gray-400 hover:text-gray-600 flex-shrink-0 mt-1">
+                        <X className="h-4 w-4" />
+                      </button>
                     </div>
                   </div>
-                  );
-                })
+                ))
               )}
             </div>
           </div>
