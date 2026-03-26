@@ -369,7 +369,7 @@ export function EliteKleingruppeDashboard() {
           subtitle: `Neue Einheit verfügbar${r.legal_area ? ` (${r.legal_area})` : ''}`,
           timestamp: r.release_date,
           icon: 'release',
-          link: '/elite-kleingruppe?tab=materialien'
+          link: '/dashboard?tab=kalender'
         });
       });
 
