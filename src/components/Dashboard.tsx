@@ -96,6 +96,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const [selectedBundeslaender, setSelectedBundeslaender] = useState<string[]>([]);
   const [showActivityDropdown, setShowActivityDropdown] = useState(false);
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
+  const [isLoadingActivities, setIsLoadingActivities] = useState(false);
   const activityDropdownRef = React.useRef<HTMLDivElement>(null);
   const [hoursFormData, setHoursFormData] = useState({
     teilnehmer_id: '',
@@ -178,6 +179,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   // Fetch recent activities for dozent
   const fetchRecentActivities = async () => {
     if (!user) return;
+    setIsLoadingActivities(true);
     try {
       // Fetch recent hours entries
       const { data: hoursData } = await supabase
@@ -282,6 +284,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       setRecentActivities(activities.slice(0, 15));
     } catch (error) {
       console.error('Error fetching recent activities:', error);
+    } finally {
+      setIsLoadingActivities(false);
     }
   };
 
@@ -787,7 +791,11 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
               <h3 className="font-semibold text-gray-900 text-sm">Letzte Aktivitäten</h3>
             </div>
             <div className="overflow-y-auto max-h-80">
-              {recentActivities.length === 0 ? (
+              {isLoadingActivities ? (
+                <div className="p-6 flex justify-center">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                </div>
+              ) : recentActivities.length === 0 ? (
                 <div className="p-4 text-center text-gray-500 text-sm">
                   Keine Aktivitäten
                 </div>
