@@ -289,7 +289,13 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     }
   };
 
-  // Load activities when dropdown opens
+  // Fetch activities on mount and when dropdown opens
+  useEffect(() => {
+    if (user) {
+      fetchRecentActivities();
+    }
+  }, [user]);
+
   useEffect(() => {
     if (showActivityDropdown) {
       fetchRecentActivities();
@@ -727,6 +733,11 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                 title="Letzte Aktivitäten"
               >
                 <Bell className="h-5 w-5" />
+                {recentActivities.length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                    {recentActivities.length > 99 ? '99+' : recentActivities.length}
+                  </span>
+                )}
               </button>
               
               <button
@@ -762,6 +773,11 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                 className="relative inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
               >
                 <Bell className="h-6 w-6" />
+                {recentActivities.length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                    {recentActivities.length > 99 ? '99+' : recentActivities.length}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => navigate('/messages')}
