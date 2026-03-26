@@ -198,14 +198,6 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     if (!user) return;
     setIsLoadingActivities(true);
     try {
-      // Fetch recent hours entries
-      const { data: hoursData } = await supabase
-        .from('participant_hours')
-        .select('id, hours, date, description, created_at')
-        .eq('dozent_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(10);
-
       // Fetch recent file uploads
       const { data: filesData } = await supabase
         .from('files')
@@ -258,7 +250,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                 title: `${nameMap.get(k.teilnehmer_id) || 'Teilnehmer'}: ${k.title}`,
                 subtitle: `Klausur eingereicht (${k.legal_area})`,
                 timestamp: k.submitted_at,
-                icon: 'klausur'
+                icon: 'klausur',
+                link: '/dashboard/elite-kleingruppe/klausurenkorrekturen'
               });
             });
           }
@@ -268,18 +261,6 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       }
 
       const activities: any[] = [];
-
-      // Add hours activities
-      (hoursData || []).forEach(h => {
-        activities.push({
-          id: `hours-${h.id}`,
-          type: 'hours',
-          title: h.description || 'Stunden eingetragen',
-          subtitle: `${h.hours} Stunden`,
-          timestamp: h.created_at,
-          icon: 'clock'
-        });
-      });
 
       // Add file activities
       (filesData || []).forEach(f => {
@@ -837,7 +818,13 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   const isDismissed = dismissedActivityIds.has(activity.id);
                   return (
                   <div key={activity.id} className={`p-3 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer ${isDismissed ? 'opacity-50' : ''}`}
-                    onClick={() => !isDismissed && dismissActivity(activity.id)}
+                    onClick={() => {
+                      if (!isDismissed) dismissActivity(activity.id);
+                      if (activity.link) {
+                        setShowActivityDropdown(false);
+                        navigate(activity.link);
+                      }
+                    }}
                   >
                     <div className="flex items-start space-x-3">
                       {!isDismissed && <div className="mt-2 h-2 w-2 rounded-full bg-red-500 flex-shrink-0" />}
