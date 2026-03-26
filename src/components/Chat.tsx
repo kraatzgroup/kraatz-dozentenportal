@@ -359,29 +359,42 @@ export function Chat() {
     if (!user) return;
     
     try {
-      // Fetch groups where user is a member
-      const { data: memberGroups, error: memberError } = await supabase
-        .from('chat_group_members')
-        .select('group_id')
-        .eq('user_id', user.id);
+      let groupData;
       
-      if (memberError) throw memberError;
-      
-      const groupIds = memberGroups?.map(m => m.group_id) || [];
-      
-      if (groupIds.length === 0) {
-        setGroups([]);
-        return;
+      if (isAdmin) {
+        // Admin can see ALL groups
+        const { data, error } = await supabase
+          .from('chat_groups')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        groupData = data;
+      } else {
+        // Other users only see groups where they are a member
+        const { data: memberGroups, error: memberError } = await supabase
+          .from('chat_group_members')
+          .select('group_id')
+          .eq('user_id', user.id);
+        
+        if (memberError) throw memberError;
+        
+        const groupIds = memberGroups?.map(m => m.group_id) || [];
+        
+        if (groupIds.length === 0) {
+          setGroups([]);
+          return;
+        }
+        
+        const { data, error: groupError } = await supabase
+          .from('chat_groups')
+          .select('*')
+          .in('id', groupIds)
+          .order('created_at', { ascending: false });
+        
+        if (groupError) throw groupError;
+        groupData = data;
       }
-      
-      // Fetch group details
-      const { data: groupData, error: groupError } = await supabase
-        .from('chat_groups')
-        .select('*')
-        .in('id', groupIds)
-        .order('created_at', { ascending: false });
-      
-      if (groupError) throw groupError;
       
       // Count members for each group
       const groupsWithCounts = await Promise.all(
@@ -817,30 +830,59 @@ export function Chat() {
                           const isSelected = selectedGroup?.id === group.id;
                           
                           return (
-                            <button
-                              key={group.id}
-                              onClick={() => {
-                                setSelectedGroup(group);
-                                setSelectedContact(null);
-                              }}
-                              className={`w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors duration-150 relative ${
-                                isSelected ? 'bg-blue-50' : ''
-                              }`}
-                            >
-                              <div className="flex items-center min-w-0 gap-2">
-                                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                                  <Users className="h-5 w-5 text-primary" />
-                                </div>
-                                <div className="ml-2 sm:ml-3 flex-1 min-w-0">
-                                  <div className="font-medium text-gray-900">
-                                    <span className="truncate block">{group.name}</span>
+                            <div key={group.id} className="relative group">
+                              <button
+                                onClick={() => {
+                                  setSelectedGroup(group);
+                                  setSelectedContact(null);
+                                }}
+                                className={`w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors duration-150 relative ${
+                                  isSelected ? 'bg-blue-50' : ''
+                                }`}
+                              >
+                                <div className="flex items-center min-w-0 gap-2">
+                                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                    <Users className="h-5 w-5 text-primary" />
                                   </div>
-                                  <div className="text-xs sm:text-sm text-gray-500">
-                                    {group.member_count} Mitglieder
+                                  <div className="ml-2 sm:ml-3 flex-1 min-w-0">
+                                    <div className="font-medium text-gray-900">
+                                      <span className="truncate block">{group.name}</span>
+                                    </div>
+                                    <div className="text-xs sm:text-sm text-gray-500">
+                                      {group.member_count} Mitglieder
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            </button>
+                              </button>
+                              {isAdmin && (
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (!confirm(`Gruppe "${group.name}" wirklich löschen? Alle Nachrichten werden ebenfalls gelöscht.`)) {
+                                      return;
+                                    }
+                                    try {
+                                      const { error } = await supabase
+                                        .from('chat_groups')
+                                        .delete()
+                                        .eq('id', group.id);
+                                      if (error) throw error;
+                                      if (selectedGroup?.id === group.id) {
+                                        setSelectedGroup(null);
+                                      }
+                                      fetchGroups();
+                                    } catch (error) {
+                                      console.error('Error deleting group:', error);
+                                      alert('Fehler beim Löschen der Gruppe.');
+                                    }
+                                  }}
+                                  className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 rounded transition-opacity z-10"
+                                  title="Gruppe löschen"
+                                >
+                                  <Trash2 className="h-4 w-4 text-red-600" />
+                                </button>
+                              )}
+                            </div>
                           );
                         })}
                     </>
