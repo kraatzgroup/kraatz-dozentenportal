@@ -5108,15 +5108,13 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                   <h3 className="text-lg font-medium text-gray-900">{isReadOnly ? 'Einheit ansehen (nur Lesezugriff)' : 'Einheit bearbeiten'}</h3>
                   <p className="text-sm text-gray-500 mt-1">{isReadOnly ? 'Details der' : 'Bearbeiten Sie die'} Unterrichtseinheit vom {editingRelease ? formatDate(editingRelease.release_date) : ''}</p>
                   <p className="text-xs text-gray-400 mt-0.5">ID: {editingRelease.id}</p>
-                  {isReadOnly && <p className="text-xs text-orange-600 mt-1 font-medium">⚠️ Diese Einheit gehört nicht zu Ihren zugewiesenen Rechtsgebieten – Dokumente können dennoch geteilt werden</p>}
+                  {isReadOnly && <p className="text-xs text-orange-600 mt-1 font-medium">⚠️ Diese Einheit gehört nicht zu Ihren zugewiesenen Rechtsgebieten – nur Lesezugriff</p>}
                 </div>
                 <button onClick={() => { setShowEditModal(false); setEditingRelease(null); }} className="text-gray-400 hover:text-gray-600">
                   <X className="h-5 w-5" />
                 </button>
               </div>
               
-              <div className="space-y-6">
-              {/* Read-only wrapper for unit fields (not document sharing) */}
               <div className={`space-y-6 ${isReadOnly ? 'pointer-events-none opacity-60' : ''}`}>
                 {/* Typ der Einheit */}
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -5212,9 +5210,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                   />
                 </div>
 
-              </div>
-
-                {/* Klausur-Ordner Auswahl - always editable for document sharing */}
+                {/* Klausur-Ordner Auswahl */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Welche Klausur wird besprochen?</label>
                   <select 
@@ -5563,14 +5559,16 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                 <button onClick={() => { setShowEditModal(false); setEditingRelease(null); }} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
                   Abbrechen
                 </button>
+                  {!isReadOnly && (
                   <button 
                     onClick={handleUpdateRelease} 
                     disabled={!releaseTitle.trim() || !releaseUnitType} 
                     className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Save className="h-4 w-4 inline mr-1" />
-                    {isReadOnly ? 'Dokumente aktualisieren' : 'Änderungen speichern'}
+                    Änderungen speichern
                   </button>
+                  )}
               </div>
             </div>
           </div>
