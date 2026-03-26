@@ -356,7 +356,7 @@ export function EliteKleingruppeDashboard() {
           subtitle: `Klausur korrigiert (${k.legal_area})`,
           timestamp: k.corrected_at,
           icon: 'klausur',
-          link: '/elite-kleingruppe?tab=klausuren'
+          tab: 'klausuren' as Tab
         });
       });
 
@@ -369,7 +369,7 @@ export function EliteKleingruppeDashboard() {
           subtitle: `Neue Einheit verfügbar${r.legal_area ? ` (${r.legal_area})` : ''}`,
           timestamp: r.release_date,
           icon: 'release',
-          link: '/dashboard?tab=kalender'
+          tab: 'kalender' as Tab
         });
       });
 
@@ -1118,9 +1118,9 @@ export function EliteKleingruppeDashboard() {
                   <div key={activity.id} className="p-3 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer"
                     onClick={() => {
                       dismissActivity(activity.id);
-                      if (activity.link) {
-                        setShowActivityDropdown(false);
-                        navigate(activity.link);
+                      setShowActivityDropdown(false);
+                      if (activity.tab) {
+                        setActiveTab(activity.tab);
                       }
                     }}
                   >
