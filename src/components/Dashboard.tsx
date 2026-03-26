@@ -258,7 +258,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
           .eq('dozent_id', user.id)
           .eq('month', currentMonth)
           .eq('year', currentYear)
-          .single();
+          .maybeSingle();
         
         if (!error && data) {
           setCurrentAvailability({ status: data.capacity_status, notes: data.notes });
