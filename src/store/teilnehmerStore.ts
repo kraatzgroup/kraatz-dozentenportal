@@ -127,18 +127,31 @@ export const useTeilnehmerStore = create<TeilnehmerState>((set, get) => ({
         console.log('✅ Admin: Found', data?.length || 0, 'teilnehmer');
         set({ teilnehmer: data || [] });
       } else {
-        // Dozents see only their own teilnehmer (where they are the dozent_id)
+        // Dozents see teilnehmer where they are assigned via any field
         console.log('🔍 Dozent: Fetching own teilnehmer...');
-        const { data, error } = await supabase
-          .from('teilnehmer')
-          .select('*')
-          .eq('dozent_id', user.id)
-          .order('name', { ascending: true });
-        
+        const [legacyResult, zivilResult, strafResult, oeffResult] = await Promise.all([
+          supabase.from('teilnehmer').select('*').eq('dozent_id', user.id),
+          supabase.from('teilnehmer').select('*').eq('dozent_zivilrecht_id', user.id),
+          supabase.from('teilnehmer').select('*').eq('dozent_strafrecht_id', user.id),
+          supabase.from('teilnehmer').select('*').eq('dozent_oeffentliches_recht_id', user.id)
+        ]);
+
+        const error = legacyResult.error || zivilResult.error || strafResult.error || oeffResult.error;
         if (error) throw error;
-        console.log('✅ Dozent: Found', data?.length || 0, 'teilnehmer');
-        
-        set({ teilnehmer: data || [] });
+
+        // Combine and deduplicate by id
+        const allData = [
+          ...(legacyResult.data || []),
+          ...(zivilResult.data || []),
+          ...(strafResult.data || []),
+          ...(oeffResult.data || [])
+        ];
+        const uniqueMap = new Map();
+        allData.forEach(t => uniqueMap.set(t.id, t));
+        const data = Array.from(uniqueMap.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+        console.log('✅ Dozent: Found', data.length, 'teilnehmer');
+        set({ teilnehmer: data });
       }
     } catch (error: any) {
       console.error('❌ Error in fetchTeilnehmer:', error);
