@@ -85,6 +85,9 @@ export function UserManagement() {
   const [magicLinkUser, setMagicLinkUser] = useState<string>('');
   const [generatingLinkForUserId, setGeneratingLinkForUserId] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [magicLinkEnv, setMagicLinkEnv] = useState<'localhost' | 'production'>(
+    window.location.hostname === 'localhost' ? 'localhost' : 'production'
+  );
 
   useEffect(() => {
     fetchUsers();
@@ -447,8 +450,28 @@ export function UserManagement() {
     }
   };
 
-  const handleOpenMagicLink = () => {
-    window.open(magicLink, '_blank', 'width=1200,height=800,left=100,top=100');
+  const getMagicLinkForEnv = (env: 'localhost' | 'production') => {
+    const localhostRedirect = encodeURIComponent('http://localhost:3000/dashboard?tab=dashboard');
+    const productionRedirect = encodeURIComponent('https://portal.kraatz-group.de/dashboard?tab=dashboard');
+    if (env === 'localhost') {
+      return magicLink.replace(/redirect_to=[^&]+/, `redirect_to=${localhostRedirect}`);
+    }
+    return magicLink.replace(/redirect_to=[^&]+/, `redirect_to=${productionRedirect}`);
+  };
+
+  const handleCopyMagicLinkForEnv = async (env: 'localhost' | 'production') => {
+    try {
+      await navigator.clipboard.writeText(getMagicLinkForEnv(env));
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (error) {
+      console.error('Error copying to clipboard:', error);
+    }
+  };
+
+  const handleOpenMagicLink = (env?: 'localhost' | 'production') => {
+    const link = getMagicLinkForEnv(env || magicLinkEnv);
+    window.open(link, '_blank', 'width=1200,height=800,left=100,top=100');
   };
 
   const handleDatabaseBackup = async () => {
@@ -1311,29 +1334,63 @@ export function UserManagement() {
                   </p>
                 </div>
 
+                {/* Environment Toggle */}
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-xs font-medium text-gray-700">Umgebung:</span>
+                  <div className="inline-flex rounded-md shadow-sm">
+                    <button
+                      onClick={() => setMagicLinkEnv('localhost')}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-l-md border ${
+                        magicLinkEnv === 'localhost'
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      Localhost
+                    </button>
+                    <button
+                      onClick={() => setMagicLinkEnv('production')}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-r-md border-t border-b border-r ${
+                        magicLinkEnv === 'production'
+                          ? 'bg-green-600 text-white border-green-600'
+                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      Production
+                    </button>
+                  </div>
+                  <span className={`text-xs ${magicLinkEnv === 'localhost' ? 'text-blue-600' : 'text-green-600'}`}>
+                    {magicLinkEnv === 'localhost' ? 'http://localhost:3000' : 'https://portal.kraatz-group.de'}
+                  </span>
+                </div>
+
                 <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-4">
                   <label className="block text-xs font-medium text-gray-700 mb-2">
-                    Magic Link:
+                    Magic Link ({magicLinkEnv === 'localhost' ? 'Localhost' : 'Production'}):
                   </label>
                   <div className="bg-white p-3 rounded border border-gray-300 break-all text-xs font-mono text-gray-700 max-h-32 overflow-y-auto">
-                    {magicLink}
+                    {getMagicLinkForEnv(magicLinkEnv)}
                   </div>
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3">
                   <button
-                    onClick={handleCopyMagicLink}
+                    onClick={() => handleCopyMagicLinkForEnv(magicLinkEnv)}
                     className="flex-1 inline-flex items-center justify-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     {copySuccess ? 'Kopiert!' : 'In Zwischenablage kopieren'}
                   </button>
                   <button
-                    onClick={handleOpenMagicLink}
-                    className="flex-1 inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    onClick={() => handleOpenMagicLink(magicLinkEnv)}
+                    className={`flex-1 inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${
+                      magicLinkEnv === 'localhost'
+                        ? 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500'
+                        : 'bg-green-600 hover:bg-green-700 focus:ring-green-500'
+                    } focus:outline-none focus:ring-2 focus:ring-offset-2`}
                   >
                     <ExternalLink className="h-4 w-4 mr-2" />
-                    Zu diesem Nutzer wechseln
+                    {magicLinkEnv === 'localhost' ? 'Auf Localhost öffnen' : 'Auf Production öffnen'}
                   </button>
                 </div>
 
