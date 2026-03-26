@@ -97,6 +97,23 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const [showActivityDropdown, setShowActivityDropdown] = useState(false);
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(false);
+  const [dismissedActivityIds, setDismissedActivityIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('dismissedActivityIds');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch { return new Set(); }
+  });
+
+  const unreadActivities = recentActivities.filter(a => !dismissedActivityIds.has(a.id));
+
+  const dismissActivity = (activityId: string) => {
+    setDismissedActivityIds(prev => {
+      const next = new Set(prev);
+      next.add(activityId);
+      localStorage.setItem('dismissedActivityIds', JSON.stringify([...next]));
+      return next;
+    });
+  };
   const activityDropdownRef = React.useRef<HTMLDivElement>(null);
   const [hoursFormData, setHoursFormData] = useState({
     teilnehmer_id: '',
@@ -733,9 +750,9 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                 title="Letzte Aktivitäten"
               >
                 <Bell className="h-5 w-5" />
-                {recentActivities.length > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
-                    {recentActivities.length > 99 ? '99+' : recentActivities.length}
+                {unreadActivities.length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                    {unreadActivities.length > 99 ? '99+' : unreadActivities.length}
                   </span>
                 )}
               </button>
@@ -773,9 +790,9 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                 className="relative inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
               >
                 <Bell className="h-6 w-6" />
-                {recentActivities.length > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
-                    {recentActivities.length > 99 ? '99+' : recentActivities.length}
+                {unreadActivities.length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                    {unreadActivities.length > 99 ? '99+' : unreadActivities.length}
                   </span>
                 )}
               </button>
@@ -816,9 +833,14 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   Keine Aktivitäten
                 </div>
               ) : (
-                recentActivities.map((activity) => (
-                  <div key={activity.id} className="p-3 border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                recentActivities.map((activity) => {
+                  const isDismissed = dismissedActivityIds.has(activity.id);
+                  return (
+                  <div key={activity.id} className={`p-3 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer ${isDismissed ? 'opacity-50' : ''}`}
+                    onClick={() => !isDismissed && dismissActivity(activity.id)}
+                  >
                     <div className="flex items-start space-x-3">
+                      {!isDismissed && <div className="mt-2 h-2 w-2 rounded-full bg-red-500 flex-shrink-0" />}
                       <div className={`p-2 rounded-lg flex-shrink-0 ${
                         activity.icon === 'clock' ? 'bg-blue-100' : activity.icon === 'klausur' ? 'bg-orange-100' : 'bg-green-100'
                       }`}>
@@ -827,7 +849,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                         {activity.icon === 'klausur' && <FileText className="h-4 w-4 text-orange-600" />}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{activity.title}</p>
+                        <p className={`text-sm font-medium truncate ${isDismissed ? 'text-gray-500' : 'text-gray-900'}`}>{activity.title}</p>
                         <p className="text-xs text-gray-500 truncate">{activity.subtitle}</p>
                         <p className="text-xs text-gray-400 mt-1">
                           {new Date(activity.timestamp).toLocaleDateString('de-DE', {
@@ -838,9 +860,15 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                           })}
                         </p>
                       </div>
+                      {!isDismissed && (
+                        <button onClick={(e) => { e.stopPropagation(); dismissActivity(activity.id); }} className="text-gray-400 hover:text-gray-600 flex-shrink-0 mt-1">
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
