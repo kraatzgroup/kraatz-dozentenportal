@@ -667,11 +667,6 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                 title="Letzte Aktivitäten"
               >
                 <Bell className="h-5 w-5" />
-                {unreadMessages.length > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
-                    {unreadMessages.length > 99 ? '99+' : unreadMessages.length}
-                  </span>
-                )}
               </button>
               
               <button
@@ -707,6 +702,12 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                 className="relative inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
               >
                 <Bell className="h-6 w-6" />
+              </button>
+              <button
+                onClick={() => navigate('/messages')}
+                className="relative inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
+              >
+                <MessageSquare className="h-6 w-6" />
                 {unreadMessages.length > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
                     {unreadMessages.length > 99 ? '99+' : unreadMessages.length}
