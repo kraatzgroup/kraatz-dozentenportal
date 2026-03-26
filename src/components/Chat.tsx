@@ -869,8 +869,10 @@ export function Chat() {
                                 setSelectedContact(contact);
                                 setSelectedGroup(null);
                               }}
-                              className={`w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors duration-150 relative border-l-4 border-red-500 ${
-                                isSelected ? 'bg-blue-50' : 'bg-red-50/30'
+                              className={`w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors duration-150 relative ${
+                                unreadCount > 0 ? 'border-l-4 border-red-500' : 'border-l-4 border-transparent'
+                              } ${
+                                isSelected ? 'bg-blue-50' : unreadCount > 0 ? 'bg-red-50/30' : ''
                               }`}
                             >
                               <div className="flex items-center min-w-0 gap-2">
@@ -894,6 +896,7 @@ export function Chat() {
                                      contact.role === 'teilnehmer' ? 'Teilnehmer' : 'Dozent'}
                                   </div>
                                 </div>
+                                {unreadCount > 0 && (
                                 <div className="ml-2 flex-shrink-0">
                                   <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
                                     <span className="text-white text-xs font-bold">
@@ -901,6 +904,7 @@ export function Chat() {
                                     </span>
                                   </div>
                                 </div>
+                                )}
                               </div>
                             </button>
                             <button
