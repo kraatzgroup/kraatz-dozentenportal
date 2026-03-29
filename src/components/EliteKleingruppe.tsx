@@ -416,6 +416,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   const [dozentAssignments, setDozentAssignments] = useState<DozentAssignment[]>([]);
   const [showAllLegalAreas, setShowAllLegalAreas] = useState(false);
   const [showDozentModal, setShowDozentModal] = useState(false);
+  const [klausurToDelete, setKlausurToDelete] = useState<Klausur | null>(null);
+  const [isDeletingKlausur, setIsDeletingKlausur] = useState(false);
   const [newDozentId, setNewDozentId] = useState('');
   const [newDozentLegalArea, setNewDozentLegalArea] = useState('');
   const [allDozenten, setAllDozenten] = useState<{id: string; name: string; email: string}[]>([]);
@@ -436,6 +438,9 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   // Elite-Kleingruppe state
   const [eliteGroups, setEliteGroups] = useState<{id: string; name: string}[]>([]);
   const [selectedEliteGroupId, setSelectedEliteGroupId] = useState<string>('');
+  const [showGroupsManager, setShowGroupsManager] = useState(false);
+  const [groupToDelete, setGroupToDelete] = useState<{id: string; name: string} | null>(null);
+  const [isDeletingGroup, setIsDeletingGroup] = useState(false);
   
   // Unit duration settings state
   const [unitDurations, setUnitDurations] = useState({
@@ -1971,6 +1976,64 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
     }
   };
 
+  const handleDeleteGroup = async (group: {id: string; name: string}) => {
+    if (!isAdmin) return;
+    setIsDeletingGroup(true);
+    try {
+      // Soft-delete: set is_active to false
+      const { error } = await supabase
+        .from('elite_kleingruppen')
+        .update({ is_active: false })
+        .eq('id', group.id);
+      if (error) throw error;
+      setGroupToDelete(null);
+      if (selectedEliteGroupId === group.id) {
+        setSelectedEliteGroupId('');
+      }
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting group:', error);
+      alert('Fehler beim Löschen der Gruppe');
+    } finally {
+      setIsDeletingGroup(false);
+    }
+  };
+
+  const handleDeleteKlausur = async (klausur: Klausur) => {
+    if (!isAdmin) return;
+    setIsDeletingKlausur(true);
+    try {
+      // Delete storage files
+      const filesToDelete: string[] = [];
+      if (klausur.file_url) {
+        const match = klausur.file_url.match(/elite-kleingruppe\/(.+)$/);
+        if (match) filesToDelete.push(match[1]);
+      }
+      if (klausur.corrected_file_url) {
+        const match = klausur.corrected_file_url.match(/elite-kleingruppe\/(.+)$/);
+        if (match) filesToDelete.push(match[1]);
+      }
+      if (klausur.corrected_excel_url) {
+        const match = klausur.corrected_excel_url.match(/elite-kleingruppe\/(.+)$/);
+        if (match) filesToDelete.push(match[1]);
+      }
+      if (filesToDelete.length > 0) {
+        await supabase.storage.from('elite-kleingruppe').remove(filesToDelete);
+      }
+      // Delete DB record
+      const { error } = await supabase.from('elite_kleingruppe_klausuren').delete().eq('id', klausur.id);
+      if (error) throw error;
+      setKlausurToDelete(null);
+      setExpandedKlausur(null);
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting klausur:', error);
+      alert('Fehler beim Löschen der Klausur');
+    } finally {
+      setIsDeletingKlausur(false);
+    }
+  };
+
   const handleStartKorrektur = async (klausur: Klausur) => {
     try {
       await supabase.from('elite_kleingruppe_klausuren').update({ status: 'in_review' }).eq('id', klausur.id);
@@ -2285,6 +2348,14 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                 </option>
               ))}
             </select>
+            {isAdmin && (
+              <button
+                onClick={() => setShowGroupsManager(!showGroupsManager)}
+                className="inline-flex items-center px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700"
+              >
+                <Edit2 className="h-3.5 w-3.5 mr-1.5" />Verwalten
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500">{teilnehmer.length} Teilnehmer</span>
@@ -2292,6 +2363,41 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
           </div>
         </div>
       </div>
+
+      {/* Gruppen-Verwaltung (Admin) */}
+      {isAdmin && showGroupsManager && (
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-medium text-gray-900">Aktive Gruppen ({eliteGroups.length})</h3>
+            <button onClick={() => setShowGroupsManager(false)} className="text-gray-400 hover:text-gray-600">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          {eliteGroups.length === 0 ? (
+            <p className="text-sm text-gray-500 italic">Keine aktiven Gruppen vorhanden.</p>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {eliteGroups.map(group => (
+                <li key={group.id} className="flex items-center justify-between py-2.5">
+                  <div className="flex items-center min-w-0">
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <Users className="h-4 w-4 text-primary" />
+                    </div>
+                    <span className="ml-3 text-sm font-medium text-gray-900 truncate">{group.name}</span>
+                  </div>
+                  <button
+                    onClick={() => setGroupToDelete(group)}
+                    className="ml-4 p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors flex-shrink-0"
+                    title="Gruppe löschen"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="border-b border-gray-200 overflow-x-auto">
         <nav className="-mb-px flex space-x-4 md:space-x-8 min-w-max md:min-w-0">
@@ -2925,6 +3031,11 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                           {(klausur.status === 'in_review' || klausur.status === 'completed') && (
                             <button onClick={() => openKorrekturModal(klausur)} className="inline-flex items-center px-3 py-1.5 bg-primary text-white rounded hover:bg-primary/90 text-sm">
                               <PenTool className="h-4 w-4 mr-1" />{klausur.status === 'completed' ? 'Korrektur bearbeiten' : 'Korrektur abschliessen'}
+                            </button>
+                          )}
+                          {isAdmin && (
+                            <button onClick={() => setKlausurToDelete(klausur)} className="inline-flex items-center px-3 py-1.5 bg-red-100 text-red-700 rounded hover:bg-red-200 text-sm">
+                              <Trash2 className="h-4 w-4 mr-1" />Löschen
                             </button>
                           )}
                         </div>
@@ -3702,6 +3813,74 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                       }
                     </>
                   )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Group Delete Confirmation Modal */}
+      {groupToDelete && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4">
+            <div className="fixed inset-0 bg-black/50" onClick={() => setGroupToDelete(null)} />
+            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Gruppe löschen</h3>
+              <p className="text-sm text-gray-500 mb-1">
+                Möchten Sie die Gruppe <strong>"{groupToDelete.name}"</strong> wirklich löschen?
+              </p>
+              <p className="text-sm text-red-600 mb-4">
+                Die Gruppe wird deaktiviert und ist nicht mehr sichtbar.
+              </p>
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setGroupToDelete(null)}
+                  disabled={isDeletingGroup}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  onClick={() => handleDeleteGroup(groupToDelete)}
+                  disabled={isDeletingGroup}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                >
+                  {isDeletingGroup ? 'Wird gelöscht...' : 'Gruppe löschen'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {klausurToDelete && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4">
+            <div className="fixed inset-0 bg-black/50" onClick={() => setKlausurToDelete(null)} />
+            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Klausur löschen</h3>
+              <p className="text-sm text-gray-500 mb-1">
+                Möchten Sie die Klausur <strong>"{klausurToDelete.title}"</strong> von <strong>{klausurToDelete.teilnehmer_name}</strong> wirklich löschen?
+              </p>
+              <p className="text-sm text-red-600 mb-4">
+                Diese Aktion kann nicht rückgängig gemacht werden. Die Klausur wird für alle Benutzer (inkl. Student) entfernt.
+              </p>
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setKlausurToDelete(null)}
+                  disabled={isDeletingKlausur}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  onClick={() => handleDeleteKlausur(klausurToDelete)}
+                  disabled={isDeletingKlausur}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                >
+                  {isDeletingKlausur ? 'Wird gelöscht...' : 'Endgültig löschen'}
                 </button>
               </div>
             </div>
