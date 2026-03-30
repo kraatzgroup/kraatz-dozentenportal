@@ -499,55 +499,6 @@ export function Chat() {
           return;
         }
 
-        // Force content type update by moving file to itself
-        try {
-          const { error: moveError } = await supabase.storage
-            .from('chat-attachments')
-            .move(filePath, filePath);
-
-          if (moveError) {
-            console.warn('⚠️ Could not move file:', moveError);
-          }
-
-          // Now update with correct content type
-          const { error: updateError } = await supabase.storage
-            .from('chat-attachments')
-            .update(filePath, selectedFile, {
-              contentType: contentType,
-              cacheControl: '3600',
-              upsert: true
-            });
-
-          if (updateError) {
-            console.warn('⚠️ Could not update file metadata:', updateError);
-          } else {
-            console.log('✅ File metadata updated with content type:', contentType);
-          }
-        } catch (updateErr) {
-          console.warn('⚠️ Error updating file metadata:', updateErr);
-        }
-
-        // Verify file metadata in storage
-        try {
-          const { data: fileList, error: listError } = await supabase.storage
-            .from('chat-attachments')
-            .list(user?.id || '', {
-              limit: 1,
-              offset: 0,
-              sortBy: { column: 'created_at', order: 'desc' }
-            });
-
-          if (!listError && fileList && fileList.length > 0) {
-            console.log('🔍 Actual file metadata in storage:', {
-              name: fileList[0].name,
-              metadata: fileList[0].metadata,
-              created_at: fileList[0].created_at
-            });
-          }
-        } catch (verifyErr) {
-          console.warn('⚠️ Could not verify file metadata:', verifyErr);
-        }
-
         // Get public URL
         const { data: { publicUrl } } = supabase.storage
           .from('chat-attachments')
