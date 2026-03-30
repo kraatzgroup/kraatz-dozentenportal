@@ -471,17 +471,12 @@ export function Chat() {
         // Use detected type if it's not the default, otherwise use browser type
         const contentType = (detectedType !== 'application/octet-stream') ? detectedType : (browserType || detectedType);
         
-        console.log('📎 File upload debug:', {
-          fileName: selectedFile.name,
-          fileExt,
-          browserType,
-          detectedType,
-          finalContentType: contentType
-        });
+        // Read file as ArrayBuffer to ensure binary upload with correct content type
+        const arrayBuffer = await selectedFile.arrayBuffer();
         
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('chat-attachments')
-          .upload(filePath, selectedFile, {
+          .upload(filePath, arrayBuffer, {
             contentType: contentType,
             cacheControl: '3600',
             upsert: false
@@ -1120,9 +1115,11 @@ export function Chat() {
                           const detectedType = getMimeTypeFromExtension(selectedFile.name);
                           const browserType = selectedFile.type;
                           const contentType = (detectedType !== 'application/octet-stream') ? detectedType : (browserType || detectedType);
+                          // Read file as ArrayBuffer to ensure binary upload with correct content type
+                          const arrayBuffer = await selectedFile.arrayBuffer();
                           const { error: uploadError } = await supabase.storage
                             .from('chat-attachments')
-                            .upload(filePath, selectedFile, {
+                            .upload(filePath, arrayBuffer, {
                               contentType: contentType,
                               cacheControl: '3600',
                               upsert: false
