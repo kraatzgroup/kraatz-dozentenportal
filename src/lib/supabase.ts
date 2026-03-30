@@ -24,9 +24,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     storageKey: 'dozentenportal-auth-token',
   },
   global: {
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: {},
   },
 });
 
