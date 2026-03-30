@@ -336,15 +336,6 @@ export function EliteKleingruppeDashboard() {
         .order('corrected_at', { ascending: false })
         .limit(10) : { data: null };
 
-      // Fetch recent released units
-      const { data: releasesData } = teilnehmerEliteKleingruppeId ? await supabase
-        .from('elite_kleingruppe_releases')
-        .select('id, title, release_date, is_released, legal_area')
-        .eq('elite_kleingruppe_id', teilnehmerEliteKleingruppeId)
-        .eq('is_released', true)
-        .order('release_date', { ascending: false })
-        .limit(10) : { data: null };
-
       const activities: any[] = [];
 
       // Add corrected klausur activities
@@ -357,19 +348,6 @@ export function EliteKleingruppeDashboard() {
           timestamp: k.corrected_at,
           icon: 'klausur',
           tab: 'klausuren' as Tab
-        });
-      });
-
-      // Add release activities
-      (releasesData || []).forEach(r => {
-        activities.push({
-          id: `release-${r.id}`,
-          type: 'release',
-          title: r.title,
-          subtitle: `Neue Einheit verfügbar${r.legal_area ? ` (${r.legal_area})` : ''}`,
-          timestamp: r.release_date,
-          icon: 'release',
-          tab: 'kalender' as Tab
         });
       });
 
