@@ -395,12 +395,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (senderProfile.data && groupData.data) {
           const origin = window.location.origin;
           
+          // Handle file-only messages (empty content)
+          const messageText = message.content || '[Dateianhang]';
+          
           console.log('📤 Calling group-message-notify edge function with:', {
             groupId: message.group_id,
             groupName: groupData.data.name,
             senderName: senderProfile.data.full_name,
             senderId: user.id,
-            messageLength: message.content.length,
+            messageLength: messageText.length,
             origin
           });
           
@@ -411,7 +414,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
               groupName: groupData.data.name,
               senderName: senderProfile.data.full_name,
               senderId: user.id,
-              messageContent: message.content,
+              messageContent: messageText,
               origin
             }
           });

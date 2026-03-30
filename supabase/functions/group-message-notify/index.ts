@@ -59,11 +59,11 @@ Deno.serve(async (req) => {
     const redirectUrl = origin.includes('localhost') ? `${origin}/messages` : 'https://portal.kraatz-group.de/messages';
     console.log(`🌐 [${requestId}] Origin: ${origin}, Redirect URL: ${redirectUrl}`);
 
-    // Validate input
-    if (!groupId || !groupName || !senderName || !messageContent || !senderId) {
+    // Validate input (messageContent is optional for file-only messages)
+    if (!groupId || !groupName || !senderName || !senderId) {
       console.error(`❌ [${requestId}] Missing required fields`);
       return new Response(
-        JSON.stringify({ error: 'All fields are required' }),
+        JSON.stringify({ error: 'groupId, groupName, senderName, and senderId are required' }),
         {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -115,11 +115,12 @@ Deno.serve(async (req) => {
       throw new Error('Mailgun API key not configured');
     }
 
-    // Truncate message content if too long
+    // Truncate message content if too long, handle file-only messages
+    const displayMessage = messageContent || '[Dateianhang]';
     const maxLength = 200;
-    const truncatedMessage = messageContent.length > maxLength 
-      ? messageContent.substring(0, maxLength) + '...' 
-      : messageContent;
+    const truncatedMessage = displayMessage.length > maxLength 
+      ? displayMessage.substring(0, maxLength) + '...' 
+      : displayMessage;
 
     const emailResults = [];
     let successCount = 0;
