@@ -1104,7 +1104,46 @@ export function Chat() {
                                   {message.sender.full_name}
                                 </p>
                               )}
-                              <p>{message.content}</p>
+                              {message.file_url && (
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      const response = await fetch(message.file_url);
+                                      const blob = await response.blob();
+                                      const url = window.URL.createObjectURL(blob);
+                                      const a = document.createElement('a');
+                                      a.href = url;
+                                      a.download = message.file_name || 'download';
+                                      document.body.appendChild(a);
+                                      a.click();
+                                      window.URL.revokeObjectURL(url);
+                                      document.body.removeChild(a);
+                                    } catch (error) {
+                                      console.error('Download error:', error);
+                                      alert('Fehler beim Herunterladen der Datei.');
+                                    }
+                                  }}
+                                  className={`flex items-center gap-2 p-2 rounded mb-2 w-full text-left cursor-pointer ${
+                                    message.sender_id === user?.id
+                                      ? 'bg-white/20 hover:bg-white/30'
+                                      : 'bg-gray-200 hover:bg-gray-300'
+                                  }`}
+                                >
+                                  <FileText className="h-5 w-5 flex-shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium truncate">{message.file_name}</p>
+                                    {message.file_size && (
+                                      <p className={`text-xs ${
+                                        message.sender_id === user?.id ? 'text-blue-100' : 'text-gray-500'
+                                      }`}>
+                                        {(message.file_size / 1024).toFixed(1)} KB
+                                      </p>
+                                    )}
+                                  </div>
+                                  <Download className="h-4 w-4 flex-shrink-0" />
+                                </button>
+                              )}
+                              {message.content && <p>{message.content}</p>}
                               <div className="flex items-center justify-end mt-1 space-x-1">
                                 <span className={`text-xs ${
                                   message.sender_id === user?.id
@@ -1121,14 +1160,134 @@ export function Chat() {
                     </div>
                     <form onSubmit={async (e) => {
                       e.preventDefault();
-                      if (!selectedGroup || !newMessage.trim()) return;
-                      await sendGroupMessage({
-                        content: newMessage,
-                        group_id: selectedGroup.id
-                      });
-                      setNewMessage('');
+                      if (!selectedGroup || (!newMessage.trim() && !selectedFile)) return;
+                      setIsUploading(true);
+                      try {
+                        let fileUrl = null;
+                        let fileName = null;
+                        let fileType = null;
+                        let fileSize = null;
+
+                        if (selectedFile) {
+                          const fileExt = selectedFile.name.split('.').pop();
+                          const filePath = `${user?.id}/${Date.now()}.${fileExt}`;
+                          const detectedType = getMimeTypeFromExtension(selectedFile.name);
+                          const browserType = selectedFile.type;
+                          const contentType = (detectedType !== 'application/octet-stream') ? detectedType : (browserType || detectedType);
+                          const fileBlob = new Blob([selectedFile], { type: contentType });
+
+                          const { error: uploadError } = await supabase.storage
+                            .from('chat-attachments')
+                            .upload(filePath, fileBlob, {
+                              contentType: contentType,
+                              cacheControl: '3600',
+                              upsert: false
+                            });
+
+                          if (uploadError) {
+                            console.error('Error uploading file:', uploadError);
+                            alert('Fehler beim Hochladen der Datei.');
+                            setIsUploading(false);
+                            return;
+                          }
+
+                          const { data: { publicUrl } } = supabase.storage
+                            .from('chat-attachments')
+                            .getPublicUrl(filePath);
+
+                          fileUrl = publicUrl;
+                          fileName = selectedFile.name;
+                          fileType = contentType;
+                          fileSize = selectedFile.size;
+                        }
+
+                        await sendGroupMessage({
+                          content: newMessage.trim() || '',
+                          group_id: selectedGroup.id,
+                          file_url: fileUrl,
+                          file_name: fileName,
+                          file_type: fileType,
+                          file_size: fileSize
+                        });
+                        setNewMessage('');
+                        setSelectedFile(null);
+                      } catch (error) {
+                        console.error('Error sending group message:', error);
+                        alert('Fehler beim Senden der Nachricht.');
+                      } finally {
+                        setIsUploading(false);
+                      }
                     }} className="p-3 sm:p-4 border-t border-gray-200">
+                      {fileTypeWarning && (
+                        <div className="mb-2 p-3 bg-red-50 border border-red-200 rounded-md flex items-start gap-2">
+                          <X className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <p className="text-sm text-red-800 font-medium">Dateityp nicht unterstützt</p>
+                            <p className="text-xs text-red-600 mt-1">{fileTypeWarning}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setFileTypeWarning(null)}
+                            className="p-1 hover:bg-red-100 rounded flex-shrink-0"
+                          >
+                            <X className="h-4 w-4 text-red-600" />
+                          </button>
+                        </div>
+                      )}
+                      {selectedFile && (
+                        <div className="mb-2 p-2 bg-gray-50 rounded-md flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <FileText className="h-4 w-4 text-gray-500 flex-shrink-0" />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-700 block truncate">{selectedFile.name}</span>
+                                {getFileTypeLabel(selectedFile.name) && (
+                                  <span className={`text-xs font-semibold px-2 py-0.5 rounded flex-shrink-0 ${
+                                    getFileTypeLabel(selectedFile.name) === 'PDF' 
+                                      ? 'text-red-600 bg-red-50' 
+                                      : 'text-blue-600 bg-blue-50'
+                                  }`}>
+                                    {getFileTypeLabel(selectedFile.name)}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-xs text-gray-500">({(selectedFile.size / 1024).toFixed(1)} KB)</span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedFile(null)}
+                            className="p-1 hover:bg-gray-200 rounded flex-shrink-0"
+                          >
+                            <X className="h-4 w-4 text-gray-500" />
+                          </button>
+                        </div>
+                      )}
                       <div className="flex space-x-2 sm:space-x-4">
+                        <input
+                          type="file"
+                          id="group-file-upload"
+                          className="hidden"
+                          accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.heic,.heif"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              if (isFileTypeSupported(file.name)) {
+                                setSelectedFile(file);
+                                setFileTypeWarning(null);
+                              } else {
+                                setFileTypeWarning(`Dateityp nicht unterstützt. Bitte wählen Sie: PDF, DOC, DOCX, XLS, XLSX, PNG, JPG, JPEG oder HEIC`);
+                                setSelectedFile(null);
+                              }
+                            }
+                          }}
+                        />
+                        <label
+                          htmlFor="group-file-upload"
+                          className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 cursor-pointer"
+                        >
+                          <Paperclip className="h-4 w-4" />
+                        </label>
                         <input
                           type="text"
                           value={newMessage}
@@ -1138,10 +1297,14 @@ export function Chat() {
                         />
                         <button
                           type="submit"
-                          disabled={!newMessage.trim()}
+                          disabled={(!newMessage.trim() && !selectedFile) || isUploading}
                           className="inline-flex items-center px-3 sm:px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-[#2a83bf] hover:bg-[#2a83bf]/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2a83bf] disabled:opacity-50"
                         >
-                          <Send className="h-4 w-4" />
+                          {isUploading ? (
+                            <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
                         </button>
                       </div>
                     </form>

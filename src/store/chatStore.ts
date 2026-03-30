@@ -23,7 +23,7 @@ interface ChatState {
   fetchGroupMessages: (groupId: string) => Promise<void>;
   fetchUnreadCount: () => Promise<void>;
   sendMessage: (message: { content: string; receiver_id: string }) => Promise<void>;
-  sendGroupMessage: (message: { content: string; group_id: string }) => Promise<void>;
+  sendGroupMessage: (message: { content: string; group_id: string; file_url?: string | null; file_name?: string | null; file_type?: string | null; file_size?: number | null }) => Promise<void>;
   markAsRead: (messageId: string) => Promise<void>;
 }
 
@@ -338,7 +338,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  sendGroupMessage: async (message: { content: string; group_id: string }) => {
+  sendGroupMessage: async (message: { 
+    content: string; 
+    group_id: string;
+    file_url?: string | null;
+    file_name?: string | null;
+    file_type?: string | null;
+    file_size?: number | null;
+  }) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -352,7 +359,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
           content: message.content,
           sender_id: user.id,
           group_id: message.group_id,
-          receiver_id: null
+          receiver_id: null,
+          file_url: message.file_url,
+          file_name: message.file_name,
+          file_type: message.file_type,
+          file_size: message.file_size
         }])
         .select();
 
