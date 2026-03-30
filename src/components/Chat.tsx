@@ -479,14 +479,9 @@ export function Chat() {
           finalContentType: contentType
         });
         
-        // Convert file to Blob with correct content type to force Supabase to use it
-        const fileBlob = new Blob([selectedFile], { type: contentType });
-        
-        console.log('📦 Uploading blob with type:', fileBlob.type);
-        
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('chat-attachments')
-          .upload(filePath, fileBlob, {
+          .upload(filePath, selectedFile, {
             contentType: contentType,
             cacheControl: '3600',
             upsert: false
@@ -1125,11 +1120,9 @@ export function Chat() {
                           const detectedType = getMimeTypeFromExtension(selectedFile.name);
                           const browserType = selectedFile.type;
                           const contentType = (detectedType !== 'application/octet-stream') ? detectedType : (browserType || detectedType);
-                          const fileBlob = new Blob([selectedFile], { type: contentType });
-
                           const { error: uploadError } = await supabase.storage
                             .from('chat-attachments')
-                            .upload(filePath, fileBlob, {
+                            .upload(filePath, selectedFile, {
                               contentType: contentType,
                               cacheControl: '3600',
                               upsert: false
