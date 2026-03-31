@@ -237,7 +237,7 @@ export function EliteKleingruppeDashboard() {
   useEffect(() => {
     if (!teilnehmerEliteKleingruppeId) return;
 
-    console.log('🔔 Setting up releases real-time subscription for group:', teilnehmerEliteKleingruppeId);
+    if (import.meta.env.DEV) console.log('🔔 Setting up releases real-time subscription for group:', teilnehmerEliteKleingruppeId);
     
     releasesSubscription.current = supabase
       .channel(`elite-kleingruppe-releases-${teilnehmerEliteKleingruppeId}`)
@@ -247,15 +247,15 @@ export function EliteKleingruppeDashboard() {
         table: 'elite_kleingruppe_releases',
         filter: `elite_kleingruppe_id=eq.${teilnehmerEliteKleingruppeId}`
       }, (payload) => {
-        console.log('🔔 Releases change detected:', payload);
+        if (import.meta.env.DEV) console.log('🔔 Releases change detected:', payload);
         
         // Handle DELETE event specifically - check if the deleted unit was expanded
         if (payload.eventType === 'DELETE' && payload.old?.id) {
-          console.log('🗑️ Unit deleted:', payload.old.id);
+          if (import.meta.env.DEV) console.log('🗑️ Unit deleted:', payload.old.id);
           // If the deleted unit was expanded, collapse it
           setExpandedRelease(current => {
             if (current === payload.old.id) {
-              console.log('📂 Collapsing deleted unit');
+              if (import.meta.env.DEV) console.log('📂 Collapsing deleted unit');
               return null;
             }
             return current;
@@ -266,7 +266,7 @@ export function EliteKleingruppeDashboard() {
         fetchData();
       })
       .subscribe((status) => {
-        console.log('🔔 Subscription status:', status);
+        if (import.meta.env.DEV) console.log('🔔 Subscription status:', status);
       });
 
     return () => {
@@ -420,11 +420,11 @@ export function EliteKleingruppeDashboard() {
 
   const fetchDozenten = async () => {
     if (!user?.id) {
-      console.log('[fetchDozenten] No user ID, skipping');
+      if (import.meta.env.DEV) console.log('[fetchDozenten] No user ID, skipping');
       return;
     }
     
-    console.log('[fetchDozenten] Starting fetch for user:', user.id);
+    if (import.meta.env.DEV) console.log('[fetchDozenten] Starting fetch for user:', user.id);
     
     const allContacts: {id: string; name: string; email: string; profile_picture_url: string | null; legal_areas?: string[]}[] = [];
     const seenIds = new Set<string>();
@@ -436,8 +436,10 @@ export function EliteKleingruppeDashboard() {
       .eq('profile_id', user.id)
       .single();
     
-    console.log('[fetchDozenten] Teilnehmer data:', teilnehmerData);
-    console.log('[fetchDozenten] Teilnehmer error:', teilnehmerError);
+    if (import.meta.env.DEV) {
+      console.log('[fetchDozenten] Teilnehmer data:', teilnehmerData);
+      console.log('[fetchDozenten] Teilnehmer error:', teilnehmerError);
+    }
     
     const dozentLegalAreas = new Map<string, string[]>();
     
@@ -447,37 +449,39 @@ export function EliteKleingruppeDashboard() {
         const areas = dozentLegalAreas.get(teilnehmerData.dozent_zivilrecht_id) || [];
         areas.push('Zivilrecht');
         dozentLegalAreas.set(teilnehmerData.dozent_zivilrecht_id, areas);
-        console.log('[fetchDozenten] Individual Zivilrecht dozent:', teilnehmerData.dozent_zivilrecht_id);
+        if (import.meta.env.DEV) console.log('[fetchDozenten] Individual Zivilrecht dozent:', teilnehmerData.dozent_zivilrecht_id);
       }
       if (teilnehmerData.dozent_strafrecht_id) {
         const areas = dozentLegalAreas.get(teilnehmerData.dozent_strafrecht_id) || [];
         areas.push('Strafrecht');
         dozentLegalAreas.set(teilnehmerData.dozent_strafrecht_id, areas);
-        console.log('[fetchDozenten] Individual Strafrecht dozent:', teilnehmerData.dozent_strafrecht_id);
+        if (import.meta.env.DEV) console.log('[fetchDozenten] Individual Strafrecht dozent:', teilnehmerData.dozent_strafrecht_id);
       }
       if (teilnehmerData.dozent_oeffentliches_recht_id) {
         const areas = dozentLegalAreas.get(teilnehmerData.dozent_oeffentliches_recht_id) || [];
         areas.push('Öffentliches Recht');
         dozentLegalAreas.set(teilnehmerData.dozent_oeffentliches_recht_id, areas);
-        console.log('[fetchDozenten] Individual Öffentliches Recht dozent:', teilnehmerData.dozent_oeffentliches_recht_id);
+        if (import.meta.env.DEV) console.log('[fetchDozenten] Individual Öffentliches Recht dozent:', teilnehmerData.dozent_oeffentliches_recht_id);
       }
       
       // Elite-Kleingruppe dozent assignments
       if (teilnehmerData.elite_kleingruppe_id) {
-        console.log('[fetchDozenten] Elite-Kleingruppe ID:', teilnehmerData.elite_kleingruppe_id);
+        if (import.meta.env.DEV) console.log('[fetchDozenten] Elite-Kleingruppe ID:', teilnehmerData.elite_kleingruppe_id);
         
         const { data: eliteDozenten, error: eliteError } = await supabase
           .from('elite_kleingruppe_dozenten')
           .select('dozent_id, legal_area')
           .eq('elite_kleingruppe_id', teilnehmerData.elite_kleingruppe_id);
         
-        console.log('[fetchDozenten] Elite-Kleingruppe dozenten query result:', eliteDozenten);
-        console.log('[fetchDozenten] Elite-Kleingruppe dozenten error:', eliteError);
+        if (import.meta.env.DEV) {
+          console.log('[fetchDozenten] Elite-Kleingruppe dozenten query result:', eliteDozenten);
+          console.log('[fetchDozenten] Elite-Kleingruppe dozenten error:', eliteError);
+        }
         
         if (eliteDozenten) {
-          console.log('[fetchDozenten] Found', eliteDozenten.length, 'elite dozenten assignments');
+          if (import.meta.env.DEV) console.log('[fetchDozenten] Found', eliteDozenten.length, 'elite dozenten assignments');
           eliteDozenten.forEach(ed => {
-            console.log('[fetchDozenten] Processing elite dozent:', ed.dozent_id, 'for', ed.legal_area);
+            if (import.meta.env.DEV) console.log('[fetchDozenten] Processing elite dozent:', ed.dozent_id, 'for', ed.legal_area);
             const areas = dozentLegalAreas.get(ed.dozent_id) || [];
             if (!areas.includes(ed.legal_area)) {
               areas.push(ed.legal_area);
@@ -486,17 +490,17 @@ export function EliteKleingruppeDashboard() {
           });
         }
       } else {
-        console.log('[fetchDozenten] No elite_kleingruppe_id found for teilnehmer');
+        if (import.meta.env.DEV) console.log('[fetchDozenten] No elite_kleingruppe_id found for teilnehmer');
       }
     } else {
-      console.log('[fetchDozenten] No teilnehmer data found');
+      if (import.meta.env.DEV) console.log('[fetchDozenten] No teilnehmer data found');
     }
     
-    console.log('[fetchDozenten] Final dozentLegalAreas map:', Array.from(dozentLegalAreas.entries()));
+    if (import.meta.env.DEV) console.log('[fetchDozenten] Final dozentLegalAreas map:', Array.from(dozentLegalAreas.entries()));
     
     // Fetch all assigned dozenten
     const dozentIds = Array.from(dozentLegalAreas.keys());
-    console.log('[fetchDozenten] Dozent IDs to fetch:', dozentIds);
+    if (import.meta.env.DEV) console.log('[fetchDozenten] Dozent IDs to fetch:', dozentIds);
     
     if (dozentIds.length > 0) {
       const { data: dozentenData, error: dozentenError } = await supabase
@@ -504,8 +508,10 @@ export function EliteKleingruppeDashboard() {
         .select('id, full_name, email, profile_picture_url')
         .in('id', dozentIds);
       
-      console.log('[fetchDozenten] Profiles query result:', dozentenData);
-      console.log('[fetchDozenten] Profiles query error:', dozentenError);
+      if (import.meta.env.DEV) {
+        console.log('[fetchDozenten] Profiles query result:', dozentenData);
+        console.log('[fetchDozenten] Profiles query error:', dozentenError);
+      }
       
       (dozentenData || []).forEach(d => {
         if (!seenIds.has(d.id)) {
@@ -517,7 +523,7 @@ export function EliteKleingruppeDashboard() {
             profile_picture_url: d.profile_picture_url,
             legal_areas: dozentLegalAreas.get(d.id) || []
           };
-          console.log('[fetchDozenten] Adding dozent to list:', contact);
+          if (import.meta.env.DEV) console.log('[fetchDozenten] Adding dozent to list:', contact);
           allContacts.push(contact);
         }
       });
@@ -534,7 +540,7 @@ export function EliteKleingruppeDashboard() {
       });
     }
     
-    console.log('[fetchDozenten] Final dozenten list:', allContacts);
+    if (import.meta.env.DEV) console.log('[fetchDozenten] Final dozenten list:', allContacts);
     setDozenten(allContacts);
   };
 
@@ -642,7 +648,7 @@ export function EliteKleingruppeDashboard() {
         .from('teaching_materials')
         .select('id, title, file_url, file_name, file_type, folder_id')
         .eq('is_active', true);
-      console.log('📚 Materials loaded:', materialsData?.length, 'First 3:', materialsData?.slice(0, 3).map(m => ({ id: m.id, title: m.title.substring(0, 30) })));
+      if (import.meta.env.DEV) console.log('📚 Materials loaded:', materialsData?.length, 'First 3:', materialsData?.slice(0, 3).map(m => ({ id: m.id, title: m.title.substring(0, 30) })));
       setMaterials(materialsData || []);
 
       const { data: foldersData } = await supabase
