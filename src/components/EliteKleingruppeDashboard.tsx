@@ -546,7 +546,9 @@ export function EliteKleingruppeDashboard() {
       setTeilnehmerId(data.id);
       setTeilnehmerEliteKleingruppeId(data.elite_kleingruppe_id);
       setTeilnehmerStateLaw(data.state_law);
-      console.log('Teilnehmer geladen:', { id: data.id, state_law: data.state_law });
+      if (import.meta.env.DEV) {
+        console.log('✅ Teilnehmer geladen:', { id: data.id, state_law: data.state_law, email: user.email });
+      }
       fetchKlausuren(data.id);
     }
   };
@@ -2937,6 +2939,18 @@ export function EliteKleingruppeDashboard() {
                           <div className="space-y-2">
                             <h5 className="text-xs font-medium text-gray-500 uppercase tracking-wider">Materialien</h5>
                             {(() => {
+                              // Debug: Log state at render time for Klausur 16
+                              if (import.meta.env.DEV && release.title.includes('Klausur 16')) {
+                                console.log(`🎯 K16 Render State [${release.legal_area}]:`, {
+                                  teilnehmerStateLaw,
+                                  materialsCount: materials.length,
+                                  foldersCount: folders.length,
+                                  releaseTitle: release.title,
+                                  materialIdsCount: release.material_ids?.length || 0,
+                                  solutionMaterialIdsCount: release.solution_material_ids?.length || 0
+                                });
+                              }
+                              
                               // Ordnerpfad eines Materials ermitteln
                               const getMaterialFolderPath = (materialId: string): string[] => {
                                 const material = materials.find(m => m.id === materialId);
@@ -2973,7 +2987,13 @@ export function EliteKleingruppeDashboard() {
                                 const path = getMaterialFolderPath(materialId);
                                 const bundeslandFolderInPath = path.find(name => allBundeslandFolderNames.includes(name));
                                 if (!bundeslandFolderInPath) return true;
-                                return folderMatchesState(bundeslandFolderInPath);
+                                const result = folderMatchesState(bundeslandFolderInPath);
+                                // Debug logging for Klausur 16
+                                if (import.meta.env.DEV && release.title.includes('Klausur 16')) {
+                                  const material = materials.find(m => m.id === materialId);
+                                  console.log(`🔍 K16 Filter [${release.legal_area}]: ${material?.title?.substring(0, 50)} | Path: [${path.join(' > ')}] | BL: ${bundeslandFolderInPath} | User: ${teilnehmerStateLaw} | Show: ${result}`);
+                                }
+                                return result;
                               };
                               
                               const allMaterialIds = [...new Set([...(release.material_ids || []), ...(release.solution_material_ids || [])])];
