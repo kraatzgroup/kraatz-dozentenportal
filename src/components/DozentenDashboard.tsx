@@ -1118,11 +1118,53 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   };
 
   const deleteFolder = async (id: string) => {
-    if (!confirm('Ordner und alle Inhalte löschen?')) return;
-    await supabase.from('material_folders').delete().eq('id', id);
-    fetchFolders();
-    fetchMaterials();
-    addToast('Gelöscht', 'success');
+    const folder = folders.find(f => f.id === id);
+    if (!folder) return;
+
+    // Count materials in this folder and subfolders
+    const getAllSubfolderIds = (parentId: string): string[] => {
+      const subfolders = folders.filter(f => f.parent_id === parentId);
+      let allIds = [parentId];
+      subfolders.forEach(subfolder => {
+        allIds = [...allIds, ...getAllSubfolderIds(subfolder.id)];
+      });
+      return allIds;
+    };
+
+    const allFolderIds = getAllSubfolderIds(id);
+    const materialsCount = materials.filter(m => m.folder_id && allFolderIds.includes(m.folder_id)).length;
+    const subfoldersCount = allFolderIds.length - 1;
+
+    // Generate random 4-digit number
+    const confirmNumber = Math.floor(1000 + Math.random() * 9000);
+    
+    const userInput = prompt(
+      `⚠️ WARNUNG: Unwiderrufliche Löschung!\n\n` +
+      `Ordner: "${folder.name}"\n` +
+      `Unterordner: ${subfoldersCount}\n` +
+      `Materialien: ${materialsCount}\n\n` +
+      `Dies wird ALLE Unterordner und Materialien PERMANENT löschen!\n\n` +
+      `Geben Sie ${confirmNumber} ein, um zu bestätigen:`
+    );
+
+    if (userInput !== confirmNumber.toString()) {
+      if (userInput !== null) {
+        addToast('Löschung abgebrochen - falsche Zahl', 'error');
+      }
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('material_folders').delete().eq('id', id);
+      if (error) throw error;
+      
+      fetchFolders();
+      fetchMaterials();
+      addToast(`Ordner "${folder.name}" und ${materialsCount} Materialien gelöscht`, 'success');
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      addToast(`Fehler beim Löschen: ${error.message}`, 'error');
+    }
   };
 
   const duplicateFolder = async (folderId: string) => {

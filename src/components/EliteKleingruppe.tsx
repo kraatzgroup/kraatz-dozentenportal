@@ -1137,10 +1137,11 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         additionalMaterialId = newMaterial.id;
       }
 
-      // Material-IDs zusammenführen
+      // Material-IDs zusammenführen - ALLE ausgewählten Materialien (inkl. Lösungen)
+      const allSelectedMaterialIds = [...new Set([...selectedMaterials, ...releaseSolutionMaterialIds])];
       const allMaterialIds = additionalMaterialId 
-        ? [...selectedMaterials, additionalMaterialId]
-        : selectedMaterials;
+        ? [...allSelectedMaterialIds, additionalMaterialId]
+        : allSelectedMaterialIds;
 
       const baseRelease = {
         release_date: selectedDate.toISOString().split('T')[0],
@@ -1378,11 +1379,14 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
     const startTimeChanged = releaseStartTime !== editingRelease.start_time?.slice(0, 5);
     const endTimeChanged = releaseEndTime !== editingRelease.end_time?.slice(0, 5);
     
+    // Material-IDs zusammenführen - ALLE ausgewählten Materialien (inkl. Lösungen)
+    const allSelectedMaterialIds = [...new Set([...selectedMaterials, ...releaseSolutionMaterialIds])];
+    
     const updateData = {
       release_date: newDate,
       title: releaseTitle,
       description: releaseDescription || null,
-      material_ids: selectedMaterials,
+      material_ids: allSelectedMaterialIds,
       folder_ids: selectedFolders,
       legal_area: releaseLegalArea || null,
       unit_type: releaseUnitType || null,
