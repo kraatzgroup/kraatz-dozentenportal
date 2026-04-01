@@ -2201,7 +2201,7 @@ export function EliteKleingruppeDashboard() {
                   </a>
                   
                   <a 
-                    href="https://kraatz-group.de/wp-content/uploads/2026/03/Videoplaene-Kraatz-Elite-101.pdf"
+                    href="https://gkkveloqajxghhflkfru.supabase.co/storage/v1/object/public/sonstiges/videoplaene/Videoplaene%20Kraatz%20Elite%20101.pdf"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="w-full flex items-center p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
