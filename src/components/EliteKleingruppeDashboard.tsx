@@ -3109,22 +3109,19 @@ export function EliteKleingruppeDashboard() {
                                   materialTitles: nonSolutionIds.map(id => materials.find(m => m.id === id)?.title?.substring(0, 40))
                                 });
                               }
-                              
-                              return nonSolutionIds.map(id => {
+                                                            return nonSolutionIds.map(id => {
                                 const material = materials.find(m => m.id === id);
                                 if (!material) return null;
                                 return (
-                                  <a
+                                  <button
                                     key={id}
-                                    href={material.file_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-start p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors gap-3"
+                                    onClick={() => handleDownloadMaterial(material)}
+                                    className="flex items-start w-full p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200 text-left gap-3"
                                   >
                                     <FileText className="h-5 w-5 text-gray-400 flex-shrink-0" />
                                     <span className="text-sm text-gray-900 flex-1 break-words">{material.title}</span>
                                     <Download className="h-5 w-5 text-primary flex-shrink-0" />
-                                  </a>
+                                  </button>
                                 );
                               });
                             })()}
@@ -3225,36 +3222,43 @@ export function EliteKleingruppeDashboard() {
                                 if (title.includes('lösung') || title.includes('loesung') || title.includes('musterlösung') || title.includes('musterlosung')) return;
                                 
                                 folderMaterials.push(
-                                  <a
+                                  <button
                                     key={material.id}
-                                    href={material.file_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-start p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors gap-3"
+                                    onClick={() => handleDownloadMaterial(material)}
+                                    className="flex items-start w-full p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200 text-left gap-3"
                                   >
                                     <FileText className="h-5 w-5 text-gray-400 flex-shrink-0" />
                                     <span className="text-sm text-gray-900 flex-1 break-words">{material.title}</span>
                                     <Download className="h-5 w-5 text-primary flex-shrink-0" />
-                                  </a>
+                                  </button>
                                 );
                               });
                               
                               return folderMaterials;
                             })()}
                             {/* Zusätzliche Dokumente */}
-                            {release.additional_documents && release.additional_documents.length > 0 && release.additional_documents.map(doc => (
-                              <a
-                                key={doc.id}
-                                href={doc.file_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-start p-3 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors border border-emerald-200 gap-3"
-                              >
-                                <Upload className="h-5 w-5 text-emerald-500 flex-shrink-0" />
-                                <span className="text-sm text-gray-900 flex-1 break-words">{doc.file_name}</span>
-                                <Download className="h-5 w-5 text-emerald-600 flex-shrink-0" />
-                              </a>
-                            ))}
+                            {release.additional_documents && release.additional_documents.length > 0 && release.additional_documents.map(doc => {
+                              const docMaterial: TeachingMaterial = {
+                                id: doc.id,
+                                title: doc.file_name,
+                                file_name: doc.file_name,
+                                file_url: doc.file_url,
+                                file_type: doc.file_type || 'application/pdf',
+                                created_at: doc.created_at,
+                                updated_at: doc.created_at
+                              };
+                              return (
+                                <button
+                                  key={doc.id}
+                                  onClick={() => handleDownloadMaterial(docMaterial)}
+                                  className="flex items-start w-full p-3 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors border border-emerald-200 text-left gap-3"
+                                >
+                                  <Upload className="h-5 w-5 text-emerald-500 flex-shrink-0" />
+                                  <span className="text-sm text-gray-900 flex-1 break-words">{doc.file_name}</span>
+                                  <Download className="h-5 w-5 text-emerald-600 flex-shrink-0" />
+                                </button>
+                              );
+                            })}
                           </div>
 
                           {/* Lösungen - nur wenn freigegeben */}
@@ -3360,17 +3364,15 @@ export function EliteKleingruppeDashboard() {
                                         const material = materials.find(m => m.id === id);
                                         if (!material) return null;
                                         return (
-                                          <a
+                                          <button
                                             key={id}
-                                            href={material.file_url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="flex items-start p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors border border-yellow-200 gap-3"
+                                            onClick={() => handleDownloadMaterial(material)}
+                                            className="flex items-start w-full p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors border border-yellow-200 text-left gap-3"
                                           >
                                             <FileText className="h-5 w-5 text-yellow-600 flex-shrink-0" />
                                             <span className="text-sm text-gray-900 flex-1 break-words">{material.title}</span>
                                             <Download className="h-5 w-5 text-yellow-600 flex-shrink-0" />
-                                          </a>
+                                          </button>
                                         );
                                       })
                                     ) : (
