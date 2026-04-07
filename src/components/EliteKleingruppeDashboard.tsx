@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
 import { Logo } from './Logo';
+import { saveAs } from 'file-saver';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 interface AdditionalDocument {
@@ -817,45 +818,29 @@ export function EliteKleingruppeDashboard() {
       return;
     }
     
+    console.log('Download started for:', material.file_name);
+    
     try {
-      // Extrahiere Bucket und Pfad aus der URL
-      // URL Format: https://xxx.supabase.co/storage/v1/object/public/bucket/path
-      const urlParts = material.file_url.split('/storage/v1/object/public/');
-      if (urlParts.length === 2) {
-        const pathParts = urlParts[1].split('/');
-        const bucket = pathParts[0];
-        const filePath = pathParts.slice(1).join('/');
-        
-        // Lade die Datei direkt über Supabase Storage
-        const { data, error } = await supabase.storage
-          .from(bucket)
-          .download(filePath);
-        
-        if (error) throw error;
-        
-        // Erstelle eine Blob-URL
-        const blobUrl = window.URL.createObjectURL(data);
-        
-        // Erstelle einen temporären Link zum Download
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = material.file_name || material.title || 'download.pdf';
-        
-        // Füge Link zum DOM hinzu, klicke und entferne ihn
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        // Bereinige die Blob-URL
-        window.URL.revokeObjectURL(blobUrl);
-        return;
-      }
+      const response = await fetch(material.file_url);
+      console.log('Fetch response:', response.status);
       
-      // Fallback für andere URLs
-      window.open(material.file_url, '_blank');
+      const blob = await response.blob();
+      console.log('Original blob type:', blob.type, blob.size);
+      
+      // Fix: Create a new blob with correct MIME type
+      const correctBlob = new Blob([blob], { 
+        type: material.file_type || 'application/pdf' 
+      });
+      console.log('Corrected blob type:', correctBlob.type);
+      
+      // Use saveAs for all browsers (works on iOS too)
+      saveAs(correctBlob, material.file_name || material.title || 'download.pdf');
+      
+      console.log('Download triggered successfully');
     } catch (error) {
       console.error('Download error:', error);
-      // Fallback: Öffne in neuem Tab
+      // Fallback: open in new tab
+      console.log('Fallback: opening in new tab');
       window.open(material.file_url, '_blank');
     }
   };
@@ -3116,10 +3101,10 @@ export function EliteKleingruppeDashboard() {
                                   <button
                                     key={id}
                                     onClick={() => handleDownloadMaterial(material)}
-                                    className="flex items-start w-full p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200 text-left gap-3"
+                                    className="flex items-start w-full p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200 text-left gap-2 sm:gap-3"
                                   >
                                     <FileText className="h-5 w-5 text-gray-400 flex-shrink-0" />
-                                    <span className="text-sm text-gray-900 flex-1 break-words">{material.title}</span>
+                                    <span className="text-sm text-gray-900 flex-1 break-words overflow-wrap-anywhere min-w-0">{material.title}</span>
                                     <Download className="h-5 w-5 text-primary flex-shrink-0" />
                                   </button>
                                 );
@@ -3225,10 +3210,10 @@ export function EliteKleingruppeDashboard() {
                                   <button
                                     key={material.id}
                                     onClick={() => handleDownloadMaterial(material)}
-                                    className="flex items-start w-full p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200 text-left gap-3"
+                                    className="flex items-start w-full p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200 text-left gap-2 sm:gap-3"
                                   >
                                     <FileText className="h-5 w-5 text-gray-400 flex-shrink-0" />
-                                    <span className="text-sm text-gray-900 flex-1 break-words">{material.title}</span>
+                                    <span className="text-sm text-gray-900 flex-1 break-words overflow-wrap-anywhere min-w-0">{material.title}</span>
                                     <Download className="h-5 w-5 text-primary flex-shrink-0" />
                                   </button>
                                 );
@@ -3251,10 +3236,10 @@ export function EliteKleingruppeDashboard() {
                                 <button
                                   key={doc.id}
                                   onClick={() => handleDownloadMaterial(docMaterial)}
-                                  className="flex items-start w-full p-3 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors border border-emerald-200 text-left gap-3"
+                                  className="flex items-start w-full p-3 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors border border-emerald-200 text-left gap-2 sm:gap-3"
                                 >
                                   <Upload className="h-5 w-5 text-emerald-500 flex-shrink-0" />
-                                  <span className="text-sm text-gray-900 flex-1 break-words">{doc.file_name}</span>
+                                  <span className="text-sm text-gray-900 flex-1 break-words overflow-wrap-anywhere min-w-0">{doc.file_name}</span>
                                   <Download className="h-5 w-5 text-emerald-600 flex-shrink-0" />
                                 </button>
                               );
@@ -3367,10 +3352,10 @@ export function EliteKleingruppeDashboard() {
                                           <button
                                             key={id}
                                             onClick={() => handleDownloadMaterial(material)}
-                                            className="flex items-start w-full p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors border border-yellow-200 text-left gap-3"
+                                            className="flex items-start w-full p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors border border-yellow-200 text-left gap-2 sm:gap-3"
                                           >
                                             <FileText className="h-5 w-5 text-yellow-600 flex-shrink-0" />
-                                            <span className="text-sm text-gray-900 flex-1 break-words">{material.title}</span>
+                                            <span className="text-sm text-gray-900 flex-1 break-words overflow-wrap-anywhere min-w-0">{material.title}</span>
                                             <Download className="h-5 w-5 text-yellow-600 flex-shrink-0" />
                                           </button>
                                         );
@@ -3869,7 +3854,7 @@ export function EliteKleingruppeDashboard() {
                             className="flex items-start w-full p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200 text-left gap-3"
                           >
                             <FileText className="h-5 w-5 text-gray-400 flex-shrink-0" />
-                            <span className="text-sm text-gray-900 flex-1 break-words">{material.title}</span>
+                            <span className="text-sm text-gray-900 flex-1 break-words overflow-wrap-anywhere min-w-0">{material.title}</span>
                             <Download className="h-5 w-5 text-primary flex-shrink-0" />
                           </button>
                         );
@@ -3920,7 +3905,7 @@ export function EliteKleingruppeDashboard() {
                         className="flex items-start w-full p-3 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors border border-emerald-200 gap-3"
                       >
                         <FileText className="h-5 w-5 text-emerald-500 flex-shrink-0" />
-                        <span className="text-sm text-gray-900 flex-1 break-words">{doc.file_name}</span>
+                        <span className="text-sm text-gray-900 flex-1 break-words overflow-wrap-anywhere min-w-0">{doc.file_name}</span>
                         <Download className="h-5 w-5 text-emerald-600 flex-shrink-0" />
                       </a>
                     ))}
@@ -4069,7 +4054,7 @@ export function EliteKleingruppeDashboard() {
                               className="flex items-start w-full p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors border border-yellow-200 text-left gap-3"
                             >
                               <FileText className="h-5 w-5 text-yellow-600 flex-shrink-0" />
-                              <span className="text-sm text-gray-900 flex-1 break-words">{material.title}</span>
+                              <span className="text-sm text-gray-900 flex-1 break-words overflow-wrap-anywhere min-w-0">{material.title}</span>
                               <Download className="h-5 w-5 text-yellow-600 flex-shrink-0" />
                             </button>
                           );
