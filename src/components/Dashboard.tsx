@@ -209,22 +209,13 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       // Fetch recent Klausur submissions from Teilnehmer (for dozent's legal areas)
       let klausurActivities: any[] = [];
       try {
-        // Get dozent's legal areas
+        // Get dozent's legal areas - source of truth: elite_kleingruppe_dozenten
         const legalAreas = new Set<string>();
-        const { data: assignments } = await supabase
-          .from('elite_kleingruppe_dozent_assignments')
-          .select('legal_areas')
+        const { data: legalAreaData } = await supabase
+          .from('elite_kleingruppe_dozenten')
+          .select('legal_area')
           .eq('dozent_id', user.id);
-        if (assignments) {
-          assignments.forEach(a => (a.legal_areas || []).forEach((la: string) => legalAreas.add(la)));
-        }
-        if (legalAreas.size === 0) {
-          const { data: oldAssignments } = await supabase
-            .from('elite_kleingruppe_dozenten')
-            .select('legal_area')
-            .eq('dozent_id', user.id);
-          (oldAssignments || []).forEach(d => legalAreas.add(d.legal_area));
-        }
+        (legalAreaData || []).forEach(d => legalAreas.add(d.legal_area));
 
         if (legalAreas.size > 0) {
           const { data: klausurenData } = await supabase

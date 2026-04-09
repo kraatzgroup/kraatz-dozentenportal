@@ -533,20 +533,9 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
     if (!user) return;
     const areas = new Set<string>();
     
-    // Check new assignments table first
-    const { data: assignments } = await supabase
-      .from('elite_kleingruppe_dozent_assignments')
-      .select('legal_areas')
-      .eq('dozent_id', user.id);
-    if (assignments) {
-      assignments.forEach(a => (a.legal_areas || []).forEach((la: string) => areas.add(la)));
-    }
-    
-    // Fallback: check old table
-    if (areas.size === 0) {
-      const { data } = await supabase.from('elite_kleingruppe_dozenten').select('legal_area').eq('dozent_id', user.id);
-      (data || []).forEach(d => areas.add(d.legal_area));
-    }
+    // Source of truth: elite_kleingruppe_dozenten (managed via Edit Dozent Modal on /users)
+    const { data } = await supabase.from('elite_kleingruppe_dozenten').select('legal_area').eq('dozent_id', user.id);
+    (data || []).forEach(d => areas.add(d.legal_area));
     
     setDozentLegalAreas(Array.from(areas));
   };
@@ -1066,6 +1055,28 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
     };
   };
 
+  const getDozentIdForLegalArea = async (legalArea: string | null, eliteGroupId: string | null): Promise<string | null> => {
+    if (!legalArea || !eliteGroupId) return null;
+    
+    try {
+      // Source of truth: elite_kleingruppe_dozenten (managed via Edit Dozent Modal on /users)
+      const { data } = await supabase
+        .from('elite_kleingruppe_dozenten')
+        .select('dozent_id')
+        .eq('elite_kleingruppe_id', eliteGroupId)
+        .eq('legal_area', legalArea)
+        .limit(1);
+      
+      if (data && data.length > 0) {
+        return data[0].dozent_id;
+      }
+    } catch (error) {
+      console.error('Error finding dozent for legal area:', error);
+    }
+    
+    return null;
+  };
+
   const handleCreateRelease = async () => {
     // Validation: title is always required, unit_type only for 'einheit' events
     if (!selectedDate || !releaseTitle.trim()) return;
@@ -1143,6 +1154,18 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         ? [...allSelectedMaterialIds, additionalMaterialId]
         : allSelectedMaterialIds;
 
+      // Determine dozent_id based on event type and legal area
+      const eliteGroupId = selectedEliteGroupId || (eliteGroups.length === 1 ? eliteGroups[0].id : null);
+      let assignedDozentId: string | null = null;
+      
+      if (releaseEventType === 'einheit' && releaseLegalArea && eliteGroupId) {
+        // For 'einheit' events, assign dozent based on legal area
+        assignedDozentId = await getDozentIdForLegalArea(releaseLegalArea, eliteGroupId);
+      } else {
+        // For other event types (e.g., 'termin'), use current user
+        assignedDozentId = user?.id || null;
+      }
+
       const baseRelease = {
         release_date: selectedDate.toISOString().split('T')[0],
         title: releaseTitle,
@@ -1165,10 +1188,10 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         recurrence_type: releaseIsRecurring ? releaseRecurrenceType : null,
         recurrence_end_date: releaseIsRecurring && releaseRecurrenceEndDate ? releaseRecurrenceEndDate : null,
         recurrence_count: releaseIsRecurring ? releaseRecurrenceCount : null,
-        dozent_id: user?.id || null,
+        dozent_id: assignedDozentId,
         event_type: releaseEventType,
         end_date: isDateRange && releaseEndDate ? releaseEndDate : null,
-        elite_kleingruppe_id: selectedEliteGroupId || (eliteGroups.length === 1 ? eliteGroups[0].id : null)
+        elite_kleingruppe_id: eliteGroupId
       };
 
       // Ersten Termin erstellen
