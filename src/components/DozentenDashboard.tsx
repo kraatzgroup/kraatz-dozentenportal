@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
@@ -60,7 +60,7 @@ function DroppablePlaceholder({ sectionId, index }: { sectionId: string; index: 
   );
 }
 
-function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdit, onDelete, canEdit, isDownloadingZip, selectedFolders, onToggleSelection, activeDragId }: {
+function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdit, onDelete, canEdit, isDownloadingZip, selectedFolders, onToggleSelection, activeDragId, viewMode }: {
   folder: MaterialFolder;
   onOpen: (id: string) => void;
   onDownload: (id: string, name: string) => void;
@@ -72,6 +72,7 @@ function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdit, onDe
   selectedFolders: Set<string>;
   onToggleSelection: (id: string) => void;
   activeDragId: string | null;
+  viewMode: 'grid' | 'list';
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: folder.id });
   
@@ -99,11 +100,11 @@ function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdit, onDe
   };
   
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} onClick={handleClick} className={`group relative bg-white rounded-xl shadow-sm border p-4 hover:shadow-md hover:border-primary/30 transition-all cursor-move ${
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} onClick={handleClick} className={`group relative bg-white rounded-xl shadow-sm border hover:shadow-md hover:border-primary/30 transition-all cursor-move ${
       selectedFolders.has(folder.id) ? 'border-primary border-2 bg-primary/5' : 'border-gray-100'
-    }`}>
+    } ${viewMode === 'list' ? 'flex items-center gap-3 p-3 h-12' : 'p-4'}`}>
       {canEdit && (
-        <div className="absolute top-2 left-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className={`z-10 ${viewMode === 'list' ? 'opacity-100' : 'absolute top-2 left-2 opacity-0 group-hover:opacity-100'} transition-opacity`}>
           <input
             type="checkbox"
             checked={selectedFolders.has(folder.id)}
@@ -113,38 +114,70 @@ function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdit, onDe
           />
         </div>
       )}
-      <div className="flex flex-col items-center text-center">
-        <div className="text-4xl mb-2">📁</div>
-        <span className="text-sm font-medium text-gray-700 group-hover:text-primary">{folder.name}</span>
-      </div>
-      <div className="flex justify-center gap-1 mt-2 opacity-0 group-hover:opacity-100">
-        <button 
-          onClick={e => { e.stopPropagation(); onDownload(folder.id, folder.name); }} 
-          disabled={isDownloadingZip}
-          className="p-1 bg-blue-100 rounded hover:bg-blue-200" 
-          title="Als ZIP herunterladen"
-        >
-          <Download className="h-3 w-3 text-blue-600" />
-        </button>
-        {canEdit && (
-          <>
-            <button 
-              onClick={e => { e.stopPropagation(); onDuplicate(folder.id); }} 
-              className="p-1 bg-purple-100 rounded hover:bg-purple-200"
-              title="Ordner duplizieren"
+      {viewMode === 'list' ? (
+        <>
+          <div className="text-2xl flex-shrink-0">📁</div>
+          <span className="flex-1 text-sm font-medium text-gray-700 group-hover:text-primary truncate">{folder.name}</span>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button
+              onClick={e => { e.stopPropagation(); onDownload(folder.id, folder.name); }}
+              disabled={isDownloadingZip}
+              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+              title="Als ZIP herunterladen"
             >
-              <Copy className="h-3 w-3 text-purple-600" />
+              <Download className="h-3.5 w-3.5" />
             </button>
-            <button onClick={e => { e.stopPropagation(); onEdit(folder); }} className="p-1 bg-gray-100 rounded hover:bg-gray-200"><Edit2 className="h-3 w-3 text-gray-600" /></button>
-            <button onClick={e => { e.stopPropagation(); onDelete(folder.id); }} className="p-1 bg-gray-100 rounded hover:bg-red-100"><Trash2 className="h-3 w-3 text-red-500" /></button>
-          </>
-        )}
-      </div>
+            {canEdit && (
+              <>
+                <button
+                  onClick={e => { e.stopPropagation(); onDuplicate(folder.id); }}
+                  className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                  title="Ordner duplizieren"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+                <button onClick={e => { e.stopPropagation(); onEdit(folder); }} className="p-1.5 text-gray-400 hover:text-primary hover:bg-gray-100 rounded-lg"><Edit2 className="h-3.5 w-3.5" /></button>
+                <button onClick={e => { e.stopPropagation(); onDelete(folder.id); }} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-gray-100 rounded-lg"><Trash2 className="h-3.5 w-3.5" /></button>
+              </>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="flex flex-col items-center text-center">
+            <div className="text-4xl mb-2">📁</div>
+            <span className="text-sm font-medium text-gray-700 group-hover:text-primary">{folder.name}</span>
+          </div>
+          <div className="flex justify-center gap-1.5 mt-2 opacity-0 group-hover:opacity-100">
+            <button
+              onClick={e => { e.stopPropagation(); onDownload(folder.id, folder.name); }}
+              disabled={isDownloadingZip}
+              className="flex items-center justify-center px-2 py-1.5 bg-primary text-white rounded-lg text-xs hover:bg-primary/90"
+              title="Als ZIP herunterladen"
+            >
+              <Download className="h-3.5 w-3.5" />
+            </button>
+            {canEdit && (
+              <>
+                <button
+                  onClick={e => { e.stopPropagation(); onDuplicate(folder.id); }}
+                  className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                  title="Ordner duplizieren"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+                <button onClick={e => { e.stopPropagation(); onEdit(folder); }} className="p-1.5 text-gray-400 hover:text-primary hover:bg-gray-100 rounded-lg"><Edit2 className="h-3.5 w-3.5" /></button>
+                <button onClick={e => { e.stopPropagation(); onDelete(folder.id); }} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-gray-100 rounded-lg"><Trash2 className="h-3.5 w-3.5" /></button>
+              </>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-function DraggableMaterial({ material, canEdit, selectedMaterials, onToggleSelection, onPreview, onDownload, onEdit, onDelete, getFileIcon, formatFileSize }: {
+function DraggableMaterial({ material, canEdit, selectedMaterials, onToggleSelection, onPreview, onDownload, onEdit, onDelete, getFileIcon, formatFileSize, viewMode }: {
   material: TeachingMaterial;
   canEdit: boolean;
   selectedMaterials: Set<string>;
@@ -155,16 +188,17 @@ function DraggableMaterial({ material, canEdit, selectedMaterials, onToggleSelec
   onDelete: (id: string) => void;
   getFileIcon: (type: string) => string;
   formatFileSize: (size: number) => string;
+  viewMode: 'grid' | 'list';
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: material.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
   
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`bg-white rounded-xl shadow-sm border p-4 hover:shadow-md transition-shadow flex flex-col h-full relative cursor-move ${
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`bg-white rounded-xl shadow-sm border hover:shadow-md transition-shadow relative cursor-move group ${
       selectedMaterials.has(material.id) ? 'border-primary border-2 bg-primary/5' : 'border-gray-100'
-    }`}>
+    } ${viewMode === 'list' ? 'flex items-center gap-3 p-3 h-12' : 'p-4 flex flex-col h-full'}`}>
       {canEdit && (
-        <div className="absolute top-3 left-3 z-10">
+        <div className={`z-10 ${viewMode === 'list' ? 'opacity-100' : 'absolute top-3 left-3 opacity-0 group-hover:opacity-100'} transition-opacity`}>
           <input
             type="checkbox"
             checked={selectedMaterials.has(material.id)}
@@ -174,40 +208,66 @@ function DraggableMaterial({ material, canEdit, selectedMaterials, onToggleSelec
           />
         </div>
       )}
-      <div className="flex items-start gap-3 flex-1">
-        <div className={`text-3xl flex-shrink-0 ${canEdit ? 'ml-7' : ''}`}>{getFileIcon(material.file_type)}</div>
-        <div className="flex-1 min-w-0">
-          <h3 className="font-medium text-gray-900 truncate">{material.title}</h3>
-          {material.description && <p className="text-sm text-gray-500 mt-1">{material.description}</p>}
-          <div className="flex items-center gap-2 mt-2 text-xs text-gray-400 break-all">
-            <span className="line-clamp-2">{material.file_name}</span>
-            {material.file_size && <span>• {formatFileSize(material.file_size)}</span>}
+      {viewMode === 'list' ? (
+        <>
+          <div className={`text-2xl flex-shrink-0 ${canEdit ? '' : 'ml-0'}`}>{getFileIcon(material.file_type)}</div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-medium text-gray-900 truncate" title={material.title}>{material.title}</h3>
+            <div className="text-xs text-gray-400 truncate">{material.file_name}</div>
           </div>
-        </div>
-      </div>
-      <div className="flex items-center gap-2 mt-4 pt-2 border-t border-gray-50">
-        <button onClick={() => onPreview(material)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Ansehen">
-          <Eye className="h-4 w-4" />
-        </button>
-        <button onClick={() => onDownload(material)} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90">
-          <Download className="h-4 w-4" />Herunterladen
-        </button>
-        <button
-          className="group relative p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
-          title="Info"
-        >
-          <Info className="h-4 w-4" />
-          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-            Zuletzt bearbeitet: {material.updated_at ? new Date(material.updated_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Unbekannt'}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button onClick={() => onPreview(material)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Ansehen">
+              <Eye className="h-3.5 w-3.5" />
+            </button>
+            <button onClick={() => onDownload(material)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Herunterladen">
+              <Download className="h-3.5 w-3.5" />
+            </button>
+            <button className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg" title="Duplizieren">
+              <Copy className="h-3.5 w-3.5" />
+            </button>
+            {canEdit && (
+              <>
+                <button onClick={() => onEdit(material)} className="p-1.5 text-gray-400 hover:text-primary hover:bg-gray-100 rounded-lg"><Edit2 className="h-3.5 w-3.5" /></button>
+                <button onClick={() => onDelete(material.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-gray-100 rounded-lg"><Trash2 className="h-3.5 w-3.5" /></button>
+              </>
+            )}
           </div>
-        </button>
-        {canEdit && (
-          <>
-            <button onClick={() => onEdit(material)} className="p-2 text-gray-400 hover:text-primary hover:bg-gray-100 rounded-lg"><Edit2 className="h-4 w-4" /></button>
-            <button onClick={() => onDelete(material.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-gray-100 rounded-lg"><Trash2 className="h-4 w-4" /></button>
-          </>
-        )}
-      </div>
+        </>
+      ) : (
+        <>
+          <div className="flex items-start gap-3 flex-1">
+            <div className={`text-3xl flex-shrink-0 ${canEdit ? 'ml-7' : ''}`}>{getFileIcon(material.file_type)}</div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-medium text-gray-900 truncate" title={material.title}>{material.title}</h3>
+              {material.description && <p className="text-sm text-gray-500 mt-1">{material.description}</p>}
+              <div className="flex items-center gap-2 mt-2 text-xs text-gray-400 break-all">
+                <span className="line-clamp-2" title={material.file_name}>{material.file_name}</span>
+                {material.file_size && <span>• {formatFileSize(material.file_size)}</span>}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-center gap-1.5 mt-3 pt-2 border-t border-gray-50 opacity-0 group-hover:opacity-100">
+            <button onClick={() => onPreview(material)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Ansehen">
+              <Eye className="h-3.5 w-3.5" />
+            </button>
+            <button onClick={() => onDownload(material)} className="flex items-center justify-center px-2 py-1.5 bg-primary text-white rounded-lg text-xs hover:bg-primary/90" title="Herunterladen">
+              <Download className="h-3.5 w-3.5" />
+            </button>
+            <button
+              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+              title="Duplizieren"
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </button>
+            {canEdit && (
+              <>
+                <button onClick={() => onEdit(material)} className="p-1.5 text-gray-400 hover:text-primary hover:bg-gray-100 rounded-lg"><Edit2 className="h-3.5 w-3.5" /></button>
+                <button onClick={() => onDelete(material.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-gray-100 rounded-lg"><Trash2 className="h-3.5 w-3.5" /></button>
+              </>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -563,6 +623,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   const [bulkUploadProgress, setBulkUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [folders, setFolders] = useState<MaterialFolder[]>([]);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync folder navigation with URL
   useEffect(() => {
@@ -573,7 +634,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     
     const newPath = folderPath 
       ? `unterrichtsmaterialien/${folderPath}`
-      : 'dozenten-dashboard';
+      : 'unterrichtsmaterialien';
     
     params.set('tab', newPath);
     params.delete('folder'); // Remove obsolete folder param
@@ -633,6 +694,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   const [selectedMaterials, setSelectedMaterials] = useState<Set<string>>(new Set());
   const [selectedFolders, setSelectedFolders] = useState<Set<string>>(new Set());
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showMoveConfirmation, setShowMoveConfirmation] = useState(false);
   const [showBulkDeleteConfirmation, setShowBulkDeleteConfirmation] = useState(false);
   const [bulkDeleteConfirmText, setBulkDeleteConfirmText] = useState('');
@@ -1309,21 +1371,34 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   const handleMaterialUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    console.log('📤 File upload triggered:', { fileName: file.name, fileType: file.type, fileSize: file.size, isEditing: !!editingMaterial });
     setIsUploadingMaterial(true);
     const fileExt = file.name.split('.').pop();
     const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}.${fileExt}`;
+    console.log('📁 Uploading to storage path:', `materials/${fileName}`);
     const { error } = await supabase.storage.from('masterclass').upload(`materials/${fileName}`, file, {
       contentType: file.type,
       cacheControl: '3600'
     });
     if (!error) {
       const { data: urlData } = supabase.storage.from('masterclass').getPublicUrl(`materials/${fileName}`);
+      console.log('✅ File uploaded successfully:', { publicUrl: urlData.publicUrl });
       setMaterialFile(urlData.publicUrl);
+      // Update file name and type in UI for both new and editing materials
       setMaterialFileName(file.name);
       setMaterialFileType(file.type);
-      // Auto-fill title from filename (without extension)
-      const titleFromFile = file.name.replace(/\.[^/.]+$/, '');
-      if (!materialTitle) setMaterialTitle(titleFromFile);
+      // When editing existing material, only update file_url, preserve everything else
+      if (!editingMaterial) {
+        console.log('🆕 New material - updating all fields');
+        // Auto-fill title from filename (without extension)
+        const titleFromFile = file.name.replace(/\.[^/.]+$/, '');
+        if (!materialTitle) setMaterialTitle(titleFromFile);
+      } else {
+        console.log('🔄 Editing existing material - updating file_url and UI file name');
+        console.log('📋 Preserved fields:', { title: materialTitle });
+      }
+    } else {
+      console.error('❌ File upload failed:', error);
     }
     setIsUploadingMaterial(false);
   };
@@ -1663,6 +1738,14 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     }
   };
 
+  const toggleSelectAllFolders = (foldersToSelect: MaterialFolder[]) => {
+    if (selectedFolders.size === foldersToSelect.length) {
+      setSelectedFolders(new Set());
+    } else {
+      setSelectedFolders(new Set(foldersToSelect.map((f: MaterialFolder) => f.id)));
+    }
+  };
+
   const openFilePreview = async (material: TeachingMaterial) => {
     try {
       const response = await fetch(material.file_url);
@@ -1921,6 +2004,8 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
         )}
       </div>
       
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4"><p className="text-sm text-yellow-800">⚠️ Bitte verwenden Sie immer die aktuellsten Versionen der Unterlagen und stellen Sie regelmäßig sicher, dass Sie die richtigen Unterlagen im Unterricht verwenden!</p></div>
+      
       {/* Breadcrumbs - Dropbox Style */}
       <div className="bg-white rounded-lg border border-gray-200 p-3">
         <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -1981,8 +2066,6 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
         </div>
       </div>
       
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4"><p className="text-sm text-yellow-800">⚠️ Bitte verwenden Sie immer die aktuellsten Versionen der Unterlagen und stellen Sie regelmäßig sicher, dass Sie die richtigen Unterlagen im Unterricht verwenden!</p></div>
-      
       <DndContext sensors={materialsSensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       {currentFolders.length === 0 && currentMaterials.length === 0 ? (
         <div className="bg-white rounded-xl p-8 text-center">
@@ -1997,15 +2080,51 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Download-Bereich */}
-          {currentFolders.length > 0 && (
+          {/* Combined Folders and Materials Grid */}
+          {(currentFolders.length > 0 || currentMaterials.length > 0) && (
             <div>
-              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                <Download className="h-4 w-4" />
-                Download
-              </h3>
-              <SortableContext items={currentFolders.map(f => f.id)}>
-              <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 ${activeDragId ? 'pointer-events-none' : ''}`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setViewMode('grid')}
+                    className={`p-2 rounded-lg ${viewMode === 'grid' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                    title="Grid-Ansicht"
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('list')}
+                    className={`p-2 rounded-lg ${viewMode === 'list' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                    title="Listen-Ansicht"
+                  >
+                    <FileText className="h-4 w-4" />
+                  </button>
+                </div>
+                {canEdit && (
+                  <div className="flex items-center gap-2">
+                    {(selectedMaterials.size > 0 || selectedFolders.size > 0) && (
+                      <button
+                        onClick={deleteBulkMaterials}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        {selectedMaterials.size + selectedFolders.size} löschen
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        toggleSelectAll(currentMaterials);
+                        toggleSelectAllFolders(currentFolders);
+                      }}
+                      className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50"
+                    >
+                      {selectedMaterials.size + selectedFolders.size === currentMaterials.length + currentFolders.length ? 'Alle abwählen' : 'Alle auswählen'}
+                    </button>
+                  </div>
+                )}
+              </div>
+              <SortableContext items={[...currentFolders.map(f => f.id), ...currentMaterials.map(m => m.id)]}>
+              <div className={viewMode === 'grid' ? `grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 ${activeDragId ? 'pointer-events-none' : ''}` : 'space-y-2'}>
                 {currentFolders.map(f => (
                   <DraggableFolder
                     key={f.id}
@@ -2020,58 +2139,25 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
                     selectedFolders={selectedFolders}
                     onToggleSelection={toggleFolderSelection}
                     activeDragId={activeDragId}
+                    viewMode={viewMode}
                   />
                 ))}
-              </div>
-              </SortableContext>
-            </div>
-          )}
-          
-          {/* Upload-Bereich / Materialien */}
-          {currentMaterials.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                  <Upload className="h-4 w-4" />
-                  Upload
-                </h3>
-                {canEdit && (
-                  <div className="flex items-center gap-2">
-                    {selectedMaterials.size > 0 && (
-                      <button
-                        onClick={deleteBulkMaterials}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        {selectedMaterials.size} löschen
-                      </button>
-                    )}
-                    <button
-                      onClick={() => toggleSelectAll(currentMaterials)}
-                      className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50"
-                    >
-                      {selectedMaterials.size === currentMaterials.length ? 'Alle abwählen' : 'Alle auswählen'}
-                    </button>
-                  </div>
-                )}
-              </div>
-              <SortableContext items={currentMaterials.map(m => m.id)}>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {currentMaterials.map(m => (
-                <DraggableMaterial
-                  key={m.id}
-                  material={m}
-                  canEdit={canEdit}
-                  selectedMaterials={selectedMaterials}
-                  onToggleSelection={toggleMaterialSelection}
-                  onPreview={openFilePreview}
-                  onDownload={downloadFile}
-                  onEdit={openMaterialModal}
-                  onDelete={deleteMaterial}
-                  getFileIcon={getFileIcon}
-                  formatFileSize={formatFileSize}
-                />
-              ))}
+                {currentMaterials.map(m => (
+                  <DraggableMaterial
+                    key={m.id}
+                    material={m}
+                    canEdit={canEdit}
+                    selectedMaterials={selectedMaterials}
+                    onToggleSelection={toggleMaterialSelection}
+                    onPreview={openFilePreview}
+                    onDownload={downloadFile}
+                    onEdit={openMaterialModal}
+                    onDelete={deleteMaterial}
+                    getFileIcon={getFileIcon}
+                    formatFileSize={formatFileSize}
+                    viewMode={viewMode}
+                  />
+                ))}
               </div>
               </SortableContext>
             </div>
@@ -2094,17 +2180,21 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
                 <label className="block text-sm font-medium text-gray-700 mb-1">Beschreibung</label>
                 <textarea value={materialDescription} onChange={e => setMaterialDescription(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Optionale Beschreibung" rows={2} />
               </div>
-              <div>
+              {/* <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Kategorie</label>
                 <input value={materialCategory} onChange={e => setMaterialCategory(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="z.B. PDF, Word, Excel" />
-              </div>
+              </div> */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Datei *</label>
                 {materialFile ? (
                   <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
                     <span className="text-2xl">{getFileIcon(materialFileType)}</span>
-                    <span className="flex-1 text-sm truncate">{materialFileName}</span>
-                    <button onClick={() => { setMaterialFile(null); setMaterialFileName(''); setMaterialFileType(''); }} className="p-1 text-red-500 hover:bg-red-50 rounded"><X className="h-4 w-4" /></button>
+                    <span className="flex-1 text-sm truncate">{isUploadingMaterial ? 'Wird hochgeladen...' : materialFileName}</span>
+                    <button onClick={() => fileInputRef.current?.click()} className="p-1 text-blue-500 hover:bg-blue-50 rounded" title="Datei austauschen" disabled={isUploadingMaterial}>
+                      <Upload className="h-4 w-4" />
+                    </button>
+                    <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" onChange={handleMaterialUpload} disabled={isUploadingMaterial} />
+                    {/* <button onClick={() => { setMaterialFile(null); setMaterialFileName(''); setMaterialFileType(''); }} className="p-1 text-red-500 hover:bg-red-50 rounded" title="Datei entfernen"><X className="h-4 w-4" /></button> */}
                   </div>
                 ) : (
                   <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-primary">
