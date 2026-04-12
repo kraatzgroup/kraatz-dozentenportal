@@ -61,7 +61,7 @@ function DroppablePlaceholder({ sectionId, index }: { sectionId: string; index: 
   );
 }
 
-function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdit, onDelete, canEdit, isDownloadingZip, selectedFolders, onToggleSelection, activeDragId, viewMode }: {
+function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdit, onDelete, canEdit, isDownloadingZip, selectedFolders, onToggleSelection, viewMode }: {
   folder: MaterialFolder;
   onOpen: (id: string) => void;
   onDownload: (id: string, name: string) => void;
@@ -72,24 +72,16 @@ function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdit, onDe
   isDownloadingZip: boolean;
   selectedFolders: Set<string>;
   onToggleSelection: (id: string) => void;
-  activeDragId: string | null;
   viewMode: 'grid' | 'list';
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: folder.id });
-  
-  // Hide selected folders during drag (they show in overlay only)
-  const isBeingDragged = activeDragId && selectedFolders.has(folder.id) && selectedFolders.size > 1;
-  
-  // Only apply transform to the actively dragged item, keep all others static
-  const shouldTransform = isDragging || (activeDragId === folder.id);
-  
-  const style = { 
-    transform: shouldTransform ? CSS.Transform.toString(transform) : undefined, 
-    transition: shouldTransform ? transition : undefined, 
-    opacity: isBeingDragged ? 0 : 1,
-    visibility: isBeingDragged ? 'hidden' as const : 'visible' as const
-  };
-  
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: folder.id,
+  });
+  const style = transform ? {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  } : undefined;
+
   const handleClick = (e: React.MouseEvent) => {
     // Don't open folder if we're dragging
     if (isDragging) {
@@ -99,9 +91,12 @@ function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdit, onDe
     }
     onOpen(folder.id);
   };
-  
+
+  // Disable drag and drop on touch devices
+  const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} onClick={handleClick} className={`group relative bg-white rounded-xl shadow-sm border hover:shadow-md hover:border-primary/30 transition-all cursor-move ${
+    <div ref={setNodeRef} style={style} {...attributes} {...isTouchDevice ? {} : listeners} onClick={handleClick} className={`group relative bg-white rounded-xl shadow-sm border hover:shadow-md hover:border-primary/30 transition-all cursor-pointer touch-manipulation ${
       selectedFolders.has(folder.id) ? 'border-primary border-2 bg-primary/5' : 'border-gray-100'
     } ${viewMode === 'list' ? 'flex items-center gap-3 px-3 py-5' : 'p-4'}`}>
       {canEdit && (
@@ -2199,7 +2194,6 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
                     isDownloadingZip={isDownloadingZip}
                     selectedFolders={selectedFolders}
                     onToggleSelection={toggleFolderSelection}
-                    activeDragId={activeDragId}
                     viewMode={viewMode}
                   />
                 ))}
