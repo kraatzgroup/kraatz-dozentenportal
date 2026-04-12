@@ -209,6 +209,14 @@ export function AuthComponent() {
             } else if (profile) {
               console.log('Profile verified, setting user in auth store');
               setUser(session.user);
+
+              // Redirect material role users to unterrichtsmaterialien tab
+              if (profile.role === 'material' || (profile.additional_roles && profile.additional_roles.includes('material'))) {
+                const url = new URL(window.location.href);
+                url.searchParams.set('tab', 'unterrichtsmaterialien');
+                window.history.replaceState({}, '', url.toString());
+              }
+
               setProcessingAuth(false);
             } else {
               console.error('No profile found or created');

@@ -48,7 +48,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { subTab: urlSubTab } = useParams<{ subTab?: string }>();
-  const { user, signOut, userRole, isAdmin: isUserAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isDozent } = useAuthStore();
+  const { user, signOut, userRole, isAdmin: isUserAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isDozent, isMaterial } = useAuthStore();
   const { folders, fetchFolders, createFolder, updateFolder, deleteFolder } = useFolderStore();
   const { files, fetchFiles, uploadFile, deleteFile } = useFileStore();
   const { teilnehmer, fetchTeilnehmer } = useTeilnehmerStore();
@@ -957,7 +957,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {!isMaterial && (
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
               {folders.filter(folder => {
                 // Filter folders based on user role
                 // Hide Verfügbarkeit folder - it's shown as a badge in the header
@@ -1045,6 +1046,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                 </div>
               )}
             </div>
+            )}
           </div>
 
           {selectedFolder && (

@@ -11,6 +11,7 @@ interface AuthState {
   isVertrieb: boolean;
   isDozent: boolean;
   isTeilnehmer: boolean;
+  isMaterial: boolean;
   userRole: string | null;
   additionalRoles: string[];
   isSigningOut: boolean;
@@ -28,6 +29,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isVertrieb: false,
   isDozent: false,
   isTeilnehmer: false,
+  isMaterial: false,
   userRole: null,
   additionalRoles: [],
   isSigningOut: false,
@@ -102,6 +104,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               isVertrieb: allRoles.includes('vertrieb'),
               isDozent: allRoles.includes('dozent'),
               isTeilnehmer: allRoles.includes('teilnehmer'),
+              isMaterial: allRoles.includes('material'),
               userRole: data.role,
               additionalRoles: data.additional_roles || [],
               isSettingUser: false
@@ -109,8 +112,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             console.log('AuthStore: User state updated successfully');
           } else {
             console.error('AuthStore: Error fetching user profile:', error);
-            set({ 
-              user, 
+            set({
+              user,
               fullName: null,
               isAdmin: false,
               isBuchhaltung: false,
@@ -118,9 +121,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               isVertrieb: false,
               isDozent: false,
               isTeilnehmer: false,
+              isMaterial: false,
               userRole: null,
               additionalRoles: [],
-              isSettingUser: false 
+              isSettingUser: false
             });
           }
         })
@@ -128,8 +132,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           console.error('AuthStore: Unexpected error fetching profile:', err);
           const currentState = get();
           if (!currentState.isSigningOut) {
-            set({ 
-              user, 
+            set({
+              user,
               fullName: null,
               isAdmin: false,
               isBuchhaltung: false,
@@ -137,9 +141,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               isVertrieb: false,
               isDozent: false,
               isTeilnehmer: false,
+              isMaterial: false,
               userRole: null,
               additionalRoles: [],
-              isSettingUser: false 
+              isSettingUser: false
             });
           } else {
             set({ isSettingUser: false });
@@ -147,40 +152,42 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         });
     } else {
       console.log('AuthStore: Clearing user');
-      set({ 
-        user: null, 
+      set({
+        user: null,
         isAdmin: false,
         isBuchhaltung: false,
         isVerwaltung: false,
         isVertrieb: false,
         isDozent: false,
         isTeilnehmer: false,
+        isMaterial: false,
         userRole: null,
         additionalRoles: [],
-        isSettingUser: false 
+        isSettingUser: false
       });
     }
   },
   signOut: async () => {
     console.log('AuthStore: Starting sign out process');
-    
+
     // Set signing out flag to prevent re-authentication
     set({ isSigningOut: true });
-    
+
     try {
       // Clear local state immediately
-      set({ 
-        user: null, 
+      set({
+        user: null,
         isAdmin: false,
         isBuchhaltung: false,
         isVerwaltung: false,
         isVertrieb: false,
         isDozent: false,
         isTeilnehmer: false,
+        isMaterial: false,
         userRole: null,
         additionalRoles: [],
-        isSigningOut: true, 
-        isSettingUser: false 
+        isSigningOut: true,
+        isSettingUser: false
       });
       
       // Clear any stored session data
@@ -220,20 +227,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         console.error('AuthStore: Unexpected error during sign out:', error);
       }
     } finally {
-      // Always ensure we end up in a signed-out state
-      set({ 
-        user: null, 
-        fullName: null,
+      // Always reset to clean state after sign out completes
+      set({
+        user: null,
         isAdmin: false,
         isBuchhaltung: false,
         isVerwaltung: false,
         isVertrieb: false,
         isDozent: false,
         isTeilnehmer: false,
+        isMaterial: false,
         userRole: null,
         additionalRoles: [],
-        isSigningOut: false, 
-        isSettingUser: false 
+        isSigningOut: false,
+        isSettingUser: false
       });
       console.log('AuthStore: Sign out process completed');
     }

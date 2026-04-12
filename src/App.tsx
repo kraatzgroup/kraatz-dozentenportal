@@ -7,6 +7,7 @@ const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ defau
 const AdminDashboard = lazy(() => import('./components/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
 const VertriebDashboard = lazy(() => import('./components/VertriebDashboard').then(m => ({ default: m.VertriebDashboard })));
 const EliteKleingruppeDashboard = lazy(() => import('./components/EliteKleingruppeDashboard').then(m => ({ default: m.EliteKleingruppeDashboard })));
+const DozentenDashboard = lazy(() => import('./components/DozentenDashboard').then(m => ({ default: m.DozentenDashboard })));
 const DozentDetail = lazy(() => import('./components/DozentDetail').then(m => ({ default: m.DozentDetail })));
 const UserManagement = lazy(() => import('./components/UserManagement').then(m => ({ default: m.UserManagement })));
 const Chat = lazy(() => import('./components/Chat').then(m => ({ default: m.Chat })));
@@ -35,7 +36,7 @@ import { ToastContainer } from './components/Toast';
 import { useState } from 'react';
 
 function App() {
-  const { setUser, user, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isTeilnehmer, userRole, isSettingUser } = useAuthStore();
+  const { setUser, user, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isTeilnehmer, isMaterial, userRole, isSettingUser } = useAuthStore();
   const { isPreviewMode, previewedRole, togglePreview, setPreviewedRole } = usePreviewStore();
   const [appLoading, setAppLoading] = useState(true);
 
@@ -141,9 +142,11 @@ function App() {
           <Route path="/elite-kleingruppe" element={<Navigate to="/dashboard" replace />} />
 
           {/* Unified dashboard - renders correct view based on role */}
-          <Route 
-            path="/dashboard" 
+          <Route
+            path="/dashboard"
             element={
+              isMaterial ?
+                <DozentenDashboard /> :
               showTeilnehmerView ?
                 <EliteKleingruppeDashboard /> :
               showVertriebView ?
@@ -155,7 +158,7 @@ function App() {
               showAdminView ?
                 <AdminDashboard mode="admin" /> :
                 <Dashboard isAdmin={false} />
-            } 
+            }
           />
           <Route 
             path="/dashboard/elite-kleingruppe/:subTab?" 

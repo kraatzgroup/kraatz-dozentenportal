@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useToastStore } from '../store/toastStore';
-import { GraduationCap, Plus, Edit2, Trash2, ChevronDown, ChevronUp, X, Play, FileText, ExternalLink, Info, Pin, AlertTriangle, Clock, Upload, Eye, GripVertical, LayoutGrid, Download, Search, Users, Copy } from 'lucide-react';
+import { GraduationCap, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, FileText, FolderPlus, Search, Filter, X, Plus, Edit2, Trash2, Download, Copy, ExternalLink, Eye, MoreVertical, Info, AlertTriangle, Menu, Bell, MessageSquare, Settings, LogOut, Upload, GripVertical, Users, LayoutGrid, Play, Pin, Clock } from 'lucide-react';
+import { Logo } from './Logo';
 import { EliteKleingruppe } from './EliteKleingruppe';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
@@ -102,7 +103,7 @@ function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdit, onDe
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners} onClick={handleClick} className={`group relative bg-white rounded-xl shadow-sm border hover:shadow-md hover:border-primary/30 transition-all cursor-move ${
       selectedFolders.has(folder.id) ? 'border-primary border-2 bg-primary/5' : 'border-gray-100'
-    } ${viewMode === 'list' ? 'flex items-center gap-3 p-3 h-12' : 'p-4'}`}>
+    } ${viewMode === 'list' ? 'flex items-center gap-3 px-3 py-5' : 'p-4'}`}>
       {canEdit && (
         <div className={`z-10 ${viewMode === 'list' ? 'opacity-100' : 'absolute top-2 left-2 opacity-0 group-hover:opacity-100'} transition-opacity`}>
           <input
@@ -196,7 +197,7 @@ function DraggableMaterial({ material, canEdit, selectedMaterials, onToggleSelec
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`bg-white rounded-xl shadow-sm border hover:shadow-md transition-shadow relative cursor-move group ${
       selectedMaterials.has(material.id) ? 'border-primary border-2 bg-primary/5' : 'border-gray-100'
-    } ${viewMode === 'list' ? 'flex items-center gap-3 p-3 h-12' : 'p-4 flex flex-col h-full'}`}>
+    } ${viewMode === 'list' ? 'flex items-center gap-3 px-3 py-5' : 'p-4 flex flex-col h-full'}`}>
       {canEdit && (
         <div className={`z-10 ${viewMode === 'list' ? 'opacity-100' : 'absolute top-3 left-3 opacity-0 group-hover:opacity-100'} transition-opacity`}>
           <input
@@ -214,6 +215,7 @@ function DraggableMaterial({ material, canEdit, selectedMaterials, onToggleSelec
           <div className="flex-1 min-w-0">
             <h3 className="text-sm font-medium text-gray-900 truncate" title={material.title}>{material.title}</h3>
             <div className="text-xs text-gray-400 truncate">{material.file_name}</div>
+            <div className="text-xs text-gray-300 truncate">Zuletzt bearbeitet: {material.updated_at ? new Date(material.updated_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Unbekannt'}</div>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <button onClick={() => onPreview(material)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Ansehen">
@@ -221,6 +223,15 @@ function DraggableMaterial({ material, canEdit, selectedMaterials, onToggleSelec
             </button>
             <button onClick={() => onDownload(material)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Herunterladen">
               <Download className="h-3.5 w-3.5" />
+            </button>
+            <button
+              className="group relative p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+              title="Info"
+            >
+              <Info className="h-3.5 w-3.5" />
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1.5 bg-gray-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                Zuletzt bearbeitet: {material.updated_at ? new Date(material.updated_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Unbekannt'}
+              </div>
             </button>
             <button className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg" title="Duplizieren">
               <Copy className="h-3.5 w-3.5" />
@@ -254,9 +265,15 @@ function DraggableMaterial({ material, canEdit, selectedMaterials, onToggleSelec
               <Download className="h-3.5 w-3.5" />
             </button>
             <button
-              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
-              title="Duplizieren"
+              className="group relative p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+              title="Info"
             >
+              <Info className="h-3.5 w-3.5" />
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1.5 bg-gray-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                Zuletzt bearbeitet: {material.updated_at ? new Date(material.updated_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Unbekannt'}
+              </div>
+            </button>
+            <button className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg" title="Duplizieren">
               <Copy className="h-3.5 w-3.5" />
             </button>
             {canEdit && (
@@ -551,7 +568,7 @@ interface DozentenDashboardProps {
 
 export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKleingruppe, ekSubTab, onEkSubTabChange, onCloseEliteKleingruppe }: DozentenDashboardProps = {}) {
   const navigate = useNavigate();
-  const { isAdmin, isBuchhaltung, user } = useAuthStore();
+  const { isAdmin, isBuchhaltung, isMaterial, user, signOut } = useAuthStore();
   const [isEliteKleingruppeDozent, setIsEliteKleingruppeDozent] = useState(false);
   const [internalShowEliteKleingruppe, setInternalShowEliteKleingruppe] = useState(false);
   const showEliteKleingruppe = externalShowEliteKleingruppe ?? internalShowEliteKleingruppe;
@@ -643,15 +660,21 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     window.history.replaceState({}, '', newUrl);
   }, [currentFolderId, showMaterialsView, folders]);
 
-  // Auto-activate materials view if URL contains unterrichtsmaterialien
+  // Auto-activate materials view if URL contains unterrichtsmaterialien or user has material role
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get('tab') || '';
-    
-    if (tab.startsWith('unterrichtsmaterialien') && !showMaterialsView) {
+
+    if (isMaterial && !showMaterialsView) {
+      setShowMaterialsView(true);
+      // Update URL to show unterrichtsmaterialien tab
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.set('tab', 'unterrichtsmaterialien');
+      window.history.replaceState({}, '', newUrl.toString());
+    } else if (tab.startsWith('unterrichtsmaterialien') && !showMaterialsView) {
       setShowMaterialsView(true);
     }
-  }, []);
+  }, [isMaterial, showMaterialsView]);
 
   // Debug: Log when showBundeslaenderModal changes
   useEffect(() => {
@@ -700,7 +723,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   const [bulkDeleteConfirmText, setBulkDeleteConfirmText] = useState('');
   const [bulkDeleteCounts, setBulkDeleteCounts] = useState<{ folders: number; files: number } | null>(null);
   const [pendingMove, setPendingMove] = useState<{ itemIds: string[]; itemNames: string[]; targetFolderId: string | null; targetFolderName: string; type: 'folder' | 'material'; isBulk: boolean; showActionChoice?: boolean } | null>(null);
-  const canEdit = isAdmin || isBuchhaltung;
+  const canEdit = isAdmin || isBuchhaltung || isMaterial;
 
   const bundeslaenderList = [
     'Baden-Württemberg',
@@ -1546,23 +1569,24 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
 
   const saveMaterial = async () => {
     if (!materialTitle.trim() || !materialFile) return addToast('Titel und Datei erforderlich', 'error');
-    
-    const data = { 
-      title: materialTitle, 
-      description: materialDescription || null, 
-      file_url: materialFile, 
-      file_name: materialFileName, 
-      file_type: materialFileType, 
-      category: materialCategory || null
+
+    const data = {
+      title: materialTitle,
+      description: materialDescription || null,
+      file_url: materialFile,
+      file_name: materialFileName,
+      file_type: materialFileType,
+      category: materialCategory || null,
+      updated_at: new Date().toISOString()
     };
-    
+
     if (editingMaterial) {
       await supabase.from('teaching_materials').update(data).eq('id', editingMaterial.id);
     } else {
-      await supabase.from('teaching_materials').insert({ 
-        ...data, 
+      await supabase.from('teaching_materials').insert({
+        ...data,
         folder_id: materialFolderId,
-        position: materials.filter(m => m.folder_id === materialFolderId).length 
+        position: materials.filter(m => m.folder_id === materialFolderId).length
       });
     }
     setShowMaterialModal(false);
@@ -1890,7 +1914,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   if (isLoading) return <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
 
   // Elite-Kleingruppe View
-  if (showEliteKleingruppe) {
+  if (showEliteKleingruppe && !isMaterial) {
     return (
       <div className="space-y-6">
         <div className="bg-white rounded-xl shadow-md p-4 flex items-center justify-between">
@@ -1942,20 +1966,57 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     const breadcrumbs = getBreadcrumbs();
     
     return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-background">
+      {isMaterial && (
+        <nav className="bg-white shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between h-16">
+              <div className="flex">
+                <div className="flex-shrink-0 flex items-center">
+                  <Logo />
+                  <span className="ml-2 text-xl font-semibold text-gray-900">Dozenten-Portal</span>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2 sm:space-x-4">
+                <button
+                  onClick={() => navigate('/messages')}
+                  className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition relative"
+                >
+                  <MessageSquare className="h-5 w-5" />
+                </button>
+                <button
+                  onClick={() => navigate('/settings')}
+                  className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition"
+                >
+                  <Settings className="h-5 w-5" />
+                </button>
+                <button
+                  onClick={() => signOut()}
+                  className="inline-flex items-center px-2 sm:px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-red-500 hover:text-red-700 focus:outline-none transition"
+                >
+                  <LogOut className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </nav>
+      )}
+      <div className="p-10 space-y-6">
       <div className="bg-white rounded-xl shadow-md p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => { 
-            if (currentFolderId) { 
-              const parent = folders.find(f => f.id === currentFolderId); 
-              setCurrentFolderId(parent?.parent_id || null); 
-            } else { 
-              setShowMaterialsView(false);
-              const params = new URLSearchParams(window.location.search);
-              params.set('tab', 'dozenten-dashboard');
-              window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
-            } 
-          }} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronDown className="h-5 w-5 rotate-90" /></button>
+          {!isMaterial && (
+            <button onClick={() => {
+              if (currentFolderId) {
+                const parent = folders.find(f => f.id === currentFolderId);
+                setCurrentFolderId(parent?.parent_id || null);
+              } else {
+                setShowMaterialsView(false);
+                const params = new URLSearchParams(window.location.search);
+                params.set('tab', 'dozenten-dashboard');
+                window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+              }
+            }} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronDown className="h-5 w-5 rotate-90" /></button>
+          )}
           <FileText className="h-6 w-6 text-primary" /><h1 className="text-lg font-semibold">Unterrichtsmaterialien</h1>
         </div>
         {canEdit && (
@@ -2566,10 +2627,11 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
         </div>
       )}
     </div>
+    </div>
   );
   }
 
-  if (showMasterclassView) return (
+  if (showMasterclassView && !isMaterial) return (
     <div className="space-y-6">
       <div className="bg-white rounded-xl shadow-md p-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -2605,6 +2667,11 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
       {showLessonModal && <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"><div className="bg-white rounded-lg shadow-xl w-full max-w-md"><div className="flex items-center justify-between p-4 border-b"><h3 className="font-semibold">{editingLesson ? 'Bearbeiten' : 'Neue Lektion'}</h3><button onClick={() => setShowLessonModal(false)}><X className="h-5 w-5" /></button></div><div className="p-4 space-y-4"><input value={lessonTitle} onChange={e => setLessonTitle(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Titel" /><input value={lessonVideoUrl} onChange={e => setLessonVideoUrl(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Video URL" /><textarea value={lessonDescription} onChange={e => setLessonDescription(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Beschreibung" rows={3} /></div><div className="flex justify-end gap-2 p-4 border-t"><button onClick={() => setShowLessonModal(false)} className="px-4 py-2 text-gray-700">Abbrechen</button><button onClick={saveLesson} className="px-4 py-2 bg-primary text-white rounded-lg">Speichern</button></div></div></div>}
     </div>
   );
+
+  if (isMaterial) {
+    // Material role users only see the materials view (already handled by showMaterialsView)
+    return null;
+  }
 
   return (
     <div className="space-y-6">
