@@ -1624,14 +1624,14 @@ export function EliteKleingruppeDashboard() {
                   const today = new Date();
                   today.setHours(0, 0, 0, 0);
                   
-                  // Filter releases that have already occurred (date <= today)
+                  // Filter releases that have already occurred (date <= today) AND have a unit_type (actual units only)
                   const completedReleases = allReleases.filter(r => {
                     const releaseDate = new Date(r.release_date);
                     releaseDate.setHours(0, 0, 0, 0);
-                    return releaseDate <= today;
+                    return releaseDate <= today && r.unit_type;
                   });
                   
-                  const totalReleases = allReleases.length;
+                  const totalReleases = allReleases.filter(r => r.unit_type).length;
                   const progress = totalReleases > 0 ? (completedReleases.length / totalReleases) * 100 : 0;
                   
                   return (
