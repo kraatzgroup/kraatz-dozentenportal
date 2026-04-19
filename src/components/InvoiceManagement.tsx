@@ -150,22 +150,25 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
     // }
   }, [isLoading, hasCheckedAutoCreate, invoices, dozentId, isAdmin, currentMonth, currentYear, createInvoice, addToast]);
 
-  // Current month invoices only (draft or review status, current month only)
-  const currentMonthInvoices = invoices.filter(invoice => 
-    invoice.status === 'draft' || invoice.status === 'review' || invoice.status === 'submitted' || invoice.status === 'sent'
+  // Draft and review invoices (no month filter)
+  const draftReviewInvoices = invoices.filter(invoice => 
+    invoice.status === 'draft' || invoice.status === 'review'
   );
 
-  // Archive invoices (submitted, sent, or paid - anything shared with admin)
-  const archiveInvoices = invoices.filter(invoice => 
+  // Submitted, sent, and paid invoices (with month filter)
+  const submittedSentPaidInvoices = invoices.filter(invoice => 
     invoice.status === 'submitted' || invoice.status === 'sent' || invoice.status === 'paid'
   );
 
-  // Filter archive by month/year
-  const filteredArchiveInvoices = archiveFilterMonth === 'alle'
-    ? archiveInvoices.filter(invoice => invoice.year === archiveFilterYear)
-    : archiveInvoices.filter(invoice => 
+  // Filter submitted/sent/paid by month/year
+  const filteredSubmittedSentPaidInvoices = archiveFilterMonth === 'alle'
+    ? submittedSentPaidInvoices.filter(invoice => invoice.year === archiveFilterYear)
+    : submittedSentPaidInvoices.filter(invoice => 
         invoice.month === archiveFilterMonth && invoice.year === archiveFilterYear
       );
+
+  // For backwards compatibility
+  const currentMonthInvoices = draftReviewInvoices;
 
   // Fetch hours preview when create dialog opens or month/year changes
   const fetchCreatePreviewHours = async () => {
@@ -1536,14 +1539,14 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
           </div>
         </div>
         
-        {filteredArchiveInvoices.length === 0 ? (
+        {filteredSubmittedSentPaidInvoices.length === 0 ? (
           <div className="px-4 py-8 text-center text-gray-500">
             <Clock className="h-8 w-8 mx-auto text-gray-300 mb-2" />
             <p className="text-sm">Keine archivierten Rechnungen für diesen Zeitraum</p>
           </div>
         ) : (
           <ul className="divide-y divide-gray-200">
-            {filteredArchiveInvoices.map((invoice) => (
+            {filteredSubmittedSentPaidInvoices.map((invoice) => (
               <li key={invoice.id}>
                 <div className="px-4 py-3 sm:px-6 hover:bg-gray-50">
                   <div className="flex items-center justify-between">
