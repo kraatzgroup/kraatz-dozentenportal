@@ -3293,19 +3293,22 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                       const startYear = startDate.getFullYear();
                       const endYear = endDate.getFullYear();
 
-                      // Check if filtered month/year falls within the invoice period
-                      if (filterYear >= startYear && filterYear <= endYear) {
-                        if (filterYear === startYear && filterMonth >= startMonth) {
-                          console.log('🔍 [AdminDashboard] Match by period (start):', i.invoice_number);
-                          return true;
-                        }
-                        if (filterYear === endYear && filterMonth <= endMonth) {
-                          console.log('🔍 [AdminDashboard] Match by period (end):', i.invoice_number);
-                          return true;
-                        }
-                        if (filterYear > startYear && filterYear < endYear) {
-                          console.log('🔍 [AdminDashboard] Match by period (middle):', i.invoice_number);
-                          return true;
+                      // Only match quarterly invoices if the filter month/year is exactly within the invoice period
+                      // AND the invoice's month/year doesn't match (to avoid double counting)
+                      if (i.month !== filterMonth || i.year !== filterYear) {
+                        if (filterYear >= startYear && filterYear <= endYear) {
+                          if (filterYear === startYear && filterMonth >= startMonth && filterMonth <= endMonth) {
+                            console.log('🔍 [AdminDashboard] Match by period (start year):', i.invoice_number);
+                            return true;
+                          }
+                          if (filterYear === endYear && filterMonth <= endMonth && filterMonth >= startMonth) {
+                            console.log('🔍 [AdminDashboard] Match by period (end year):', i.invoice_number);
+                            return true;
+                          }
+                          if (filterYear > startYear && filterYear < endYear) {
+                            console.log('🔍 [AdminDashboard] Match by period (middle year):', i.invoice_number);
+                            return true;
+                          }
                         }
                       }
                     }
