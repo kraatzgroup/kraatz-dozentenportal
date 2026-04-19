@@ -609,7 +609,7 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
       const firstMonth = Math.min(...monthlyData.map(m => m.month));
       const lastMonth = Math.max(...monthlyData.map(m => m.month));
       const periodStart = `${quarterYear}-${String(firstMonth).padStart(2, '0')}-01`;
-      const lastDayOfLastMonth = new Date(quarterYear, lastMonth + 1, 0).getDate();
+      const lastDayOfLastMonth = getLastDayOfMonth(quarterYear, lastMonth);
       const periodEnd = `${quarterYear}-${String(lastMonth).padStart(2, '0')}-${String(lastDayOfLastMonth).padStart(2, '0')}`;
 
       // Generate invoice number if not provided

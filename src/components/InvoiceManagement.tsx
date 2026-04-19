@@ -1898,6 +1898,9 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
                 <div className="space-y-2 text-sm text-gray-700 mb-4">
                   <p><strong>Rechnungsnummer:</strong> {invoiceNumber}</p>
                   <p><strong>Rechnungsdatum:</strong> {invoiceDate ? new Date(invoiceDate).toLocaleDateString('de-DE') : '-'}</p>
+                  {isQuarterlyInvoice && (
+                    <p><strong>Leistungszeitraum:</strong> {getQuarterDateRange(Math.ceil(createFormData.month / 3), createFormData.year)}</p>
+                  )}
                   <p><strong>Staatsexamen:</strong> {createFormData.examType}</p>
                 </div>
 
@@ -1920,8 +1923,8 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                          {createPreviewHours.map((hour) => (
-                            <tr key={hour.id}>
+                          {createPreviewHours.map((hour, index) => (
+                            <tr key={hour.id || index}>
                               <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
                                 {new Date(hour.date).toLocaleDateString('de-DE')}
                               </td>

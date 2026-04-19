@@ -32,7 +32,8 @@ export function HoursManagement({ dozentId, onBack, isAdmin = false }: HoursMana
     fetchMonthlySummary(dozentId, selectedYear, selectedMonth);
     if (viewMode === 'details') {
       const startDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
-      const endDate = new Date(selectedYear, selectedMonth, 0).toISOString().split('T')[0];
+      const lastDayOfMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+      const endDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
       fetchHours(dozentId, startDate, endDate);
     }
   }, [dozentId, selectedYear, selectedMonth, viewMode]);
@@ -64,7 +65,8 @@ export function HoursManagement({ dozentId, onBack, isAdmin = false }: HoursMana
       fetchMonthlySummary(dozentId, selectedYear, selectedMonth);
       if (viewMode === 'details') {
         const startDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
-        const endDate = new Date(selectedYear, selectedMonth, 0).toISOString().split('T')[0];
+        const lastDayOfMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+        const endDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
         fetchHours(dozentId, startDate, endDate);
       }
     } catch (error) {
@@ -90,7 +92,8 @@ export function HoursManagement({ dozentId, onBack, isAdmin = false }: HoursMana
       fetchMonthlySummary(dozentId, selectedYear, selectedMonth);
       if (viewMode === 'details') {
         const startDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
-        const endDate = new Date(selectedYear, selectedMonth, 0).toISOString().split('T')[0];
+        const lastDayOfMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+        const endDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
         fetchHours(dozentId, startDate, endDate);
       }
     }

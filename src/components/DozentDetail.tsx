@@ -351,7 +351,8 @@ export function DozentDetail() {
       
       // Fetch the activity data for the selected month/year
       const startDate = `${activityReportYear}-${String(activityReportMonth).padStart(2, '0')}-01`;
-      const endDate = new Date(activityReportYear, activityReportMonth, 0).toISOString().split('T')[0];
+      const lastDayOfMonth = new Date(activityReportYear, activityReportMonth, 0).getDate();
+      const endDate = `${activityReportYear}-${String(activityReportMonth).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
       
       // Get participant hours
       const { data: participantHoursData, error: participantError } = await supabase

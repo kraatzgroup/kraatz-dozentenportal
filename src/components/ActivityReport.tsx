@@ -224,7 +224,8 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
     
     try {
       const startDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
-      const endDate = new Date(selectedYear, selectedMonth, 0).toISOString().split('T')[0];
+      const lastDayOfMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+      const endDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
       
       // Fetch all teilnehmer assigned to this dozent
       const { data: teilnehmerData, error: teilnehmerError } = await supabase
@@ -292,7 +293,8 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
     
     try {
       const startDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
-      const endDate = new Date(selectedYear, selectedMonth, 0).toISOString().split('T')[0];
+      const lastDayOfMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+      const endDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
       
       // Fetch participant hours with study_goal and elite_kleingruppe flag
       const { data, error } = await supabase
