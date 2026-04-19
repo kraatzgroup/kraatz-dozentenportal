@@ -164,6 +164,33 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
     localStorage.setItem(storageKey, tab);
     setSearchParams({ tab });
   }, [setSearchParams]);
+
+  // Helper function to display invoice period correctly (handles quarterly invoices)
+  const getInvoicePeriodDisplay = (invoice: any) => {
+    const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+    
+    // Check if this is a quarterly invoice (period_start and period_end span multiple months)
+    if (invoice.period_start && invoice.period_end) {
+      const startDate = new Date(invoice.period_start);
+      const endDate = new Date(invoice.period_end);
+      
+      const startMonth = startDate.getMonth() + 1;
+      const endMonth = endDate.getMonth() + 1;
+      
+      // If it spans multiple months, display all months
+      if (startMonth !== endMonth) {
+        const months: string[] = [];
+        for (let m = startMonth; m <= endMonth; m++) {
+          months.push(monthNames[m - 1]);
+        }
+        return `${months.join(' & ')} ${invoice.year}`;
+      }
+    }
+    
+    // Otherwise, just show the single month
+    return `${monthNames[invoice.month - 1]} ${invoice.year}`;
+  };
+
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [calendarEntries, setCalendarEntries] = useState<any[]>([]);
@@ -290,7 +317,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
       // Fetch recent invoices
       const { data: invoicesData } = await supabase
         .from('invoices')
-        .select('id, month, year, status, submitted_at, dozent_id, total_amount')
+        .select('id, month, year, status, submitted_at, dozent_id, total_amount, period_start, period_end')
         .in('status', ['submitted', 'sent', 'paid'])
         .order('submitted_at', { ascending: false })
         .limit(10);
@@ -313,6 +340,29 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
 
       const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
 
+      const getInvoicePeriodDisplay = (invoice: any) => {
+        // Check if this is a quarterly invoice (period_start and period_end span multiple months)
+        if (invoice.period_start && invoice.period_end) {
+          const startDate = new Date(invoice.period_start);
+          const endDate = new Date(invoice.period_end);
+          
+          const startMonth = startDate.getMonth() + 1;
+          const endMonth = endDate.getMonth() + 1;
+          
+          // If it spans multiple months, display all months
+          if (startMonth !== endMonth) {
+            const months: string[] = [];
+            for (let m = startMonth; m <= endMonth; m++) {
+              months.push(monthNames[m - 1]);
+            }
+            return `${months.join(' & ')} ${invoice.year}`;
+          }
+        }
+        
+        // Otherwise, just show the single month
+        return `${monthNames[invoice.month - 1]} ${invoice.year}`;
+      };
+
       const activities: any[] = [];
 
       // Add file activities
@@ -333,7 +383,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
         activities.push({
           id: `invoice-${inv.id}`,
           type: 'invoice',
-          title: `Rechnung ${monthNames[inv.month - 1]} ${inv.year}`,
+          title: `Rechnung ${getInvoicePeriodDisplay(inv)}`,
           subtitle: `${dozentName} - ${inv.total_amount?.toFixed(2)} €`,
           timestamp: inv.submitted_at,
           icon: 'receipt',
@@ -1037,7 +1087,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
       // Fetch invoices - simplified query without join first
       const { data: invoicesData, error: invoicesError } = await supabase
         .from('invoices')
-        .select('id, month, year, status, submitted_at, dozent_id, total_amount')
+        .select('id, month, year, status, submitted_at, dozent_id, total_amount, period_start, period_end')
         .in('status', ['submitted', 'paid'])
         .order('submitted_at', { ascending: false })
         .limit(50);
@@ -1057,6 +1107,29 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
       const dozentMap = new Map((dozentProfiles || []).map(p => [p.id, p.full_name]));
 
       const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+
+      const getInvoicePeriodDisplay = (invoice: any) => {
+        // Check if this is a quarterly invoice (period_start and period_end span multiple months)
+        if (invoice.period_start && invoice.period_end) {
+          const startDate = new Date(invoice.period_start);
+          const endDate = new Date(invoice.period_end);
+          
+          const startMonth = startDate.getMonth() + 1;
+          const endMonth = endDate.getMonth() + 1;
+          
+          // If it spans multiple months, display all months
+          if (startMonth !== endMonth) {
+            const months: string[] = [];
+            for (let m = startMonth; m <= endMonth; m++) {
+              months.push(monthNames[m - 1]);
+            }
+            return `${months.join(' & ')} ${invoice.year}`;
+          }
+        }
+        
+        // Otherwise, just show the single month
+        return `${monthNames[invoice.month - 1]} ${invoice.year}`;
+      };
       
       const files = (filesData || []).map(f => ({
         ...f,
@@ -1067,7 +1140,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
         const dozentName = dozentMap.get(inv.dozent_id) || 'Unbekannt';
         return {
           id: inv.id,
-          name: `Rechnung ${monthNames[inv.month - 1]} ${inv.year}`,
+          name: `Rechnung ${getInvoicePeriodDisplay(inv)}`,
           file_path: '',
           created_at: inv.submitted_at || new Date().toISOString(),
           downloaded_at: null,
@@ -1807,7 +1880,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                       <div>
                         <p className="font-medium text-gray-900 text-sm">{inv.dozent_name}</p>
                         <p className="text-xs text-gray-500">
-                          {['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'][inv.month - 1]} {inv.year}
+                          {getInvoicePeriodDisplay(inv)}
                         </p>
                       </div>
                       <div className="text-right">
@@ -2928,7 +3001,35 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 const unpaidInvoices = submittedInvoices.filter(i => i.status === 'submitted' || i.status === 'sent');
                 const filteredInvoices = invoiceFilterMonth === 'alle'
                   ? unpaidInvoices.filter(i => i.year === invoiceFilterYear)
-                  : unpaidInvoices.filter(i => i.month === invoiceFilterMonth && i.year === invoiceFilterYear);
+                  : unpaidInvoices.filter(i => {
+                      // Check if invoice matches by month
+                      if (i.month === invoiceFilterMonth && i.year === invoiceFilterYear) {
+                        return true;
+                      }
+                      // Check if invoice is a quarterly invoice that covers the filtered month
+                      if (i.period_start && i.period_end) {
+                        const startDate = new Date(i.period_start);
+                        const endDate = new Date(i.period_end);
+                        const startMonth = startDate.getMonth() + 1;
+                        const endMonth = endDate.getMonth() + 1;
+                        const startYear = startDate.getFullYear();
+                        const endYear = endDate.getFullYear();
+                        
+                        // Check if filtered month/year falls within the invoice period
+                        if (invoiceFilterYear >= startYear && invoiceFilterYear <= endYear) {
+                          if (invoiceFilterYear === startYear && invoiceFilterMonth >= startMonth) {
+                            return true;
+                          }
+                          if (invoiceFilterYear === endYear && invoiceFilterMonth <= endMonth) {
+                            return true;
+                          }
+                          if (invoiceFilterYear > startYear && invoiceFilterYear < endYear) {
+                            return true;
+                          }
+                        }
+                      }
+                      return false;
+                    });
                 
                 if (filteredInvoices.length === 0) {
                   return (
@@ -2969,7 +3070,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                               </div>
                               <p className="text-sm text-gray-500">{invoice.dozent_name}</p>
                               <p className="text-xs text-gray-400">
-                                {new Date(2023, invoice.month - 1).toLocaleDateString('de-DE', { month: 'long' })} {invoice.year}
+                                {getInvoicePeriodDisplay(invoice)}
                                 {' • '}Erstellt: {new Date(invoice.created_at).toLocaleDateString('de-DE')}
                               </p>
                             </div>
@@ -3168,7 +3269,35 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 // Filter by month
                 if (rechnungenFilter !== 'alle') {
                   const [filterYear, filterMonth] = rechnungenFilter.split('-').map(Number);
-                  paidInvoices = paidInvoices.filter(i => i.year === filterYear && i.month === filterMonth);
+                  paidInvoices = paidInvoices.filter(i => {
+                    // Check if invoice matches by month
+                    if (i.year === filterYear && i.month === filterMonth) {
+                      return true;
+                    }
+                    // Check if invoice is a quarterly invoice that covers the filtered month
+                    if (i.period_start && i.period_end) {
+                      const startDate = new Date(i.period_start);
+                      const endDate = new Date(i.period_end);
+                      const startMonth = startDate.getMonth() + 1;
+                      const endMonth = endDate.getMonth() + 1;
+                      const startYear = startDate.getFullYear();
+                      const endYear = endDate.getFullYear();
+                      
+                      // Check if filtered month/year falls within the invoice period
+                      if (filterYear >= startYear && filterYear <= endYear) {
+                        if (filterYear === startYear && filterMonth >= startMonth) {
+                          return true;
+                        }
+                        if (filterYear === endYear && filterMonth <= endMonth) {
+                          return true;
+                        }
+                        if (filterYear > startYear && filterYear < endYear) {
+                          return true;
+                        }
+                      }
+                    }
+                    return false;
+                  });
                 }
                 
                 // Filter by search
@@ -3217,7 +3346,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                               </div>
                               <p className="text-sm text-gray-500">{invoice.dozent_name}</p>
                               <p className="text-xs text-gray-400">
-                                {new Date(2023, invoice.month - 1).toLocaleDateString('de-DE', { month: 'long' })} {invoice.year}
+                                {getInvoicePeriodDisplay(invoice)}
                                 {invoice.paid_at && (
                                   <> • Bezahlt am: {new Date(invoice.paid_at).toLocaleDateString('de-DE')}</>
                                 )}
