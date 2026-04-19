@@ -556,39 +556,48 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   let totalParticipantHours = 0;
   let totalDozentHours = 0;
 
-  // Participant hours
+  // Combine all hours and sort chronologically
+  const allHours: Array<{ type: 'participant' | 'dozent'; date: string; hours: number; entry: any }> = [];
+  
   if (data.participantHours && data.participantHours.length > 0) {
-    const sortedParticipantHours = [...data.participantHours].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    for (const entry of sortedParticipantHours) {
-      checkPageBreak(8);
-      doc.setFontSize(8);
-      addText(formatDate(entry.date), margin + 2, yPosition);
-      addText('Einzelunterricht', margin + 25, yPosition);
-      const desc = `${entry.legal_area || '-'} - ${entry.teilnehmer?.name || '-'} - ${entry.description || '-'}`.substring(0, 60);
-      addText(desc, margin + 70, yPosition);
-      addText(entry.hours.toString(), pageWidth - margin - 2, yPosition, { align: 'right' });
-      totalParticipantHours += entry.hours;
-      yPosition += 5;
-    }
+    data.participantHours.forEach(entry => {
+      allHours.push({ type: 'participant', date: entry.date, hours: entry.hours, entry });
+    });
+  }
+  
+  if (data.dozentHours && data.dozentHours.length > 0) {
+    data.dozentHours.forEach(entry => {
+      allHours.push({ type: 'dozent', date: entry.date, hours: entry.hours, entry });
+    });
   }
 
-  // Dozent hours
-  if (data.dozentHours && data.dozentHours.length > 0) {
-    const sortedDozentHours = [...data.dozentHours].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    for (const entry of sortedDozentHours) {
-      checkPageBreak(8);
-      doc.setFontSize(8);
-      addText(formatDate(entry.date), margin + 2, yPosition);
-      const type = entry.category === 'Elite-Kleingruppe Korrektur' || entry.category?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : entry.category || 'Sonstige Tätigkeit';
+  // Sort all hours chronologically
+  const sortedAllHours = allHours.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  // Display all hours in chronological order
+  for (const item of sortedAllHours) {
+    checkPageBreak(8);
+    doc.setFontSize(8);
+    addText(formatDate(item.date), margin + 2, yPosition);
+    
+    if (item.type === 'participant') {
+      addText('Einzelunterricht', margin + 25, yPosition);
+      const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`.substring(0, 60);
+      addText(desc, margin + 70, yPosition);
+      addText(item.hours.toString(), pageWidth - margin - 2, yPosition, { align: 'right' });
+      totalParticipantHours += item.hours;
+      yPosition += 5;
+    } else {
+      const type = item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.category?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : item.entry.category || 'Sonstige Tätigkeit';
       addText(type, margin + 25, yPosition);
       const descYPosition = yPosition;
       let extraLines = 0;
-      if (entry.category === 'Elite-Kleingruppe Korrektur') {
+      if (item.entry.category === 'Elite-Kleingruppe Korrektur') {
         yPosition += 4;
         addText('Klausurenkorrektur', margin + 25, yPosition);
         extraLines = 1;
       }
-      const desc = (entry.description?.startsWith('Klausurkorrektur:') && (entry.category === 'Elite-Kleingruppe Korrektur' || entry.description?.includes('Elite-Kleingruppe')) ? entry.description.replace('Klausurkorrektur:', '').trim().replace(/-\s*\d+\s*(?:Punkte|Punkte?)$/, '').trim() : entry.description || '-');
+      const desc = (item.entry.description?.startsWith('Klausurkorrektur:') && (item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe')) ? item.entry.description.replace('Klausurkorrektur:', '').trim().replace(/-\s*\d+\s*(?:Punkte|Punkte?)$/, '').trim() : item.entry.description || '-');
       const maxWidth = pageWidth - margin - 20 - (margin + 70);
       if (desc.length > 50) {
         const lines = doc.splitTextToSize(desc, maxWidth);
@@ -599,8 +608,8 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       } else {
         addText(desc.substring(0, 80), margin + 70, descYPosition);
       }
-      addText(entry.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
-      totalDozentHours += entry.hours;
+      addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
+      totalDozentHours += item.hours;
       yPosition += 5 + (extraLines * 4);
     }
   }
@@ -1132,33 +1141,44 @@ export const generateQuarterlyInvoicePDF = async (data: QuarterlyInvoiceData) =>
     let totalParticipantHours = 0;
     let totalDozentHours = 0;
 
-    // Participant hours
+    // Combine all hours and sort chronologically
+    const allHours: Array<{ type: 'participant' | 'dozent'; date: string; hours: number; entry: any }> = [];
+    
     if (monthData.participantHours && monthData.participantHours.length > 0) {
-      for (const entry of monthData.participantHours) {
-        checkPageBreak(8);
-        doc.setFontSize(8);
-        addText(formatDate(entry.date), margin + 2, yPosition);
-        addText('Einzelunterricht', margin + 25, yPosition);
-        const desc = `${entry.legal_area || '-'} - ${entry.teilnehmer?.name || '-'} - ${entry.description || '-'}`.substring(0, 60);
-        addText(desc, margin + 70, yPosition);
-        addText(entry.hours.toString(), pageWidth - margin - 2, yPosition, { align: 'right' });
-        totalParticipantHours += entry.hours;
-        yPosition += 5;
-      }
+      monthData.participantHours.forEach(entry => {
+        allHours.push({ type: 'participant', date: entry.date, hours: entry.hours, entry });
+      });
+    }
+    
+    if (monthData.dozentHours && monthData.dozentHours.length > 0) {
+      monthData.dozentHours.forEach(entry => {
+        allHours.push({ type: 'dozent', date: entry.date, hours: entry.hours, entry });
+      });
     }
 
-    // Dozent hours
-    if (monthData.dozentHours && monthData.dozentHours.length > 0) {
-      for (const entry of monthData.dozentHours) {
-        checkPageBreak(8);
-        doc.setFontSize(8);
-        addText(formatDate(entry.date), margin + 2, yPosition);
-        const type = entry.category === 'Elite-Kleingruppe Korrektur' || entry.description?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : entry.category || 'Sonstige Tätigkeit';
+    // Sort all hours chronologically
+    const sortedAllHours = allHours.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    // Display all hours in chronological order
+    for (const item of sortedAllHours) {
+      checkPageBreak(8);
+      doc.setFontSize(8);
+      addText(formatDate(item.date), margin + 2, yPosition);
+      
+      if (item.type === 'participant') {
+        addText('Einzelunterricht', margin + 25, yPosition);
+        const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`.substring(0, 60);
+        addText(desc, margin + 70, yPosition);
+        addText(item.hours.toString(), pageWidth - margin - 2, yPosition, { align: 'right' });
+        totalParticipantHours += item.hours;
+        yPosition += 5;
+      } else {
+        const type = item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : item.entry.category || 'Sonstige Tätigkeit';
         addText(type, margin + 25, yPosition);
         const descYPosition = yPosition;
-        const groupMatch = entry.description?.match(/- Elite-Kleingruppe\s+(\d{4}\/\d{4}\s*-\s*\d+)/);
+        const groupMatch = item.entry.description?.match(/- Elite-Kleingruppe\s+(\d{4}\/\d{4}\s*-\s*\d+)/);
         let extraLines = 0;
-        if (entry.category === 'Elite-Kleingruppe Korrektur') {
+        if (item.entry.category === 'Elite-Kleingruppe Korrektur') {
           yPosition += 4;
           addText('Klausurenkorrektur', margin + 25, yPosition);
           extraLines = 1;
@@ -1167,10 +1187,10 @@ export const generateQuarterlyInvoicePDF = async (data: QuarterlyInvoiceData) =>
           addText(groupMatch[1], margin + 25, yPosition);
           extraLines = 1;
         }
-        const desc = (entry.description?.startsWith('Klausurkorrektur:') && (entry.category === 'Elite-Kleingruppe Korrektur' || entry.description?.includes('Elite-Kleingruppe')) ? entry.description.replace('Klausurkorrektur:', '').trim().replace(/-\s*\d+\s*(?:Punkte|Punkte?)$/, '').trim().replace(/- Elite-Kleingruppe\s+\d{4}\/\d{4}\s*-\s*\d+/, '').trim() : entry.description?.includes('Elite-Kleingruppe') ? entry.description.replace(/- Elite-Kleingruppe\s+\d{4}\/\d{4}\s*-\s*\d+/, '').trim() : entry.description || '-').substring(0, 80);
+        const desc = (item.entry.description?.startsWith('Klausurkorrektur:') && (item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe')) ? item.entry.description.replace('Klausurkorrektur:', '').trim().replace(/-\s*\d+\s*(?:Punkte|Punkte?)$/, '').trim().replace(/- Elite-Kleingruppe\s+\d{4}\/\d{4}\s*-\s*\d+/, '').trim() : item.entry.description?.includes('Elite-Kleingruppe') ? item.entry.description.replace(/- Elite-Kleingruppe\s+\d{4}\/\d{4}\s*-\s*\d+/, '').trim() : item.entry.description || '-').substring(0, 80);
         addText(desc, margin + 70, descYPosition);
-        addText(entry.hours.toString(), pageWidth - margin - 15, descYPosition, { align: 'right' });
-        totalDozentHours += entry.hours;
+        addText(item.hours.toString(), pageWidth - margin - 15, descYPosition, { align: 'right' });
+        totalDozentHours += item.hours;
         yPosition += 5 + (extraLines * 4);
       }
     }
@@ -1611,33 +1631,44 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
     let totalParticipantHours = 0;
     let totalDozentHours = 0;
 
-    // Participant hours
+    // Combine all hours and sort chronologically
+    const allHours: Array<{ type: 'participant' | 'dozent'; date: string; hours: number; entry: any }> = [];
+    
     if (monthData.participantHours && monthData.participantHours.length > 0) {
-      for (const entry of monthData.participantHours) {
-        checkPageBreak(8);
-        doc.setFontSize(8);
-        addText(formatDate(entry.date), margin + 2, yPosition);
-        addText('Einzelunterricht', margin + 25, yPosition);
-        const desc = `${entry.legal_area || '-'} - ${entry.teilnehmer?.name || '-'} - ${entry.description || '-'}`.substring(0, 60);
-        addText(desc, margin + 70, yPosition);
-        addText(entry.hours.toString(), pageWidth - margin - 2, yPosition, { align: 'right' });
-        totalParticipantHours += entry.hours;
-        yPosition += 5;
-      }
+      monthData.participantHours.forEach(entry => {
+        allHours.push({ type: 'participant', date: entry.date, hours: entry.hours, entry });
+      });
+    }
+    
+    if (monthData.dozentHours && monthData.dozentHours.length > 0) {
+      monthData.dozentHours.forEach(entry => {
+        allHours.push({ type: 'dozent', date: entry.date, hours: entry.hours, entry });
+      });
     }
 
-    // Dozent hours
-    if (monthData.dozentHours && monthData.dozentHours.length > 0) {
-      for (const entry of monthData.dozentHours) {
-        checkPageBreak(8);
-        doc.setFontSize(8);
-        addText(formatDate(entry.date), margin + 2, yPosition);
-        const type = entry.category === 'Elite-Kleingruppe Korrektur' || entry.description?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : entry.category || 'Sonstige Tätigkeit';
+    // Sort all hours chronologically
+    const sortedAllHours = allHours.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    // Display all hours in chronological order
+    for (const item of sortedAllHours) {
+      checkPageBreak(8);
+      doc.setFontSize(8);
+      addText(formatDate(item.date), margin + 2, yPosition);
+      
+      if (item.type === 'participant') {
+        addText('Einzelunterricht', margin + 25, yPosition);
+        const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`.substring(0, 60);
+        addText(desc, margin + 70, yPosition);
+        addText(item.hours.toString(), pageWidth - margin - 2, yPosition, { align: 'right' });
+        totalParticipantHours += item.hours;
+        yPosition += 5;
+      } else {
+        const type = item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : item.entry.category || 'Sonstige Tätigkeit';
         addText(type, margin + 25, yPosition);
         const descYPosition = yPosition;
-        const groupMatch = entry.description?.match(/- Elite-Kleingruppe\s+(\d{4}\/\d{4}\s*-\s*\d+)/);
+        const groupMatch = item.entry.description?.match(/- Elite-Kleingruppe\s+(\d{4}\/\d{4}\s*-\s*\d+)/);
         let extraLines = 0;
-        if (entry.category === 'Elite-Kleingruppe Korrektur') {
+        if (item.entry.category === 'Elite-Kleingruppe Korrektur') {
           yPosition += 4;
           addText('Klausurenkorrektur', margin + 25, yPosition);
           extraLines = 1;
@@ -1646,10 +1677,10 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
           addText(groupMatch[1], margin + 25, yPosition);
           extraLines = 1;
         }
-        const desc = (entry.description?.startsWith('Klausurkorrektur:') && (entry.category === 'Elite-Kleingruppe Korrektur' || entry.description?.includes('Elite-Kleingruppe')) ? entry.description.replace('Klausurkorrektur:', '').trim().replace(/-\s*\d+\s*(?:Punkte|Punkte?)$/, '').trim().replace(/- Elite-Kleingruppe\s+\d{4}\/\d{4}\s*-\s*\d+/, '').trim() : entry.description?.includes('Elite-Kleingruppe') ? entry.description.replace(/- Elite-Kleingruppe\s+\d{4}\/\d{4}\s*-\s*\d+/, '').trim() : entry.description || '-').substring(0, 80);
+        const desc = (item.entry.description?.startsWith('Klausurkorrektur:') && (item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe')) ? item.entry.description.replace('Klausurkorrektur:', '').trim().replace(/-\s*\d+\s*(?:Punkte|Punkte?)$/, '').trim().replace(/- Elite-Kleingruppe\s+\d{4}\/\d{4}\s*-\s*\d+/, '').trim() : item.entry.description?.includes('Elite-Kleingruppe') ? item.entry.description.replace(/- Elite-Kleingruppe\s+\d{4}\/\d{4}\s*-\s*\d+/, '').trim() : item.entry.description || '-').substring(0, 80);
         addText(desc, margin + 70, descYPosition);
-        addText(entry.hours.toString(), pageWidth - margin - 15, descYPosition, { align: 'right' });
-        totalDozentHours += entry.hours;
+        addText(item.hours.toString(), pageWidth - margin - 15, descYPosition, { align: 'right' });
+        totalDozentHours += item.hours;
         yPosition += 5 + (extraLines * 4);
       }
     }

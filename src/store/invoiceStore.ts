@@ -2,6 +2,11 @@ import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { lastDayOfMonth } from 'date-fns';
 
+const getMonthName = (month: number): string => {
+  const months = ['', 'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+  return months[month];
+};
+
 // Helper function to get the last day of a month, correctly handling leap years
 const getLastDayOfMonth = (year: number, month: number): number => {
   // Use date-fns to get the last day of the month
@@ -611,12 +616,14 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
       const invoiceNumber = customInvoiceNumber || `RE${Date.now()}`;
 
       // Create invoice directly with custom invoice number and date
+      // Use the first month without an existing invoice to avoid constraint violations
+      const invoiceMonth = Math.min(...missingMonths);
       const { data: newInvoice, error } = await supabase
         .from('invoices')
         .insert({
           dozent_id: targetDozentId,
           invoice_number: invoiceNumber,
-          month: quarter * 3 - 2, // Use first month of the quarter for the invoice
+          month: invoiceMonth, // Use first month without an existing invoice
           year: quarterYear,
           period_start: periodStart,
           period_end: periodEnd,

@@ -455,14 +455,30 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       // Fetch existing invoices
       const { data: existingInvoices } = await supabase
         .from('invoices')
-        .select('month, year')
+        .select('month, year, period_start, period_end')
         .eq('dozent_id', dozentId);
       
       const existingMonthYearSet = new Set((existingInvoices || []).map((inv: any) => `${inv.year}-${inv.month}`));
       
-      // Filter out months with existing invoices
+      // Also exclude months that are covered by quarterly invoices
+      const coveredMonths = new Set<string>();
+      (existingInvoices || []).forEach((inv: any) => {
+        if (inv.period_start && inv.period_end) {
+          const startDate = new Date(inv.period_start);
+          const endDate = new Date(inv.period_end);
+          const startMonth = startDate.getMonth() + 1;
+          const endMonth = endDate.getMonth() + 1;
+          
+          // Add all months in the period
+          for (let m = startMonth; m <= endMonth; m++) {
+            coveredMonths.add(`${inv.year}-${m}`);
+          }
+        }
+      });
+      
+      // Filter out months with existing invoices or covered by quarterly invoices
       const availableMonths = Array.from(monthYearSet)
-        .filter(my => !existingMonthYearSet.has(my))
+        .filter(my => !existingMonthYearSet.has(my) && !coveredMonths.has(my))
         .map(my => {
           const [year, month] = my.split('-').map(Number);
           return { month, year };
@@ -517,15 +533,31 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       // Fetch existing invoices (include draft status)
       const { data: existingInvoices } = await supabase
         .from('invoices')
-        .select('month, year')
+        .select('month, year, period_start, period_end')
         .eq('dozent_id', dozentId)
         .in('status', ['draft', 'submitted', 'sent', 'paid']);
       
       const existingMonthYearSet = new Set((existingInvoices || []).map((inv: any) => `${inv.year}-${inv.month}`));
       
-      // Filter out months with existing invoices
+      // Also include months covered by quarterly invoices
+      const coveredMonths = new Set<string>();
+      (existingInvoices || []).forEach((inv: any) => {
+        if (inv.period_start && inv.period_end) {
+          const startDate = new Date(inv.period_start);
+          const endDate = new Date(inv.period_end);
+          const startMonth = startDate.getMonth() + 1;
+          const endMonth = endDate.getMonth() + 1;
+          
+          // Add all months in the period
+          for (let m = startMonth; m <= endMonth; m++) {
+            coveredMonths.add(`${inv.year}-${m}`);
+          }
+        }
+      });
+      
+      // Filter out months with existing invoices or covered by quarterly invoices
       const availableMonths = Array.from(monthYearSet)
-        .filter(my => !existingMonthYearSet.has(my))
+        .filter(my => !existingMonthYearSet.has(my) && !coveredMonths.has(my))
         .map(my => {
           const [year, month] = my.split('-').map(Number);
           return { month, year };
@@ -545,9 +577,25 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         quarterMonthsMap.get(quarterKey)!.add(month);
       });
 
-      // Include quarters where at least 1 month is available
+      // Include quarters where at least 1 month is available and not all months are covered
       quarterMonthsMap.forEach((months, quarterKey) => {
-        quarterSet.add(quarterKey);
+        const [year, quarter] = quarterKey.split('-').map(Number);
+        const firstMonth = (quarter - 1) * 3 + 1;
+        const lastMonth = quarter * 3;
+        
+        // Check if all months in this quarter are covered (either by monthly invoices or quarterly invoices)
+        let allMonthsCovered = true;
+        for (let m = firstMonth; m <= lastMonth; m++) {
+          if (!existingMonthYearSet.has(`${year}-${m}`) && !coveredMonths.has(`${year}-${m}`)) {
+            allMonthsCovered = false;
+            break;
+          }
+        }
+        
+        // Only include the quarter if not all months are covered
+        if (!allMonthsCovered) {
+          quarterSet.add(quarterKey);
+        }
       });
 
       const availableQuarters = Array.from(quarterSet)
@@ -556,10 +604,10 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
           const firstMonth = (quarter - 1) * 3 + 1;
           const lastMonth = quarter * 3;
           
-          // Find months in this quarter that have existing invoices
+          // Find months in this quarter that have existing invoices or are covered by quarterly invoices
           const monthsWithInvoices: number[] = [];
           for (let m = firstMonth; m <= lastMonth; m++) {
-            if (existingMonthYearSet.has(`${year}-${m}`)) {
+            if (existingMonthYearSet.has(`${year}-${m}`) || coveredMonths.has(`${year}-${m}`)) {
               monthsWithInvoices.push(m);
             }
           }
@@ -1230,6 +1278,27 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
     return `${quarter}. Quartal`;
   };
 
+  const getInvoicePeriodDisplay = (invoice: Invoice) => {
+    // Check if this is a quarterly invoice (period_start and period_end span multiple months)
+    const startDate = new Date(invoice.period_start);
+    const endDate = new Date(invoice.period_end);
+    
+    const startMonth = startDate.getMonth() + 1;
+    const endMonth = endDate.getMonth() + 1;
+    
+    // If it spans multiple months, display all months
+    if (startMonth !== endMonth) {
+      const months: string[] = [];
+      for (let m = startMonth; m <= endMonth; m++) {
+        months.push(getMonthName(m));
+      }
+      return `${months.join(' & ')} ${invoice.year}`;
+    }
+    
+    // Otherwise, just show the single month
+    return `${getMonthName(invoice.month)} ${invoice.year}`;
+  };
+
   const getLastDayOfMonth = (year: number, month: number): number => {
     // Use date-fns to get the last day of the month
     const date = new Date(year, month - 1, 1);
@@ -1358,7 +1427,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
                         </div>
                         <div className="flex items-center mt-1 text-sm text-gray-500">
                           <Calendar className="h-4 w-4 mr-1" />
-                          <span>{getMonthName(invoice.month)} {invoice.year}</span>
+                          <span>{getInvoicePeriodDisplay(invoice)}</span>
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
                           Erstellt: {new Date(invoice.created_at).toLocaleDateString('de-DE')}
@@ -1490,7 +1559,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
                           </span>
                         </div>
                         <p className="text-xs text-gray-500">
-                          {getMonthName(invoice.month)} {invoice.year}
+                          {getInvoicePeriodDisplay(invoice)}
                         </p>
                       </div>
                     </div>
@@ -1713,6 +1782,10 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
                       onChange={(e) => {
                         setInvoiceNumber(e.target.value);
                         setInvoiceNumberError('');
+                        // Validate immediately when user types
+                        if (e.target.value) {
+                          handleInvoiceNumberBlur();
+                        }
                       }}
                       onBlur={handleInvoiceNumberBlur}
                       className={`w-full px-3 py-2 border rounded-md ${invoiceNumberError ? 'border-red-500' : ''}`}
@@ -1839,7 +1912,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
                     <div className="max-h-60 overflow-y-auto border rounded-lg">
                       <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50 sticky top-0">
-                          <tr>
+                          <tr key="header">
                             <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Datum</th>
                             <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Typ</th>
                             <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Beschreibung</th>
@@ -1880,7 +1953,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
                               </td>
                             </tr>
                           ))}
-                          <tr className="bg-gray-50 sticky bottom-0">
+                          <tr key="total" className="bg-gray-50 sticky bottom-0">
                             <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900"></td>
                             <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900"></td>
                             <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900">Gesamt</td>
