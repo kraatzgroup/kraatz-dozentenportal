@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { lastDayOfMonth } from 'date-fns';
 import { Plus, FileText, Download, Trash2, Calendar, Eye, Send, CheckCircle, Clock, X, User, AlertTriangle } from 'lucide-react';
 import { useInvoiceStore, Invoice } from '../store/invoiceStore';
 import { useAuthStore } from '../store/authStore';
@@ -13,6 +14,19 @@ interface HourEntry {
   teilnehmer_name?: string;
 }
 
+interface ConfirmHourEntry {
+  id: string;
+  date: string;
+  hours: number;
+  description: string;
+  category?: string;
+  elite_kleingruppe?: boolean;
+  study_goal?: string;
+  teilnehmer?: { name?: string };
+  teilnehmer_name?: string;
+  type: 'participant' | 'dozent';
+}
+
 interface InvoiceManagementProps {
   onBack: () => void;
   dozentId?: string;
@@ -23,11 +37,22 @@ interface InvoiceManagementProps {
 }
 
 export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedMonth, selectedYear, onNavigateToActivity }: InvoiceManagementProps) {
-  const { invoices, isLoading, fetchInvoices, createInvoice, updateInvoice, deleteInvoice, generateInvoicePDF } = useInvoiceStore();
+  const { invoices, isLoading, fetchInvoices, createInvoice, updateInvoice, deleteInvoice, generateInvoicePDF, createQuarterlyInvoice } = useInvoiceStore();
   const { user } = useAuthStore();
   const { addToast } = useToastStore();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showCreateTypeDialog, setShowCreateTypeDialog] = useState(false);
+  const [showPeriodSelectionDialog, setShowPeriodSelectionDialog] = useState(false);
+  const [availableMonths, setAvailableMonths] = useState<{ month: number; year: number }[]>([]);
+  const [availableQuarters, setAvailableQuarters] = useState<{ quarter: number; year: number; monthsWithInvoices: number[] }[]>([]);
+  const [showInvoiceDetailsDialog, setShowInvoiceDetailsDialog] = useState(false);
+  const [showExamTypeDialog, setShowExamTypeDialog] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceNumberError, setInvoiceNumberError] = useState('');
+  const [isQuarterlyInvoice, setIsQuarterlyInvoice] = useState(false);
   const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
   const [previewHours, setPreviewHours] = useState<HourEntry[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -46,8 +71,9 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
   const [reviewInvoice, setReviewInvoice] = useState<Invoice | null>(null);
   const [reviewPdfUrl, setReviewPdfUrl] = useState<string | null>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewHours, setReviewHours] = useState<any[]>([]);
   const [deleteModal, setDeleteModal] = useState<{ show: boolean; invoice: Invoice | null }>({ show: false, invoice: null });
-  const [createPreviewHours, setCreatePreviewHours] = useState<HourEntry[]>([]);
+  const [createPreviewHours, setCreatePreviewHours] = useState<ConfirmHourEntry[]>([]);
   const [createPreviewLoading, setCreatePreviewLoading] = useState(false);
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
   const [invoiceDeadlineDay, setInvoiceDeadlineDay] = useState<number>(5);
@@ -126,9 +152,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
 
   // Current month invoices only (draft or review status, current month only)
   const currentMonthInvoices = invoices.filter(invoice => 
-    (invoice.status === 'draft' || invoice.status === 'review') &&
-    invoice.month === currentMonth && 
-    invoice.year === currentYear
+    invoice.status === 'draft' || invoice.status === 'review' || invoice.status === 'submitted' || invoice.status === 'sent'
   );
 
   // Archive invoices (submitted, sent, or paid - anything shared with admin)
@@ -152,9 +176,138 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       const periodStart = new Date(createFormData.year, createFormData.month - 1, 1);
       const periodEnd = new Date(createFormData.year, createFormData.month, 0);
       const startDate = periodStart.toISOString().split('T')[0];
-      const endDate = periodEnd.toISOString().split('T')[0];
+      const lastDayOfMonth = getLastDayOfMonth(createFormData.year, createFormData.month);
+      const endDate = `${createFormData.year}-${String(createFormData.month).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
 
-      console.log('Fetching hours for:', { dozentId, startDate, endDate, examType: createFormData.examType });
+      console.log('Fetching hours for:', { dozentId, startDate, endDate, examType: createFormData.examType, isQuarterlyInvoice, createFormData });
+
+      // For quarterly invoices, check which months already have invoices
+      if (isQuarterlyInvoice) {
+        console.log('📄 [fetchCreatePreviewHours] Quarterly invoice mode detected');
+        const quarter = Math.ceil(createFormData.month / 3);
+        const quarterMonths: number[] = [];
+        if (quarter === 1) quarterMonths.push(1, 2, 3);
+        else if (quarter === 2) quarterMonths.push(4, 5, 6);
+        else if (quarter === 3) quarterMonths.push(7, 8, 9);
+        else quarterMonths.push(10, 11, 12);
+
+        console.log('📄 [fetchCreatePreviewHours] Quarter:', quarter, 'quarterMonths:', quarterMonths);
+
+        // Fetch existing invoices for this quarter
+        const { data: existingInvoices } = await supabase
+          .from('invoices')
+          .select('month, year')
+          .eq('dozent_id', dozentId)
+          .in('month', quarterMonths)
+          .eq('year', createFormData.year)
+          .in('status', ['draft', 'submitted', 'sent', 'paid']);
+
+        console.log('📄 [fetchCreatePreviewHours] Existing invoices:', existingInvoices);
+
+        const existingMonths = new Set((existingInvoices || []).map(inv => inv.month));
+        const missingMonths = quarterMonths.filter(month => !existingMonths.has(month));
+
+        console.log('📄 [fetchCreatePreviewHours] existingMonths:', existingMonths, 'missingMonths:', missingMonths);
+
+        // If all months have invoices, return empty hours
+        if (missingMonths.length === 0) {
+          setCreatePreviewHours([]);
+          return;
+        }
+
+        // Fetch hours only for missing months
+        let allParticipantHours: any[] = [];
+        let allDozentHours: any[] = [];
+
+        for (const month of missingMonths) {
+          const monthLastDay = getLastDayOfMonth(createFormData.year, month);
+          const monthStartDate = `${createFormData.year}-${String(month).padStart(2, '0')}-01`;
+          const monthEndDate = `${createFormData.year}-${String(month).padStart(2, '0')}-${String(monthLastDay).padStart(2, '0')}`;
+
+          const { data: monthParticipantHours } = await supabase
+            .from('participant_hours')
+            .select('date, hours, description, teilnehmer:teilnehmer(name, elite_kleingruppe, study_goal)')
+            .eq('dozent_id', dozentId)
+            .gte('date', monthStartDate)
+            .lte('date', monthEndDate)
+            .order('date', { ascending: true });
+
+          const { data: monthDozentHours } = await supabase
+            .from('dozent_hours')
+            .select('date, hours, description, category, exam_type')
+            .eq('dozent_id', dozentId)
+            .gte('date', monthStartDate)
+            .lte('date', monthEndDate)
+            .order('date', { ascending: true });
+
+          allParticipantHours = [...allParticipantHours, ...(monthParticipantHours || [])];
+          allDozentHours = [...allDozentHours, ...(monthDozentHours || [])];
+        }
+
+        // Normalize and filter
+        const normalizedParticipantHours = allParticipantHours.map((h: any) => ({
+          ...h,
+          teilnehmer: Array.isArray(h.teilnehmer) ? h.teilnehmer[0] : h.teilnehmer
+        }));
+
+        let filteredParticipantHours = normalizedParticipantHours;
+        if (createFormData.examType === '1. Staatsexamen') {
+          filteredParticipantHours = normalizedParticipantHours.filter((h: any) => {
+            const studyGoal = h.teilnehmer?.study_goal;
+            return h.teilnehmer?.elite_kleingruppe || !studyGoal || !studyGoal.includes('2. Staatsexamen');
+          });
+        } else if (createFormData.examType === '2. Staatsexamen') {
+          filteredParticipantHours = normalizedParticipantHours.filter((h: any) => {
+            const studyGoal = h.teilnehmer?.study_goal;
+            return !h.teilnehmer?.elite_kleingruppe && studyGoal && studyGoal.includes('2. Staatsexamen');
+          });
+        }
+
+        let filteredDozentHours = allDozentHours;
+        if (createFormData.examType === '1. Staatsexamen') {
+          filteredDozentHours = allDozentHours.filter((h: any) => {
+            const category = h.category?.toLowerCase() || '';
+            const entryExamType = h.exam_type;
+            
+            if (category.includes('elite')) return true;
+            if (entryExamType === '1. Staatsexamen') return true;
+            if (!entryExamType) return true;
+            
+            return false;
+          });
+        } else if (createFormData.examType === '2. Staatsexamen') {
+          filteredDozentHours = allDozentHours.filter((h: any) => {
+            const category = h.category?.toLowerCase() || '';
+            const entryExamType = h.exam_type;
+            
+            if (category.includes('elite')) return false;
+            return entryExamType === '2. Staatsexamen';
+          });
+        }
+
+        const allHours = [...filteredParticipantHours, ...filteredDozentHours].sort((a: any, b: any) => 
+          new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
+
+        setCreatePreviewHours(allHours);
+        return;
+      }
+
+      // For monthly invoices, check if month already has an invoice
+      const { data: existingInvoice } = await supabase
+        .from('invoices')
+        .select('month, year')
+        .eq('dozent_id', dozentId)
+        .eq('month', createFormData.month)
+        .eq('year', createFormData.year)
+        .in('status', ['draft', 'submitted', 'sent', 'paid'])
+        .single();
+
+      if (existingInvoice) {
+        console.log('Month already has invoice, returning empty hours');
+        setCreatePreviewHours([]);
+        return;
+      }
 
       // Fetch participant hours with study_goal and elite_kleingruppe
       const { data: participantHours, error: phError } = await supabase
@@ -245,7 +398,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
 
       combined.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       console.log('Combined hours for preview:', combined);
-      setCreatePreviewHours(combined);
+      setCreatePreviewHours(combined as any);
     } catch (error) {
       console.error('Error fetching preview hours:', error);
     } finally {
@@ -262,33 +415,311 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
 
   const handleCreateInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
+    setShowConfirmModal(true);
+  };
+
+  const handleCreateMonthlyInvoice = async () => {
+    setShowCreateTypeDialog(false);
+    setIsQuarterlyInvoice(false);
     
+    // Fetch available months with hours but no invoices
     try {
-      const newInvoice = await createInvoice({
-        month: createFormData.month,
-        year: createFormData.year,
-        dozentId: dozentId,
-        examType: createFormData.examType
+      const currentMonth = new Date().getMonth() + 1;
+      const currentYear = new Date().getFullYear();
+      
+      // Fetch months with hours
+      const { data: participantMonths } = await supabase
+        .from('participant_hours')
+        .select('date')
+        .eq('dozent_id', dozentId)
+        .not('date', 'is', null);
+      
+      const { data: dozentMonths } = await supabase
+        .from('dozent_hours')
+        .select('date')
+        .eq('dozent_id', dozentId)
+        .not('date', 'is', null);
+      
+      // Get unique month/year combinations
+      const monthYearSet = new Set<string>();
+      [...(participantMonths || []), ...(dozentMonths || [])].forEach((h: any) => {
+        const date = new Date(h.date);
+        const month = date.getMonth() + 1;
+        const year = date.getFullYear();
+        // Exclude current month
+        if (month !== currentMonth || year !== currentYear) {
+          monthYearSet.add(`${year}-${month}`);
+        }
       });
       
-      setShowCreateDialog(false);
-      setCreateFormData({
-        month: new Date().getMonth() + 1,
-        year: new Date().getFullYear(),
-        examType: '1. Staatsexamen'
-      });
+      // Fetch existing invoices
+      const { data: existingInvoices } = await supabase
+        .from('invoices')
+        .select('month, year')
+        .eq('dozent_id', dozentId);
       
-      // Open review modal immediately after creation
-      if (newInvoice) {
-        openReviewModal(newInvoice);
-      }
-    } catch (error: any) {
-      console.error('Error creating invoice:', error);
-      const errorMessage = error.message?.includes('invoices_dozent_month_year_unique') || error.code === '23505'
-        ? 'Es gibt bereits eine Rechnung für diesen Monat.'
-        : 'Fehler beim Erstellen der Rechnung';
-      addToast(errorMessage, 'error');
+      const existingMonthYearSet = new Set((existingInvoices || []).map((inv: any) => `${inv.year}-${inv.month}`));
+      
+      // Filter out months with existing invoices
+      const availableMonths = Array.from(monthYearSet)
+        .filter(my => !existingMonthYearSet.has(my))
+        .map(my => {
+          const [year, month] = my.split('-').map(Number);
+          return { month, year };
+        })
+        .sort((a, b) => {
+          if (a.year !== b.year) return b.year - a.year;
+          return b.month - a.month;
+        });
+      
+      setAvailableMonths(availableMonths);
+      setShowPeriodSelectionDialog(true);
+    } catch (error) {
+      console.error('Error fetching available months:', error);
+      addToast('Fehler beim Laden der verfügbaren Monate', 'error');
     }
+  };
+
+  const handleCreateQuarterlyInvoiceDialog = async () => {
+    setShowCreateTypeDialog(false);
+    setIsQuarterlyInvoice(true);
+    
+    // Fetch available quarters with months that have hours but no invoices
+    try {
+      const currentMonth = new Date().getMonth() + 1;
+      const currentYear = new Date().getFullYear();
+      
+      // Fetch months with hours
+      const { data: participantMonths } = await supabase
+        .from('participant_hours')
+        .select('date')
+        .eq('dozent_id', dozentId)
+        .not('date', 'is', null);
+      
+      const { data: dozentMonths } = await supabase
+        .from('dozent_hours')
+        .select('date')
+        .eq('dozent_id', dozentId)
+        .not('date', 'is', null);
+      
+      // Get unique month/year combinations
+      const monthYearSet = new Set<string>();
+      [...(participantMonths || []), ...(dozentMonths || [])].forEach((h: any) => {
+        const date = new Date(h.date);
+        const month = date.getMonth() + 1;
+        const year = date.getFullYear();
+        // Exclude current month
+        if (month !== currentMonth || year !== currentYear) {
+          monthYearSet.add(`${year}-${month}`);
+        }
+      });
+      
+      // Fetch existing invoices (include draft status)
+      const { data: existingInvoices } = await supabase
+        .from('invoices')
+        .select('month, year')
+        .eq('dozent_id', dozentId)
+        .in('status', ['draft', 'submitted', 'sent', 'paid']);
+      
+      const existingMonthYearSet = new Set((existingInvoices || []).map((inv: any) => `${inv.year}-${inv.month}`));
+      
+      // Filter out months with existing invoices
+      const availableMonths = Array.from(monthYearSet)
+        .filter(my => !existingMonthYearSet.has(my))
+        .map(my => {
+          const [year, month] = my.split('-').map(Number);
+          return { month, year };
+        });
+      
+      // Group by quarters - show quarters where at least 1 month is available
+      const quarterSet = new Set<string>();
+      const quarterMonthsMap = new Map<string, Set<number>>();
+
+      availableMonths.forEach(({ month, year }) => {
+        const quarter = Math.ceil(month / 3);
+        const quarterKey = `${year}-${quarter}`;
+        
+        if (!quarterMonthsMap.has(quarterKey)) {
+          quarterMonthsMap.set(quarterKey, new Set());
+        }
+        quarterMonthsMap.get(quarterKey)!.add(month);
+      });
+
+      // Include quarters where at least 1 month is available
+      quarterMonthsMap.forEach((months, quarterKey) => {
+        quarterSet.add(quarterKey);
+      });
+
+      const availableQuarters = Array.from(quarterSet)
+        .map(qy => {
+          const [year, quarter] = qy.split('-').map(Number);
+          const firstMonth = (quarter - 1) * 3 + 1;
+          const lastMonth = quarter * 3;
+          
+          // Find months in this quarter that have existing invoices
+          const monthsWithInvoices: number[] = [];
+          for (let m = firstMonth; m <= lastMonth; m++) {
+            if (existingMonthYearSet.has(`${year}-${m}`)) {
+              monthsWithInvoices.push(m);
+            }
+          }
+          
+          return { quarter, year, monthsWithInvoices };
+        })
+        .sort((a, b) => {
+          if (a.year !== b.year) return b.year - a.year;
+          return b.quarter - b.quarter;
+        });
+      
+      setAvailableQuarters(availableQuarters);
+      setShowPeriodSelectionDialog(true);
+    } catch (error) {
+      console.error('Error fetching available quarters:', error);
+      addToast('Fehler beim Laden der verfügbaren Quartale', 'error');
+    }
+  };
+
+  const handleSelectMonth = (month: number, year: number) => {
+    setCreateFormData({ month, year, examType: createFormData.examType });
+    setShowPeriodSelectionDialog(false);
+    // Generate suggested invoice number
+    const lastInvoice = invoices.find(inv => inv.dozent_id === dozentId);
+    if (lastInvoice) {
+      const lastNumber = parseInt(lastInvoice.invoice_number.replace(/\D/g, ''));
+      const newNumber = lastNumber + 1;
+      setInvoiceNumber(`RE${String(newNumber).padStart(8, '0')}`);
+    } else {
+      setInvoiceNumber('RE00000001');
+    }
+    setShowInvoiceDetailsDialog(true);
+  };
+
+  const handleSelectQuarter = (quarter: number, year: number) => {
+    console.log('📄 [handleSelectQuarter] Called with quarter:', quarter, 'year:', year);
+    // Calculate the first month of the quarter
+    const firstMonth = (quarter - 1) * 3 + 1;
+    setCreateFormData({ month: firstMonth, year, examType: createFormData.examType });
+    setIsQuarterlyInvoice(true);
+    console.log('📄 [handleSelectQuarter] Set isQuarterlyInvoice to true');
+    setShowPeriodSelectionDialog(false);
+    // Generate suggested invoice number
+    const lastInvoice = invoices.find(inv => inv.dozent_id === dozentId);
+    if (lastInvoice) {
+      const lastNumber = parseInt(lastInvoice.invoice_number.replace(/\D/g, ''));
+      const newNumber = lastNumber + 1;
+      setInvoiceNumber(`RE${String(newNumber).padStart(8, '0')}`);
+    } else {
+      setInvoiceNumber('RE00000001');
+    }
+    setShowInvoiceDetailsDialog(true);
+  };
+
+  const handleInvoiceNumberBlur = async () => {
+    if (!invoiceNumber || !dozentId) return;
+
+    console.log('📄 [Invoice Number Validation] Checking invoiceNumber:', invoiceNumber, 'for dozentId:', dozentId);
+
+    try {
+      const { data: existingInvoice, error } = await supabase
+        .from('invoices')
+        .select('id')
+        .eq('invoice_number', invoiceNumber)
+        .eq('dozent_id', dozentId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('📄 [Invoice Number Validation] Error checking invoice number:', error);
+        setInvoiceNumberError('');
+        return;
+      }
+
+      if (existingInvoice) {
+        console.log('📄 [Invoice Number Validation] Invoice number already exists');
+        setInvoiceNumberError('Diese Rechnungsnummer existiert bereits für diesen Dozent.');
+      } else {
+        console.log('📄 [Invoice Number Validation] Invoice number is available');
+        setInvoiceNumberError('');
+      }
+    } catch (error) {
+      console.error('📄 [Invoice Number Validation] Error checking invoice number:', error);
+      setInvoiceNumberError('');
+    }
+  };
+
+  const handleConfirmInvoiceDetails = async () => {
+    setShowInvoiceDetailsDialog(false);
+    // Fetch hours before showing confirm modal
+    setCreatePreviewLoading(true);
+    try {
+      console.log('📄 [handleConfirmInvoiceDetails] isQuarterlyInvoice:', isQuarterlyInvoice);
+      
+      // For quarterly invoices, use fetchCreatePreviewHours which has the correct logic
+      if (isQuarterlyInvoice) {
+        console.log('📄 [handleConfirmInvoiceDetails] Using fetchCreatePreviewHours for quarterly invoice');
+        await fetchCreatePreviewHours();
+        setShowConfirmModal(true);
+        return;
+      }
+      
+      // For monthly invoices, use the original logic
+      const lastDayOfMonth = getLastDayOfMonth(createFormData.year, createFormData.month);
+      console.log('📄 [handleConfirmInvoiceDetails] Calculating lastDayOfMonth:', {
+        year: createFormData.year,
+        month: createFormData.month,
+        lastDayOfMonth,
+        endDate: `${createFormData.year}-${String(createFormData.month).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`
+      });
+      const { data: participantHours } = await supabase
+        .from('participant_hours')
+        .select('id, date, hours, description, legal_area, teilnehmer(name)')
+        .eq('dozent_id', dozentId)
+        .gte('date', `${createFormData.year}-${String(createFormData.month).padStart(2, '0')}-01`)
+        .lte('date', `${createFormData.year}-${String(createFormData.month).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`);
+
+      const { data: dozentHours } = await supabase
+        .from('dozent_hours')
+        .select('id, date, hours, description, category')
+        .eq('dozent_id', dozentId)
+        .gte('date', `${createFormData.year}-${String(createFormData.month).padStart(2, '0')}-01`)
+        .lte('date', `${createFormData.year}-${String(createFormData.month).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`);
+
+      const allHours: HourEntry[] = [
+        ...(participantHours || []).map(h => ({
+          id: h.id,
+          date: h.date,
+          hours: h.hours,
+          description: h.description,
+          category: h.legal_area,
+          elite_kleingruppe: h.description?.includes('Elite-Kleingruppe') || h.legal_area?.includes('Elite-Kleingruppe'),
+          study_goal: h.legal_area,
+          teilnehmer: h.teilnehmer,
+          type: 'participant' as const
+        })),
+        ...(dozentHours || []).map(h => ({
+          id: h.id,
+          date: h.date,
+          hours: h.hours,
+          description: h.description,
+          category: h.category,
+          elite_kleingruppe: h.description?.includes('Elite-Kleingruppe') || h.category?.includes('Elite-Kleingruppe'),
+          type: 'dozent' as const
+        }))
+      ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      setCreatePreviewHours(allHours as any);
+      setShowConfirmModal(true);
+    } catch (error) {
+      console.error('Error fetching hours:', error);
+      addToast('Fehler beim Laden der Stunden', 'error');
+    } finally {
+      setCreatePreviewLoading(false);
+    }
+  };
+
+  const handleConfirmExamType = (examType: '1. Staatsexamen' | '2. Staatsexamen') => {
+    setCreateFormData(prev => ({ ...prev, examType }));
+    setShowExamTypeDialog(false);
+    setShowCreateTypeDialog(true);
   };
 
   const openReviewModal = async (invoice: Invoice) => {
@@ -337,77 +768,133 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         .lte('date', invoiceData.period_end)
         .order('date', { ascending: true });
 
-      // Normalize teilnehmer object (Supabase may return as array)
+      // Normalize teilnehmer object
       const normalizedParticipantHours = (participantHours || []).map((h: any) => ({
         ...h,
         teilnehmer: Array.isArray(h.teilnehmer) ? h.teilnehmer[0] : h.teilnehmer
       }));
 
-      // Filter participant hours by exam_type
+      // Filter hours by exam_type
       let filteredParticipantHours = normalizedParticipantHours;
+      let filteredDozentHours = dozentHours || [];
+
       if (invoiceData.exam_type === '1. Staatsexamen') {
-        // Show: Elite Kleingruppe OR no study_goal OR study_goal doesn't include "2. Staatsexamen"
         filteredParticipantHours = normalizedParticipantHours.filter((h: any) => {
           const studyGoal = h.teilnehmer?.study_goal;
           return h.teilnehmer?.elite_kleingruppe || !studyGoal || !studyGoal.includes('2. Staatsexamen');
         });
+        filteredDozentHours = (dozentHours || []).filter((h: any) => {
+          const category = h.category?.toLowerCase() || '';
+          const entryExamType = h.exam_type;
+          if (category.includes('elite')) return true;
+          if (entryExamType === '1. Staatsexamen') return true;
+          if (!entryExamType) return true;
+          return false;
+        });
       } else if (invoiceData.exam_type === '2. Staatsexamen') {
-        // Show: NOT Elite Kleingruppe AND study_goal includes "2. Staatsexamen"
         filteredParticipantHours = normalizedParticipantHours.filter((h: any) => {
           const studyGoal = h.teilnehmer?.study_goal;
           return !h.teilnehmer?.elite_kleingruppe && studyGoal && studyGoal.includes('2. Staatsexamen');
         });
-      }
-
-      // Filter dozent hours by exam_type and category
-      let filteredDozentHours = dozentHours || [];
-      if (invoiceData.exam_type === '1. Staatsexamen') {
         filteredDozentHours = (dozentHours || []).filter((h: any) => {
           const category = h.category?.toLowerCase() || '';
-          const examType = h.exam_type;
-          
-          if (category.includes('elite')) return true;
-          if (examType === '1. Staatsexamen') return true;
-          if (!examType) return true;
-          
-          return false;
-        });
-      } else if (invoiceData.exam_type === '2. Staatsexamen') {
-        filteredDozentHours = (dozentHours || []).filter((h: any) => {
-          const category = h.category?.toLowerCase() || '';
-          const examType = h.exam_type;
-          
+          const entryExamType = h.exam_type;
           if (category.includes('elite')) return false;
-          return examType === '2. Staatsexamen';
+          return entryExamType === '2. Staatsexamen';
         });
       }
 
-      // Generate PDF preview with the correct invoice number
-      console.log('Opening review modal - invoiceData.exam_type:', invoiceData.exam_type);
-      console.log('Full invoiceData:', invoiceData);
-      
+      // Combine all hours
+      const allHours = [
+        ...filteredParticipantHours.map(h => ({
+          id: h.id,
+          date: h.date,
+          hours: h.hours,
+          description: h.description,
+          legal_area: h.legal_area,
+          elite_kleingruppe: h.description?.includes('Elite-Kleingruppe') || h.legal_area?.includes('Elite-Kleingruppe'),
+          study_goal: h.legal_area,
+          teilnehmer: h.teilnehmer,
+          type: 'participant' as const
+        })),
+        ...filteredDozentHours.map((h: any) => ({
+          id: h.id,
+          date: h.date,
+          hours: h.hours,
+          description: h.description,
+          category: h.category,
+          elite_kleingruppe: h.description?.includes('Elite-Kleingruppe') || h.category?.includes('Elite-Kleingruppe'),
+          type: 'dozent' as const
+        }))
+      ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      setReviewHours(allHours);
+
+      // Generate PDF for preview
       const { generateInvoicePDFBlob } = await import('../utils/invoicePDFGenerator');
-      const invoiceForPDF = { 
-        ...invoiceData, 
-        invoice_number: finalInvoiceNumber, 
-        dozent: invoiceData.dozent,
-        exam_type: invoiceData.exam_type 
-      };
-      console.log('Invoice object for PDF:', invoiceForPDF);
-      
       const pdfBlob = await generateInvoicePDFBlob({
-        invoice: invoiceForPDF,
+        invoice: { ...invoiceData, dozent: invoiceData.dozent },
         participantHours: filteredParticipantHours as any,
         dozentHours: filteredDozentHours as any
       });
-
       const pdfUrl = URL.createObjectURL(pdfBlob);
       setReviewPdfUrl(pdfUrl);
     } catch (error) {
-      console.error('Error generating PDF preview:', error);
-      addToast('Fehler beim Laden der Vorschau', 'error');
+      console.error('Error fetching invoice details:', error);
+      addToast('Fehler beim Laden der Rechnungsdetails', 'error');
     } finally {
       setReviewLoading(false);
+    }
+  };
+
+  const handleConfirmInvoice = async () => {
+    setShowConfirmModal(false);
+
+    try {
+      if (isQuarterlyInvoice) {
+        console.log('📄 [Quarterly Invoice] Creating with invoiceNumber:', invoiceNumber, 'invoiceDate:', invoiceDate, 'examType:', createFormData.examType);
+        const newInvoice = await createQuarterlyInvoice({
+          dozentId: dozentId,
+          examType: createFormData.examType,
+          invoiceNumber,
+          invoiceDate
+        });
+        await fetchInvoices(dozentId);
+        // Open review modal for the newly created invoice
+        openReviewModal(newInvoice);
+        addToast('Quartals-Rechnung erfolgreich erstellt', 'success');
+      } else {
+        console.log('📄 [Monthly Invoice] Creating with invoiceNumber:', invoiceNumber, 'invoiceDate:', invoiceDate, 'examType:', createFormData.examType);
+        const newInvoice = await createInvoice({
+          month: createFormData.month,
+          year: createFormData.year,
+          dozentId: dozentId,
+          examType: createFormData.examType,
+          invoiceNumber,
+          invoiceDate
+        });
+        await fetchInvoices(dozentId);
+        setShowCreateDialog(false);
+        setCreateFormData({
+          month: new Date().getMonth() + 1,
+          year: new Date().getFullYear(),
+          examType: '1. Staatsexamen'
+        });
+
+        // Open review modal immediately after creation
+        if (newInvoice) {
+          openReviewModal(newInvoice);
+          addToast('Rechnung erfolgreich erstellt', 'success');
+        }
+      }
+    } catch (error: any) {
+      console.error('Error creating invoice:', error);
+      const errorMessage = error.message?.includes('invoices_invoice_number_dozent_unique') || error.code === '23505'
+        ? 'Diese Rechnungsnummer existiert bereits für diesen Dozent. Bitte wählen Sie eine andere Rechnungsnummer.'
+        : error.message?.includes('invoices_dozent_month_year_unique') || error.code === '23505'
+        ? 'Es gibt bereits eine Rechnung für diesen Monat.'
+        : 'Fehler beim Erstellen der Rechnung';
+      addToast(errorMessage, 'error');
     }
   };
 
@@ -422,6 +909,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         URL.revokeObjectURL(reviewPdfUrl);
         setReviewPdfUrl(null);
       }
+      window.location.href = '/dashboard?tab=taetigkeitsbericht';
       addToast('Rechnung gelöscht. Bitte korrigieren Sie Ihre Stunden im Tätigkeitsbericht.', 'success');
       
       // Navigate to activity report
@@ -737,6 +1225,35 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
     return new Date(2023, month - 1).toLocaleDateString('de-DE', { month: 'long' });
   };
 
+  const getQuarterName = (month: number) => {
+    const quarter = Math.ceil(month / 3);
+    return `${quarter}. Quartal`;
+  };
+
+  const getLastDayOfMonth = (year: number, month: number): number => {
+    // Use date-fns to get the last day of the month
+    const date = new Date(year, month - 1, 1);
+    const result = lastDayOfMonth(date).getDate();
+    console.log('📄 [getLastDayOfMonth] Debug:', { year, month, result, date });
+    return result;
+  };
+
+  const getMonthDateRange = (month: number, year: number): string => {
+    const startDate = `${String(1).padStart(2, '0')}.${String(month).padStart(2, '0')}.${year}`;
+    const lastDay = getLastDayOfMonth(year, month);
+    const endDate = `${String(lastDay).padStart(2, '0')}.${String(month).padStart(2, '0')}.${year}`;
+    return `${startDate} - ${endDate}`;
+  };
+
+  const getQuarterDateRange = (quarter: number, year: number): string => {
+    const firstMonth = (quarter - 1) * 3 + 1;
+    const lastMonth = quarter * 3;
+    const startDate = `${String(1).padStart(2, '0')}.${String(firstMonth).padStart(2, '0')}.${year}`;
+    const lastDay = getLastDayOfMonth(year, lastMonth);
+    const endDate = `${String(lastDay).padStart(2, '0')}.${String(lastMonth).padStart(2, '0')}.${year}`;
+    return `${startDate} - ${endDate}`;
+  };
+
   return (
     <div className="bg-white shadow overflow-hidden sm:rounded-md">
       <div className="px-4 py-5 border-b border-gray-200 sm:px-6">
@@ -745,7 +1262,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
             Eigene Rechnungen
           </h3>
           <button
-            onClick={() => setShowCreateDialog(true)}
+            onClick={() => setShowExamTypeDialog(true)}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-primary/90"
           >
             <Plus className="h-4 w-4 mr-2" />
@@ -1010,6 +1527,394 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         )}
       </div>
 
+      {/* Create Type Dialog */}
+      {showCreateTypeDialog && (
+        <div className="fixed z-10 inset-0 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowCreateTypeDialog(false)}>
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+            <div className="inline-block align-middle bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:max-w-md sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6">
+                <div className="flex items-center mb-4">
+                  <Plus className="h-6 w-6 text-primary mr-3" />
+                  <h3 className="text-lg font-medium text-gray-900">Rechnung erstellen</h3>
+                </div>
+
+                <p className="text-sm text-gray-600 mb-4">
+                  Wählen Sie den Zeitraum für die Rechnung:
+                </p>
+
+                <div className="space-y-3">
+                  <label className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="radio"
+                      name="invoiceType"
+                      value="monthly"
+                      className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
+                      onChange={() => handleCreateMonthlyInvoice()}
+                    />
+                    <span className="ml-3 text-sm text-gray-700">Monatlich</span>
+                  </label>
+                  <label className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="radio"
+                      name="invoiceType"
+                      value="quarterly"
+                      className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
+                      onChange={() => handleCreateQuarterlyInvoiceDialog()}
+                    />
+                    <span className="ml-3 text-sm text-gray-700">Quartalsweise</span>
+                  </label>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateTypeDialog(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Abbrechen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Period Selection Dialog */}
+      {showPeriodSelectionDialog && (
+        <div className="fixed z-10 inset-0 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowPeriodSelectionDialog(false)}>
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+            <div className="inline-block align-middle bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:max-w-md sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6">
+                <div className="flex items-center mb-4">
+                  <Plus className="h-6 w-6 text-primary mr-3" />
+                  <h3 className="text-lg font-medium text-gray-900">
+                    {isQuarterlyInvoice ? 'Quartal auswählen' : 'Monat auswählen'}
+                  </h3>
+                </div>
+
+                <p className="text-sm text-gray-600 mb-4">
+                  {isQuarterlyInvoice
+                    ? 'Wählen Sie das Quartal für die Rechnung:'
+                    : 'Wählen Sie den Monat für die Rechnung:'}
+                </p>
+
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {isQuarterlyInvoice ? (
+                    availableQuarters.length === 0 ? (
+                      <p className="text-sm text-gray-500 text-center py-4">
+                        Keine verfügbaren Quartale gefunden
+                      </p>
+                    ) : (
+                      availableQuarters.map(({ quarter, year, monthsWithInvoices }) => (
+                        <label key={`${year}-${quarter}`} className="flex flex-col p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                          <div className="flex items-center">
+                            <input
+                              type="radio"
+                              name="quarter"
+                              className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
+                              onChange={() => handleSelectQuarter(quarter, year)}
+                            />
+                            <span className="ml-3 text-sm text-gray-700">
+                              {quarter}. Quartal {year}
+                            </span>
+                          </div>
+                          <span className="ml-7 text-xs text-gray-500 mt-1">
+                            {getQuarterDateRange(quarter, year)}
+                          </span>
+                          {monthsWithInvoices.length > 0 && (
+                            <span className="ml-7 text-xs text-orange-600 mt-1">
+                              {monthsWithInvoices.map((m: number) => getMonthName(m)).join(', ')} bereits fakturiert
+                            </span>
+                          )}
+                        </label>
+                      ))
+                    )
+                  ) : (
+                    availableMonths.length === 0 ? (
+                      <p className="text-sm text-gray-500 text-center py-4">
+                        Keine verfügbaren Monate gefunden
+                      </p>
+                    ) : (
+                      availableMonths.map(({ month, year }) => (
+                        <label key={`${year}-${month}`} className="flex flex-col p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                          <div className="flex items-center">
+                            <input
+                              type="radio"
+                              name="month"
+                              className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
+                              onChange={() => handleSelectMonth(month, year)}
+                            />
+                            <span className="ml-3 text-sm text-gray-700">
+                              {getMonthName(month)} {year}
+                            </span>
+                          </div>
+                          <span className="ml-7 text-xs text-gray-500 mt-1">
+                            {getMonthDateRange(month, year)}
+                          </span>
+                        </label>
+                      ))
+                    )
+                  )}
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowPeriodSelectionDialog(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Abbrechen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Details Dialog */}
+      {showInvoiceDetailsDialog && (
+        <div className="fixed z-10 inset-0 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowInvoiceDetailsDialog(false)}>
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+            <div className="inline-block align-middle bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:max-w-md sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6">
+                <div className="flex items-center mb-4">
+                  <Plus className="h-6 w-6 text-primary mr-3" />
+                  <h3 className="text-lg font-medium text-gray-900">Rechnungsdetails</h3>
+                </div>
+
+                <p className="text-sm text-gray-600 mb-4">
+                  Geben Sie das Rechnungsdatum und die Rechnungsnummer für die neue Rechnung ein:
+                </p>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Rechnungsdatum</label>
+                    <input
+                      type="date"
+                      value={invoiceDate}
+                      onChange={(e) => setInvoiceDate(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Rechnungsnummer</label>
+                    <input
+                      type="text"
+                      value={invoiceNumber}
+                      onChange={(e) => {
+                        setInvoiceNumber(e.target.value);
+                        setInvoiceNumberError('');
+                      }}
+                      onBlur={handleInvoiceNumberBlur}
+                      className={`w-full px-3 py-2 border rounded-md ${invoiceNumberError ? 'border-red-500' : ''}`}
+                      placeholder="z.B. RE00000001"
+                    />
+                    {invoiceNumberError && (
+                      <p className="text-xs text-red-500 mt-1">{invoiceNumberError}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowInvoiceDetailsDialog(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmInvoiceDetails}
+                  disabled={!invoiceNumber || !!invoiceNumberError}
+                  className="px-4 py-2 text-sm font-medium text-white bg-primary border border-transparent rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Weiter
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Exam Type Dialog */}
+      {showExamTypeDialog && (
+        <div className="fixed z-10 inset-0 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowExamTypeDialog(false)}>
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+            <div className="inline-block align-middle bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:max-w-md sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6">
+                <div className="flex items-center mb-4">
+                  <Plus className="h-6 w-6 text-primary mr-3" />
+                  <h3 className="text-lg font-medium text-gray-900">Staatsexamen</h3>
+                </div>
+
+                <p className="text-sm text-gray-600 mb-4">
+                  Wählen Sie das Staatsexamen für die Rechnung:
+                </p>
+
+                <div className="space-y-3">
+                  <label className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="radio"
+                      name="examType"
+                      value="1. Staatsexamen"
+                      className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
+                      onChange={() => handleConfirmExamType('1. Staatsexamen')}
+                    />
+                    <span className="ml-3 text-sm text-gray-700">1. Staatsexamen</span>
+                  </label>
+                  <label className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="radio"
+                      name="examType"
+                      value="2. Staatsexamen"
+                      className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
+                      onChange={() => handleConfirmExamType('2. Staatsexamen')}
+                    />
+                    <span className="ml-3 text-sm text-gray-700">2. Staatsexamen</span>
+                  </label>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowExamTypeDialog(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Abbrechen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Invoice Modal */}
+      {showConfirmModal && (
+        <div className="fixed z-10 inset-0 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowConfirmModal(false)}>
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+            <div className="inline-block align-middle bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:max-w-2xl sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6">
+                <div className="flex items-center mb-4">
+                  <CheckCircle className="h-6 w-6 text-primary mr-3" />
+                  <h3 className="text-lg font-medium text-gray-900">Rechnung erstellen</h3>
+                </div>
+
+                <p className="text-sm text-gray-600 mb-4">
+                  {isQuarterlyInvoice 
+                    ? `Möchten Sie die Quartalsrechnung für das ${getQuarterName(createFormData.month)} ${createFormData.year} erstellen?`
+                    : `Möchten Sie die Rechnung für ${getMonthName(createFormData.month)} ${createFormData.year} erstellen?`
+                  }
+                </p>
+
+                <div className="space-y-2 text-sm text-gray-700 mb-4">
+                  <p><strong>Rechnungsnummer:</strong> {invoiceNumber}</p>
+                  <p><strong>Rechnungsdatum:</strong> {invoiceDate ? new Date(invoiceDate).toLocaleDateString('de-DE') : '-'}</p>
+                  <p><strong>Staatsexamen:</strong> {createFormData.examType}</p>
+                </div>
+
+                {createPreviewLoading ? (
+                  <div className="text-center py-4">
+                    <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                    <p className="text-sm text-gray-500 mt-2">Stunden werden geladen...</p>
+                  </div>
+                ) : (
+                  <div className="mt-4">
+                    <h4 className="text-sm font-medium text-gray-900 mb-2">Stundenübersicht ({createPreviewHours.length} Einträge):</h4>
+                    <div className="max-h-60 overflow-y-auto border rounded-lg">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50 sticky top-0">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Datum</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Typ</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Beschreibung</th>
+                            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Stunden</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {createPreviewHours.map((hour) => (
+                            <tr key={hour.id}>
+                              <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
+                                {new Date(hour.date).toLocaleDateString('de-DE')}
+                              </td>
+                              <td className="px-3 py-2 text-sm text-gray-900">
+                                <div className="flex flex-col">
+                                  {hour.type === 'participant' ? (
+                                    <span>Einzelunterricht</span>
+                                  ) : hour.category === 'Elite-Kleingruppe Korrektur' ? (
+                                    <>
+                                      <span>Elite-Kleingruppe</span>
+                                      <span className="text-xs text-gray-500">Klausurenkorrektur</span>
+                                    </>
+                                  ) : hour.category?.includes('Elite-Kleingruppe') ? (
+                                    <span>Elite-Kleingruppe</span>
+                                  ) : (
+                                    <span>{hour.category || 'Sonstige Tätigkeit'}</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 text-sm text-gray-900 max-w-md line-clamp-2" title={hour.type === 'participant' ? `${hour.category || '-'} - ${hour.teilnehmer?.name || '-'} - ${hour.description || '-'}` : hour.description || '-'}>
+                                {hour.type === 'participant' 
+                                  ? `${hour.category || '-'} - ${hour.teilnehmer?.name || '-'} - ${hour.description || '-'}`
+                                  : hour.description?.startsWith('Klausurkorrektur:') && (hour.category === 'Elite-Kleingruppe Korrektur' || hour.description?.includes('Elite-Kleingruppe')) 
+                                    ? hour.description.replace('Klausurkorrektur:', '').trim().replace(/-\s*\d+\s*(?:Punkte|Punkte?)$/, '').trim()
+                                    : hour.description || '-'}
+                              </td>
+                              <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
+                                {hour.hours}
+                              </td>
+                            </tr>
+                          ))}
+                          <tr className="bg-gray-50 sticky bottom-0">
+                            <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900"></td>
+                            <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900"></td>
+                            <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900">Gesamt</td>
+                            <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900 text-right">
+                              {createPreviewHours.reduce((sum, hour) => sum + (hour.hours || 0), 0).toFixed(1)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmModal(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmInvoice}
+                  className="px-4 py-2 text-sm font-medium text-white bg-primary border border-transparent rounded-md hover:bg-primary/90"
+                >
+                  Bestätigen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Create Invoice Dialog */}
       {showCreateDialog && (
         <div className="fixed z-10 inset-0 overflow-y-auto">
@@ -1130,8 +2035,8 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
                                     <span className="text-xs font-medium text-gray-900">
                                       {new Date(entry.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}
                                     </span>
-                                    {entry.teilnehmer_name && (
-                                      <span className="text-xs text-gray-500">{entry.teilnehmer_name}</span>
+                                    {(entry.teilnehmer_name || entry.teilnehmer?.name) && (
+                                      <span className="text-xs text-gray-500">{entry.teilnehmer_name || entry.teilnehmer?.name}</span>
                                     )}
                                   </div>
                                   <span className="text-xs font-semibold text-primary">{entry.hours} Std.</span>
@@ -1216,7 +2121,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
             <div className="flex-1 overflow-hidden p-6">
               <div className="flex gap-6 h-full">
                 {/* PDF Preview - Left side */}
-                <div className="flex-1 border rounded-lg overflow-hidden" style={{ height: '500px' }}>
+                <div className="flex-1 border rounded-lg overflow-hidden" style={{ height: '600px' }}>
                   {previewLoading ? (
                     <div className="flex items-center justify-center h-full bg-gray-50">
                       <div className="text-center">
@@ -1525,7 +2430,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
                 {/* Two column layout: PDF left, controls right */}
                 <div className="flex gap-6">
                   {/* PDF Preview - Left side */}
-                  <div className="flex-1 border rounded-lg overflow-hidden" style={{ height: '500px' }}>
+                  <div className="flex-1 border rounded-lg overflow-hidden" style={{ height: '600px' }}>
                     {reviewLoading ? (
                       <div className="flex items-center justify-center h-full bg-gray-50">
                         <div className="text-center">

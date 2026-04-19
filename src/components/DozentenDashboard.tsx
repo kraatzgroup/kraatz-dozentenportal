@@ -6,6 +6,7 @@ import { useToastStore } from '../store/toastStore';
 import { GraduationCap, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, FileText, FolderPlus, Search, Filter, X, Plus, Edit2, Trash2, Download, Copy, ExternalLink, Eye, MoreVertical, Info, AlertTriangle, Menu, Bell, MessageSquare, Settings, LogOut, Upload, GripVertical, Users, LayoutGrid, Play, Pin, Clock } from 'lucide-react';
 import { Logo } from './Logo';
 import { EliteKleingruppe } from './EliteKleingruppe';
+import { InvoiceManagement } from './InvoiceManagement';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, DragOverEvent, useDroppable, DragOverlay, DragStartEvent } from '@dnd-kit/core';
@@ -567,6 +568,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   const [isEliteKleingruppeDozent, setIsEliteKleingruppeDozent] = useState(false);
   const [internalShowEliteKleingruppe, setInternalShowEliteKleingruppe] = useState(false);
   const showEliteKleingruppe = externalShowEliteKleingruppe ?? internalShowEliteKleingruppe;
+  const [activeTab, setActiveTab] = useState('dashboard');
   const setShowEliteKleingruppe = (val: boolean) => {
     if (!val && onCloseEliteKleingruppe) {
       onCloseEliteKleingruppe();
@@ -659,6 +661,22 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get('tab') || '';
+
+    console.log('📊 DozentenDashboard: Current URL:', window.location.href);
+    console.log('📊 DozentenDashboard: Current tab:', tab);
+    console.log('📊 DozentenDashboard: isMaterial:', isMaterial);
+    console.log('📊 DozentenDashboard: showMaterialsView:', showMaterialsView);
+
+    // Set active tab based on URL
+    if (tab === 'rechnungen') {
+      setActiveTab('rechnungen');
+    } else if (tab === 'taetigkeitsbericht') {
+      setActiveTab('taetigkeitsbericht');
+    } else if (tab === 'dozenten-dashboard') {
+      setActiveTab('dashboard');
+    } else {
+      setActiveTab('dashboard');
+    }
 
     if (isMaterial && !showMaterialsView) {
       setShowMaterialsView(true);
@@ -1083,10 +1101,13 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     fetchBulletinPosts(); 
     fetchWidgets(); 
     fetchSections();
-    fetchMaterials();
+    // Materialien nur laden, wenn sie benötigt werden
+    if (showMaterialsView) {
+      fetchMaterials();
+    }
     fetchFolders();
     checkEliteKleingruppeDozent();
-  }, []);
+  }, [showMaterialsView]);
 
   const checkEliteKleingruppeDozent = async () => {
     if (!user) return;
@@ -1919,6 +1940,41 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
           </div>
         </div>
         <EliteKleingruppe isAdmin={false} activeSubTabProp={ekSubTab} onSubTabChange={onEkSubTabChange} />
+      </div>
+    );
+  }
+
+  // Rechnungen View
+  if (activeTab === 'rechnungen' && !isMaterial) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-white rounded-xl shadow-md p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => {
+                setActiveTab('dashboard');
+                const params = new URLSearchParams(window.location.search);
+                params.set('tab', 'dozenten-dashboard');
+                window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+              }}
+              className="p-2 hover:bg-gray-100 rounded-lg"
+            >
+              <ChevronDown className="h-5 w-5 rotate-90" />
+            </button>
+            <FileText className="h-6 w-6 text-primary" />
+            <h1 className="text-lg font-semibold">Rechnungen</h1>
+          </div>
+        </div>
+        <InvoiceManagement
+          onBack={() => {
+            setActiveTab('dashboard');
+            const params = new URLSearchParams(window.location.search);
+            params.set('tab', 'dozenten-dashboard');
+            window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+          }}
+          dozentId={user?.id}
+          isAdmin={false}
+        />
       </div>
     );
   }

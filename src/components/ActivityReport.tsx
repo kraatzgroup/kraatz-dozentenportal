@@ -85,6 +85,12 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
   const targetDozentId = dozentId || user?.id;
   
   useEffect(() => {
+    console.log('📊 ActivityReport: Loading for dozentId:', targetDozentId);
+    console.log('📊 ActivityReport: Current URL:', window.location.href);
+    console.log('📊 ActivityReport: Current tab:', new URLSearchParams(window.location.search).get('tab'));
+    console.log('📊 ActivityReport: Selected month:', selectedMonth);
+    console.log('📊 ActivityReport: Selected year:', selectedYear);
+    
     fetchDozentName();
     fetchAllHours();
     fetchPendingHours();
@@ -696,23 +702,19 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
                        <Calendar className="h-4 w-4 mr-1" />
                        <span className="font-medium">Datum {formatDate(entry.date)}</span>
                      </div>
-                     {entry.type === 'participant' ? (
+                     {entry.type === 'participant' && (
                        <div className="flex items-center text-sm text-gray-500">
                          <User className="h-4 w-4 mr-1" />
                          <span>Teilnehmer {entry.teilnehmer_name}</span>
                        </div>
-                     ) : (
-                       <div className="flex items-center text-sm text-gray-500">
-                         <span className="font-medium">
-                           {entry.category === 'Elite-Kleingruppe Korrektur' ? 'Klausurkorrektur' : 'Sonstige Tätigkeit'}
-                         </span>
-                       </div>
                      )}
                      <div className="flex items-center space-x-4 mb-3">
-                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${entry.category === 'Elite-Kleingruppe Korrektur' ? 'bg-orange-100 text-orange-800' : getLegalAreaColor(entry.legal_area || '')}`}>
+                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${entry.type === 'participant' ? 'bg-blue-100 text-blue-800' : entry.category === 'Elite-Kleingruppe Korrektur' || entry.description?.includes('Elite-Kleingruppe') ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}`}>
                          {entry.type === 'participant' 
-                           ? `Rechtsgebiet: ${entry.legal_area || 'Nicht angegeben'}`
-                           : entry.category === 'Elite-Kleingruppe Korrektur' ? 'Klausurenkorrektur Elite-Kleingruppe' : 'Sonstige Tätigkeit'
+                           ? 'Einzelunterricht'
+                           : entry.category === 'Elite-Kleingruppe Korrektur' ? 'Elite-Kleingruppe Klausurenkorrektur'
+                           : entry.description?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe'
+                           : entry.category || 'Sonstige Tätigkeit'
                          }
                        </span>
                        <div className="flex items-center text-sm text-gray-900">

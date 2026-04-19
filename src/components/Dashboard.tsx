@@ -65,7 +65,19 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     // Always remove from localStorage so page reload shows dashboard
     localStorage.removeItem('dozentSelectedFolder');
     
+    // Update URL to reflect current tab
+    const params = new URLSearchParams(window.location.search);
     if (folder) {
+      // Map folder names to tab names
+      const tabMap: Record<string, string> = {
+        'Rechnungen': 'rechnungen',
+        'Tätigkeitsbericht': 'taetigkeitsbericht',
+        'Aktive Teilnehmer': 'teilnehmer',
+        'Probestunden': 'probestunden'
+      };
+      const tabName = tabMap[folder.name] || folder.name.toLowerCase();
+      params.set('tab', tabName);
+      
       // Lazy load data based on folder type
       if (folder.name === 'Aktive Teilnehmer' && teilnehmer.length === 0) {
         fetchTeilnehmer();
@@ -73,7 +85,10 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       if (folder.id && files.length === 0) {
         fetchFiles(folder.id);
       }
+    } else {
+      params.delete('tab');
     }
+    window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
   };
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
   const [newFolderName, setNewFolderName] = useState('');
@@ -334,6 +349,30 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       setupRealtimeSubscription(selectedFolder.id);
     }
   }, [selectedFolder, fetchFiles]);
+
+  // Initialize folder from URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    
+    if (tab && folders.length > 0) {
+      // Reverse map tab names to folder names
+      const tabToFolderMap: Record<string, string> = {
+        'rechnungen': 'Rechnungen',
+        'taetigkeitsbericht': 'Tätigkeitsbericht',
+        'teilnehmer': 'Aktive Teilnehmer',
+        'probestunden': 'Probestunden'
+      };
+      
+      const folderName = tabToFolderMap[tab];
+      if (folderName) {
+        const folder = folders.find(f => f.name === folderName);
+        if (folder) {
+          setSelectedFolder(folder);
+        }
+      }
+    }
+  }, [folders]);
 
   // Check if selected folder is "Aktive Teilnehmer"
   const isActiveTeilnehmerFolder = selectedFolder?.name === 'Aktive Teilnehmer';
