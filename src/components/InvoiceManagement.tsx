@@ -150,25 +150,29 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
     // }
   }, [isLoading, hasCheckedAutoCreate, invoices, dozentId, isAdmin, currentMonth, currentYear, createInvoice, addToast]);
 
-  // Draft and review invoices (no month filter)
-  const draftReviewInvoices = invoices.filter(invoice => 
-    invoice.status === 'draft' || invoice.status === 'review'
+  // Current month invoices (draft, review, submitted, sent)
+  const currentMonthInvoices = invoices.filter(invoice => 
+    invoice.status === 'draft' || invoice.status === 'review' || invoice.status === 'submitted' || invoice.status === 'sent'
   );
 
-  // Submitted, sent, and paid invoices (with month filter)
-  const submittedSentPaidInvoices = invoices.filter(invoice => 
+  // Filter current month invoices by month/year for admin
+  const filteredCurrentMonthInvoices = isAdmin && archiveFilterMonth !== 'alle'
+    ? currentMonthInvoices.filter(invoice => 
+        invoice.month === archiveFilterMonth && invoice.year === archiveFilterYear
+      )
+    : currentMonthInvoices;
+
+  // Archive invoices (submitted, sent, paid)
+  const archiveInvoices = invoices.filter(invoice => 
     invoice.status === 'submitted' || invoice.status === 'sent' || invoice.status === 'paid'
   );
 
-  // Filter submitted/sent/paid by month/year
-  const filteredSubmittedSentPaidInvoices = archiveFilterMonth === 'alle'
-    ? submittedSentPaidInvoices.filter(invoice => invoice.year === archiveFilterYear)
-    : submittedSentPaidInvoices.filter(invoice => 
+  // Filter archive by month/year
+  const filteredArchiveInvoices = archiveFilterMonth === 'alle'
+    ? archiveInvoices.filter(invoice => invoice.year === archiveFilterYear)
+    : archiveInvoices.filter(invoice => 
         invoice.month === archiveFilterMonth && invoice.year === archiveFilterYear
       );
-
-  // For backwards compatibility
-  const currentMonthInvoices = draftReviewInvoices;
 
   // Fetch hours preview when create dialog opens or month/year changes
   const fetchCreatePreviewHours = async () => {
@@ -1381,125 +1385,159 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         <div className="flex justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
-      ) : currentMonthInvoices.length === 0 ? (
-        <div className="p-4 text-center text-gray-500">
-          <p>Keine offenen Rechnungen für {getMonthName(currentMonth)} {currentYear}</p>
-          {!isAdmin && (
-            <p className="mt-1 text-xs text-gray-400">
-              Rechnungsfrist: bis zum <span className="font-medium">{invoiceDeadlineDay}.</span> des Folgemonats einreichen, sonst wird sie erst im darauffolgenden Monat berücksichtigt.
-            </p>
-          )}
-        </div>
       ) : (
-        /* Current Month Invoices List */
-        <div className="bg-white shadow overflow-hidden sm:rounded-md">
-          <ul className="divide-y divide-gray-200">
-            {currentMonthInvoices.map((invoice) => (
-              <li key={invoice.id}>
-                <div className="px-4 py-4 sm:px-6">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div className="flex items-center">
-                      <div className="flex-shrink-0">
-                        <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
-                          invoice.exam_type === '2. Staatsexamen' 
-                            ? 'bg-amber-100' 
-                            : 'bg-primary/10'
-                        }`}>
-                          <FileText className={`h-5 w-5 ${
-                            invoice.exam_type === '2. Staatsexamen' 
-                              ? 'text-amber-600' 
-                              : 'text-primary'
-                          }`} />
-                        </div>
-                      </div>
-                      <div className="ml-4">
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-medium text-gray-900">{invoice.invoice_number}</h4>
-                          {invoice.exam_type && (
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                              invoice.exam_type === '2. Staatsexamen'
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-blue-100 text-blue-800'
+        <div>
+          {isAdmin && (
+            <div className="mb-4 flex items-center gap-2">
+              <select
+                value={archiveFilterMonth}
+                onChange={(e) => setArchiveFilterMonth(e.target.value === 'alle' ? 'alle' : parseInt(e.target.value))}
+                className="text-sm rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+              >
+                <option value="alle">Alle Monate</option>
+                {Array.from({ length: 12 }, (_, i) => (
+                  <option key={i + 1} value={i + 1}>
+                    {getMonthName(i + 1)}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={archiveFilterYear}
+                onChange={(e) => setArchiveFilterYear(parseInt(e.target.value))}
+                className="text-sm rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+              >
+                {Array.from({ length: 5 }, (_, i) => {
+                  const year = new Date().getFullYear() - 2 + i;
+                  return (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
+          {filteredCurrentMonthInvoices.length === 0 ? (
+            <div className="p-4 text-center text-gray-500">
+              <p>Keine offenen Rechnungen für {getMonthName(currentMonth)} {currentYear}</p>
+              {!isAdmin && (
+                <p className="mt-1 text-xs text-gray-400">
+                  Rechnungsfrist: bis zum <span className="font-medium">{invoiceDeadlineDay}.</span> des Folgemonats einreichen, sonst wird sie erst im darauffolgenden Monat berücksichtigt.
+                </p>
+              )}
+            </div>
+          ) : (
+            /* Current Month Invoices List */
+            <div className="bg-white shadow overflow-hidden sm:rounded-md">
+              <ul className="divide-y divide-gray-200">
+                {filteredCurrentMonthInvoices.map((invoice) => (
+                  <li key={invoice.id}>
+                    <div className="px-4 py-4 sm:px-6">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0">
+                            <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
+                              invoice.exam_type === '2. Staatsexamen' 
+                                ? 'bg-amber-100' 
+                                : 'bg-primary/10'
                             }`}>
-                              {invoice.exam_type}
-                            </span>
+                              <FileText className={`h-5 w-5 ${
+                                invoice.exam_type === '2. Staatsexamen' 
+                                  ? 'text-amber-600' 
+                                  : 'text-primary'
+                              }`} />
+                            </div>
+                          </div>
+                          <div className="ml-4">
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-medium text-gray-900">{invoice.invoice_number}</h4>
+                              {invoice.exam_type && (
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                  invoice.exam_type === '2. Staatsexamen'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-blue-100 text-blue-800'
+                                }`}>
+                                  {invoice.exam_type}
+                                </span>
+                              )}
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(invoice.status)}`}>
+                                {getStatusText(invoice.status)}
+                              </span>
+                            </div>
+                            <div className="flex items-center mt-1 text-sm text-gray-500">
+                              <Calendar className="h-4 w-4 mr-1" />
+                              <span>{getInvoicePeriodDisplay(invoice)}</span>
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              Erstellt: {new Date(invoice.created_at).toLocaleDateString('de-DE')}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Action Buttons */}
+                        <div className="flex flex-wrap items-center gap-2 ml-14 sm:ml-0">
+                          {/* Dozent Workflow Buttons (not admin) */}
+                          {!isAdmin && (
+                            <>
+                              {/* Draft -> Open Review Modal */}
+                              {invoice.status === 'draft' && (
+                                <button
+                                  onClick={() => openReviewModal(invoice)}
+                                  className="inline-flex items-center px-3 py-1.5 border border-primary text-xs font-medium rounded-md text-white bg-primary hover:bg-primary/90"
+                                >
+                                  <Eye className="h-3.5 w-3.5 mr-1" />
+                                  Überprüfen & Einreichen
+                                </button>
+                              )}
+                              
+                              {/* Submitted confirmation */}
+                              {invoice.status === 'submitted' && (
+                                <span className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-700">
+                                  <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                                  Übermittelt
+                                </span>
+                              )}
+                            </>
                           )}
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(invoice.status)}`}>
-                            {getStatusText(invoice.status)}
-                          </span>
-                        </div>
-                        <div className="flex items-center mt-1 text-sm text-gray-500">
-                          <Calendar className="h-4 w-4 mr-1" />
-                          <span>{getInvoicePeriodDisplay(invoice)}</span>
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          Erstellt: {new Date(invoice.created_at).toLocaleDateString('de-DE')}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Action Buttons */}
-                    <div className="flex flex-wrap items-center gap-2 ml-14 sm:ml-0">
-                      {/* Dozent Workflow Buttons (not admin) */}
-                      {!isAdmin && (
-                        <>
-                          {/* Draft -> Open Review Modal */}
-                          {invoice.status === 'draft' && (
+                          
+                          {/* Admin Buttons */}
+                          {isAdmin && invoice.status === 'submitted' && (
                             <button
-                              onClick={() => openReviewModal(invoice)}
-                              className="inline-flex items-center px-3 py-1.5 border border-primary text-xs font-medium rounded-md text-white bg-primary hover:bg-primary/90"
+                              onClick={() => handleStatusChange(invoice, 'paid')}
+                              className="inline-flex items-center px-3 py-1.5 border border-green-300 text-xs font-medium rounded-md text-green-700 bg-green-50 hover:bg-green-100"
                             >
-                              <Eye className="h-3.5 w-3.5 mr-1" />
-                              Überprüfen & Einreichen
+                              <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                              Als bezahlt markieren
                             </button>
                           )}
                           
-                          {/* Submitted confirmation */}
-                          {invoice.status === 'submitted' && (
-                            <span className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-700">
-                              <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                              Übermittelt
-                            </span>
+                          {/* Download Button */}
+                          <button
+                            onClick={() => generateInvoicePDF(invoice.id)}
+                            className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                            title="PDF herunterladen"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                          </button>
+                          
+                          {/* Delete Button (only for draft/review) */}
+                          {(invoice.status === 'draft' || invoice.status === 'review') && !isAdmin && (
+                            <button
+                              onClick={() => setDeleteModal({ show: true, invoice })}
+                              className="inline-flex items-center px-3 py-1.5 border border-red-300 shadow-sm text-xs font-medium rounded-md text-red-700 bg-white hover:bg-red-50"
+                              title="Rechnung löschen"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
                           )}
-                        </>
-                      )}
-                      
-                      {/* Admin Buttons */}
-                      {isAdmin && invoice.status === 'submitted' && (
-                        <button
-                          onClick={() => handleStatusChange(invoice, 'paid')}
-                          className="inline-flex items-center px-3 py-1.5 border border-green-300 text-xs font-medium rounded-md text-green-700 bg-green-50 hover:bg-green-100"
-                        >
-                          <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                          Als bezahlt markieren
-                        </button>
-                      )}
-                      
-                      {/* Download Button */}
-                      <button
-                        onClick={() => generateInvoicePDF(invoice.id)}
-                        className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                        title="PDF herunterladen"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                      </button>
-                      
-                      {/* Delete Button (only for draft/review) */}
-                      {(invoice.status === 'draft' || invoice.status === 'review') && !isAdmin && (
-                        <button
-                          onClick={() => setDeleteModal({ show: true, invoice })}
-                          className="inline-flex items-center px-3 py-1.5 border border-red-300 shadow-sm text-xs font-medium rounded-md text-red-700 bg-white hover:bg-red-50"
-                          title="Rechnung löschen"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
@@ -1539,14 +1577,14 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
           </div>
         </div>
         
-        {filteredSubmittedSentPaidInvoices.length === 0 ? (
+        {filteredArchiveInvoices.length === 0 ? (
           <div className="px-4 py-8 text-center text-gray-500">
             <Clock className="h-8 w-8 mx-auto text-gray-300 mb-2" />
             <p className="text-sm">Keine archivierten Rechnungen für diesen Zeitraum</p>
           </div>
         ) : (
           <ul className="divide-y divide-gray-200">
-            {filteredSubmittedSentPaidInvoices.map((invoice) => (
+            {filteredArchiveInvoices.map((invoice) => (
               <li key={invoice.id}>
                 <div className="px-4 py-3 sm:px-6 hover:bg-gray-50">
                   <div className="flex items-center justify-between">
