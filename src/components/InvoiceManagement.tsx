@@ -155,12 +155,25 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
     invoice.status === 'draft' || invoice.status === 'review' || invoice.status === 'submitted' || invoice.status === 'sent'
   );
 
+  console.log('🔍 [InvoiceManagement] Filter debug:', {
+    isAdmin,
+    archiveFilterMonth,
+    archiveFilterYear,
+    currentMonthInvoicesCount: currentMonthInvoices.length,
+    currentMonthInvoices: currentMonthInvoices.map(i => ({ id: i.id, invoice_number: i.invoice_number, month: i.month, year: i.year, status: i.status }))
+  });
+
   // Filter current month invoices by month/year for admin
   const filteredCurrentMonthInvoices = isAdmin && archiveFilterMonth !== 'alle'
     ? currentMonthInvoices.filter(invoice => 
         invoice.month === archiveFilterMonth && invoice.year === archiveFilterYear
       )
     : currentMonthInvoices;
+
+  console.log('🔍 [InvoiceManagement] Filtered result:', {
+    filteredCount: filteredCurrentMonthInvoices.length,
+    filtered: filteredCurrentMonthInvoices.map(i => ({ id: i.id, invoice_number: i.invoice_number, month: i.month, year: i.year, status: i.status }))
+  });
 
   // Archive invoices (submitted, sent, paid)
   const archiveInvoices = invoices.filter(invoice => 
