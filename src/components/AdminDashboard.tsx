@@ -3265,13 +3265,23 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
               {(() => {
                 // Filter paid invoices
                 let paidInvoices = submittedInvoices.filter(i => i.status === 'paid');
-                
+
+                console.log('🔍 [AdminDashboard] Paid invoices filter debug:', {
+                  rechnungenFilter,
+                  submittedInvoicesCount: submittedInvoices.length,
+                  paidInvoicesCountBefore: paidInvoices.length,
+                  paidInvoicesBefore: paidInvoices.map(i => ({ id: i.id, invoice_number: i.invoice_number, month: i.month, year: i.year, period_start: i.period_start, period_end: i.period_end }))
+                });
+
                 // Filter by month
                 if (rechnungenFilter !== 'alle') {
                   const [filterYear, filterMonth] = rechnungenFilter.split('-').map(Number);
+                  console.log('🔍 [AdminDashboard] Filtering by:', { filterYear, filterMonth });
+
                   paidInvoices = paidInvoices.filter(i => {
                     // Check if invoice matches by month
                     if (i.year === filterYear && i.month === filterMonth) {
+                      console.log('🔍 [AdminDashboard] Match by month/year:', i.invoice_number);
                       return true;
                     }
                     // Check if invoice is a quarterly invoice that covers the filtered month
@@ -3282,16 +3292,19 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                       const endMonth = endDate.getMonth() + 1;
                       const startYear = startDate.getFullYear();
                       const endYear = endDate.getFullYear();
-                      
+
                       // Check if filtered month/year falls within the invoice period
                       if (filterYear >= startYear && filterYear <= endYear) {
                         if (filterYear === startYear && filterMonth >= startMonth) {
+                          console.log('🔍 [AdminDashboard] Match by period (start):', i.invoice_number);
                           return true;
                         }
                         if (filterYear === endYear && filterMonth <= endMonth) {
+                          console.log('🔍 [AdminDashboard] Match by period (end):', i.invoice_number);
                           return true;
                         }
                         if (filterYear > startYear && filterYear < endYear) {
+                          console.log('🔍 [AdminDashboard] Match by period (middle):', i.invoice_number);
                           return true;
                         }
                       }
@@ -3299,6 +3312,11 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                     return false;
                   });
                 }
+
+                console.log('🔍 [AdminDashboard] Paid invoices after filter:', {
+                  paidInvoicesCountAfter: paidInvoices.length,
+                  paidInvoicesAfter: paidInvoices.map(i => ({ id: i.id, invoice_number: i.invoice_number, month: i.month, year: i.year }))
+                });
                 
                 // Filter by search
                 if (rechnungenSearch.trim()) {
