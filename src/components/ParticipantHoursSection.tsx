@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Users, Clock, Calendar, User, Plus } from 'lucide-react';
 import { Teilnehmer } from '../store/teilnehmerStore';
 import { useHoursStore } from '../store/hoursStore';
 import { TeilnehmerManagement } from './TeilnehmerManagement';
 import { TeilnehmerDetailView } from './TeilnehmerDetailView';
+import { supabase } from '../lib/supabase';
 
 interface ParticipantHoursSectionProps {
   teilnehmer: Teilnehmer[];
@@ -17,6 +18,8 @@ interface ParticipantHoursSectionProps {
   isAdmin?: boolean;
   studyGoal?: '1. Staatsexamen' | '2. Staatsexamen';
   dozentId?: string;
+  refreshKey?: number;
+  onRefresh?: () => void;
 }
 
 export function ParticipantHoursSection({
@@ -30,11 +33,79 @@ export function ParticipantHoursSection({
   getCurrentMonthHours,
   isAdmin = false,
   studyGoal = '1. Staatsexamen',
-  dozentId
+  dozentId,
+  refreshKey,
+  onRefresh
 }: ParticipantHoursSectionProps) {
   const { monthlySummary } = useHoursStore();
   const [showTeilnehmerManagement, setShowTeilnehmerManagement] = useState(false);
   const [selectedTeilnehmer, setSelectedTeilnehmer] = useState<{ id: string; name: string } | null>(null);
+  const [contractData, setContractData] = useState<{ [teilnehmerId: string]: { totalHours: number; usedHours: number } }>({});
+
+  // Fetch contract data for all participants
+  useEffect(() => {
+    const fetchContractData = async () => {
+      const data: { [teilnehmerId: string]: { totalHours: number; usedHours: number } } = {};
+
+      for (const t of teilnehmer) {
+        console.log('📦 Fetching contract data for teilnehmer:', t.id);
+        const { data: contracts, error } = await supabase
+          .from('contracts')
+          .select('id, start_date, end_date, status, contract_packages(hours_total, hours_used)')
+          .eq('teilnehmer_id', t.id);
+
+        console.log('📦 Contracts response:', contracts, error);
+
+        if (error) {
+          console.error('Error fetching contract data:', error);
+          continue;
+        }
+
+        if (contracts && contracts.length > 0) {
+          console.log('📦 All contracts:', contracts.length);
+
+          let totalHours = 0;
+          let usedHours = 0;
+
+          for (const contract of contracts) {
+            if (contract.contract_packages) {
+              for (const pkg of contract.contract_packages) {
+                totalHours += pkg.hours_total || 0;
+                usedHours += pkg.hours_used || 0;
+              }
+            }
+          }
+
+          console.log('📦 Contract summary for', t.id, ':', { totalHours, usedHours });
+          data[t.id] = { totalHours, usedHours };
+        }
+      }
+
+      console.log('📦 Final contractData:', data);
+      setContractData(data);
+    };
+
+    if (teilnehmer.length > 0) {
+      fetchContractData();
+    }
+
+    // Real-time subscription for contract_packages changes
+    const subscription = supabase
+      .channel('contract-packages-changes')
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'contract_packages'
+      }, (payload) => {
+        console.log('📦 Contract package updated:', payload);
+        fetchContractData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  }, [teilnehmer, refreshKey]);
 
   const getMonthName = (month: number) => {
     return new Date(2023, month - 1).toLocaleDateString('de-DE', { month: 'long' });
@@ -43,6 +114,7 @@ export function ParticipantHoursSection({
   const handleBackToTeilnehmer = () => {
     setShowTeilnehmerManagement(false);
     setSelectedTeilnehmer(null);
+    onRefresh?.();
   };
 
   if (showTeilnehmerManagement) {
@@ -65,7 +137,10 @@ export function ParticipantHoursSection({
           <TeilnehmerDetailView
             teilnehmerId={selectedTeilnehmer.id}
             teilnehmerName={selectedTeilnehmer.name}
-            onBack={() => setSelectedTeilnehmer(null)}
+            onBack={() => {
+              setSelectedTeilnehmer(null);
+              onRefresh?.();
+            }}
             isAdmin={isAdmin}
           />
         </div>
@@ -202,11 +277,12 @@ export function ParticipantHoursSection({
             return (
               <div className="space-y-4">
                 {teilnehmerWithHours.map((teilnehmer) => {
-                  const bookedHours = teilnehmer.booked_hours || 0;
-                  const completedHours = teilnehmer.completed_hours || 0;
+                  const contractInfo = contractData[teilnehmer.id] || { totalHours: 0, usedHours: 0 };
+                  const bookedHours = contractInfo.totalHours;
+                  const completedHours = contractInfo.usedHours;
                   const progressPercent = bookedHours > 0 ? Math.min((completedHours / bookedHours) * 100, 100) : 0;
                   const hasMonthlyHours = teilnehmer.monthly_hours > 0;
-                  
+
                   return (
                     <div key={teilnehmer.id} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
                       <button
@@ -235,11 +311,14 @@ export function ParticipantHoursSection({
                               </div>
                             )}
                             {/* Hours progress bar */}
-                            {bookedHours > 0 && (
+                            {(() => {
+                              console.log('📊 Progress bar values for', teilnehmer.name, ':', { bookedHours, completedHours, progressPercent });
+                              return bookedHours > 0;
+                            })() && (
                               <div className="mt-1">
                                 <div className="flex items-center space-x-2">
                                   <div className="w-24 bg-gray-200 rounded-full h-1.5">
-                                    <div 
+                                    <div
                                       className={`h-1.5 rounded-full ${progressPercent >= 100 ? 'bg-green-500' : progressPercent >= 75 ? 'bg-yellow-500' : 'bg-primary'}`}
                                       style={{ width: `${progressPercent}%` }}
                                     />

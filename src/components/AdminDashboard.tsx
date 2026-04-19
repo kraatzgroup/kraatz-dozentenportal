@@ -622,13 +622,97 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
 
       if (hoursError) throw hoursError;
 
+      // Fetch contracts for each teilnehmer to get aggregated data
+      const teilnehmerIds = (teilnehmerData || []).map(t => t.id);
+      const { data: contractsData, error: contractsError } = await supabase
+        .from('contracts')
+        .select('id, teilnehmer_id, start_date, end_date, total_hours, calculated_hours')
+        .in('teilnehmer_id', teilnehmerIds);
+
+      if (contractsError) throw contractsError;
+
+      // Fetch contract packages and their legal areas for all contracts
+      const contractIds = (contractsData || []).map(c => c.id);
+      const { data: packagesData, error: packagesError } = await supabase
+        .from('contract_packages')
+        .select('id, contract_id, contract_package_legal_areas (legal_area, hours)')
+        .in('contract_id', contractIds);
+
+      if (packagesError) throw packagesError;
+
+      // Aggregate legal area hours per teilnehmer
+      const legalAreasByTeilnehmer: { [key: string]: { [key: string]: { used: number; total: number } } } = {};
+      
+      (packagesData || []).forEach(pkg => {
+        const contract = contractsData?.find(c => c.id === pkg.contract_id);
+        if (!contract) return;
+        
+        const tnId = contract.teilnehmer_id;
+        if (!legalAreasByTeilnehmer[tnId]) {
+          legalAreasByTeilnehmer[tnId] = {
+            zivilrecht: { used: 0, total: 0 },
+            strafrecht: { used: 0, total: 0 },
+            oeffentliches_recht: { used: 0, total: 0 },
+            sonstiges: { used: 0, total: 0 }
+          };
+        }
+        
+        if (pkg.contract_package_legal_areas) {
+          pkg.contract_package_legal_areas.forEach((la: any) => {
+            if (legalAreasByTeilnehmer[tnId][la.legal_area]) {
+              legalAreasByTeilnehmer[tnId][la.legal_area].total += la.hours || 0;
+            }
+          });
+        }
+      });
+
+      // Aggregate contract data per teilnehmer
+      const contractsByTeilnehmer: { [key: string]: { 
+        earliestStart: string | null; 
+        latestEnd: string | null; 
+        totalHours: number; 
+        usedHours: number;
+      }} = {};
+      
+      (contractsData || []).forEach(contract => {
+        if (!contractsByTeilnehmer[contract.teilnehmer_id]) {
+          contractsByTeilnehmer[contract.teilnehmer_id] = {
+            earliestStart: contract.start_date,
+            latestEnd: contract.end_date,
+            totalHours: 0,
+            usedHours: 0
+          };
+        }
+        
+        const existing = contractsByTeilnehmer[contract.teilnehmer_id];
+        
+        // Update earliest start date
+        if (contract.start_date) {
+          if (!existing.earliestStart || new Date(contract.start_date) < new Date(existing.earliestStart)) {
+            existing.earliestStart = contract.start_date;
+          }
+        }
+        
+        // Update latest end date
+        if (contract.end_date) {
+          if (!existing.latestEnd || new Date(contract.end_date) > new Date(existing.latestEnd)) {
+            existing.latestEnd = contract.end_date;
+          }
+        }
+        
+        // Sum hours
+        existing.totalHours += contract.total_hours || 0;
+        existing.usedHours += contract.calculated_hours || 0;
+      });
+
       // Fetch Elite-Kleingruppe releases for progress calculation (per group)
       const { data: releasesData, error: releasesError } = await supabase
         .from('elite_kleingruppe_releases')
         .select('id, is_released, elite_kleingruppe_id, event_type, release_date, end_time');
       
-      // Calculate progress per elite_kleingruppe_id
+      // Calculate progress per elite_kleingruppe_id and last unit date
       const progressByGroup: { [key: string]: { total: number; released: number } } = {};
+      const lastUnitDateByGroup: { [key: string]: Date | null } = {};
       const now = new Date();
       
       if (!releasesError && releasesData) {
@@ -654,6 +738,12 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
             
             if (!progressByGroup[release.elite_kleingruppe_id]) {
               progressByGroup[release.elite_kleingruppe_id] = { total: 0, released: 0 };
+            }
+            
+            // Track last unit date for each elite-kleingruppe
+            const unitDate = new Date(release.release_date);
+            if (!lastUnitDateByGroup[release.elite_kleingruppe_id] || unitDate > lastUnitDateByGroup[release.elite_kleingruppe_id]!) {
+              lastUnitDateByGroup[release.elite_kleingruppe_id] = unitDate;
             }
             
             // Only count units that have already passed
@@ -719,14 +809,32 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
         hoursMap[entry.teilnehmer_id] += Number(entry.hours);
       });
 
-      // Merge completed hours and elite progress into teilnehmer data
-      const teilnehmerWithHours = (teilnehmerData || []).map(t => ({
-        ...t,
-        completed_hours: hoursMap[t.id] || 0,
-        elite_progress: t.elite_kleingruppe_id && progressByGroup[t.elite_kleingruppe_id] 
-          ? progressByGroup[t.elite_kleingruppe_id]
-          : null
-      }));
+      // Merge completed hours, elite progress, contract data, and legal area hours into teilnehmer data
+      const teilnehmerWithHours = (teilnehmerData || []).map(t => {
+        const contractData = contractsByTeilnehmer[t.id];
+        const legalAreas = legalAreasByTeilnehmer[t.id] || {
+          zivilrecht: { used: 0, total: 0 },
+          strafrecht: { used: 0, total: 0 },
+          oeffentliches_recht: { used: 0, total: 0 },
+          sonstiges: { used: 0, total: 0 }
+        };
+        return {
+          ...t,
+          completed_hours: hoursMap[t.id] || 0,
+          elite_progress: t.elite_kleingruppe_id && progressByGroup[t.elite_kleingruppe_id] 
+            ? progressByGroup[t.elite_kleingruppe_id]
+            : null,
+          elite_last_unit_date: t.elite_kleingruppe_id && lastUnitDateByGroup[t.elite_kleingruppe_id]
+            ? lastUnitDateByGroup[t.elite_kleingruppe_id]
+            : null,
+          // Use contract data if available, otherwise fall back to old fields
+          contract_start: contractData?.earliestStart || t.contract_start,
+          contract_end: contractData?.latestEnd || t.contract_end,
+          booked_hours: contractData?.totalHours || t.booked_hours,
+          // Add legal area hours
+          legal_areas_hours: legalAreas
+        };
+      });
 
       setTeilnehmer(teilnehmerWithHours);
     } catch (error) {
@@ -2490,7 +2598,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                                 </div>
                               </button>
                             </td>
-                            <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            <td className="px-4 sm:px-6 py-4">
                               {editingTeilnehmer === t.id ? (
                                 <div className="flex items-center space-x-2">
                                   <input
@@ -2520,30 +2628,25 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                                   </button>
                                 </div>
                               ) : (
-                                <div className="space-y-1">
-                                  <div className="flex items-center space-x-2">
-                                    <div className="text-sm text-gray-500">
-                                      {t.contract_start && t.contract_end ? (
-                                        <>
-                                          <Calendar className="h-3 w-3 inline mr-1" />
-                                          {new Date(t.contract_start).toLocaleDateString('de-DE')} - {new Date(t.contract_end).toLocaleDateString('de-DE')}
-                                        </>
-                                      ) : (
-                                        <span className="text-gray-400">Nicht festgelegt</span>
-                                      )}
-                                    </div>
+                                <div className="space-y-1.5">
+                                  <div className="text-sm text-gray-500">
+                                    {t.contract_start && t.contract_end ? (
+                                      <>
+                                        <Calendar className="h-3 w-3 inline mr-1" />
+                                        {new Date(t.contract_start).toLocaleDateString('de-DE')} - {new Date(t.contract_end).toLocaleDateString('de-DE')}
+                                      </>
+                                    ) : (
+                                      <span className="text-gray-400">Nicht festgelegt</span>
+                                    )}
                                   </div>
-                                  {/* Progress Bar for Desktop */}
+                                  {/* Progress Bar for Laufzeit */}
                                   {t.contract_start && t.contract_end && (() => {
                                     const progress = getContractProgress(t);
-                                    const hasHoursLeft = t.booked_hours && (t.booked_hours - (t.completed_hours || 0)) > 0;
-                                    const isFinishedWithHoursLeft = progress.percent >= 100 && hasHoursLeft;
                                     return (
                                       <div className="flex items-center space-x-2">
                                         <div className="w-20 bg-gray-200 rounded-full h-1.5">
                                           <div 
                                             className={`h-1.5 rounded-full ${
-                                              isFinishedWithHoursLeft ? 'bg-red-500' :
                                               progress.percent >= 100 ? 'bg-gray-400' : 
                                               progress.percent >= 75 ? 'bg-orange-500' : 
                                               'bg-primary'
@@ -2552,7 +2655,6 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                                           />
                                         </div>
                                         <span className={`text-xs ${
-                                          isFinishedWithHoursLeft ? 'text-red-600' :
                                           progress.percent >= 100 ? 'text-gray-500' : 
                                           progress.percent >= 75 ? 'text-orange-600' : 
                                           'text-primary'
@@ -2584,22 +2686,14 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                                 {!t.dozent_zivilrecht_id && !t.dozent_strafrecht_id && !t.dozent_oeffentliches_recht_id && '-'}
                               </div>
                             </td>
-                            <td className="px-4 sm:px-6 py-4 whitespace-nowrap hidden lg:table-cell">
+                            <td className="px-4 sm:px-6 py-4 hidden lg:table-cell">
                               {t.booked_hours ? (
-                                <button
-                                  onClick={() => {
-                                    setSelectedTeilnehmerForStundenzettel(t);
-                                    setShowStundenzettel(true);
-                                  }}
-                                  className="text-xs text-left hover:bg-gray-100 rounded p-1 -m-1 transition-colors w-24"
-                                >
-                                  <div className="flex items-center space-x-1">
-                                    <span className="text-green-600 font-medium">{t.completed_hours || 0}</span>
-                                    <span className="text-gray-400">/</span>
-                                    <span className="text-gray-600">{t.booked_hours}</span>
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center space-x-1 text-xs">
+                                    <span className="text-gray-600">{t.completed_hours || 0} / {t.booked_hours}</span>
                                   </div>
                                   {/* Hours Progress Bar */}
-                                  <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                                  <div className="w-full bg-gray-200 rounded-full h-1.5">
                                     <div 
                                       className={`h-1.5 rounded-full transition-all ${
                                         (t.completed_hours || 0) >= t.booked_hours ? 'bg-green-500' : 
@@ -2609,12 +2703,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                                       style={{ width: `${Math.min(100, ((t.completed_hours || 0) / t.booked_hours) * 100)}%` }}
                                     />
                                   </div>
-                                  <div className="text-gray-400 mt-0.5 hover:text-primary">
-                                    {t.booked_hours - (t.completed_hours || 0) > 0 
-                                      ? `${t.booked_hours - (t.completed_hours || 0)} ausstehend`
-                                      : 'Abgeschlossen'}
-                                  </div>
-                                </button>
+                                </div>
                               ) : (
                                 <span className="text-gray-400 text-xs">-</span>
                               )}
@@ -2632,44 +2721,55 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                             </td>
                             <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
                               {(() => {
-                                // For Elite-Kleingruppe participants, show progress based on released units
-                                if (t.elite_kleingruppe || t.is_elite_kleingruppe) {
-                                  // Use individual progress if available, otherwise fall back to global
-                                  const progress = t.elite_progress || eliteReleases;
-                                  const progressPercent = progress.total > 0 
-                                    ? Math.round((progress.released / progress.total) * 100) 
-                                    : 0;
-                                  const isComplete = progressPercent >= 100;
-                                  return (
-                                    <div className="flex items-center gap-2">
-                                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                        isComplete ? 'bg-green-100 text-green-800' : 'bg-purple-100 text-purple-800'
-                                      }`}>
-                                        {isComplete ? 'Abgeschlossen' : `${progressPercent}% Einheiten`}
-                                      </span>
-                                      {progress.total > 0 && (
-                                        <span className="text-xs text-gray-500">
-                                          ({progress.released}/{progress.total})
-                                        </span>
-                                      )}
-                                    </div>
-                                  );
-                                }
+                                // Check if has contract hours
+                                const hasContractHours = t.booked_hours && t.booked_hours > 0;
                                 
-                                const isActive = isContractActive(t);
-                                const hasHoursLeft = t.booked_hours && (t.booked_hours - (t.completed_hours || 0)) > 0;
-                                const isUrgent = !isActive && hasHoursLeft;
-                                const isRunning = isActive && hasHoursLeft;
-                                return (
-                                  <div className="flex items-center gap-2">
+                                // If has contract hours, use contract-based status (even if Elite-Kleingruppe)
+                                if (hasContractHours) {
+                                  const isActive = isContractActive(t);
+                                  const hasHoursLeft = t.booked_hours - (t.completed_hours || 0) > 0;
+                                  const isUrgent = !isActive && hasHoursLeft;
+                                  const isRunning = isActive && hasHoursLeft;
+                                  const isHoursFull = isActive && !hasHoursLeft;
+                                  return (
                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                                       isUrgent ? 'bg-red-100 text-red-800' :
                                       isRunning ? 'bg-blue-100 text-blue-800' :
-                                      isActive ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'
+                                      isHoursFull ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'
                                     }`}>
-                                      {isUrgent ? 'Dringend' : isRunning ? 'Laufend' : isActive ? 'Stunden voll' : 'Abgeschlossen'}
+                                      {isUrgent ? 'Dringend' : isRunning ? 'Laufend' : isHoursFull ? 'Stunden voll' : 'Abgeschlossen'}
                                     </span>
-                                  </div>
+                                  );
+                                }
+                                
+                                // If only Elite-Kleingruppe (no contract hours)
+                                if (t.elite_kleingruppe || t.is_elite_kleingruppe) {
+                                  // Show "Laufend" as long as last unit is in future
+                                  const lastUnitDate = t.elite_last_unit_date;
+                                  const today = new Date();
+                                  today.setHours(0, 0, 0, 0);
+                                  
+                                  let isActive = false;
+                                  if (lastUnitDate) {
+                                    const lastUnit = new Date(lastUnitDate);
+                                    lastUnit.setHours(23, 59, 59, 999);
+                                    isActive = lastUnit >= today;
+                                  }
+                                  
+                                  return (
+                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                      isActive ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                                    }`}>
+                                      {isActive ? 'Laufend' : 'Abgeschlossen'}
+                                    </span>
+                                  );
+                                }
+                                
+                                // Fallback: no contracts, no elite-kleingruppe
+                                return (
+                                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800`}>
+                                    Abgeschlossen
+                                  </span>
                                 );
                               })()}
                             </td>

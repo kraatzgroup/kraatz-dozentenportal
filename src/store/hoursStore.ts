@@ -45,7 +45,7 @@ interface HoursState {
   fetchHours: (dozentId?: string, startDate?: string, endDate?: string) => Promise<void>;
   fetchMonthlySummary: (dozentId?: string, year?: number, month?: number) => Promise<void>;
   fetchTeilnehmerDozenten: (teilnehmerId: string, startDate?: string, endDate?: string) => Promise<void>;
-  createHours: (data: { teilnehmer_id: string; hours: number; date: string; description?: string; legal_area?: string; dozent_id?: string }) => Promise<void>;
+  createHours: (data: { teilnehmer_id: string; hours: number; date: string; description?: string; legal_area?: string; dozent_id?: string; contract_id?: string; package_id?: string }) => Promise<void>;
   updateHours: (id: string, data: { hours: number; date: string; description?: string }) => Promise<void>;
   deleteHours: (id: string) => Promise<void>;
   getTotalHours: (teilnehmerId: string, startDate?: string, endDate?: string) => Promise<number>;
@@ -315,16 +315,18 @@ export const useHoursStore = create<HoursState>((set, get) => ({
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No authenticated user');
-      
+
       const hoursData = {
         teilnehmer_id: data.teilnehmer_id,
         dozent_id: data.dozent_id || user.id,
         hours: data.hours,
         date: data.date,
         description: data.description || '',
-        legal_area: data.legal_area || ''
+        legal_area: data.legal_area || '',
+        contract_id: data.contract_id || null,
+        package_id: data.package_id || null
       };
-      
+
       const { data: newHours, error } = await supabase
         .from('participant_hours')
         .insert(hoursData)
@@ -332,7 +334,7 @@ export const useHoursStore = create<HoursState>((set, get) => ({
         .single();
 
       if (error) throw error;
-      
+
       console.log('Hours created successfully in database:', newHours);
       
       // Update local state immediately for instant feedback

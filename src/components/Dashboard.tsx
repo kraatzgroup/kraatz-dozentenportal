@@ -136,12 +136,17 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     date: new Date().toISOString().split('T')[0],
     description: '',
     legal_area: '',
-    lesson_type: 'einzelunterricht' as 'einzelunterricht' | 'elite_kleingruppe'
+    lesson_type: 'einzelunterricht' as 'einzelunterricht' | 'elite_kleingruppe',
+    contract_id: '',
+    package_id: ''
   });
   const [teilnehmerSearch, setTeilnehmerSearch] = useState('');
   const [teilnehmerSearchResults, setTeilnehmerSearchResults] = useState<any[]>([]);
   const [showTeilnehmerDropdown, setShowTeilnehmerDropdown] = useState(false);
   const [selectedTeilnehmerName, setSelectedTeilnehmerName] = useState('');
+  const [availableContracts, setAvailableContracts] = useState<any[]>([]);
+  const [availablePackages, setAvailablePackages] = useState<any[]>([]);
+  const [availableLegalAreas, setAvailableLegalAreas] = useState<string[]>([]);
   const [activityFormData, setActivityFormData] = useState({
     hours: '',
     date: new Date().toISOString().split('T')[0],
@@ -149,6 +154,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     exam_type: '1. Staatsexamen'
   });
   const [activityRefreshKey, setActivityRefreshKey] = useState(0);
+  const [contractRefreshKey, setContractRefreshKey] = useState(0);
   const [isEliteKleingruppeDozent, setIsEliteKleingruppeDozent] = useState(false);
   const [userExamTypes, setUserExamTypes] = useState<string[]>([]);
 
@@ -159,6 +165,85 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const [duplicateWarning, setDuplicateWarning] = useState<{ show: boolean; existingEntries: any[]; pendingData: any | null }>({
     show: false, existingEntries: [], pendingData: null
   });
+
+  const filterPackagesByLegalArea = async (legalArea: string) => {
+    console.log('🔍 filterPackagesByLegalArea called with:', { legalArea, teilnehmer_id: hoursFormData.teilnehmer_id, hours: hoursFormData.hours });
+
+    if (!hoursFormData.teilnehmer_id || !legalArea) {
+      console.log('❌ Missing participant_id or legal_area');
+      setAvailablePackages([]);
+      return;
+    }
+
+    const legalAreaMap: { [key: string]: string } = {
+      'Zivilrecht': 'zivilrecht',
+      'Strafrecht': 'strafrecht',
+      'Öffentliches Recht': 'oeffentliches_recht'
+    };
+    const dbLegalArea = legalAreaMap[legalArea];
+
+    if (!dbLegalArea) {
+      console.log('❌ Could not map legal area:', legalArea);
+      setAvailablePackages([]);
+      return;
+    }
+
+    console.log('📦 Available contracts:', availableContracts.length);
+
+    // Get all packages from available contracts
+    const allPackages: any[] = [];
+    for (const contract of availableContracts) {
+      if (contract.contract_packages) {
+        const packagesWithContract = contract.contract_packages.map((pkg: any) => ({
+          ...pkg,
+          contract_id: contract.id,
+          contract_number: contract.contract_number
+        }));
+        allPackages.push(...packagesWithContract);
+      }
+    }
+
+    console.log('📦 All packages found:', allPackages.length);
+
+    // Filter packages by sufficient hours for the legal area
+    const hoursToEnter = parseFloat(hoursFormData.hours) || 0;
+    const qualifiedPackages: any[] = [];
+
+    for (const pkg of allPackages) {
+      console.log('🔍 Checking package:', pkg.id, 'for legal area:', dbLegalArea);
+
+      const { data: legalAreas, error } = await supabase
+        .from('contract_package_legal_areas')
+        .select('hours')
+        .eq('contract_package_id', pkg.id)
+        .eq('legal_area', dbLegalArea)
+        .maybeSingle();
+
+      console.log('📊 Legal area data for package:', pkg.id, legalAreas, error);
+
+      if (legalAreas) {
+        const availableHours = legalAreas.hours - (pkg.hours_used || 0);
+        console.log('⏱️ Package', pkg.id, 'available hours:', availableHours, 'needed:', hoursToEnter);
+        if (availableHours >= hoursToEnter) {
+          qualifiedPackages.push(pkg);
+          console.log('✅ Package qualified:', pkg.id);
+        }
+      }
+    }
+
+    console.log('✅ Qualified packages:', qualifiedPackages.length);
+    setAvailablePackages(qualifiedPackages);
+
+    // Auto-select if only one package qualifies
+    if (qualifiedPackages.length === 1) {
+      console.log('🎯 Auto-selecting single package:', qualifiedPackages[0].id);
+      setHoursFormData(prev => ({
+        ...prev,
+        contract_id: qualifiedPackages[0].contract_id,
+        package_id: qualifiedPackages[0].id
+      }));
+    }
+  };
 
   const unreadMessages = messages.filter(message => !message.read);
 
@@ -614,40 +699,83 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       date: new Date().toISOString().split('T')[0],
       description: '',
       legal_area: '',
-      lesson_type: 'einzelunterricht'
+      lesson_type: 'einzelunterricht',
+      contract_id: '',
+      package_id: ''
     });
     setSelectedTeilnehmerName('');
     setTeilnehmerSearch('');
-    
+    setAvailableContracts([]);
+    setAvailablePackages([]);
+    setAvailableLegalAreas([]);
+
     await fetchMonthlySummary();
     setActivityRefreshKey(prev => prev + 1);
+    setContractRefreshKey(prev => prev + 1);
+  };
+
+  const deductFromPackage = async (packageId: string, hours: number) => {
+    console.log('⏱️ Deducting hours from package:', packageId, hours);
+    const { data: currentPackage, error: fetchError } = await supabase
+      .from('contract_packages')
+      .select('hours_used')
+      .eq('id', packageId)
+      .single();
+
+    if (currentPackage) {
+      const newHoursUsed = (currentPackage.hours_used || 0) + hours;
+      const { error } = await supabase
+        .from('contract_packages')
+        .update({ hours_used: newHoursUsed })
+        .eq('id', packageId);
+      console.log('✅ Package update result:', error || 'Success');
+      if (error) {
+        console.error('❌ Error updating package hours:', error);
+      }
+    }
   };
 
   const handleHoursSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
+    console.log('📝 handleHoursSubmit called with:', hoursFormData);
+    console.log('📦 Package ID in form:', hoursFormData.package_id);
+    console.log('📦 Contract ID in form:', hoursFormData.contract_id);
+
+    // Validate package selection
+    if (!hoursFormData.package_id) {
+      alert('Bitte wählen Sie ein Paket aus.');
+      return;
+    }
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      
+
       const hoursData = {
         teilnehmer_id: hoursFormData.teilnehmer_id,
         hours: parseFloat(hoursFormData.hours),
         date: hoursFormData.date,
         description: hoursFormData.description,
         legal_area: hoursFormData.legal_area,
-        dozent_id: user.id
+        dozent_id: user.id,
+        contract_id: hoursFormData.contract_id || null,
+        package_id: hoursFormData.package_id || null
       };
-      
+
       // Check for duplicate entries (same teilnehmer + same date + same dozent)
+      console.log('🔍 Checking for duplicate entries...');
       const { data: existingEntries, error: checkError } = await supabase
         .from('participant_hours')
         .select('id, hours, date, description, legal_area, teilnehmer:teilnehmer!participant_hours_teilnehmer_id_fkey(name)')
         .eq('dozent_id', user.id)
         .eq('teilnehmer_id', hoursFormData.teilnehmer_id)
         .eq('date', hoursFormData.date);
-      
+
+      console.log('🔍 Duplicate check result:', { existingEntries, checkError });
+
       if (!checkError && existingEntries && existingEntries.length > 0) {
+        console.log('⚠️ Duplicate found, showing warning');
         setDuplicateWarning({
           show: true,
           existingEntries: existingEntries.map((e: any) => ({
@@ -658,8 +786,26 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
         });
         return;
       }
-      
+
+      console.log('🔄 About to call saveDashboardHoursEntry...');
       await saveDashboardHoursEntry(hoursData);
+      console.log('✅ saveDashboardHoursEntry returned');
+
+      console.log('✅ Hours saved, checking package deduction...');
+
+      // If package is selected, deduct hours from it AFTER successful save
+      if (hoursFormData.package_id && hoursFormData.legal_area) {
+        console.log('✅ Package deduction condition met, proceeding...');
+        const hoursToDeduct = parseFloat(hoursFormData.hours);
+        await deductFromPackage(hoursFormData.package_id, hoursToDeduct);
+
+        // Trigger progress bar re-render AFTER deduction
+        setContractRefreshKey(prev => prev + 1);
+      } else {
+        console.log('⚠️ No package selected for hours deduction:', { package_id: hoursFormData.package_id, legal_area: hoursFormData.legal_area });
+        // Still trigger refresh even if no package selected
+        setContractRefreshKey(prev => prev + 1);
+      }
     } catch (error: any) {
       console.error('Error creating hours:', error);
       alert('Fehler beim Speichern der Stunden: ' + (error?.message || 'Unbekannter Fehler'));
@@ -1103,6 +1249,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                     getCurrentMonthHours={getCurrentMonthHours}
                     isAdmin={canManageAll}
                     studyGoal="1. Staatsexamen"
+                    refreshKey={contractRefreshKey}
+                    onRefresh={() => setContractRefreshKey(prev => prev + 1)}
                     dozentId={user?.id}
                   />
                   {userExamTypes.includes('2. Staatsexamen') && (
@@ -1635,17 +1783,77 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                             <button
                               key={t.id}
                               type="button"
-                              onClick={() => {
-                                setHoursFormData({ ...hoursFormData, teilnehmer_id: t.id });
+                              onClick={async () => {
+                                setHoursFormData({ ...hoursFormData, teilnehmer_id: t.id, legal_area: '', contract_id: '', package_id: '' });
                                 setSelectedTeilnehmerName(t.name);
                                 setTeilnehmerSearch('');
                                 setShowTeilnehmerDropdown(false);
+                                setAvailableContracts([]);
+                                setAvailablePackages([]);
+                                setAvailableLegalAreas([]);
+
+                                // Fetch participant's dozent assignments
+                                const { data: participant } = await supabase
+                                  .from('teilnehmer')
+                                  .select('dozent_zivilrecht_id, dozent_strafrecht_id, dozent_oeffentliches_recht_id')
+                                  .eq('id', t.id)
+                                  .single();
+
+                                if (participant) {
+                                  const { data: { user } } = await supabase.auth.getUser();
+                                  if (user) {
+                                    // Get profile ID of current user
+                                    const { data: profile } = await supabase
+                                      .from('profiles')
+                                      .select('id')
+                                      .eq('id', user.id)
+                                      .single();
+
+                                    const assignedAreas: string[] = [];
+                                    if (profile && participant.dozent_zivilrecht_id === profile.id) assignedAreas.push('Zivilrecht');
+                                    if (profile && participant.dozent_strafrecht_id === profile.id) assignedAreas.push('Strafrecht');
+                                    if (profile && participant.dozent_oeffentliches_recht_id === profile.id) assignedAreas.push('Öffentliches Recht');
+                                    setAvailableLegalAreas(assignedAreas);
+
+                                    // Pre-select if only one area
+                                    if (assignedAreas.length === 1) {
+                                      setHoursFormData(prev => ({ ...prev, legal_area: assignedAreas[0] }));
+                                    }
+                                  }
+                                }
+
+                                // Fetch participant's contracts
+                                const { data: contracts } = await supabase
+                                  .from('contracts')
+                                  .select('*, contract_packages(*)')
+                                  .eq('teilnehmer_id', t.id)
+                                  .eq('status', 'active');
+
+                                console.log('📄 Contracts fetched for participant (autocomplete):', t.id, contracts);
+                                console.log('📄 Contract details:', contracts?.map(c => ({
+                                  id: c.id,
+                                  contract_number: c.contract_number,
+                                  contract_packages: c.contract_packages,
+                                  packages_count: c.contract_packages?.length
+                                })));
+
+                                if (contracts) {
+                                  const today = new Date();
+                                  today.setHours(0, 0, 0, 0);
+                                  const activeContracts = contracts.filter(c => {
+                                    const startDate = new Date(c.start_date);
+                                    const endDate = c.end_date ? new Date(c.end_date) : null;
+                                    return startDate <= today && (!endDate || endDate >= today);
+                                  });
+                                  console.log('📅 Active contracts after date filter (autocomplete):', activeContracts.length);
+                                  setAvailableContracts(activeContracts);
+                                }
                               }}
                               className="w-full text-left px-4 py-2 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none"
                             >
-                              <div className="font-medium text-gray-900">{t.name}</div>
-                              <div className="text-sm text-gray-500">{t.email}</div>
-                            </button>
+                            <div className="font-medium text-gray-900">{t.name}</div>
+                            <div className="text-sm text-gray-500">{t.email}</div>
+                          </button>
                           ))}
                         </div>
                       )}
@@ -1658,9 +1866,70 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                               <button
                                 key={t.id}
                                 type="button"
-                                onClick={() => {
-                                  setHoursFormData({ ...hoursFormData, teilnehmer_id: t.id });
+                                onClick={async () => {
+                                  setHoursFormData({ ...hoursFormData, teilnehmer_id: t.id, legal_area: '', contract_id: '', package_id: '' });
                                   setSelectedTeilnehmerName(t.name);
+                                  setAvailableContracts([]);
+                                  setAvailablePackages([]);
+                                  setAvailableLegalAreas([]);
+
+                                  // Fetch participant's dozent assignments
+                                  const { data: participant } = await supabase
+                                    .from('teilnehmer')
+                                    .select('dozent_zivilrecht_id, dozent_strafrecht_id, dozent_oeffentliches_recht_id')
+                                    .eq('id', t.id)
+                                    .single();
+
+                                  if (participant) {
+                                    const { data: { user } } = await supabase.auth.getUser();
+                                    if (user) {
+                                      // Get profile ID of current user
+                                      const { data: profile } = await supabase
+                                        .from('profiles')
+                                        .select('id')
+                                        .eq('id', user.id)
+                                        .single();
+
+                                      const assignedAreas: string[] = [];
+                                      if (profile && participant.dozent_zivilrecht_id === profile.id) assignedAreas.push('Zivilrecht');
+                                      if (profile && participant.dozent_strafrecht_id === profile.id) assignedAreas.push('Strafrecht');
+                                      if (profile && participant.dozent_oeffentliches_recht_id === profile.id) assignedAreas.push('Öffentliches Recht');
+                                      setAvailableLegalAreas(assignedAreas);
+
+                                      // Pre-select if only one area
+                                      if (assignedAreas.length === 1) {
+                                        setHoursFormData(prev => ({ ...prev, legal_area: assignedAreas[0] }));
+                                      }
+                                    }
+                                  }
+
+                                  // Fetch participant's contracts
+                                  const { data: contracts } = await supabase
+                                    .from('contracts')
+                                    .select('*, contract_packages(*)')
+                                    .eq('teilnehmer_id', t.id)
+                                    .eq('status', 'active');
+
+                                  console.log('📄 Contracts fetched for participant:', t.id, contracts);
+                                  console.log('📄 Contract details:', contracts?.map(c => ({
+                                    id: c.id,
+                                    contract_number: c.contract_number,
+                                    contract_packages: c.contract_packages,
+                                    packages_count: c.contract_packages?.length,
+                                    contract_packages_raw: JSON.stringify(c.contract_packages)
+                                  })));
+
+                                  if (contracts) {
+                                    const today = new Date();
+                                    today.setHours(0, 0, 0, 0);
+                                    const activeContracts = contracts.filter(c => {
+                                      const startDate = new Date(c.start_date);
+                                      const endDate = c.end_date ? new Date(c.end_date) : null;
+                                      return startDate <= today && (!endDate || endDate >= today);
+                                    });
+                                    console.log('📅 Active contracts after date filter:', activeContracts.length);
+                                    setAvailableContracts(activeContracts);
+                                  }
                                 }}
                                 className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md text-gray-700"
                               >
@@ -1686,7 +1955,13 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                         min="0"
                         max="24"
                         value={hoursFormData.hours}
-                        onChange={(e) => setHoursFormData({ ...hoursFormData, hours: e.target.value })}
+                        onChange={(e) => {
+                          setHoursFormData({ ...hoursFormData, hours: e.target.value });
+                          // Re-filter packages when hours change if legal area is already selected
+                          if (hoursFormData.legal_area) {
+                            filterPackagesByLegalArea(hoursFormData.legal_area);
+                          }
+                        }}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
                         placeholder="z.B. 8.5"
                         required
@@ -1735,16 +2010,67 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                       </label>
                       <select
                         value={hoursFormData.legal_area}
-                        onChange={(e) => setHoursFormData({ ...hoursFormData, legal_area: e.target.value })}
+                        onChange={(e) => {
+                          setHoursFormData({ ...hoursFormData, legal_area: e.target.value, contract_id: '', package_id: '' });
+                          // Filter packages when legal area changes
+                          if (e.target.value && availableContracts.length > 0) {
+                            filterPackagesByLegalArea(e.target.value);
+                          }
+                        }}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
                         required
+                        disabled={!hoursFormData.teilnehmer_id || availableLegalAreas.length === 0}
                       >
                         <option value="">Rechtsgebiet auswählen</option>
-                        <option value="Zivilrecht">Zivilrecht</option>
-                        <option value="Öffentliches Recht">Öffentliches Recht</option>
-                        <option value="Strafrecht">Strafrecht</option>
+                        {availableLegalAreas.map(area => (
+                          <option key={area} value={area}>{area}</option>
+                        ))}
                       </select>
+                      {!hoursFormData.teilnehmer_id && (
+                        <p className="mt-1 text-xs text-gray-500">Bitte zuerst Teilnehmer auswählen</p>
+                      )}
+                      {hoursFormData.teilnehmer_id && availableLegalAreas.length === 0 && (
+                        <p className="mt-1 text-xs text-amber-600">Keine Rechtsgebiete zugewiesen</p>
+                      )}
                     </div>
+
+                    {/* Contract/Package Selection */}
+                    {availableContracts.length > 0 && hoursFormData.legal_area && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Paket auswählen
+                        </label>
+                        <select
+                          value={hoursFormData.package_id}
+                          onChange={(e) => {
+                            console.log('📦 Package selection changed:', e.target.value);
+                            const selectedPackage = availablePackages.find(p => p.id === e.target.value);
+                            console.log('📦 Selected package:', selectedPackage);
+                            if (selectedPackage) {
+                              setHoursFormData(prev => ({
+                                ...prev,
+                                package_id: selectedPackage.id,
+                                contract_id: selectedPackage.contract_id
+                              }));
+                              console.log('✅ Package set in form:', selectedPackage.id, selectedPackage.contract_id);
+                            }
+                          }}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                          required
+                        >
+                          <option value="">Paket auswählen</option>
+                          {availablePackages.map(pkg => (
+                            <option key={pkg.id} value={pkg.id}>
+                              {pkg.custom_name || 'Paket'} ({pkg.contract_number}) - {pkg.hours_total - pkg.hours_used} Std. verfügbar
+                            </option>
+                          ))}
+                        </select>
+                        {availablePackages.length === 0 && (
+                          <p className="mt-1 text-xs text-amber-600">Kein Paket mit ausreichenden Stunden verfügbar</p>
+                        )}
+                      </div>
+                    )}
+
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Beschreibung (optional)
@@ -1776,8 +2102,15 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                         date: new Date().toISOString().split('T')[0],
                         description: '',
                         legal_area: '',
-                        lesson_type: 'einzelunterricht'
+                        lesson_type: 'einzelunterricht',
+                        contract_id: '',
+                        package_id: ''
                       });
+                      setSelectedTeilnehmerName('');
+                      setTeilnehmerSearch('');
+                      setAvailableContracts([]);
+                      setAvailablePackages([]);
+                      setAvailableLegalAreas([]);
                     }}
                     className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"
                   >
@@ -1971,6 +2304,18 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   onClick={async () => {
                     try {
                       await saveDashboardHoursEntry(duplicateWarning.pendingData);
+
+                      // If package is selected, deduct hours from it AFTER successful save
+                      if (duplicateWarning.pendingData.package_id && duplicateWarning.pendingData.legal_area) {
+                        await deductFromPackage(duplicateWarning.pendingData.package_id, duplicateWarning.pendingData.hours);
+
+                        // Trigger progress bar re-render AFTER deduction
+                        setContractRefreshKey(prev => prev + 1);
+                      } else {
+                        // Still trigger refresh even if no package selected
+                        setContractRefreshKey(prev => prev + 1);
+                      }
+
                       setDuplicateWarning({ show: false, existingEntries: [], pendingData: null });
                     } catch (error) {
                       console.error('Error saving duplicate hours:', error);

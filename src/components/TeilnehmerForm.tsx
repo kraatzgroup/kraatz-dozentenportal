@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Save, UserPlus, MapPin, Trash2, AlertTriangle, Upload, Calendar, Clock, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Save, UserPlus, User, MapPin, Trash2, AlertTriangle, Upload, Calendar, Clock, BookOpen, ChevronDown, ChevronUp, FileText, FileText as FileContract, Edit2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { useToastStore } from '../store/toastStore';
@@ -93,6 +93,48 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
   const hasImportedData = useRef(false);
   const [importedLessons, setImportedLessons] = useState<ImportedLesson[]>([]);
   const [showImportedLessons, setShowImportedLessons] = useState(true);
+  const [activeTab, setActiveTab] = useState<'stammdaten' | 'dozenten' | 'vertraege' | 'notizen'>('stammdaten');
+  const [contracts, setContracts] = useState<any[]>([]);
+  const [showContractDialog, setShowContractDialog] = useState(false);
+  const [editingContract, setEditingContract] = useState<any>(null);
+  const [contractPackages, setContractPackages] = useState<any[]>([]);
+  const [aggregatedLegalAreaHours, setAggregatedLegalAreaHours] = useState<{
+    zivilrecht: number;
+    strafrecht: number;
+    oeffentliches_recht: number;
+    sonstiges: number;
+  }>({ zivilrecht: 0, strafrecht: 0, oeffentliches_recht: 0, sonstiges: 0 });
+  const [showPackageDialog, setShowPackageDialog] = useState(false);
+  const [editingPackage, setEditingPackage] = useState<any>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    variant?: 'danger' | 'primary';
+    onConfirm: () => void | Promise<void>;
+    onCancel?: () => void;
+  } | null>(null);
+  const [newContractForm, setNewContractForm] = useState<{
+    start_date: string;
+    end_date: string;
+    legal_areas: { zivilrecht: number; strafrecht: number; oeffentliches_recht: number };
+    frequency_type: string;
+    frequency_hours: { zivilrecht: number | null; strafrecht: number | null; oeffentliches_recht: number | null };
+  }>({
+    start_date: '',
+    end_date: '',
+    legal_areas: { zivilrecht: 0, strafrecht: 0, oeffentliches_recht: 0 },
+    frequency_type: 'monthly',
+    frequency_hours: { zivilrecht: null, strafrecht: null, oeffentliches_recht: null },
+  });
+
+  const tabs = [
+    { id: 'stammdaten' as const, label: 'Stammdaten', icon: UserPlus },
+    { id: 'dozenten' as const, label: 'Dozenten', icon: User },
+    { id: 'vertraege' as const, label: 'Verträge', icon: FileContract },
+    { id: 'notizen' as const, label: 'Notizen', icon: FileText },
+  ];
   
   // Get today's date in YYYY-MM-DD format
   const getTodayDate = () => {
@@ -605,6 +647,90 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
     }
   }, [teilnehmer]);
 
+  useEffect(() => {
+    const fetchContracts = async () => {
+      if (teilnehmer?.id) {
+        const { data, error } = await supabase
+          .from('contracts')
+          .select('*, contract_packages(*)')
+          .eq('teilnehmer_id', teilnehmer.id)
+          .order('created_at', { ascending: true });
+
+        if (!error && data) {
+          // Sort by: oldest first, then most hours remaining first
+          const sorted = [...data].sort((a, b) => {
+            const aRemaining = (a.total_hours || 0) - (a.calculated_hours || 0);
+            const bRemaining = (b.total_hours || 0) - (b.calculated_hours || 0);
+            // Primary: created_at ascending (oldest first)
+            // Secondary: remaining hours descending (most hours left first)
+            if (aRemaining !== bRemaining) {
+              return bRemaining - aRemaining;
+            }
+            return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          });
+          setContracts(sorted);
+
+          // Fetch aggregated legal area hours for all contracts
+          if (sorted.length > 0) {
+            const contractIds = sorted.map(c => c.id);
+            const { data: packages, error: packagesError } = await supabase
+              .from('contract_packages')
+              .select('id, contract_package_legal_areas (legal_area, hours)')
+              .in('contract_id', contractIds);
+
+            if (!packagesError && packages) {
+              const aggregated = {
+                zivilrecht: 0,
+                strafrecht: 0,
+                oeffentliches_recht: 0,
+                sonstiges: 0
+              };
+
+              packages.forEach(pkg => {
+                if (pkg.contract_package_legal_areas) {
+                  pkg.contract_package_legal_areas.forEach((la: any) => {
+                    if (aggregated[la.legal_area] !== undefined) {
+                      aggregated[la.legal_area] += la.hours || 0;
+                    }
+                  });
+                }
+              });
+
+              setAggregatedLegalAreaHours(aggregated);
+            }
+          }
+        }
+      }
+    };
+    
+    fetchContracts();
+  }, [teilnehmer?.id]);
+
+  const fetchContractPackages = async (contractId: string) => {
+    const { data, error } = await supabase
+      .from('contract_packages')
+      .select(`
+        *,
+        packages (*),
+        contract_package_legal_areas (*)
+      `)
+      .eq('contract_id', contractId);
+    
+    if (!error && data) {
+      setContractPackages(data);
+    }
+
+    // Also refresh contract data so hours are live-updated in the modal
+    const { data: refreshedContract } = await supabase
+      .from('contracts')
+      .select('*')
+      .eq('id', contractId)
+      .single();
+    if (refreshedContract) {
+      setEditingContract((prev: any) => (prev && prev.id === contractId ? { ...prev, ...refreshedContract } : prev));
+    }
+  };
+
   const validateTnNummer = async (tnNummer: string): Promise<boolean> => {
     if (!tnNummer) {
       setTnNummerError('TN-Nummer ist erforderlich');
@@ -881,7 +1007,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
     >
       <div 
-        className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col"
       >
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center">
@@ -915,685 +1041,890 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          {/* TN-Nummer Field */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              TN-Nummer *
-            </label>
-            <input
-              type="text"
-              value={formData.tn_nummer || ''}
-              onChange={async (e) => {
-                const value = e.target.value.toUpperCase();
-                setFormData({ ...formData, tn_nummer: value });
-                if (value) {
-                  await validateTnNummer(value);
-                } else {
-                  setTnNummerError('');
-                }
-              }}
-              onBlur={() => {
-                if (formData.tn_nummer) {
-                  validateTnNummer(formData.tn_nummer);
-                }
-              }}
-              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:border-transparent ${
-                tnNummerError 
-                  ? 'border-red-300 focus:ring-red-500' 
-                  : 'border-gray-300 focus:ring-primary'
-              }`}
-              placeholder="TN00001"
-              required
-              maxLength={7}
-              pattern="TN[0-9]{4,5}"
-            />
-            {tnNummerError && (
-              <p className="mt-1 text-sm text-red-600">{tnNummerError}</p>
-            )}
-            <p className="mt-1 text-xs text-gray-500">
-              Format: TNXXXX oder TNXXXXX (z.B. TN0001, TN10000)
-            </p>
-          </div>
-
-          {/* Name Fields */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Vorname *
-              </label>
-              <input
-                type="text"
-                value={formData.first_name}
-                onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                placeholder="Max"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Zweitname
-              </label>
-              <input
-                type="text"
-                value={formData.middle_name || ''}
-                onChange={(e) => setFormData({ ...formData, middle_name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                placeholder="Maria"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Nachname *
-              </label>
-              <input
-                type="text"
-                value={formData.last_name}
-                onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                placeholder="Mustermann"
-                required
-              />
-            </div>
-          </div>
-
-          {/* Email & Phone */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                E-Mail-Adresse
-              </label>
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                placeholder="max.mustermann@email.de"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Telefon
-              </label>
-              <input
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                placeholder="+49 123 456789"
-              />
-            </div>
-          </div>
-
-          {/* Address */}
-          <div className="border-t pt-4 mt-2">
-            <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
-              <MapPin className="h-4 w-4 mr-2" />
-              Adressdaten
-            </h4>
-            <div className="grid grid-cols-4 gap-2">
-              <div className="col-span-3">
-                <label className="block text-xs font-medium text-gray-700 mb-1">Straße</label>
-                <input
-                  type="text"
-                  value={formData.street}
-                  onChange={(e) => setFormData({ ...formData, street: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
-                  placeholder="Musterstraße"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Hausnr.</label>
-                <input
-                  type="text"
-                  value={formData.house_number}
-                  onChange={(e) => setFormData({ ...formData, house_number: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
-                  placeholder="12a"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">PLZ</label>
-                <input
-                  type="text"
-                  value={formData.postal_code}
-                  onChange={(e) => setFormData({ ...formData, postal_code: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
-                  placeholder="12345"
-                  maxLength={5}
-                />
-              </div>
-              <div className="col-span-3">
-                <label className="block text-xs font-medium text-gray-700 mb-1">Stadt</label>
-                <input
-                  type="text"
-                  value={formData.city}
-                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
-                  placeholder="Musterstadt"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Study Goal */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Studienziel
-            </label>
-            <select
-              value={formData.study_goal}
-              onChange={(e) => setFormData({ ...formData, study_goal: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-            >
-              <option value="">Bitte auswählen</option>
-              <option value="Grundstudium">Grundstudium</option>
-              <option value="Hauptstudium">Hauptstudium</option>
-              <option value="1. Staatsexamen Erstversuch">1. Staatsexamen Erstversuch</option>
-              <option value="1. Staatsexamen Verbesserungsversuch">1. Staatsexamen Verbesserungsversuch</option>
-              <option value="1. Staatsexamen Letztversuch">1. Staatsexamen Letztversuch</option>
-              <option value="2. Staatsexamen Erstversuch">2. Staatsexamen Erstversuch</option>
-              <option value="2. Staatsexamen Verbesserungsversuch">2. Staatsexamen Verbesserungsversuch</option>
-              <option value="2. Staatsexamen Letztversuch">2. Staatsexamen Letztversuch</option>
-            </select>
-          </div>
-
-          {/* Exam Date */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Prüfungstermin
-            </label>
-            <input
-              type="date"
-              value={formData.exam_date}
-              onChange={(e) => setFormData({ ...formData, exam_date: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-            />
-          </div>
-
-          {/* State Law */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Landesrecht
-            </label>
-            <select
-              value={formData.state_law}
-              onChange={(e) => setFormData({ ...formData, state_law: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-            >
-              <option value="">Bitte auswählen</option>
-              {GERMAN_STATES.map((state) => (
-                <option key={state} value={state}>
-                  {state}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Referendariatsstandort - Only shown for 2. Staatsexamen */}
-          {formData.study_goal?.includes('2. Staatsexamen') && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Referendariatsstandort
-              </label>
-              <select
-                value={formData.referendariatsstandort}
-                onChange={(e) => setFormData({ ...formData, referendariatsstandort: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-              >
-                <option value="">Bitte auswählen</option>
-                <option value="Stuttgart">Stuttgart</option>
-                <option value="Karlsruhe">Karlsruhe</option>
-                <option value="München">München</option>
-                <option value="Nürnberg">Nürnberg</option>
-                <option value="Bamberg">Bamberg</option>
-                <option value="Berlin (Kammergericht)">Berlin (Kammergericht)</option>
-                <option value="Brandenburg">Brandenburg</option>
-                <option value="Bremen">Bremen</option>
-                <option value="Hamburg">Hamburg</option>
-                <option value="Frankfurt am Main">Frankfurt am Main</option>
-                <option value="Mecklenburg-Vorpommern">Mecklenburg-Vorpommern</option>
-                <option value="Rostock">Rostock</option>
-                <option value="Celle">Celle</option>
-                <option value="Oldenburg">Oldenburg</option>
-                <option value="Braunschweig">Braunschweig</option>
-                <option value="Düsseldorf">Düsseldorf</option>
-                <option value="Hamm">Hamm</option>
-                <option value="Köln">Köln</option>
-                <option value="Koblenz">Koblenz</option>
-                <option value="Zweibrücken">Zweibrücken</option>
-                <option value="Saarbrücken">Saarbrücken</option>
-                <option value="Dresden">Dresden</option>
-                <option value="Naumburg">Naumburg</option>
-                <option value="Schleswig">Schleswig</option>
-                <option value="Jena">Jena</option>
-              </select>
-            </div>
-          )}
-
-          {/* Elite-Kleingruppe Section */}
-          <div className="space-y-3 p-4 bg-purple-50 rounded-lg border border-purple-200">
-            <label className="flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.is_elite_kleingruppe || false}
-                onChange={(e) => {
-                  const isChecked = e.target.checked;
-                  setFormData({ 
-                    ...formData, 
-                    is_elite_kleingruppe: isChecked,
-                    elite_kleingruppe: isChecked,
-                    elite_kleingruppe_id: isChecked ? formData.elite_kleingruppe_id : null
-                  });
-                }}
-                className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
-              />
-              <span className="ml-2 text-sm font-medium text-gray-700">Elite-Kleingruppe Teilnehmer</span>
-            </label>
-            
-            {formData.is_elite_kleingruppe && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Elite-Kleingruppe zuordnen
-                </label>
-                <select
-                  value={formData.elite_kleingruppe_id || ''}
-                  onChange={(e) => setFormData({ ...formData, elite_kleingruppe_id: e.target.value || null })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
-                  required={formData.is_elite_kleingruppe}
-                >
-                  <option value="">Bitte wählen...</option>
-                  {eliteKleingruppen.map((gruppe) => (
-                    <option key={gruppe.id} value={gruppe.id}>
-                      {gruppe.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-
-          {/* Legal Areas - Checkboxes */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Rechtsgebiet
-            </label>
-            <div className="space-y-2">
-              {['Zivilrecht', 'Strafrecht', 'Öffentliches Recht'].map((area) => (
-                <label key={area} className="flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.legal_areas.includes(area)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setFormData({ ...formData, legal_areas: [...formData.legal_areas, area] });
-                      } else {
-                        setFormData({ ...formData, legal_areas: formData.legal_areas.filter(a => a !== area) });
-                      }
-                    }}
-                    className="h-4 w-4 text-primary border-gray-300 rounded focus:ring-primary"
-                  />
-                  <span className="ml-2 text-sm text-gray-700">{area}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Per-Subject Hours - shown when booked_hours is set and legal areas are selected */}
-          {formData.booked_hours && formData.legal_areas.length > 0 && (
-            <div className="bg-blue-50 border border-blue-200 rounded-md p-3 space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="block text-sm font-medium text-blue-800">
-                  Stundenverteilung pro Rechtsgebiet
-                </label>
-                <span className={`text-xs font-medium ${
-                  (() => {
-                    const sum = 
-                      (formData.legal_areas.includes('Zivilrecht') ? (formData.hours_zivilrecht || 0) : 0) +
-                      (formData.legal_areas.includes('Strafrecht') ? (formData.hours_strafrecht || 0) : 0) +
-                      (formData.legal_areas.includes('Öffentliches Recht') ? (formData.hours_oeffentliches_recht || 0) : 0);
-                    return sum > formData.booked_hours! ? 'text-red-600' : sum === formData.booked_hours! ? 'text-green-600' : 'text-blue-600';
-                  })()
-                }`}>
-                  {(
-                    (formData.legal_areas.includes('Zivilrecht') ? (formData.hours_zivilrecht || 0) : 0) +
-                    (formData.legal_areas.includes('Strafrecht') ? (formData.hours_strafrecht || 0) : 0) +
-                    (formData.legal_areas.includes('Öffentliches Recht') ? (formData.hours_oeffentliches_recht || 0) : 0)
-                  )} / {formData.booked_hours} Std. verteilt
-                </span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {formData.legal_areas.includes('Zivilrecht') && (
-                  <div>
-                    <label className="block text-xs text-blue-700 mb-1">Zivilrecht</label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.25"
-                        max={formData.booked_hours || undefined}
-                        value={formData.hours_zivilrecht ?? ''}
-                        onChange={(e) => setFormData({ ...formData, hours_zivilrecht: e.target.value ? parseFloat(e.target.value) : null })}
-                        className="w-full px-3 py-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"
-                        placeholder="Std."
-                      />
-                    </div>
-                  </div>
-                )}
-                {formData.legal_areas.includes('Strafrecht') && (
-                  <div>
-                    <label className="block text-xs text-blue-700 mb-1">Strafrecht</label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.25"
-                        max={formData.booked_hours || undefined}
-                        value={formData.hours_strafrecht ?? ''}
-                        onChange={(e) => setFormData({ ...formData, hours_strafrecht: e.target.value ? parseFloat(e.target.value) : null })}
-                        className="w-full px-3 py-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"
-                        placeholder="Std."
-                      />
-                    </div>
-                  </div>
-                )}
-                {formData.legal_areas.includes('Öffentliches Recht') && (
-                  <div>
-                    <label className="block text-xs text-blue-700 mb-1">Öff. Recht</label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.25"
-                        max={formData.booked_hours || undefined}
-                        value={formData.hours_oeffentliches_recht ?? ''}
-                        onChange={(e) => setFormData({ ...formData, hours_oeffentliches_recht: e.target.value ? parseFloat(e.target.value) : null })}
-                        className="w-full px-3 py-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"
-                        placeholder="Std."
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Frequency Hours per Subject - shown when legal areas are selected */}
-          {formData.legal_areas.length > 0 && (
-            <div className="bg-purple-50 border border-purple-200 rounded-md p-3 space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="block text-sm font-medium text-purple-800">
-                  Regelmäßige Stunden pro Rechtsgebiet
-                </label>
-                <select
-                  value={formData.frequency_type}
-                  onChange={(e) => setFormData({ ...formData, frequency_type: e.target.value })}
-                  className="text-xs border border-purple-300 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                >
-                  <option value="">Bitte wählen</option>
-                  <option value="weekly">Wochenstunden</option>
-                  <option value="monthly">Monatsstunden</option>
-                </select>
-              </div>
-              {formData.frequency_type && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {formData.legal_areas.includes('Zivilrecht') && (
-                    <div>
-                      <label className="block text-xs text-purple-700 mb-1">Zivilrecht</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.5"
-                        value={formData.frequency_hours_zivilrecht ?? ''}
-                        onChange={(e) => setFormData({ ...formData, frequency_hours_zivilrecht: e.target.value ? parseFloat(e.target.value) : null })}
-                        className="w-full px-3 py-2 border border-purple-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm bg-white"
-                        placeholder={formData.frequency_type === 'weekly' ? 'Std./Woche' : 'Std./Monat'}
-                      />
-                    </div>
-                  )}
-                  {formData.legal_areas.includes('Strafrecht') && (
-                    <div>
-                      <label className="block text-xs text-purple-700 mb-1">Strafrecht</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.5"
-                        value={formData.frequency_hours_strafrecht ?? ''}
-                        onChange={(e) => setFormData({ ...formData, frequency_hours_strafrecht: e.target.value ? parseFloat(e.target.value) : null })}
-                        className="w-full px-3 py-2 border border-purple-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm bg-white"
-                        placeholder={formData.frequency_type === 'weekly' ? 'Std./Woche' : 'Std./Monat'}
-                      />
-                    </div>
-                  )}
-                  {formData.legal_areas.includes('Öffentliches Recht') && (
-                    <div>
-                      <label className="block text-xs text-purple-700 mb-1">Öff. Recht</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.5"
-                        value={formData.frequency_hours_oeffentliches_recht ?? ''}
-                        onChange={(e) => setFormData({ ...formData, frequency_hours_oeffentliches_recht: e.target.value ? parseFloat(e.target.value) : null })}
-                        className="w-full px-3 py-2 border border-purple-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm bg-white"
-                        placeholder={formData.frequency_type === 'weekly' ? 'Std./Woche' : 'Std./Monat'}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Contract Period */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Vertragslaufzeit
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Von</label>
-                <input
-                  type="date"
-                  value={formData.contract_start}
-                  onChange={(e) => setFormData({ ...formData, contract_start: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Bis</label>
-                <input
-                  type="date"
-                  value={formData.contract_end}
-                  onChange={(e) => setFormData({ ...formData, contract_end: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Booked Hours */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Gebuchtes Stundenpaket
-            </label>
-            <input
-              type="number"
-              min="0"
-              step="0.25"
-              value={formData.booked_hours ?? ''}
-              onChange={(e) => setFormData({ ...formData, booked_hours: e.target.value ? parseFloat(e.target.value) : null })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-              placeholder="Stundenanzahl"
-            />
-          </div>
-
-          {/* Dynamic Dozent Assignment based on selected legal areas - hidden for Elite-Kleingruppe */}
-          {formData.legal_areas.length > 0 && !formData.elite_kleingruppe && (
-            <div className="space-y-4">
-              <label className="block text-sm font-medium text-gray-700">
-                Dozenten nach Rechtsgebiet
-              </label>
-              
-              {formData.legal_areas.includes('Zivilrecht') && (
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Dozent Zivilrecht</label>
-                  <select
-                    value={formData.dozent_zivilrecht_id || ''}
-                    onChange={(e) => setFormData({ ...formData, dozent_zivilrecht_id: e.target.value || null })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                  >
-                    <option value="">Kein Dozent zugewiesen</option>
-                    {dozenten.filter(d => d.legal_areas?.includes('Zivilrecht')).map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.full_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {formData.legal_areas.includes('Strafrecht') && (
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Dozent Strafrecht</label>
-                  <select
-                    value={formData.dozent_strafrecht_id || ''}
-                    onChange={(e) => setFormData({ ...formData, dozent_strafrecht_id: e.target.value || null })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                  >
-                    <option value="">Kein Dozent zugewiesen</option>
-                    {dozenten.filter(d => d.legal_areas?.includes('Strafrecht')).map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.full_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {formData.legal_areas.includes('Öffentliches Recht') && (
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Dozent Öffentliches Recht</label>
-                  <select
-                    value={formData.dozent_oeffentliches_recht_id || ''}
-                    onChange={(e) => setFormData({ ...formData, dozent_oeffentliches_recht_id: e.target.value || null })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                  >
-                    <option value="">Kein Dozent zugewiesen</option>
-                    {dozenten.filter(d => d.legal_areas?.includes('Öffentliches Recht')).map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.full_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Imported Lessons Preview */}
-          {importedLessons.length > 0 && (
-            <div className="border border-blue-200 rounded-lg bg-blue-50/50">
+        {/* Tab Navigation */}
+        <div className="flex border-b bg-gray-50">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
               <button
+                key={tab.id}
                 type="button"
-                onClick={() => setShowImportedLessons(!showImportedLessons)}
-                className="w-full flex items-center justify-between p-3 text-left hover:bg-blue-100/50 rounded-t-lg transition-colors"
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-primary text-primary bg-white'
+                    : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
               >
-                <div className="flex items-center gap-2">
-                  <BookOpen className="h-4 w-4 text-blue-600" />
-                  <span className="text-sm font-medium text-blue-900">
-                    Importierte Einheiten ({importedLessons.length})
-                  </span>
-                  <span className="text-xs text-blue-600">
-                    {importedLessons.reduce((sum, l) => sum + l.hours, 0)} Std. gesamt
-                  </span>
-                </div>
-                {showImportedLessons ? (
-                  <ChevronUp className="h-4 w-4 text-blue-600" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 text-blue-600" />
-                )}
+                <Icon className="h-4 w-4" />
+                {tab.label}
               </button>
-              
-              {showImportedLessons && (
-                <div className="px-3 pb-3 space-y-3">
-                  {/* Group by legal area */}
-                  {['Zivilrecht', 'Strafrecht', 'Öffentliches Recht'].map(area => {
-                    const areaLessons = importedLessons.filter(l => l.legal_area === area);
-                    if (areaLessons.length === 0) return null;
+            );
+          })}
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
+          <div className="p-6 space-y-6">
+            {/* Stammdaten Tab */}
+            {activeTab === 'stammdaten' && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Left Column */}
+                <div className="space-y-4">
+                  {/* TN-Nummer Field */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      TN-Nummer *
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.tn_nummer || ''}
+                      onChange={async (e) => {
+                        const value = e.target.value.toUpperCase();
+                        setFormData({ ...formData, tn_nummer: value });
+                        if (value) {
+                          await validateTnNummer(value);
+                        } else {
+                          setTnNummerError('');
+                        }
+                      }}
+                      onBlur={() => {
+                        if (formData.tn_nummer) {
+                          validateTnNummer(formData.tn_nummer);
+                        }
+                      }}
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:border-transparent ${
+                        tnNummerError 
+                          ? 'border-red-300 focus:ring-red-500' 
+                          : 'border-gray-300 focus:ring-primary'
+                      }`}
+                      placeholder="TN00001"
+                      required
+                      maxLength={7}
+                      pattern="TN[0-9]{4,5}"
+                    />
+                    {tnNummerError && (
+                      <p className="mt-1 text-sm text-red-600">{tnNummerError}</p>
+                    )}
+                    <p className="mt-1 text-xs text-gray-500">
+                      Format: TNXXXX oder TNXXXXX (z.B. TN0001, TN10000)
+                    </p>
+                  </div>
+
+                  {/* Name Fields */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Vorname *
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.first_name}
+                        onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                        placeholder="Max"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Zweitname
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.middle_name || ''}
+                        onChange={(e) => setFormData({ ...formData, middle_name: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                        placeholder="Maria"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Nachname *
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.last_name}
+                        onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                        placeholder="Mustermann"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Email & Phone */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        E-Mail-Adresse
+                      </label>
+                      <input
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                        placeholder="max.mustermann@email.de"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Telefon
+                      </label>
+                      <input
+                        type="tel"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                        placeholder="+49 123 456789"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Address */}
+                  <div className="border-t pt-4 mt-2">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+                      <MapPin className="h-4 w-4 mr-2" />
+                      Adressdaten
+                    </h4>
+                    <div className="grid grid-cols-4 gap-2">
+                      <div className="col-span-3">
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Straße</label>
+                        <input
+                          type="text"
+                          value={formData.street}
+                          onChange={(e) => setFormData({ ...formData, street: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                          placeholder="Musterstraße"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Hausnr.</label>
+                        <input
+                          type="text"
+                          value={formData.house_number}
+                          onChange={(e) => setFormData({ ...formData, house_number: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                          placeholder="12a"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">PLZ</label>
+                        <input
+                          type="text"
+                          value={formData.postal_code}
+                          onChange={(e) => setFormData({ ...formData, postal_code: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                          placeholder="12345"
+                          maxLength={5}
+                        />
+                      </div>
+                      <div className="col-span-3">
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Stadt</label>
+                        <input
+                          type="text"
+                          value={formData.city}
+                          onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                          placeholder="Musterstadt"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column */}
+                <div className="space-y-4">
+                  {/* Study Goal */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Studienziel
+                    </label>
+                    <select
+                      value={formData.study_goal}
+                      onChange={(e) => setFormData({ ...formData, study_goal: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    >
+                      <option value="">Bitte auswählen</option>
+                      <option value="Grundstudium">Grundstudium</option>
+                      <option value="Hauptstudium">Hauptstudium</option>
+                      <option value="1. Staatsexamen Erstversuch">1. Staatsexamen Erstversuch</option>
+                      <option value="1. Staatsexamen Verbesserungsversuch">1. Staatsexamen Verbesserungsversuch</option>
+                      <option value="1. Staatsexamen Letztversuch">1. Staatsexamen Letztversuch</option>
+                      <option value="2. Staatsexamen Erstversuch">2. Staatsexamen Erstversuch</option>
+                      <option value="2. Staatsexamen Verbesserungsversuch">2. Staatsexamen Verbesserungsversuch</option>
+                      <option value="2. Staatsexamen Letztversuch">2. Staatsexamen Letztversuch</option>
+                    </select>
+                  </div>
+
+                  {/* Exam Date */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Prüfungstermin
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.exam_date}
+                      onChange={(e) => setFormData({ ...formData, exam_date: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                  </div>
+
+                  {/* State Law */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Landesrecht
+                    </label>
+                    <select
+                      value={formData.state_law}
+                      onChange={(e) => setFormData({ ...formData, state_law: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    >
+                      <option value="">Bitte auswählen</option>
+                      {GERMAN_STATES.map((state) => (
+                        <option key={state} value={state}>
+                          {state}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Referendariatsstandort - Only shown for 2. Staatsexamen */}
+                  {formData.study_goal?.includes('2. Staatsexamen') && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Referendariatsstandort
+                      </label>
+                      <select
+                        value={formData.referendariatsstandort}
+                        onChange={(e) => setFormData({ ...formData, referendariatsstandort: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                      >
+                        <option value="">Bitte auswählen</option>
+                        <option value="Stuttgart">Stuttgart</option>
+                        <option value="Karlsruhe">Karlsruhe</option>
+                        <option value="München">München</option>
+                        <option value="Nürnberg">Nürnberg</option>
+                        <option value="Bamberg">Bamberg</option>
+                        <option value="Berlin (Kammergericht)">Berlin (Kammergericht)</option>
+                        <option value="Brandenburg">Brandenburg</option>
+                        <option value="Bremen">Bremen</option>
+                        <option value="Hamburg">Hamburg</option>
+                        <option value="Frankfurt am Main">Frankfurt am Main</option>
+                        <option value="Mecklenburg-Vorpommern">Mecklenburg-Vorpommern</option>
+                        <option value="Rostock">Rostock</option>
+                        <option value="Celle">Celle</option>
+                        <option value="Oldenburg">Oldenburg</option>
+                        <option value="Braunschweig">Braunschweig</option>
+                        <option value="Düsseldorf">Düsseldorf</option>
+                        <option value="Hamm">Hamm</option>
+                        <option value="Köln">Köln</option>
+                        <option value="Koblenz">Koblenz</option>
+                        <option value="Zweibrücken">Zweibrücken</option>
+                        <option value="Saarbrücken">Saarbrücken</option>
+                        <option value="Dresden">Dresden</option>
+                        <option value="Naumburg">Naumburg</option>
+                        <option value="Schleswig">Schleswig</option>
+                        <option value="Jena">Jena</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Elite-Kleingruppe Section */}
+                  <div className="space-y-3 p-4 bg-purple-50 rounded-lg border border-purple-200">
+                    <label className="flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.is_elite_kleingruppe || false}
+                        onChange={(e) => {
+                          const isChecked = e.target.checked;
+                          setFormData({ 
+                            ...formData, 
+                            is_elite_kleingruppe: isChecked,
+                            elite_kleingruppe: isChecked,
+                            elite_kleingruppe_id: isChecked ? formData.elite_kleingruppe_id : null
+                          });
+                        }}
+                        className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                      />
+                      <span className="ml-2 text-sm font-medium text-gray-700">Elite-Kleingruppe Teilnehmer</span>
+                    </label>
                     
-                    // Determine which dozent will be used: manual assignment takes priority
-                    let dozentId = areaLessons[0].dozent_id;
-                    let dozentName = areaLessons[0].dozent_name;
-                    if (area === 'Zivilrecht' && formData.dozent_zivilrecht_id) {
-                      dozentId = formData.dozent_zivilrecht_id;
-                      const manualDozent = dozenten.find(d => d.id === formData.dozent_zivilrecht_id);
-                      if (manualDozent) dozentName = manualDozent.full_name;
-                    } else if (area === 'Strafrecht' && formData.dozent_strafrecht_id) {
-                      dozentId = formData.dozent_strafrecht_id;
-                      const manualDozent = dozenten.find(d => d.id === formData.dozent_strafrecht_id);
-                      if (manualDozent) dozentName = manualDozent.full_name;
-                    } else if (area === 'Öffentliches Recht' && formData.dozent_oeffentliches_recht_id) {
-                      dozentId = formData.dozent_oeffentliches_recht_id;
-                      const manualDozent = dozenten.find(d => d.id === formData.dozent_oeffentliches_recht_id);
-                      if (manualDozent) dozentName = manualDozent.full_name;
-                    }
-                    const dozentMatched = dozentId !== null;
-                    const totalHoursArea = areaLessons.reduce((sum, l) => sum + l.hours, 0);
-                    
-                    return (
-                      <div key={area} className="bg-white rounded-md border border-gray-200 overflow-hidden">
-                        <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-200">
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                              area === 'Zivilrecht' ? 'bg-blue-100 text-blue-800' :
-                              area === 'Strafrecht' ? 'bg-red-100 text-red-800' :
-                              'bg-green-100 text-green-800'
-                            }`}>
-                              {area}
-                            </span>
-                            <span className="text-xs text-gray-500">
-                              {dozentName}
-                              {!dozentMatched && dozentName && (
-                                <span className="text-amber-600 ml-1">(nicht zugeordnet)</span>
-                              )}
-                            </span>
-                          </div>
-                          <span className="text-xs font-medium text-gray-700">{totalHoursArea} Std.</span>
-                        </div>
-                        <div className="divide-y divide-gray-100">
-                          {areaLessons.map((lesson, idx) => (
-                            <div key={idx} className="flex items-center justify-between px-3 py-1.5 text-xs">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <Calendar className="h-3 w-3 text-gray-400 flex-shrink-0" />
-                                <span className="text-gray-600 flex-shrink-0">
-                                  {new Date(lesson.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' })}
-                                </span>
-                                <span className="text-gray-900 truncate">{lesson.topic}</span>
-                                {lesson.grade !== null && (
-                                  <span className="text-gray-500 flex-shrink-0">Note: {lesson.grade}</span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-                                <Clock className="h-3 w-3 text-gray-400" />
-                                <span className="font-medium text-gray-700">{lesson.hours} Std.</span>
-                              </div>
-                            </div>
+                    {formData.is_elite_kleingruppe && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Elite-Kleingruppe zuordnen
+                        </label>
+                        <select
+                          value={formData.elite_kleingruppe_id || ''}
+                          onChange={(e) => setFormData({ ...formData, elite_kleingruppe_id: e.target.value || null })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                          required={formData.is_elite_kleingruppe}
+                        >
+                          <option value="">Bitte wählen...</option>
+                          {eliteKleingruppen.map((gruppe) => (
+                            <option key={gruppe.id} value={gruppe.id}>
+                              {gruppe.name}
+                            </option>
                           ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Dozenten Tab */}
+            {activeTab === 'dozenten' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Dozenten-Zuweisungen</h3>
+                  <p className="text-sm text-gray-500 mb-6">Weisen Sie für jedes Rechtsgebiet einen Dozenten zu.</p>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Zivilrecht Dozent */}
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Zivilrecht
+                      </label>
+                      <select
+                        value={formData.dozent_zivilrecht_id || ''}
+                        onChange={(e) => setFormData({ ...formData, dozent_zivilrecht_id: e.target.value || null })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                      >
+                        <option value="">-- Kein Dozent --</option>
+                        {dozenten?.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.full_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Strafrecht Dozent */}
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Strafrecht
+                      </label>
+                      <select
+                        value={formData.dozent_strafrecht_id || ''}
+                        onChange={(e) => setFormData({ ...formData, dozent_strafrecht_id: e.target.value || null })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                      >
+                        <option value="">-- Kein Dozent --</option>
+                        {dozenten?.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.full_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Öffentliches Recht Dozent */}
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Öffentliches Recht
+                      </label>
+                      <select
+                        value={formData.dozent_oeffentliches_recht_id || ''}
+                        onChange={(e) => setFormData({ ...formData, dozent_oeffentliches_recht_id: e.target.value || null })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                      >
+                        <option value="">-- Kein Dozent --</option>
+                        {dozenten?.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.full_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Assigned Dozenten Summary */}
+                {(formData.dozent_zivilrecht_id || formData.dozent_strafrecht_id || formData.dozent_oeffentliches_recht_id) && (
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h4 className="text-sm font-medium text-gray-900 mb-3">Aktuelle Zuweisungen</h4>
+                    <div className="space-y-2">
+                      {formData.dozent_zivilrecht_id && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600">Zivilrecht:</span>
+                          <span className="font-medium text-gray-900">
+                            {dozenten?.find(d => d.id === formData.dozent_zivilrecht_id)?.full_name || '-'}
+                          </span>
+                        </div>
+                      )}
+                      {formData.dozent_strafrecht_id && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600">Strafrecht:</span>
+                          <span className="font-medium text-gray-900">
+                            {dozenten?.find(d => d.id === formData.dozent_strafrecht_id)?.full_name || '-'}
+                          </span>
+                        </div>
+                      )}
+                      {formData.dozent_oeffentliches_recht_id && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600">Öffentliches Recht:</span>
+                          <span className="font-medium text-gray-900">
+                            {dozenten?.find(d => d.id === formData.dozent_oeffentliches_recht_id)?.full_name || '-'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Verträge Tab */}
+            {activeTab === 'vertraege' && (
+              <div className="space-y-4">
+                {/* Summary Section */}
+                {contracts.length > 0 && (() => {
+                  const earliestStart = contracts.reduce((min, c) => {
+                    const d = new Date(c.start_date);
+                    return d < min ? d : min;
+                  }, new Date(contracts[0].start_date));
+                  const latestEnd = contracts.reduce((max, c) => {
+                    if (!c.end_date) return max;
+                    const d = new Date(c.end_date);
+                    return d > max ? d : max;
+                  }, contracts[0].end_date ? new Date(contracts[0].end_date) : new Date());
+
+                  const totalHoursUsed = contracts.reduce((sum, c) => {
+                    const packageUsed = c.contract_packages?.reduce((pkgSum: number, pkg: any) => pkgSum + (pkg.hours_used || 0), 0) || 0;
+                    return sum + packageUsed;
+                  }, 0);
+                  const totalHoursBooked = contracts.reduce((sum, c) => {
+                    const packageTotal = c.contract_packages?.reduce((pkgSum: number, pkg: any) => pkgSum + (pkg.hours_total || 0), 0) || c.total_hours || 0;
+                    return sum + packageTotal;
+                  }, 0);
+
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const totalDuration = latestEnd.getTime() - earliestStart.getTime();
+                  const elapsed = today.getTime() - earliestStart.getTime();
+                  const progress = totalDuration ? Math.min(Math.max((elapsed / totalDuration) * 100, 0), 100) : 0;
+
+                  return (
+                    <div className="bg-gray-50 rounded-lg p-4 space-y-4">
+                      <div>
+                        <div className="flex justify-between text-xs text-gray-600 mb-1">
+                          <span>Laufzeit ({earliestStart.toLocaleDateString('de-DE')} - {latestEnd.toLocaleDateString('de-DE')})</span>
+                          <span>{progress.toFixed(0)}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div className="bg-primary h-2 rounded-full transition-all" style={{ width: `${progress}%` }}></div>
                         </div>
                       </div>
-                    );
-                  })}
-                  <p className="text-xs text-blue-600 italic">
-                    Diese Einheiten werden beim Speichern in die Tätigkeitsberichte der Dozenten übertragen.
-                  </p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600">Stunden</span>
+                        <span className="text-sm font-medium text-gray-900">{totalHoursUsed} / {totalHoursBooked} Std.</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3">
+                        {[
+                          { key: 'zivilrecht', label: 'Zivilrecht' },
+                          { key: 'strafrecht', label: 'Strafrecht' },
+                          { key: 'oeffentliches_recht', label: 'öffentliches Recht' },
+                        ].map(({ key, label }) => (
+                          <div key={key} className="bg-white rounded p-2 text-center">
+                            <span className="text-xs text-gray-600 block">{label}</span>
+                            <span className="text-sm font-medium text-gray-900">
+                              {aggregatedLegalAreaHours[key] || 0} Std.
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-medium text-gray-900">Verträge</h3>
+                  <div className="flex items-center gap-2">
+                    {/* Show Legacy Import button if participant has legacy data but no contracts */}
+                    {contracts.length === 0 && formData.contract_start && formData.contract_end && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            if (!teilnehmer?.id) return;
+
+                            // Check if participant already has contracts
+                            const { data: existingContracts } = await supabase
+                              .from('contracts')
+                              .select('id')
+                              .eq('teilnehmer_id', teilnehmer.id);
+
+                            if (existingContracts && existingContracts.length > 0) {
+                              addToast('Teilnehmer hat bereits Verträge', 'error');
+                              return;
+                            }
+
+                            // Calculate total hours from legacy data
+                            const totalHours =
+                              ((formData as any).hours_zivilrecht || 0) +
+                              ((formData as any).hours_strafrecht || 0) +
+                              ((formData as any).hours_oeffentliches_recht || 0);
+
+                            // Get actual used hours from participant_hours
+                            const { data: participantHours } = await supabase
+                              .from('participant_hours')
+                              .select('legal_area, hours')
+                              .eq('teilnehmer_id', teilnehmer.id);
+
+                            const usedHours = participantHours?.reduce((sum: number, ph: any) => sum + (ph.hours || 0), 0) || 0;
+
+                            // Create contract
+                            const { data: contract, error: contractError } = await supabase
+                              .from('contracts')
+                              .insert({
+                                contract_number: formData.tn_nummer || 'LEGACY',
+                                teilnehmer_id: teilnehmer.id,
+                                start_date: formData.contract_start,
+                                end_date: formData.contract_end,
+                                status: 'active',
+                                frequency_type: (formData as any).frequency_type || 'monthly',
+                                frequency_hours_zivilrecht: (formData as any).frequency_hours_zivilrecht || null,
+                                frequency_hours_strafrecht: (formData as any).frequency_hours_strafrecht || null,
+                                frequency_hours_oeffentliches_recht: (formData as any).frequency_hours_oeffentliches_recht || null,
+                              })
+                              .select()
+                              .single();
+
+                            if (contractError) throw contractError;
+
+                            // Create Paket 1
+                            const { data: contractPackage, error: packageError } = await supabase
+                              .from('contract_packages')
+                              .insert({
+                                contract_id: contract.id,
+                                teilnehmer_id: teilnehmer.id,
+                                hours_total: totalHours || (formData as any).booked_hours || 0,
+                                hours_used: usedHours,
+                                status: 'active',
+                                start_date: formData.contract_start,
+                                end_date: formData.contract_end,
+                                custom_name: 'Paket 1',
+                              })
+                              .select()
+                              .single();
+
+                            if (packageError) throw packageError;
+
+                            // Create legal areas
+                            const legalAreas = [];
+                            if ((formData as any).hours_zivilrecht) {
+                              legalAreas.push({ contract_package_id: contractPackage.id, legal_area: 'zivilrecht', hours: (formData as any).hours_zivilrecht });
+                            }
+                            if ((formData as any).hours_strafrecht) {
+                              legalAreas.push({ contract_package_id: contractPackage.id, legal_area: 'strafrecht', hours: (formData as any).hours_strafrecht });
+                            }
+                            if ((formData as any).hours_oeffentliches_recht) {
+                              legalAreas.push({ contract_package_id: contractPackage.id, legal_area: 'oeffentliches_recht', hours: (formData as any).hours_oeffentliches_recht });
+                            }
+
+                            if (legalAreas.length > 0) {
+                              const { error: laError } = await supabase
+                                .from('contract_package_legal_areas')
+                                .insert(legalAreas);
+                              if (laError) throw laError;
+                            }
+
+                            // Link teilnehmer to current contract
+                            await supabase
+                              .from('teilnehmer')
+                              .update({ current_contract_id: contract.id })
+                              .eq('id', teilnehmer.id);
+
+                            addToast('Legacy Vertrag erfolgreich importiert', 'success');
+
+                            // Refresh contracts
+                            const { data: refreshedContracts } = await supabase
+                              .from('contracts')
+                              .select('*, contract_packages(*)')
+                              .eq('teilnehmer_id', teilnehmer.id)
+                              .order('created_at', { ascending: true });
+                            if (refreshedContracts) setContracts(refreshedContracts);
+                          } catch (error: any) {
+                            console.error('Legacy import error:', error);
+                            addToast(`Fehler beim Import: ${error.message}`, 'error');
+                          }
+                        }}
+                        className="px-4 py-2 bg-amber-500 text-white rounded-md hover:bg-amber-600 transition-colors flex items-center gap-2 text-sm"
+                      >
+                        <FileContract className="h-4 w-4" />
+                        Legacy Import
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowContractDialog(true)}
+                      className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors flex items-center gap-2"
+                    >
+                      <FileContract className="h-4 w-4" />
+                      Vertrag hinzufügen
+                    </button>
+                  </div>
                 </div>
-              )}
-            </div>
-          )}
+
+                {contracts.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500 border-2 border-dashed border-gray-300 rounded-lg">
+                    <FileContract className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                    <p className="text-lg font-medium">Keine Verträge vorhanden</p>
+                    <p className="text-sm mt-2">Erstellen Sie den ersten Vertrag für diesen Teilnehmer.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {contracts.map((contract) => {
+                      const startDate = new Date(contract.start_date);
+                      const endDate = contract.end_date ? new Date(contract.end_date) : null;
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      const totalDuration = endDate ? endDate.getTime() - startDate.getTime() : null;
+                      const elapsed = today.getTime() - startDate.getTime();
+                      const progress = totalDuration ? Math.min(Math.max((elapsed / totalDuration) * 100, 0), 100) : 0;
+
+                      // Calculate used hours from contract_packages (new system)
+                      const usedHours = contract.contract_packages?.reduce((sum: number, pkg: any) => sum + (pkg.hours_used || 0), 0) || 0;
+                      const totalHours = contract.contract_packages?.reduce((sum: number, pkg: any) => sum + (pkg.hours_total || 0), 0) || contract.total_hours || 0;
+                      const remainingHours = totalHours - usedHours;
+
+                      // Compute display status based on dates and hours
+                      const isFuture = startDate > today;
+                      const isExpired = endDate && endDate < today;
+                      const isFull = remainingHours <= 0;
+                      const displayStatus = isFuture ? 'Geplant' :
+                                              isExpired ? 'Abgelaufen' :
+                                              isFull ? 'Voll' :
+                                              contract.status === 'cancelled' ? 'Storniert' :
+                                              contract.status === 'completed' ? 'Abgeschlossen' :
+                                              'Aktiv';
+
+                      const statusColor = displayStatus === 'Aktiv' ? 'bg-green-100 text-green-800' :
+                                         displayStatus === 'Geplant' ? 'bg-yellow-100 text-yellow-800' :
+                                         displayStatus === 'Abgelaufen' ? 'bg-red-100 text-red-800' :
+                                         displayStatus === 'Voll' ? 'bg-gray-100 text-gray-800' :
+                                         displayStatus === 'Storniert' ? 'bg-red-100 text-red-800' :
+                                         displayStatus === 'Abgeschlossen' ? 'bg-blue-100 text-blue-800' :
+                                         'bg-gray-100 text-gray-800';
+
+                      return (
+                        <div key={contract.id} className="border border-gray-200 rounded-lg p-4 hover:border-primary transition-colors">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="font-semibold text-gray-900">{contract.contract_number}</span>
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}`}>
+                                  {displayStatus}
+                                </span>
+                              </div>
+                              
+                              {/* Laufzeit Progress Bar */}
+                              {contract.end_date && (
+                                <div className="mb-3">
+                                  <div className="flex justify-between text-xs text-gray-600 mb-1">
+                                    <span>Laufzeit</span>
+                                    <span>{progress.toFixed(0)}%</span>
+                                  </div>
+                                  <div className="w-full bg-gray-200 rounded-full h-2">
+                                    <div
+                                      className="bg-primary h-2 rounded-full transition-all"
+                                      style={{ width: `${progress}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                              
+                              <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                                <div>
+                                  <span className="text-gray-500">Von:</span> {new Date(contract.start_date).toLocaleDateString('de-DE')}
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Bis:</span> {contract.end_date ? new Date(contract.end_date).toLocaleDateString('de-DE') : '-'}
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Genutzte Stunden:</span> {usedHours} Std.
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Gesamtstunden:</span> {totalHours} Std.
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                // Fetch fresh contract data from database with packages
+                                const { data: freshContract } = await supabase
+                                  .from('contracts')
+                                  .select('*, contract_packages(*)')
+                                  .eq('id', contract.id)
+                                  .single();
+
+                                setEditingContract(freshContract || contract);
+                                await fetchContractPackages(contract.id);
+                                
+                                // Auto-create "Paket 1" if no packages exist
+                                const { data: existingPackages } = await supabase
+                                  .from('contract_packages')
+                                  .select('id')
+                                  .eq('contract_id', contract.id);
+                                
+                                if (!existingPackages || existingPackages.length === 0) {
+                                  // Auto-create "Paket 1" directly (no global packages dependency)
+                                  try {
+                                    const { error: cpError } = await supabase
+                                      .from('contract_packages')
+                                      .insert({
+                                        contract_id: contract.id,
+                                        teilnehmer_id: teilnehmer?.id,
+                                        package_id: null,
+                                        custom_name: 'Paket 1',
+                                        hours_total: 0,
+                                        hours_used: 0,
+                                        status: 'active',
+                                        start_date: freshContract?.start_date || contract.start_date || null,
+                                        end_date: freshContract?.end_date || contract.end_date || null,
+                                        created_by: (await supabase.auth.getUser()).data.user?.id
+                                      });
+                                    if (!cpError) {
+                                      await fetchContractPackages(contract.id);
+                                    }
+                                  } catch (error) {
+                                    console.error('Error creating default package:', error);
+                                  }
+                                }
+                                
+                                setShowContractDialog(true);
+                              }}
+                              className="p-2 text-gray-400 hover:text-primary rounded transition-colors"
+                              title="Vertrag bearbeiten"
+                            >
+                              <Edit2 className="h-5 w-5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Notizen Tab */}
+            {activeTab === 'notizen' && (
+              <div className="text-center py-12 text-gray-500">
+                <FileText className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                <p className="text-lg font-medium">Notizen</p>
+                <p className="text-sm mt-2">Hier können Sie Notizen zum Teilnehmer hinzufügen.</p>
+                <p className="text-xs mt-4 text-gray-400">Diese Funktion wird in Kürze implementiert.</p>
+              </div>
+            )}
+
+            {/* Imported Lessons Preview - shown in Stammdaten tab */}
+            {activeTab === 'stammdaten' && importedLessons.length > 0 && (
+              <div className="border border-blue-200 rounded-lg bg-blue-50/50">
+                <button
+                  type="button"
+                  onClick={() => setShowImportedLessons(!showImportedLessons)}
+                  className="w-full flex items-center justify-between p-3 text-left hover:bg-blue-100/50 rounded-t-lg transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="h-4 w-4 text-blue-600" />
+                    <span className="text-sm font-medium text-blue-900">
+                      Importierte Einheiten ({importedLessons.length})
+                    </span>
+                    <span className="text-xs text-blue-600">
+                      {importedLessons.reduce((sum, l) => sum + l.hours, 0)} Std. gesamt
+                    </span>
+                  </div>
+                  {showImportedLessons ? (
+                    <ChevronUp className="h-4 w-4 text-blue-600" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-blue-600" />
+                  )}
+                </button>
+                
+                {showImportedLessons && (
+                  <div className="px-3 pb-3 space-y-3">
+                    {/* Group by legal area */}
+                    {['Zivilrecht', 'Strafrecht', 'Öffentliches Recht'].map(area => {
+                      const areaLessons = importedLessons.filter(l => l.legal_area === area);
+                      if (areaLessons.length === 0) return null;
+                      
+                      // Determine which dozent will be used: manual assignment takes priority
+                      let dozentId = areaLessons[0].dozent_id;
+                      let dozentName = areaLessons[0].dozent_name;
+                      if (area === 'Zivilrecht' && formData.dozent_zivilrecht_id) {
+                        dozentId = formData.dozent_zivilrecht_id;
+                        const manualDozent = dozenten.find(d => d.id === formData.dozent_zivilrecht_id);
+                        if (manualDozent) dozentName = manualDozent.full_name;
+                      } else if (area === 'Strafrecht' && formData.dozent_strafrecht_id) {
+                        dozentId = formData.dozent_strafrecht_id;
+                        const manualDozent = dozenten.find(d => d.id === formData.dozent_strafrecht_id);
+                        if (manualDozent) dozentName = manualDozent.full_name;
+                      } else if (area === 'Öffentliches Recht' && formData.dozent_oeffentliches_recht_id) {
+                        dozentId = formData.dozent_oeffentliches_recht_id;
+                        const manualDozent = dozenten.find(d => d.id === formData.dozent_oeffentliches_recht_id);
+                        if (manualDozent) dozentName = manualDozent.full_name;
+                      }
+                      const dozentMatched = dozentId !== null;
+                      const totalHoursArea = areaLessons.reduce((sum, l) => sum + l.hours, 0);
+                      
+                      return (
+                        <div key={area} className="bg-white rounded-md border border-gray-200 overflow-hidden">
+                          <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-200">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                area === 'Zivilrecht' ? 'bg-blue-100 text-blue-800' :
+                                area === 'Strafrecht' ? 'bg-red-100 text-red-800' :
+                                'bg-green-100 text-green-800'
+                              }`}>
+                                {area}
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {dozentName}
+                                {!dozentMatched && dozentName && (
+                                  <span className="text-amber-600 ml-1">(nicht zugeordnet)</span>
+                                )}
+                              </span>
+                            </div>
+                            <span className="text-xs font-medium text-gray-700">{totalHoursArea} Std.</span>
+                          </div>
+                          <div className="divide-y divide-gray-100">
+                            {areaLessons.map((lesson, idx) => (
+                              <div key={idx} className="flex items-center justify-between px-3 py-1.5 text-xs">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Calendar className="h-3 w-3 text-gray-400 flex-shrink-0" />
+                                  <span className="text-gray-600 flex-shrink-0">
+                                    {new Date(lesson.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                                  </span>
+                                  <span className="text-gray-900 truncate">{lesson.topic}</span>
+                                  {lesson.grade !== null && (
+                                    <span className="text-gray-500 flex-shrink-0">Note: {lesson.grade}</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                                  <Clock className="h-3 w-3 text-gray-400" />
+                                  <span className="font-medium text-gray-700">{lesson.hours} Std.</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <p className="text-xs text-blue-600 italic">
+                      Diese Einheiten werden beim Speichern in die Tätigkeitsberichte der Dozenten übertragen.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Buttons */}
-          <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-3 pt-4 border-t">
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-3 p-6 border-t bg-gray-50">
             <div className="flex gap-3">
               {teilnehmer && !teilnehmer.user_id && onDelete && (
                 <button
@@ -1673,8 +2004,898 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
               </div>
             </div>
           )}
+
+          {/* Contract Dialog */}
+          {showContractDialog && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between p-4 border-b">
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    {editingContract ? 'Vertrag bearbeiten' : 'Neuen Vertrag hinzufügen'}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowContractDialog(false);
+                      setEditingContract(null);
+                      setContractPackages([]);
+                    }}
+                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="p-4 space-y-6">
+                  {editingContract && (
+                    <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                      <h4 className="font-medium text-gray-900">Vertragsinformationen</h4>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="text-gray-500">Teilnehmer:</span>
+                          <span className="ml-2 text-gray-900">{formData.first_name} {formData.last_name}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">TN-Nummer:</span>
+                          <span className="ml-2 text-gray-900">{formData.tn_nummer}</span>
+                        </div>
+                        <div>
+                          <label className="block text-gray-500 mb-1">Vertragsnummer</label>
+                          <input
+                            type="text"
+                            value={editingContract.contract_number || ''}
+                            onChange={(e) => setEditingContract({ ...editingContract, contract_number: e.target.value })}
+                            className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-gray-500 mb-1">Startdatum</label>
+                          <input
+                            type="date"
+                            value={editingContract.start_date || ''}
+                            onChange={(e) => setEditingContract({ ...editingContract, start_date: e.target.value })}
+                            className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-gray-500 mb-1">Enddatum</label>
+                          <input
+                            type="date"
+                            value={editingContract.end_date || ''}
+                            onChange={(e) => setEditingContract({ ...editingContract, end_date: e.target.value })}
+                            className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-gray-500 mb-1">Gesamtstunden</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.25"
+                            value={editingContract.total_hours || 0}
+                            disabled
+                            className="w-full px-2 py-1 border border-gray-200 rounded bg-gray-100 text-gray-600"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-gray-500 mb-1">Genutzte Stunden</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.25"
+                            value={editingContract.contract_packages?.reduce((sum: number, pkg: any) => sum + (pkg.hours_used || 0), 0) || 0}
+                            disabled
+                            className="w-full px-2 py-1 border border-gray-200 rounded bg-gray-100 text-gray-600"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-gray-500 mb-1">Verbleibende Stunden</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.25"
+                            value={(editingContract.contract_packages?.reduce((sum: number, pkg: any) => sum + (pkg.hours_total || 0), 0) || editingContract.total_hours || 0) - (editingContract.contract_packages?.reduce((sum: number, pkg: any) => sum + (pkg.hours_used || 0), 0) || 0)}
+                            disabled
+                            className="w-full px-2 py-1 border border-gray-200 rounded bg-gray-100 text-gray-600"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-gray-500 mb-1">Status</label>
+                          <select
+                            value={editingContract.status || 'active'}
+                            onChange={(e) => setEditingContract({ ...editingContract, status: e.target.value })}
+                            className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                          >
+                            <option value="draft">Entwurf</option>
+                            <option value="active">Aktiv</option>
+                            <option value="paused">Pausiert</option>
+                            <option value="completed">Abgeschlossen</option>
+                            <option value="cancelled">Storniert</option>
+                            <option value="expired">Abgelaufen</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Frequenz / Soll-Stunden pro Periode */}
+                      <div className="space-y-3 mt-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-medium text-gray-900">Frequenz (Soll-Stunden)</h4>
+                          <select
+                            value={editingContract.frequency_type || 'monthly'}
+                            onChange={(e) => setEditingContract({ ...editingContract, frequency_type: e.target.value })}
+                            className="px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                          >
+                            <option value="weekly">Wöchentlich</option>
+                            <option value="biweekly">14-tägig</option>
+                            <option value="monthly">Monatlich</option>
+                            <option value="quarterly">Quartalsweise</option>
+                          </select>
+                        </div>
+                        <div className="bg-amber-50 rounded-md p-3 space-y-2">
+                          {([
+                            { key: 'frequency_hours_zivilrecht', label: 'Zivilrecht' },
+                            { key: 'frequency_hours_strafrecht', label: 'Strafrecht' },
+                            { key: 'frequency_hours_oeffentliches_recht', label: 'öffentliches Recht' },
+                          ] as const).map(({ key, label }) => (
+                            <div key={key} className="flex items-center justify-between gap-3 bg-white rounded px-3 py-2">
+                              <span className="text-sm text-amber-800 flex-1">{label}</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.25"
+                                placeholder="—"
+                                value={editingContract[key] ?? ''}
+                                onChange={(e) => setEditingContract({
+                                  ...editingContract,
+                                  [key]: e.target.value === '' ? null : parseFloat(e.target.value),
+                                })}
+                                className="w-24 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                              />
+                              <span className="text-xs text-gray-500">Std.</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Packages Section */}
+                  {editingContract && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-medium text-gray-900">Pakete ({contractPackages.length})</h4>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextNumber = contractPackages.length + 1;
+                            setEditingPackage({
+                              id: null, // null indicates new package
+                              contract_id: editingContract.id,
+                              teilnehmer_id: teilnehmer?.id,
+                              package_id: null,
+                              custom_name: `Paket ${nextNumber}`,
+                              hours_total: 0,
+                              hours_used: 0,
+                              status: 'active',
+                              start_date: editingContract.start_date || '',
+                              end_date: editingContract.end_date || '',
+                              price_paid: null,
+                              notes: '',
+                              contract_package_legal_areas: [],
+                              packages: null
+                            });
+                            setShowPackageDialog(true);
+                          }}
+                          className="px-3 py-1.5 text-sm bg-primary text-white rounded-md hover:bg-primary/90 transition-colors"
+                        >
+                          + Paket hinzufügen
+                        </button>
+                      </div>
+                      {contractPackages.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500 border-2 border-dashed border-gray-300 rounded-lg">
+                          <FileContract className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                          <p className="text-sm">Keine Pakete vorhanden</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {contractPackages.map((cp, index) => (
+                            <div key={cp.id} className="border border-gray-200 rounded-lg p-4">
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-gray-900">
+                                    {cp.custom_name || (index === 0 ? 'Paket 1' : (cp.packages?.name || 'Unbekanntes Paket'))}
+                                  </span>
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                    cp.status === 'active' ? 'bg-green-100 text-green-800' :
+                                    cp.status === 'completed' ? 'bg-blue-100 text-blue-800' :
+                                    cp.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                                    'bg-gray-100 text-gray-800'
+                                  }`}>
+                                    {cp.status || 'Aktiv'}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingPackage(cp);
+                                    setShowPackageDialog(true);
+                                  }}
+                                  className="p-1 text-gray-400 hover:text-primary rounded transition-colors"
+                                  title="Paket bearbeiten"
+                                >
+                                  <Edit2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+                                <div>
+                                  <span className="text-gray-500">Vertragsnummer:</span>
+                                  <span className="ml-1 text-gray-900">{editingContract.contract_number}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Startdatum:</span>
+                                  <span className="ml-1 text-gray-900">{cp.start_date ? new Date(cp.start_date).toLocaleDateString('de-DE') : '-'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Enddatum:</span>
+                                  <span className="ml-1 text-gray-900">{cp.end_date ? new Date(cp.end_date).toLocaleDateString('de-DE') : '-'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Gebucht:</span>
+                                  <span className="ml-1 text-gray-900">{cp.hours_total} Std.</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Genutzt:</span>
+                                  <span className="ml-1 text-gray-900">{cp.hours_used || 0} Std.</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Verbleibend:</span>
+                                  <span className="ml-1 text-gray-900">{cp.hours_total - (cp.hours_used || 0)} Std.</span>
+                                </div>
+                              </div>
+                              {cp.contract_package_legal_areas && cp.contract_package_legal_areas.length > 0 && (
+                                <div className="bg-blue-50 rounded-md p-3">
+                                  <h5 className="text-xs font-medium text-blue-800 mb-2">Rechtsgebiete</h5>
+                                  <div className="grid grid-cols-3 gap-2 text-xs">
+                                    {cp.contract_package_legal_areas.map((pla: any) => {
+                                      const formatLegalArea = (area: string) => {
+                                        if (area === 'oeffentliches_recht') return 'öffentliches Recht';
+                                        return area.charAt(0).toUpperCase() + area.slice(1);
+                                      };
+                                      return (
+                                        <div key={pla.id} className="flex items-center justify-between bg-white rounded px-2 py-1">
+                                          <span className="text-blue-700">{formatLegalArea(pla.legal_area)}</span>
+                                          <span className="font-medium text-blue-900">{pla.hours} Std.</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {!editingContract && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Von</label>
+                          <input
+                            type="date"
+                            value={newContractForm.start_date}
+                            onChange={(e) => setNewContractForm({ ...newContractForm, start_date: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Bis</label>
+                          <input
+                            type="date"
+                            value={newContractForm.end_date}
+                            onChange={(e) => setNewContractForm({ ...newContractForm, end_date: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-medium text-gray-900">Paket 1</h4>
+                          <span className="text-sm text-gray-500">
+                            Gesamt: {newContractForm.legal_areas.zivilrecht + newContractForm.legal_areas.strafrecht + newContractForm.legal_areas.oeffentliches_recht} Std.
+                          </span>
+                        </div>
+                        <div className="bg-blue-50 rounded-md p-3 space-y-2">
+                          {([
+                            { key: 'zivilrecht', label: 'Zivilrecht' },
+                            { key: 'strafrecht', label: 'Strafrecht' },
+                            { key: 'oeffentliches_recht', label: 'öffentliches Recht' },
+                          ] as const).map(({ key, label }) => (
+                            <div key={key} className="flex items-center justify-between gap-3 bg-white rounded px-3 py-2">
+                              <span className="text-sm text-blue-700 flex-1">{label}</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.25"
+                                value={newContractForm.legal_areas[key] || 0}
+                                onChange={(e) => setNewContractForm({
+                                  ...newContractForm,
+                                  legal_areas: {
+                                    ...newContractForm.legal_areas,
+                                    [key]: parseFloat(e.target.value) || 0,
+                                  },
+                                })}
+                                className="w-24 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                              />
+                              <span className="text-xs text-gray-500">Std.</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Frequenz / Soll-Stunden pro Periode */}
+                      <div className="space-y-3 border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-medium text-gray-900">Frequenz (Soll-Stunden)</h4>
+                          <select
+                            value={newContractForm.frequency_type}
+                            onChange={(e) => setNewContractForm({ ...newContractForm, frequency_type: e.target.value })}
+                            className="px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                          >
+                            <option value="weekly">Wöchentlich</option>
+                            <option value="biweekly">14-tägig</option>
+                            <option value="monthly">Monatlich</option>
+                            <option value="quarterly">Quartalsweise</option>
+                          </select>
+                        </div>
+                        <div className="bg-amber-50 rounded-md p-3 space-y-2">
+                          {([
+                            { key: 'zivilrecht', label: 'Zivilrecht' },
+                            { key: 'strafrecht', label: 'Strafrecht' },
+                            { key: 'oeffentliches_recht', label: 'öffentliches Recht' },
+                          ] as const).map(({ key, label }) => (
+                            <div key={key} className="flex items-center justify-between gap-3 bg-white rounded px-3 py-2">
+                              <span className="text-sm text-amber-800 flex-1">{label}</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.25"
+                                placeholder="—"
+                                value={newContractForm.frequency_hours[key] ?? ''}
+                                onChange={(e) => setNewContractForm({
+                                  ...newContractForm,
+                                  frequency_hours: {
+                                    ...newContractForm.frequency_hours,
+                                    [key]: e.target.value === '' ? null : parseFloat(e.target.value),
+                                  },
+                                })}
+                                className="w-24 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                              />
+                              <span className="text-xs text-gray-500">Std.</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-3 pt-4 border-t">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowContractDialog(false);
+                        setEditingContract(null);
+                        setContractPackages([]);
+                        setNewContractForm({ start_date: '', end_date: '', legal_areas: { zivilrecht: 0, strafrecht: 0, oeffentliches_recht: 0 }, frequency_type: 'monthly', frequency_hours: { zivilrecht: null, strafrecht: null, oeffentliches_recht: null } });
+                      }}
+                      className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                    >
+                      Schließen
+                    </button>
+                    {editingContract && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const { error: updErr } = await supabase
+                              .from('contracts')
+                              .update({
+                                contract_number: editingContract.contract_number || null,
+                                start_date: editingContract.start_date || null,
+                                end_date: editingContract.end_date || null,
+                                status: editingContract.status || 'active',
+                                frequency_type: editingContract.frequency_type || null,
+                                frequency_hours_zivilrecht: editingContract.frequency_hours_zivilrecht ?? null,
+                                frequency_hours_strafrecht: editingContract.frequency_hours_strafrecht ?? null,
+                                frequency_hours_oeffentliches_recht: editingContract.frequency_hours_oeffentliches_recht ?? null,
+                                updated_at: new Date().toISOString(),
+                              })
+                              .eq('id', editingContract.id);
+                            if (updErr) throw updErr;
+                            addToast('Vertrag gespeichert', 'success');
+
+                            // Refresh contracts list
+                            const { data: refreshed } = await supabase
+                              .from('contracts')
+                              .select('*, contract_packages(*)')
+                              .eq('teilnehmer_id', teilnehmer!.id)
+                              .order('created_at', { ascending: true });
+                            if (refreshed) setContracts(refreshed);
+
+                            setShowContractDialog(false);
+                            setEditingContract(null);
+                            setContractPackages([]);
+                          } catch (error: any) {
+                            console.error('Error updating contract:', error);
+                            addToast(`Fehler beim Speichern: ${error.message || error}`, 'error');
+                          }
+                        }}
+                        className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors"
+                      >
+                        Speichern
+                      </button>
+                    )}
+                    {!editingContract && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!teilnehmer?.id) {
+                            addToast('Teilnehmer muss zuerst gespeichert werden', 'error');
+                            return;
+                          }
+                          if (!newContractForm.start_date) {
+                            addToast('Bitte Startdatum angeben', 'error');
+                            return;
+                          }
+                          try {
+                            // 1. Create contract (trigger auto-creates Paket 1)
+                            const { data: newContract, error: cErr } = await supabase
+                              .from('contracts')
+                              .insert({
+                                teilnehmer_id: teilnehmer.id,
+                                start_date: newContractForm.start_date,
+                                end_date: newContractForm.end_date || null,
+                                status: 'active',
+                                frequency_type: newContractForm.frequency_type || null,
+                                frequency_hours_zivilrecht: newContractForm.frequency_hours.zivilrecht,
+                                frequency_hours_strafrecht: newContractForm.frequency_hours.strafrecht,
+                                frequency_hours_oeffentliches_recht: newContractForm.frequency_hours.oeffentliches_recht,
+                              })
+                              .select()
+                              .single();
+                            if (cErr) throw cErr;
+
+                            // 2. Find the auto-created Paket 1
+                            const { data: cp } = await supabase
+                              .from('contract_packages')
+                              .select('id')
+                              .eq('contract_id', newContract.id)
+                              .limit(1)
+                              .single();
+
+                            if (cp) {
+                              // 3. Insert legal areas
+                              const legalAreaRows = (Object.entries(newContractForm.legal_areas) as [string, number][])
+                                .filter(([, hours]) => hours > 0)
+                                .map(([legal_area, hours]) => ({
+                                  contract_package_id: cp.id,
+                                  legal_area,
+                                  hours,
+                                }));
+                              if (legalAreaRows.length > 0) {
+                                await supabase.from('contract_package_legal_areas').insert(legalAreaRows);
+                              }
+
+                              // 4. Set hours_total for Paket 1 from legal areas sum
+                              const totalHours = Object.values(newContractForm.legal_areas).reduce((a, b) => a + b, 0);
+                              await supabase
+                                .from('contract_packages')
+                                .update({
+                                  hours_total: totalHours,
+                                  start_date: newContractForm.start_date,
+                                  end_date: newContractForm.end_date || null,
+                                })
+                                .eq('id', cp.id);
+                            }
+
+                            addToast('Vertrag wurde erstellt', 'success');
+                            // Refresh contracts list
+                            const { data: refreshed } = await supabase
+                              .from('contracts')
+                              .select('*, contract_packages(*)')
+                              .eq('teilnehmer_id', teilnehmer.id)
+                              .order('created_at', { ascending: false });
+                            if (refreshed) setContracts(refreshed);
+                            setShowContractDialog(false);
+                            setNewContractForm({ start_date: '', end_date: '', legal_areas: { zivilrecht: 0, strafrecht: 0, oeffentliches_recht: 0 }, frequency_type: 'monthly', frequency_hours: { zivilrecht: null, strafrecht: null, oeffentliches_recht: null } });
+                          } catch (error: any) {
+                            console.error('Error creating contract:', error);
+                            addToast(`Fehler beim Erstellen: ${error.message || error}`, 'error');
+                          }
+                        }}
+                        className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors"
+                      >
+                        Hinzufügen
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Package Edit Dialog */}
+          {showPackageDialog && editingPackage && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between p-4 border-b">
+                  <h3 className="text-lg font-semibold text-gray-900">{editingPackage.id ? 'Paket bearbeiten' : 'Paket hinzufügen'}</h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPackageDialog(false);
+                      setEditingPackage(null);
+                    }}
+                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="p-4 space-y-4">
+                  {/* Package Name */}
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Paket Name</label>
+                      <input
+                        type="text"
+                        value={editingPackage.custom_name ?? editingPackage.packages?.name ?? ''}
+                        onChange={(e) => setEditingPackage({ ...editingPackage, custom_name: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Laufzeit */}
+                  <div className="space-y-3">
+                    <h4 className="font-medium text-gray-900">Laufzeit</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Startdatum</label>
+                        <input
+                          type="date"
+                          value={editingPackage.start_date || ''}
+                          onChange={(e) => setEditingPackage({ ...editingPackage, start_date: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Enddatum</label>
+                        <input
+                          type="date"
+                          value={editingPackage.end_date || ''}
+                          onChange={(e) => setEditingPackage({ ...editingPackage, end_date: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Stunden */}
+                  <div className="space-y-3">
+                    <h4 className="font-medium text-gray-900">Stunden</h4>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Gebucht</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.25"
+                          value={editingPackage.hours_total || 0}
+                          onChange={(e) => setEditingPackage({ ...editingPackage, hours_total: parseFloat(e.target.value) || 0 })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Genutzt</label>
+                        <input
+                          type="number"
+                          value={editingPackage.hours_used || 0}
+                          disabled
+                          className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-100 text-gray-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Verbleibend</label>
+                        <input
+                          type="number"
+                          value={(editingPackage.hours_total || 0) - (editingPackage.hours_used || 0)}
+                          disabled
+                          className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-100 text-gray-600"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Stunden pro Rechtsgebiet */}
+                  <div className="space-y-3">
+                    <h4 className="font-medium text-gray-900">Stunden pro Rechtsgebiet</h4>
+                    <div className="bg-blue-50 rounded-md p-3 space-y-2">
+                      {['zivilrecht', 'strafrecht', 'oeffentliches_recht'].map((area) => {
+                        const formatLegalArea = (a: string) => {
+                          if (a === 'oeffentliches_recht') return 'öffentliches Recht';
+                          return a.charAt(0).toUpperCase() + a.slice(1);
+                        };
+                        const legalAreas = editingPackage.contract_package_legal_areas || [];
+                        const existing = legalAreas.find((pla: any) => pla.legal_area === area);
+                        return (
+                          <div key={area} className="flex items-center justify-between gap-3 bg-white rounded px-3 py-2">
+                            <span className="text-sm text-blue-700 flex-1">{formatLegalArea(area)}</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.25"
+                              value={existing?.hours ?? 0}
+                              onChange={(e) => {
+                                const newHours = parseFloat(e.target.value) || 0;
+                                const currentLegalAreas = editingPackage.contract_package_legal_areas || [];
+                                let updatedLegalAreas;
+                                if (existing) {
+                                  updatedLegalAreas = currentLegalAreas.map((pla: any) =>
+                                    pla.legal_area === area ? { ...pla, hours: newHours } : pla
+                                  );
+                                } else {
+                                  updatedLegalAreas = [...currentLegalAreas, { legal_area: area, hours: newHours, contract_package_id: editingPackage.id }];
+                                }
+                                setEditingPackage({
+                                  ...editingPackage,
+                                  contract_package_legal_areas: updatedLegalAreas
+                                });
+                              }}
+                              className="w-24 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                            />
+                            <span className="text-xs text-gray-500">Std.</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Notizen */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Notizen</label>
+                    <textarea
+                      rows={3}
+                      value={editingPackage.notes || ''}
+                      onChange={(e) => setEditingPackage({ ...editingPackage, notes: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-3 p-4 border-t">
+                  {editingPackage.id ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const pkgName = editingPackage.custom_name || editingPackage.packages?.name || 'Paket';
+                        setConfirmDialog({
+                          title: 'Paket löschen',
+                          message: `Möchten Sie das Paket "${pkgName}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`,
+                          confirmLabel: 'Löschen',
+                          variant: 'danger',
+                          onConfirm: async () => {
+                            try {
+                              const { error } = await supabase
+                                .from('contract_packages')
+                                .delete()
+                                .eq('id', editingPackage.id);
+                              if (error) throw error;
+                              addToast('Paket wurde gelöscht', 'success');
+                              await fetchContractPackages(editingContract.id);
+                              setShowPackageDialog(false);
+                              setEditingPackage(null);
+                            } catch (error: any) {
+                              console.error('Error deleting package:', error);
+                              addToast(`Fehler beim Löschen: ${error.message || error}`, 'error');
+                            }
+                          }
+                        });
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Paket löschen
+                    </button>
+                  ) : <div />}
+                  <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPackageDialog(false);
+                      setEditingPackage(null);
+                    }}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const isNew = !editingPackage.id;
+                        let packageId = editingPackage.id;
+
+                        // Auto-calculate hours_total from legal areas
+                        const legalAreasSum = (editingPackage.contract_package_legal_areas || [])
+                          .reduce((sum: number, pla: any) => sum + (parseFloat(pla.hours) || 0), 0);
+                        const computedHoursTotal = legalAreasSum > 0 ? legalAreasSum : (editingPackage.hours_total || 0);
+
+                        // Check if package end_date extends beyond contract end_date
+                        // Normalize to YYYY-MM-DD for reliable comparison
+                        const pkgEndStr = editingPackage.end_date ? String(editingPackage.end_date).slice(0, 10) : '';
+                        const ctrEndStr = editingContract.end_date ? String(editingContract.end_date).slice(0, 10) : '';
+                        if (pkgEndStr && ctrEndStr && pkgEndStr > ctrEndStr) {
+                          const newEnd = new Date(pkgEndStr).toLocaleDateString('de-DE');
+                          const curEnd = new Date(ctrEndStr).toLocaleDateString('de-DE');
+                          const userConfirmed: boolean = await new Promise((resolve) => {
+                            setConfirmDialog({
+                              title: 'Vertrag verlängern?',
+                              message: `Das Enddatum des Pakets (${newEnd}) liegt nach dem Vertragsende (${curEnd}).\n\nSoll der Vertrag bis zum ${newEnd} verlängert werden?`,
+                              confirmLabel: 'Ja, verlängern',
+                              cancelLabel: 'Nein',
+                              variant: 'primary',
+                              onConfirm: () => resolve(true),
+                              onCancel: () => resolve(false),
+                            });
+                          });
+                          if (userConfirmed) {
+                            const { error: extendError } = await supabase
+                              .from('contracts')
+                              .update({ end_date: pkgEndStr, updated_at: new Date().toISOString() })
+                              .eq('id', editingContract.id);
+                            if (extendError) throw extendError;
+                            setEditingContract({ ...editingContract, end_date: pkgEndStr });
+                          }
+                        }
+
+                        if (isNew) {
+                          // Create new contract_package
+                          const { data: newCp, error: cpError } = await supabase
+                            .from('contract_packages')
+                            .insert({
+                              contract_id: editingContract.id,
+                              teilnehmer_id: teilnehmer?.id,
+                              package_id: null,
+                              custom_name: editingPackage.custom_name || null,
+                              start_date: editingPackage.start_date || null,
+                              end_date: editingPackage.end_date || null,
+                              hours_total: computedHoursTotal,
+                              hours_used: 0,
+                              status: editingPackage.status || 'active',
+                              price_paid: editingPackage.price_paid || null,
+                              notes: editingPackage.notes || null,
+                              created_by: (await supabase.auth.getUser()).data.user?.id
+                            })
+                            .select()
+                            .single();
+                          if (cpError) throw cpError;
+                          packageId = newCp.id;
+                        } else {
+                          // Update existing contract_package
+                          const { error: cpError } = await supabase
+                            .from('contract_packages')
+                            .update({
+                              custom_name: editingPackage.custom_name || null,
+                              start_date: editingPackage.start_date || null,
+                              end_date: editingPackage.end_date || null,
+                              hours_total: computedHoursTotal,
+                              status: editingPackage.status || 'active',
+                              price_paid: editingPackage.price_paid || null,
+                              notes: editingPackage.notes || null,
+                              updated_at: new Date().toISOString()
+                            })
+                            .eq('id', editingPackage.id);
+                          if (cpError) throw cpError;
+                        }
+
+                        // Upsert contract_package_legal_areas (per contract package)
+                        const legalAreas = editingPackage.contract_package_legal_areas || [];
+                        for (const pla of legalAreas) {
+                          if (!pla.hours || pla.hours <= 0) {
+                            if (pla.id) {
+                              await supabase.from('contract_package_legal_areas').delete().eq('id', pla.id);
+                            }
+                            continue;
+                          }
+                          if (pla.id) {
+                            await supabase
+                              .from('contract_package_legal_areas')
+                              .update({ hours: pla.hours, updated_at: new Date().toISOString() })
+                              .eq('id', pla.id);
+                          } else {
+                            await supabase
+                              .from('contract_package_legal_areas')
+                              .insert({
+                                contract_package_id: packageId,
+                                legal_area: pla.legal_area,
+                                hours: pla.hours
+                              });
+                          }
+                        }
+
+                        addToast(isNew ? 'Paket wurde hinzugefügt' : 'Paket wurde aktualisiert', 'success');
+                        await fetchContractPackages(editingContract.id);
+                        setShowPackageDialog(false);
+                        setEditingPackage(null);
+                      } catch (error: any) {
+                        console.error('Error saving package:', error);
+                        addToast(`Fehler beim Speichern des Pakets: ${error.message || error}`, 'error');
+                      }
+                    }}
+                    className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors"
+                  >
+                    {editingPackage.id ? 'Speichern' : 'Hinzufügen'}
+                  </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </form>
       </div>
+
+      {/* Custom Confirm Dialog */}
+      {confirmDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="p-5 border-b">
+              <div className="flex items-center gap-3">
+                {confirmDialog.variant === 'danger' ? (
+                  <div className="p-2 bg-red-100 rounded-full">
+                    <AlertTriangle className="h-5 w-5 text-red-600" />
+                  </div>
+                ) : (
+                  <div className="p-2 bg-blue-100 rounded-full">
+                    <AlertTriangle className="h-5 w-5 text-blue-600" />
+                  </div>
+                )}
+                <h3 className="text-lg font-semibold text-gray-900">{confirmDialog.title}</h3>
+              </div>
+            </div>
+            <div className="p-5">
+              <p className="text-sm text-gray-700 whitespace-pre-line">{confirmDialog.message}</p>
+            </div>
+            <div className="flex justify-end gap-3 p-4 bg-gray-50 rounded-b-lg border-t">
+              <button
+                type="button"
+                onClick={() => {
+                  confirmDialog.onCancel?.();
+                  setConfirmDialog(null);
+                }}
+                className="px-4 py-2 text-gray-700 bg-white border border-gray-300 hover:bg-gray-100 rounded-md transition-colors"
+              >
+                {confirmDialog.cancelLabel || 'Abbrechen'}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const cb = confirmDialog.onConfirm;
+                  setConfirmDialog(null);
+                  await cb();
+                }}
+                className={`px-4 py-2 text-white rounded-md transition-colors ${
+                  confirmDialog.variant === 'danger'
+                    ? 'bg-red-600 hover:bg-red-700'
+                    : 'bg-primary hover:bg-primary/90'
+                }`}
+              >
+                {confirmDialog.confirmLabel || 'Bestätigen'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

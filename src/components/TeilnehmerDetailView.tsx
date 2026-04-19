@@ -36,10 +36,97 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
     hours: '',
     date: new Date().toISOString().split('T')[0],
     description: '',
-    legal_area: ''
+    legal_area: '',
+    contract_id: '',
+    package_id: ''
   });
   const [editingHours, setEditingHours] = useState<TeilnehmerHours | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [availableContracts, setAvailableContracts] = useState<any[]>([]);
+  const [availablePackages, setAvailablePackages] = useState<any[]>([]);
+
+  const filterPackagesByLegalArea = async (legalArea: string) => {
+    if (!teilnehmerId || !legalArea) {
+      setAvailablePackages([]);
+      return;
+    }
+
+    const legalAreaMap: { [key: string]: string } = {
+      'Zivilrecht': 'zivilrecht',
+      'Strafrecht': 'strafrecht',
+      'Öffentliches Recht': 'oeffentliches_recht'
+    };
+    const dbLegalArea = legalAreaMap[legalArea];
+
+    if (!dbLegalArea) {
+      setAvailablePackages([]);
+      return;
+    }
+
+    const { data: contracts } = await supabase
+      .from('contracts')
+      .select('id, contract_number, start_date, end_date, status, contract_packages(*)')
+      .eq('teilnehmer_id', teilnehmerId)
+      .eq('status', 'active');
+
+    if (!contracts) {
+      setAvailablePackages([]);
+      return;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const activeContracts = contracts.filter(c => {
+      const startDate = new Date(c.start_date);
+      const endDate = c.end_date ? new Date(c.end_date) : null;
+      return startDate <= today && (!endDate || endDate >= today);
+    });
+
+    const allPackages: any[] = [];
+    activeContracts.forEach(c => {
+      if (c.contract_packages) {
+        c.contract_packages.forEach((pkg: any) => {
+          allPackages.push({
+            ...pkg,
+            contract_id: c.id,
+            contract_number: c.contract_number
+          });
+        });
+      }
+    });
+
+    const hoursToEnter = parseFloat(hoursFormData.hours) || 0;
+    const qualifiedPackages: any[] = [];
+
+    for (const pkg of allPackages) {
+      const { data: legalAreas, error } = await supabase
+        .from('contract_package_legal_areas')
+        .select('hours')
+        .eq('contract_package_id', pkg.id)
+        .eq('legal_area', dbLegalArea)
+        .maybeSingle();
+
+      if (legalAreas) {
+        const availableHours = legalAreas.hours - (pkg.hours_used || 0);
+        if (availableHours >= hoursToEnter) {
+          qualifiedPackages.push(pkg);
+        }
+      }
+    }
+
+    setAvailablePackages(qualifiedPackages);
+
+    // Auto-select if only one package qualifies
+    if (qualifiedPackages.length === 1) {
+      setHoursFormData(prev => ({
+        ...prev,
+        contract_id: qualifiedPackages[0].contract_id,
+        package_id: qualifiedPackages[0].id
+      }));
+    }
+  };
+
   const [teilnehmerInfo, setTeilnehmerInfo] = useState<{
     booked_hours?: number;
     hours_zivilrecht?: number;
@@ -199,7 +286,9 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
         hours: '',
         date: new Date().toISOString().split('T')[0],
         description: '',
-        legal_area: ''
+        legal_area: '',
+        contract_id: '',
+        package_id: ''
       });
     } catch (error: any) {
       console.error('Error adding hours:', error);
@@ -207,23 +296,44 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
     }
   };
 
-  const handleEditHours = (hoursEntry: TeilnehmerHours) => {
+  const handleEditHours = async (hoursEntry: TeilnehmerHours) => {
     setEditingHours(hoursEntry);
+
+    // Fetch existing contract_id and package_id from participant_hours
+    const { data: hourData } = await supabase
+      .from('participant_hours')
+      .select('contract_id, package_id')
+      .eq('id', hoursEntry.id)
+      .single();
+
     setHoursFormData({
-      dozent_id: hoursEntry.dozent_name, // This will be read-only
+      dozent_id: hoursEntry.dozent_id,
       hours: hoursEntry.hours.toString(),
       date: hoursEntry.date,
       description: hoursEntry.description,
-      legal_area: hoursEntry.legal_area
+      legal_area: hoursEntry.legal_area,
+      contract_id: hourData?.contract_id || '',
+      package_id: hourData?.package_id || ''
     });
+
+    // Load available packages for the existing legal area
+    if (hoursEntry.legal_area) {
+      await filterPackagesByLegalArea(hoursEntry.legal_area);
+    }
     setShowEditDialog(true);
   };
 
   const handleUpdateHours = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!editingHours) return;
-    
+
+    console.log('📝 Updating hours with:', {
+      contract_id: hoursFormData.contract_id,
+      package_id: hoursFormData.package_id,
+      legal_area: hoursFormData.legal_area
+    });
+
     try {
       const { error } = await supabase
         .from('participant_hours')
@@ -231,15 +341,78 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
           hours: parseFloat(hoursFormData.hours),
           date: hoursFormData.date,
           description: hoursFormData.description,
-          legal_area: hoursFormData.legal_area
+          legal_area: hoursFormData.legal_area,
+          contract_id: hoursFormData.contract_id || null,
+          package_id: hoursFormData.package_id || null
         })
         .eq('id', editingHours.id);
 
       if (error) throw error;
 
+      // Handle package hours adjustment
+      const oldHours = editingHours.hours;
+      const newHours = parseFloat(hoursFormData.hours);
+      const hoursDifference = newHours - oldHours;
+
+      // Get old package_id from database
+      const { data: oldHourData } = await supabase
+        .from('participant_hours')
+        .select('package_id')
+        .eq('id', editingHours.id)
+        .single();
+
+      const oldPackageId = oldHourData?.package_id;
+      const newPackageId = hoursFormData.package_id;
+
+      console.log('📦 Package adjustment:', { oldPackageId, newPackageId, oldHours, newHours, hoursDifference });
+
+      if (oldPackageId !== newPackageId) {
+        // Package changed: subtract from old, add to new
+        if (oldPackageId) {
+          const { data: oldPackage } = await supabase
+            .from('contract_packages')
+            .select('hours_used')
+            .eq('id', oldPackageId)
+            .single();
+          if (oldPackage) {
+            await supabase
+              .from('contract_packages')
+              .update({ hours_used: Math.max(0, (oldPackage.hours_used || 0) - oldHours) })
+              .eq('id', oldPackageId);
+          }
+        }
+        if (newPackageId) {
+          const { data: newPackage } = await supabase
+            .from('contract_packages')
+            .select('hours_used')
+            .eq('id', newPackageId)
+            .single();
+          if (newPackage) {
+            await supabase
+              .from('contract_packages')
+              .update({ hours_used: (newPackage.hours_used || 0) + newHours })
+              .eq('id', newPackageId);
+          }
+        }
+      } else if (newPackageId && hoursDifference !== 0) {
+        // Same package: adjust by difference
+        const { data: currentPackage } = await supabase
+          .from('contract_packages')
+          .select('hours_used')
+          .eq('id', newPackageId)
+          .single();
+        if (currentPackage) {
+          const newHoursUsed = (currentPackage.hours_used || 0) + hoursDifference;
+          await supabase
+            .from('contract_packages')
+            .update({ hours_used: Math.max(0, newHoursUsed) })
+            .eq('id', newPackageId);
+        }
+      }
+
       // Refresh the hours data
       await fetchTeilnehmerHours();
-      
+
       // Close dialog and reset form
       setShowEditDialog(false);
       setEditingHours(null);
@@ -248,8 +421,11 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
         hours: '',
         date: new Date().toISOString().split('T')[0],
         description: '',
-        legal_area: ''
+        legal_area: '',
+        contract_id: '',
+        package_id: ''
       });
+      setAvailablePackages([]);
     } catch (error: any) {
       console.error('Error updating hours:', error);
       alert('Fehler beim Aktualisieren der Stunden: ' + error.message);
@@ -833,7 +1009,9 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
                       hours: '',
                       date: new Date().toISOString().split('T')[0],
                       description: '',
-                      legal_area: ''
+                      legal_area: '',
+                      contract_id: '',
+                      package_id: ''
                     });
                   }}
                   className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"
@@ -912,7 +1090,12 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
                     </label>
                     <select
                       value={hoursFormData.legal_area}
-                      onChange={(e) => setHoursFormData({ ...hoursFormData, legal_area: e.target.value })}
+                      onChange={(e) => {
+                        setHoursFormData({ ...hoursFormData, legal_area: e.target.value });
+                        if (e.target.value) {
+                          filterPackagesByLegalArea(e.target.value);
+                        }
+                      }}
                       className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
                       required
                     >
@@ -922,6 +1105,33 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
                       <option value="Strafrecht">Strafrecht</option>
                     </select>
                   </div>
+                  {availablePackages.length > 0 && hoursFormData.legal_area && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Paket auswählen
+                      </label>
+                      <select
+                        value={hoursFormData.package_id}
+                        onChange={(e) => {
+                          const selectedPackage = availablePackages.find(pkg => pkg.id === e.target.value);
+                          setHoursFormData({
+                            ...hoursFormData,
+                            package_id: e.target.value,
+                            contract_id: selectedPackage?.contract_id || ''
+                          });
+                        }}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                        required
+                      >
+                        <option value="">Paket auswählen</option>
+                        {availablePackages.map(pkg => (
+                          <option key={pkg.id} value={pkg.id}>
+                            {pkg.custom_name || 'Paket'} ({pkg.contract_number}) - {pkg.hours_total - pkg.hours_used} Std. verfügbar
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Beschreibung (optional)
@@ -953,7 +1163,9 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
                       hours: '',
                       date: new Date().toISOString().split('T')[0],
                       description: '',
-                      legal_area: ''
+                      legal_area: '',
+                      contract_id: '',
+                      package_id: ''
                     });
                   }}
                   className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"
