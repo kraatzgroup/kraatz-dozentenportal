@@ -455,7 +455,7 @@ export function EliteKleingruppeDashboard() {
     // Get current teilnehmer data
     const { data: teilnehmerData, error: teilnehmerError } = await supabase
       .from('teilnehmer')
-      .select('dozent_zivilrecht_id, dozent_strafrecht_id, dozent_oeffentliches_recht_id, elite_kleingruppe_id')
+      .select('elite_kleingruppe_id')
       .eq('profile_id', user.id)
       .single();
     
@@ -467,27 +467,7 @@ export function EliteKleingruppeDashboard() {
     const dozentLegalAreas = new Map<string, string[]>();
     
     if (teilnehmerData) {
-      // Individual dozent assignments from teilnehmer table
-      if (teilnehmerData.dozent_zivilrecht_id) {
-        const areas = dozentLegalAreas.get(teilnehmerData.dozent_zivilrecht_id) || [];
-        areas.push('Zivilrecht');
-        dozentLegalAreas.set(teilnehmerData.dozent_zivilrecht_id, areas);
-        if (import.meta.env.DEV) console.log('[fetchDozenten] Individual Zivilrecht dozent:', teilnehmerData.dozent_zivilrecht_id);
-      }
-      if (teilnehmerData.dozent_strafrecht_id) {
-        const areas = dozentLegalAreas.get(teilnehmerData.dozent_strafrecht_id) || [];
-        areas.push('Strafrecht');
-        dozentLegalAreas.set(teilnehmerData.dozent_strafrecht_id, areas);
-        if (import.meta.env.DEV) console.log('[fetchDozenten] Individual Strafrecht dozent:', teilnehmerData.dozent_strafrecht_id);
-      }
-      if (teilnehmerData.dozent_oeffentliches_recht_id) {
-        const areas = dozentLegalAreas.get(teilnehmerData.dozent_oeffentliches_recht_id) || [];
-        areas.push('Öffentliches Recht');
-        dozentLegalAreas.set(teilnehmerData.dozent_oeffentliches_recht_id, areas);
-        if (import.meta.env.DEV) console.log('[fetchDozenten] Individual Öffentliches Recht dozent:', teilnehmerData.dozent_oeffentliches_recht_id);
-      }
-      
-      // Elite-Kleingruppe dozent assignments
+      // Elite-Kleingruppe dozent assignments only — Einzelunterricht-Dozenten werden hier nicht angezeigt
       if (teilnehmerData.elite_kleingruppe_id) {
         if (import.meta.env.DEV) console.log('[fetchDozenten] Elite-Kleingruppe ID:', teilnehmerData.elite_kleingruppe_id);
         
