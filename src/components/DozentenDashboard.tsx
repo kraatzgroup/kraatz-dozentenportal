@@ -1182,8 +1182,34 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   };
 
   const fetchFolders = async () => {
-    const { data } = await supabase.from('material_folders').select('*').eq('is_active', true).order('position');
-    setFolders(data || []);
+    // Paginate to bypass Supabase's default 1000-row limit
+    let allFolders: any[] = [];
+    let from = 0;
+    const batchSize = 1000;
+
+    while (true) {
+      const { data, error } = await supabase
+        .from('material_folders')
+        .select('*')
+        .eq('is_active', true)
+        .order('position')
+        .range(from, from + batchSize - 1);
+
+      if (error) {
+        console.error('Error fetching folders:', error);
+        break;
+      }
+
+      if (!data || data.length === 0) break;
+
+      allFolders = [...allFolders, ...data];
+
+      if (data.length < batchSize) break;
+      from += batchSize;
+    }
+
+    console.log('Total folders loaded:', allFolders.length);
+    setFolders(allFolders);
   };
 
   const openMaterialModal = (m?: TeachingMaterial) => {
