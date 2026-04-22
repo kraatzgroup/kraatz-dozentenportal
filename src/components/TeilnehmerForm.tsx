@@ -21,6 +21,7 @@ interface Teilnehmer {
   first_name: string;
   middle_name?: string;
   last_name: string;
+  gender?: string;
   email: string;
   phone: string;
   study_goal: string;
@@ -147,6 +148,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
     first_name: '',
     middle_name: '',
     last_name: '',
+    gender: '',
     email: '',
     phone: '',
     study_goal: '',
@@ -615,6 +617,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
         first_name: teilnehmer.first_name || '',
         middle_name: (teilnehmer as any).middle_name || '',
         last_name: teilnehmer.last_name || '',
+        gender: (teilnehmer as any).gender || '',
         email: teilnehmer.email || '',
         phone: (teilnehmer as any).phone || '',
         study_goal: teilnehmer.study_goal || '',
@@ -831,6 +834,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
         first_name: formData.first_name.trim(),
         middle_name: formData.middle_name?.trim() || null,
         last_name: formData.last_name.trim(),
+        gender: formData.gender || null,
         name: fullName,
         email: formData.email.trim() || null,
         phone: formData.phone.trim() || null,
@@ -1149,6 +1153,48 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                         placeholder="Mustermann"
                         required
                       />
+                    </div>
+                  </div>
+
+                  {/* Gender Selection */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Geschlecht
+                    </label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center cursor-pointer">
+                        <input
+                          type="radio"
+                          name="gender"
+                          value="männlich"
+                          checked={formData.gender === 'männlich'}
+                          onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                          className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
+                        />
+                        <span className="ml-2 text-sm text-gray-700">Männlich</span>
+                      </label>
+                      <label className="flex items-center cursor-pointer">
+                        <input
+                          type="radio"
+                          name="gender"
+                          value="weiblich"
+                          checked={formData.gender === 'weiblich'}
+                          onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                          className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
+                        />
+                        <span className="ml-2 text-sm text-gray-700">Weiblich</span>
+                      </label>
+                      <label className="flex items-center cursor-pointer">
+                        <input
+                          type="radio"
+                          name="gender"
+                          value="divers"
+                          checked={formData.gender === 'divers'}
+                          onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                          className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
+                        />
+                        <span className="ml-2 text-sm text-gray-700">Divers</span>
+                      </label>
                     </div>
                   </div>
 
