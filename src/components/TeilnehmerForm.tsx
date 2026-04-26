@@ -717,6 +717,26 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
             if (!fhError && allFreeHours) {
               setFreeHours(allFreeHours);
             }
+
+            // Fetch participant_hours and aggregate used per legal area
+            const { data: phData } = await supabase
+              .from('participant_hours')
+              .select('hours, legal_area')
+              .eq('teilnehmer_id', teilnehmer.id);
+            if (phData) {
+              const used: Record<string, number> = { zivilrecht: 0, strafrecht: 0, oeffentliches_recht: 0, sonstiges: 0 };
+              const normalize = (la: string | null): string | null => {
+                if (!la) return null;
+                const l = la.toLowerCase().replace(/ö/g, 'oe').replace(/ /g, '_');
+                if (['zivilrecht', 'strafrecht', 'oeffentliches_recht', 'sonstiges'].includes(l)) return l;
+                return null;
+              };
+              phData.forEach((row: any) => {
+                const k = normalize(row.legal_area);
+                if (k) used[k] += Number(row.hours) || 0;
+              });
+              setUsedLegalAreaHours(used);
+            }
           }
         }
       }
