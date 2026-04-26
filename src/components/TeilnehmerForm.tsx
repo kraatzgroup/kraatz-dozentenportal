@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Save, UserPlus, User, MapPin, Trash2, AlertTriangle, Upload, Calendar, Clock, BookOpen, ChevronDown, ChevronUp, FileText, FileText as FileContract, Edit2 } from 'lucide-react';
+import { X, Save, UserPlus, User, MapPin, Trash2, AlertTriangle, Upload, Calendar, Clock, BookOpen, ChevronDown, ChevronUp, FileText, FileText as FileContract, Edit2, Gift, Plus } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { useToastStore } from '../store/toastStore';
@@ -105,8 +105,14 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
     oeffentliches_recht: number;
     sonstiges: number;
   }>({ zivilrecht: 0, strafrecht: 0, oeffentliches_recht: 0, sonstiges: 0 });
+  const [usedLegalAreaHours, setUsedLegalAreaHours] = useState<Record<string, number>>({
+    zivilrecht: 0, strafrecht: 0, oeffentliches_recht: 0, sonstiges: 0,
+  });
   const [showPackageDialog, setShowPackageDialog] = useState(false);
   const [editingPackage, setEditingPackage] = useState<any>(null);
+  const [freeHours, setFreeHours] = useState<any[]>([]);
+  const [showFreeHourDialog, setShowFreeHourDialog] = useState(false);
+  const [editingFreeHour, setEditingFreeHour] = useState<any>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     title: string;
     message: string;
@@ -701,6 +707,16 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
 
               setAggregatedLegalAreaHours(aggregated);
             }
+
+            // Fetch all free_hours for all contracts of this teilnehmer
+            const { data: allFreeHours, error: fhError } = await supabase
+              .from('free_hours')
+              .select('*')
+              .in('contract_id', contractIds)
+              .order('created_at', { ascending: false });
+            if (!fhError && allFreeHours) {
+              setFreeHours(allFreeHours);
+            }
           }
         }
       }
@@ -723,6 +739,9 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
       setContractPackages(data);
     }
 
+    // Refresh all free hours for this teilnehmer
+    await refreshAllFreeHours();
+
     // Also refresh contract data so hours are live-updated in the modal
     const { data: refreshedContract } = await supabase
       .from('contracts')
@@ -731,6 +750,82 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
       .single();
     if (refreshedContract) {
       setEditingContract((prev: any) => (prev && prev.id === contractId ? { ...prev, ...refreshedContract } : prev));
+    }
+  };
+
+  const refreshAllFreeHours = async () => {
+    if (!contracts.length) {
+      setFreeHours([]);
+      return;
+    }
+    const contractIds = contracts.map((c: any) => c.id);
+    const { data, error } = await supabase
+      .from('free_hours')
+      .select('*')
+      .in('contract_id', contractIds)
+      .order('created_at', { ascending: false });
+    if (!error && data) {
+      setFreeHours(data);
+    }
+  };
+
+  const saveFreeHour = async () => {
+    if (!editingFreeHour) return;
+    const contractId = editingFreeHour.contract_id || editingContract?.id || contracts[0]?.id;
+    if (!contractId) {
+      addToast('Kein Vertrag verfügbar – Freistunden können nur Verträgen zugewiesen werden', 'error');
+      return;
+    }
+    const payload = {
+      contract_id: contractId,
+      hours: parseFloat(editingFreeHour.hours) || 0,
+      reason: editingFreeHour.reason || '',
+      legal_area: editingFreeHour.legal_area || null,
+    };
+    if (!payload.hours || payload.hours <= 0) {
+      addToast('Bitte gültige Stundenzahl eingeben', 'error');
+      return;
+    }
+    if (!payload.reason.trim()) {
+      addToast('Bitte Begründung eingeben', 'error');
+      return;
+    }
+    if (!payload.legal_area) {
+      addToast('Bitte Rechtsgebiet auswählen', 'error');
+      return;
+    }
+    try {
+      if (editingFreeHour.id) {
+        const { error } = await supabase
+          .from('free_hours')
+          .update(payload)
+          .eq('id', editingFreeHour.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('free_hours')
+          .insert(payload);
+        if (error) throw error;
+      }
+      setShowFreeHourDialog(false);
+      setEditingFreeHour(null);
+      await refreshAllFreeHours();
+      addToast('Freistunden gespeichert', 'success');
+    } catch (err: any) {
+      console.error('Error saving free hours:', err);
+      addToast('Fehler beim Speichern der Freistunden', 'error');
+    }
+  };
+
+  const deleteFreeHour = async (id: string) => {
+    try {
+      const { error } = await supabase.from('free_hours').delete().eq('id', id);
+      if (error) throw error;
+      await refreshAllFreeHours();
+      addToast('Freistunden gelöscht', 'success');
+    } catch (err) {
+      console.error('Error deleting free hours:', err);
+      addToast('Fehler beim Löschen', 'error');
     }
   };
 
@@ -1537,14 +1632,16 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                     return d > max ? d : max;
                   }, contracts[0].end_date ? new Date(contracts[0].end_date) : new Date());
 
+                  const totalFreeHoursUsed = freeHours.reduce((s, fh) => s + (parseFloat(fh.hours_used) || 0), 0);
                   const totalHoursUsed = contracts.reduce((sum, c) => {
                     const packageUsed = c.contract_packages?.reduce((pkgSum: number, pkg: any) => pkgSum + (pkg.hours_used || 0), 0) || 0;
                     return sum + packageUsed;
-                  }, 0);
+                  }, 0) + totalFreeHoursUsed;
+                  const totalFreeHours = freeHours.reduce((s, fh) => s + (parseFloat(fh.hours) || 0), 0);
                   const totalHoursBooked = contracts.reduce((sum, c) => {
                     const packageTotal = c.contract_packages?.reduce((pkgSum: number, pkg: any) => pkgSum + (pkg.hours_total || 0), 0) || c.total_hours || 0;
                     return sum + packageTotal;
-                  }, 0);
+                  }, 0) + totalFreeHours;
 
                   const today = new Date();
                   today.setHours(0, 0, 0, 0);
@@ -1572,14 +1669,139 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                           { key: 'zivilrecht', label: 'Zivilrecht' },
                           { key: 'strafrecht', label: 'Strafrecht' },
                           { key: 'oeffentliches_recht', label: 'öffentliches Recht' },
-                        ].map(({ key, label }) => (
-                          <div key={key} className="bg-white rounded p-2 text-center">
-                            <span className="text-xs text-gray-600 block">{label}</span>
-                            <span className="text-sm font-medium text-gray-900">
-                              {aggregatedLegalAreaHours[key] || 0} Std.
-                            </span>
-                          </div>
-                        ))}
+                        ].map(({ key, label }) => {
+                          const freeForArea = freeHours.reduce((s, fh) => s + (fh.legal_area === key ? (parseFloat(fh.hours) || 0) : 0), 0);
+                          const totalForArea = ((aggregatedLegalAreaHours as any)[key] || 0) + freeForArea;
+                          const usedForArea = usedLegalAreaHours[key] || 0;
+                          return (
+                            <div key={key} className="bg-white rounded p-2 text-center">
+                              <span className="text-xs text-gray-600 block">{label}</span>
+                              <span className="text-sm font-medium text-gray-900">
+                                {usedForArea} / {totalForArea} Std.
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Freistunden Block */}
+                      <div className="border-t border-gray-200 pt-3 space-y-3">
+                        {(() => {
+                          const breakdown = freeHours.reduce((acc: Record<string, { used: number; total: number }>, fh) => {
+                            const key = fh.legal_area;
+                            if (!key) return acc;
+                            if (!acc[key]) acc[key] = { used: 0, total: 0 };
+                            acc[key].total += parseFloat(fh.hours) || 0;
+                            acc[key].used += parseFloat(fh.hours_used) || 0;
+                            return acc;
+                          }, {});
+                          return (
+                            <>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Gift className="h-4 w-4 text-amber-600" />
+                                  <span className="text-sm font-medium text-gray-900">Freistunden</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingFreeHour({
+                                      id: null,
+                                      hours: '',
+                                      reason: '',
+                                      legal_area: '',
+                                      contract_id: contracts[0]?.id || null,
+                                    });
+                                    setShowFreeHourDialog(true);
+                                  }}
+                                  className="px-3 py-1.5 text-xs bg-amber-600 text-white rounded-md hover:bg-amber-700 transition-colors flex items-center gap-1"
+                                  disabled={contracts.length === 0}
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                  Hinzufügen
+                                </button>
+                              </div>
+                              <div className="grid grid-cols-3 gap-3">
+                                {[
+                                  { key: 'zivilrecht', label: 'Zivilrecht' },
+                                  { key: 'strafrecht', label: 'Strafrecht' },
+                                  { key: 'oeffentliches_recht', label: 'öffentliches Recht' },
+                                ].map(({ key, label }) => {
+                                  const entry = breakdown[key];
+                                  return (
+                                    <div key={key} className="bg-amber-50 rounded p-2 text-center">
+                                      <span className="text-xs text-amber-700 block">{label}</span>
+                                      <span className="text-sm font-medium text-amber-900">
+                                        {entry && entry.total > 0
+                                          ? `${entry.used} / ${entry.total} Std.`
+                                          : '0 Std.'}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              {false && freeHours.length > 0 && (
+                                <div className="space-y-1.5">
+                                  {freeHours.map((fh) => {
+                                    const formatLegalArea = (area: string | null) => {
+                                      if (!area) return '—';
+                                      if (area === 'oeffentliches_recht') return 'öffentliches Recht';
+                                      return area.charAt(0).toUpperCase() + area.slice(1);
+                                    };
+                                    const used = parseFloat(fh.hours_used) || 0;
+                                    const total = parseFloat(fh.hours) || 0;
+                                    const isExhausted = used >= total && total > 0;
+                                    return (
+                                      <div key={fh.id} className="bg-white rounded px-3 py-2 flex items-center justify-between gap-2 text-xs">
+                                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                                          <span className={`font-medium whitespace-nowrap ${isExhausted ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                                            {used} / {total} Std.
+                                          </span>
+                                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 whitespace-nowrap">
+                                            {formatLegalArea(fh.legal_area)}
+                                          </span>
+                                          <span className="text-gray-600 truncate">{fh.reason}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setEditingFreeHour({ ...fh });
+                                              setShowFreeHourDialog(true);
+                                            }}
+                                            className="p-1 text-gray-400 hover:text-primary rounded transition-colors"
+                                            title="Bearbeiten"
+                                          >
+                                            <Edit2 className="h-3.5 w-3.5" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setConfirmDialog({
+                                                title: 'Freistunden löschen',
+                                                message: `Möchten Sie diese Freistunden (${fh.hours} Std.) wirklich löschen?`,
+                                                variant: 'danger',
+                                                confirmLabel: 'Löschen',
+                                                onConfirm: async () => {
+                                                  await deleteFreeHour(fh.id);
+                                                  setConfirmDialog(null);
+                                                },
+                                              });
+                                            }}
+                                            className="p-1 text-gray-400 hover:text-red-600 rounded transition-colors"
+                                            title="Löschen"
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   );
@@ -1731,9 +1953,14 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                       const elapsed = today.getTime() - startDate.getTime();
                       const progress = totalDuration ? Math.min(Math.max((elapsed / totalDuration) * 100, 0), 100) : 0;
 
-                      // Calculate used hours from contract_packages (new system)
-                      const usedHours = contract.contract_packages?.reduce((sum: number, pkg: any) => sum + (pkg.hours_used || 0), 0) || 0;
-                      const totalHours = contract.contract_packages?.reduce((sum: number, pkg: any) => sum + (pkg.hours_total || 0), 0) || contract.total_hours || 0;
+                      // Calculate used hours from contract_packages + free_hours (consumed)
+                      const contractFreeHours = freeHours.filter((fh: any) => fh.contract_id === contract.id);
+                      const freeUsed = contractFreeHours.reduce((s: number, fh: any) => s + (parseFloat(fh.hours_used) || 0), 0);
+                      const freeTotal = contractFreeHours.reduce((s: number, fh: any) => s + (parseFloat(fh.hours) || 0), 0);
+                      const packageUsed = contract.contract_packages?.reduce((sum: number, pkg: any) => sum + (pkg.hours_used || 0), 0) || 0;
+                      const packageTotal = contract.contract_packages?.reduce((sum: number, pkg: any) => sum + (pkg.hours_total || 0), 0) || contract.total_hours || 0;
+                      const usedHours = packageUsed + freeUsed;
+                      const totalHours = packageTotal + freeTotal;
                       const remainingHours = totalHours - usedHours;
 
                       // Compute display status based on dates and hours
@@ -2884,6 +3111,110 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                     {editingPackage.id ? 'Speichern' : 'Hinzufügen'}
                   </button>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Free Hours Dialog */}
+          {showFreeHourDialog && editingFreeHour && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+                <div className="flex items-center justify-between p-4 border-b">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <Gift className="h-5 w-5 text-amber-600" />
+                    {editingFreeHour.id ? 'Freistunden bearbeiten' : 'Freistunden hinzufügen'}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowFreeHourDialog(false);
+                      setEditingFreeHour(null);
+                    }}
+                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="p-4 space-y-4">
+                  {contracts.length > 1 && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Vertrag *</label>
+                      <select
+                        value={editingFreeHour.contract_id || ''}
+                        onChange={(e) => setEditingFreeHour({ ...editingFreeHour, contract_id: e.target.value })}
+                        disabled={!!editingFreeHour.id}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent disabled:bg-gray-100"
+                      >
+                        <option value="">Bitte wählen…</option>
+                        {contracts.map((c: any) => (
+                          <option key={c.id} value={c.id}>
+                            {c.contract_number || c.id.slice(0, 8)}
+                            {c.start_date && c.end_date ? ` (${new Date(c.start_date).toLocaleDateString('de-DE')} - ${new Date(c.end_date).toLocaleDateString('de-DE')})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Stunden *</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.25"
+                      value={editingFreeHour.hours ?? ''}
+                      onChange={(e) => setEditingFreeHour({ ...editingFreeHour, hours: e.target.value === '' ? '' : parseFloat(e.target.value) })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Rechtsgebiet *</label>
+                    <select
+                      value={editingFreeHour.legal_area || ''}
+                      onChange={(e) => setEditingFreeHour({ ...editingFreeHour, legal_area: e.target.value || null })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                    >
+                      <option value="">Bitte wählen…</option>
+                      <option value="zivilrecht">Zivilrecht</option>
+                      <option value="strafrecht">Strafrecht</option>
+                      <option value="oeffentliches_recht">öffentliches Recht</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">Freistunden einem Rechtsgebiet zuordnen</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Begründung *</label>
+                    <textarea
+                      rows={3}
+                      value={editingFreeHour.reason || ''}
+                      onChange={(e) => setEditingFreeHour({ ...editingFreeHour, reason: e.target.value })}
+                      placeholder="z.B. Nachholstunden, Bonus, Kompensation..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 p-4 border-t bg-gray-50 rounded-b-lg">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowFreeHourDialog(false);
+                      setEditingFreeHour(null);
+                    }}
+                    className="px-4 py-2 text-gray-700 bg-white border border-gray-300 hover:bg-gray-100 rounded-md transition-colors"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveFreeHour}
+                    className="px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 transition-colors"
+                  >
+                    {editingFreeHour.id ? 'Speichern' : 'Hinzufügen'}
+                  </button>
                 </div>
               </div>
             </div>

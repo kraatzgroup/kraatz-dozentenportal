@@ -48,13 +48,10 @@ export function ParticipantHoursSection({
       const data: { [teilnehmerId: string]: { totalHours: number; usedHours: number } } = {};
 
       for (const t of teilnehmer) {
-        console.log('📦 Fetching contract data for teilnehmer:', t.id);
         const { data: contracts, error } = await supabase
           .from('contracts')
-          .select('id, start_date, end_date, status, contract_packages(hours_total, hours_used)')
+          .select('id, start_date, end_date, status, contract_packages(hours_total, hours_used), free_hours(hours, hours_used)')
           .eq('teilnehmer_id', t.id);
-
-        console.log('📦 Contracts response:', contracts, error);
 
         if (error) {
           console.error('Error fetching contract data:', error);
@@ -62,8 +59,6 @@ export function ParticipantHoursSection({
         }
 
         if (contracts && contracts.length > 0) {
-          console.log('📦 All contracts:', contracts.length);
-
           let totalHours = 0;
           let usedHours = 0;
 
@@ -74,9 +69,14 @@ export function ParticipantHoursSection({
                 usedHours += pkg.hours_used || 0;
               }
             }
+            if ((contract as any).free_hours) {
+              for (const fh of (contract as any).free_hours) {
+                totalHours += Number(fh.hours) || 0;
+                usedHours += Number(fh.hours_used) || 0;
+              }
+            }
           }
 
-          console.log('📦 Contract summary for', t.id, ':', { totalHours, usedHours });
           data[t.id] = { totalHours, usedHours };
         }
       }

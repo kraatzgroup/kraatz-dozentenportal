@@ -349,66 +349,8 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
 
       if (error) throw error;
 
-      // Handle package hours adjustment
-      const oldHours = editingHours.hours;
-      const newHours = parseFloat(hoursFormData.hours);
-      const hoursDifference = newHours - oldHours;
-
-      // Get old package_id from database
-      const { data: oldHourData } = await supabase
-        .from('participant_hours')
-        .select('package_id')
-        .eq('id', editingHours.id)
-        .single();
-
-      const oldPackageId = oldHourData?.package_id;
-      const newPackageId = hoursFormData.package_id;
-
-      console.log('📦 Package adjustment:', { oldPackageId, newPackageId, oldHours, newHours, hoursDifference });
-
-      if (oldPackageId !== newPackageId) {
-        // Package changed: subtract from old, add to new
-        if (oldPackageId) {
-          const { data: oldPackage } = await supabase
-            .from('contract_packages')
-            .select('hours_used')
-            .eq('id', oldPackageId)
-            .single();
-          if (oldPackage) {
-            await supabase
-              .from('contract_packages')
-              .update({ hours_used: Math.max(0, (oldPackage.hours_used || 0) - oldHours) })
-              .eq('id', oldPackageId);
-          }
-        }
-        if (newPackageId) {
-          const { data: newPackage } = await supabase
-            .from('contract_packages')
-            .select('hours_used')
-            .eq('id', newPackageId)
-            .single();
-          if (newPackage) {
-            await supabase
-              .from('contract_packages')
-              .update({ hours_used: (newPackage.hours_used || 0) + newHours })
-              .eq('id', newPackageId);
-          }
-        }
-      } else if (newPackageId && hoursDifference !== 0) {
-        // Same package: adjust by difference
-        const { data: currentPackage } = await supabase
-          .from('contract_packages')
-          .select('hours_used')
-          .eq('id', newPackageId)
-          .single();
-        if (currentPackage) {
-          const newHoursUsed = (currentPackage.hours_used || 0) + hoursDifference;
-          await supabase
-            .from('contract_packages')
-            .update({ hours_used: Math.max(0, newHoursUsed) })
-            .eq('id', newPackageId);
-        }
-      }
+      // contract_packages.hours_used wird automatisch via DB-Trigger
+      // recompute_contract_hours_with_free aktualisiert (inkl. Freistunden-Verrechnung).
 
       // Refresh the hours data
       await fetchTeilnehmerHours();

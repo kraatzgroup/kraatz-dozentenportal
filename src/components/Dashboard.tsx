@@ -714,25 +714,11 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     setContractRefreshKey(prev => prev + 1);
   };
 
-  const deductFromPackage = async (packageId: string, hours: number) => {
-    console.log('⏱️ Deducting hours from package:', packageId, hours);
-    const { data: currentPackage, error: fetchError } = await supabase
-      .from('contract_packages')
-      .select('hours_used')
-      .eq('id', packageId)
-      .single();
-
-    if (currentPackage) {
-      const newHoursUsed = (currentPackage.hours_used || 0) + hours;
-      const { error } = await supabase
-        .from('contract_packages')
-        .update({ hours_used: newHoursUsed })
-        .eq('id', packageId);
-      console.log('✅ Package update result:', error || 'Success');
-      if (error) {
-        console.error('❌ Error updating package hours:', error);
-      }
-    }
+  const deductFromPackage = async (_packageId: string, _hours: number) => {
+    // No-op: contract_packages.hours_used wird automatisch vom DB-Trigger
+    // recompute_contract_hours_with_free aktualisiert (inkl. Freistunden-Verrechnung).
+    // Diese Funktion bleibt aus Kompatibilitätsgründen erhalten.
+    return;
   };
 
   const handleHoursSubmit = async (e: React.FormEvent) => {

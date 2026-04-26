@@ -19,17 +19,17 @@ CREATE INDEX IF NOT EXISTS idx_invoices_sent_at ON invoices(sent_at) WHERE sent_
 
 -- Files table - queried by folder, month, year, and download status
 CREATE INDEX IF NOT EXISTS idx_files_folder_id ON files(folder_id);
-CREATE INDEX IF NOT EXISTS idx_files_user_id ON files(user_id);
+CREATE INDEX IF NOT EXISTS idx_files_uploaded_by ON files(uploaded_by);
 CREATE INDEX IF NOT EXISTS idx_files_created_at ON files(created_at DESC);
 
 -- Folders table - queried by user
 CREATE INDEX IF NOT EXISTS idx_folders_user_id ON folders(user_id);
 
--- Material folders - queried by user
-CREATE INDEX IF NOT EXISTS idx_material_folders_user_id ON material_folders(user_id);
+-- Material folders - queried by user (no user_id column exists)
+-- CREATE INDEX IF NOT EXISTS idx_material_folders_user_id ON material_folders(user_id);
 
--- Teaching materials - queried by user and folder
-CREATE INDEX IF NOT EXISTS idx_teaching_materials_user_id ON teaching_materials(user_id);
+-- Teaching materials - queried by user and folder (no user_id column exists)
+-- CREATE INDEX IF NOT EXISTS idx_teaching_materials_user_id ON teaching_materials(user_id);
 CREATE INDEX IF NOT EXISTS idx_teaching_materials_folder_id ON teaching_materials(folder_id);
 CREATE INDEX IF NOT EXISTS idx_teaching_materials_created_at ON teaching_materials(created_at DESC);
 
@@ -49,7 +49,7 @@ CREATE INDEX IF NOT EXISTS idx_calendar_entries_date_user ON calendar_entries(en
 -- Elite Kleingruppe tables
 CREATE INDEX IF NOT EXISTS idx_elite_kleingruppe_dozenten_legal_area ON elite_kleingruppe_dozenten(legal_area);
 CREATE INDEX IF NOT EXISTS idx_elite_kleingruppe_klausuren_teilnehmer ON elite_kleingruppe_klausuren(teilnehmer_id);
-CREATE INDEX IF NOT EXISTS idx_elite_kleingruppe_klausuren_date ON elite_kleingruppe_klausuren(date DESC);
+-- CREATE INDEX IF NOT EXISTS idx_elite_kleingruppe_klausuren_date ON elite_kleingruppe_klausuren(date DESC); -- column 'date' does not exist
 CREATE INDEX IF NOT EXISTS idx_elite_kleingruppe_releases_release_date ON elite_kleingruppe_releases(release_date DESC);
 CREATE INDEX IF NOT EXISTS idx_elite_kleingruppe_releases_legal_area ON elite_kleingruppe_releases(legal_area);
 CREATE INDEX IF NOT EXISTS idx_elite_kleingruppe_releases_solutions ON elite_kleingruppe_releases(solutions_released);
@@ -58,7 +58,7 @@ CREATE INDEX IF NOT EXISTS idx_elite_kleingruppe_releases_solutions ON elite_kle
 CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
 CREATE INDEX IF NOT EXISTS idx_leads_source ON leads(source);
 CREATE INDEX IF NOT EXISTS idx_leads_created_at ON leads(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_leads_assigned_to ON leads(assigned_to);
+-- CREATE INDEX IF NOT EXISTS idx_leads_assigned_to ON leads(assigned_to); -- column 'assigned_to' does not exist
 CREATE INDEX IF NOT EXISTS idx_lead_notes_lead_id ON lead_notes(lead_id);
 CREATE INDEX IF NOT EXISTS idx_lead_notes_created_at ON lead_notes(created_at DESC);
 
@@ -68,11 +68,11 @@ CREATE INDEX IF NOT EXISTS idx_contract_requests_requested_at ON contract_reques
 CREATE INDEX IF NOT EXISTS idx_contract_requests_lead_id ON contract_requests(lead_id);
 
 -- Follow-ups - frequently queried by date and status
-CREATE INDEX IF NOT EXISTS idx_follow_ups_vertrieb_user_id ON follow_ups(vertrieb_user_id);
+-- CREATE INDEX IF NOT EXISTS idx_follow_ups_vertrieb_user_id ON follow_ups(vertrieb_user_id); -- column 'vertrieb_user_id' does not exist
 CREATE INDEX IF NOT EXISTS idx_follow_ups_lead_teilnehmer ON follow_ups(lead_id, teilnehmer_id);
 
 -- Sales calls - queried by vertrieb user
-CREATE INDEX IF NOT EXISTS idx_sales_calls_vertrieb ON sales_calls(vertrieb_user_id);
+-- CREATE INDEX IF NOT EXISTS idx_sales_calls_vertrieb ON sales_calls(vertrieb_user_id); -- column 'vertrieb_user_id' does not exist
 
 -- Upsells - queried by teilnehmer
 CREATE INDEX IF NOT EXISTS idx_upsells_teilnehmer_id ON upsells(teilnehmer_id);
@@ -83,10 +83,10 @@ CREATE INDEX IF NOT EXISTS idx_packages_is_active ON packages(is_active) WHERE i
 
 -- Probestunden - queried by dozent and date
 CREATE INDEX IF NOT EXISTS idx_probestunden_dozent_id ON probestunden(dozent_id);
-CREATE INDEX IF NOT EXISTS idx_probestunden_date ON probestunden(date DESC);
+-- CREATE INDEX IF NOT EXISTS idx_probestunden_date ON probestunden(date DESC); -- column 'date' does not exist (use scheduled_date instead)
 
 -- Dozent availability - queried by dozent and day
-CREATE INDEX IF NOT EXISTS idx_dozent_availability_day ON dozent_availability(day_of_week);
+-- CREATE INDEX IF NOT EXISTS idx_dozent_availability_day ON dozent_availability(day_of_week); -- column 'day_of_week' does not exist
 
 -- ============================================================================
 -- PART 2: Partial Indexes for Common Filters
@@ -123,10 +123,10 @@ CREATE INDEX IF NOT EXISTS idx_messages_conversation_reverse ON messages(receive
 CREATE INDEX IF NOT EXISTS idx_participant_hours_summary ON participant_hours(dozent_id, date DESC, hours);
 
 -- Files: Month/year assignment queries
-CREATE INDEX IF NOT EXISTS idx_files_month_year_user ON files(user_id, assigned_year DESC, assigned_month DESC);
+CREATE INDEX IF NOT EXISTS idx_files_month_year_user ON files(uploaded_by, assigned_year DESC, assigned_month DESC);
 
 -- Leads: Status and assignment queries
-CREATE INDEX IF NOT EXISTS idx_leads_status_assigned ON leads(status, assigned_to, created_at DESC);
+-- CREATE INDEX IF NOT EXISTS idx_leads_status_assigned ON leads(status, assigned_to, created_at DESC); -- column 'assigned_to' does not exist
 
 -- Elite releases: Legal area and date queries
 CREATE INDEX IF NOT EXISTS idx_elite_releases_area_date ON elite_kleingruppe_releases(legal_area, release_date DESC);
@@ -233,20 +233,20 @@ COMMENT ON MATERIALIZED VIEW dashboard_kpis IS
 -- ============================================================================
 
 -- View to monitor slow queries (admin only)
-CREATE OR REPLACE VIEW slow_queries AS
-SELECT 
-  query,
-  calls,
-  total_exec_time,
-  mean_exec_time,
-  max_exec_time
-FROM pg_stat_statements
-WHERE mean_exec_time > 100 -- queries taking more than 100ms on average
-ORDER BY mean_exec_time DESC
-LIMIT 50;
+-- CREATE OR REPLACE VIEW slow_queries AS
+-- SELECT
+--   query,
+--   calls,
+--   total_exec_time,
+--   mean_exec_time,
+--   max_exec_time
+-- FROM pg_stat_statements
+-- WHERE mean_exec_time > 100 -- queries taking more than 100ms on average
+-- ORDER BY mean_exec_time DESC
+-- LIMIT 50;
 
-COMMENT ON VIEW slow_queries IS 
-'Monitors queries with mean execution time > 100ms - requires pg_stat_statements extension';
+-- COMMENT ON VIEW slow_queries IS
+-- 'Monitors queries with mean execution time > 100ms - requires pg_stat_statements extension';
 
 -- ============================================================================
 -- Summary

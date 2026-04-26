@@ -635,13 +635,38 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
       const contractIds = (contractsData || []).map(c => c.id);
       const { data: packagesData, error: packagesError } = await supabase
         .from('contract_packages')
-        .select('id, contract_id, contract_package_legal_areas (legal_area, hours)')
+        .select('id, contract_id, hours_total, hours_used, contract_package_legal_areas (legal_area, hours)')
         .in('contract_id', contractIds);
 
       if (packagesError) throw packagesError;
 
-      // Aggregate legal area hours per teilnehmer
+      // Fetch all free_hours for all contracts
+      const { data: freeHoursData } = await supabase
+        .from('free_hours')
+        .select('contract_id, hours, hours_used, legal_area')
+        .in('contract_id', contractIds);
+
+      // Aggregate free hours per teilnehmer (total + used + per legal area)
+      const freeHoursByTeilnehmer: { [key: string]: { total: number; used: number; byArea: { [key: string]: number } } } = {};
+      (freeHoursData || []).forEach((fh: any) => {
+        const contract = contractsData?.find(c => c.id === fh.contract_id);
+        if (!contract) return;
+        const tnId = contract.teilnehmer_id;
+        if (!freeHoursByTeilnehmer[tnId]) {
+          freeHoursByTeilnehmer[tnId] = { total: 0, used: 0, byArea: {} };
+        }
+        const hrs = Number(fh.hours) || 0;
+        const used = Number(fh.hours_used) || 0;
+        freeHoursByTeilnehmer[tnId].total += hrs;
+        freeHoursByTeilnehmer[tnId].used += used;
+        if (fh.legal_area) {
+          freeHoursByTeilnehmer[tnId].byArea[fh.legal_area] = (freeHoursByTeilnehmer[tnId].byArea[fh.legal_area] || 0) + hrs;
+        }
+      });
+
+      // Aggregate legal area hours and package hours per teilnehmer
       const legalAreasByTeilnehmer: { [key: string]: { [key: string]: { used: number; total: number } } } = {};
+      const packageHoursByTeilnehmer: { [key: string]: { totalHours: number; usedHours: number } } = {};
       
       (packagesData || []).forEach(pkg => {
         const contract = contractsData?.find(c => c.id === pkg.contract_id);
@@ -656,6 +681,11 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
             sonstiges: { used: 0, total: 0 }
           };
         }
+        if (!packageHoursByTeilnehmer[tnId]) {
+          packageHoursByTeilnehmer[tnId] = { totalHours: 0, usedHours: 0 };
+        }
+        packageHoursByTeilnehmer[tnId].totalHours += Number(pkg.hours_total) || 0;
+        packageHoursByTeilnehmer[tnId].usedHours += Number(pkg.hours_used) || 0;
         
         if (pkg.contract_package_legal_areas) {
           pkg.contract_package_legal_areas.forEach((la: any) => {
@@ -812,15 +842,22 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
       // Merge completed hours, elite progress, contract data, and legal area hours into teilnehmer data
       const teilnehmerWithHours = (teilnehmerData || []).map(t => {
         const contractData = contractsByTeilnehmer[t.id];
+        const packageHours = packageHoursByTeilnehmer[t.id];
         const legalAreas = legalAreasByTeilnehmer[t.id] || {
           zivilrecht: { used: 0, total: 0 },
           strafrecht: { used: 0, total: 0 },
           oeffentliches_recht: { used: 0, total: 0 },
           sonstiges: { used: 0, total: 0 }
         };
+        const freeHrs = freeHoursByTeilnehmer[t.id];
+        // Prefer package-level hours (matches modal calculation), fall back to participant_hours
+        const baseCompletedHours = packageHours?.usedHours ?? hoursMap[t.id] ?? 0;
+        const completedHours = baseCompletedHours + (freeHrs?.used || 0);
+        const baseTotalHours = packageHours?.totalHours || contractData?.totalHours || t.booked_hours || 0;
+        const totalHours = baseTotalHours + (freeHrs?.total || 0);
         return {
           ...t,
-          completed_hours: hoursMap[t.id] || 0,
+          completed_hours: completedHours,
           elite_progress: t.elite_kleingruppe_id && progressByGroup[t.elite_kleingruppe_id] 
             ? progressByGroup[t.elite_kleingruppe_id]
             : null,
@@ -830,7 +867,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
           // Use contract data if available, otherwise fall back to old fields
           contract_start: contractData?.earliestStart || t.contract_start,
           contract_end: contractData?.latestEnd || t.contract_end,
-          booked_hours: contractData?.totalHours || t.booked_hours,
+          booked_hours: totalHours,
           // Add legal area hours
           legal_areas_hours: legalAreas
         };
@@ -2528,7 +2565,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                           <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                             Dozenten
                           </th>
-                          <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
+                          <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Stunden
                           </th>
                           <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden xl:table-cell">
@@ -2686,11 +2723,11 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                                 {!t.dozent_zivilrecht_id && !t.dozent_strafrecht_id && !t.dozent_oeffentliches_recht_id && '-'}
                               </div>
                             </td>
-                            <td className="px-4 sm:px-6 py-4 hidden lg:table-cell">
+                            <td className="px-4 sm:px-6 py-4">
                               {t.booked_hours ? (
-                                <div className="space-y-1.5">
-                                  <div className="flex items-center space-x-1 text-xs">
-                                    <span className="text-gray-600">{t.completed_hours || 0} / {t.booked_hours}</span>
+                                <div className="space-y-1.5 min-w-[110px]">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="font-medium text-gray-900">{t.completed_hours || 0} / {t.booked_hours} Std.</span>
                                   </div>
                                   {/* Hours Progress Bar */}
                                   <div className="w-full bg-gray-200 rounded-full h-1.5">
