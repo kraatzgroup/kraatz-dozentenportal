@@ -1845,6 +1845,31 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                                   });
                                   console.log('📅 Active contracts after date filter (autocomplete):', activeContracts.length);
                                   setAvailableContracts(activeContracts);
+
+                                  // Load all packages immediately (without legal area filter)
+                                  const allPackages: any[] = [];
+                                  for (const contract of activeContracts) {
+                                    if (contract.contract_packages) {
+                                      const packagesWithContract = contract.contract_packages.map((pkg: any) => ({
+                                        ...pkg,
+                                        contract_id: contract.id,
+                                        contract_number: contract.contract_number
+                                      }));
+                                      allPackages.push(...packagesWithContract);
+                                    }
+                                  }
+                                  console.log('📦 All packages loaded:', allPackages.length);
+                                  setAvailablePackages(allPackages);
+
+                                  // Auto-select if only one package
+                                  if (allPackages.length === 1) {
+                                    console.log('🎯 Auto-selecting single package:', allPackages[0].id);
+                                    setHoursFormData(prev => ({
+                                      ...prev,
+                                      contract_id: allPackages[0].contract_id,
+                                      package_id: allPackages[0].id
+                                    }));
+                                  }
                                 }
                               }}
                               className="w-full text-left px-4 py-2 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none"
@@ -1927,6 +1952,31 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                                     });
                                     console.log('📅 Active contracts after date filter:', activeContracts.length);
                                     setAvailableContracts(activeContracts);
+
+                                    // Load all packages immediately (without legal area filter)
+                                    const allPackages: any[] = [];
+                                    for (const contract of activeContracts) {
+                                      if (contract.contract_packages) {
+                                        const packagesWithContract = contract.contract_packages.map((pkg: any) => ({
+                                          ...pkg,
+                                          contract_id: contract.id,
+                                          contract_number: contract.contract_number
+                                        }));
+                                        allPackages.push(...packagesWithContract);
+                                      }
+                                    }
+                                    console.log('📦 All packages loaded:', allPackages.length);
+                                    setAvailablePackages(allPackages);
+
+                                    // Auto-select if only one package
+                                    if (allPackages.length === 1) {
+                                      console.log('🎯 Auto-selecting single package:', allPackages[0].id);
+                                      setHoursFormData(prev => ({
+                                        ...prev,
+                                        contract_id: allPackages[0].contract_id,
+                                        package_id: allPackages[0].id
+                                      }));
+                                    }
                                   }
                                 }}
                                 className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md text-gray-700"
@@ -2058,7 +2108,6 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                                 }
                               }}
                               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
-                              required
                             >
                               <option value="">Paket auswählen</option>
                               {availablePackages.map(pkg => (
