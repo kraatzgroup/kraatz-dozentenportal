@@ -205,7 +205,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
 
     console.log('📦 All packages found:', allPackages.length);
 
-    // Filter packages by sufficient hours for the legal area
+    // Filter packages by legal area (show all packages, even if overused)
     const hoursToEnter = parseFloat(hoursFormData.hours) || 0;
     const qualifiedPackages: any[] = [];
 
@@ -222,19 +222,31 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       console.log('📊 Legal area data for package:', pkg.id, legalAreas, error);
 
       if (legalAreas) {
-        const availableHours = legalAreas.hours - (pkg.hours_used || 0);
-        console.log('⏱️ Package', pkg.id, 'available hours:', availableHours, 'needed:', hoursToEnter);
-        if (availableHours >= hoursToEnter) {
-          qualifiedPackages.push(pkg);
-          console.log('✅ Package qualified:', pkg.id);
-        }
+        // Get actual hours used for this legal area from participant_hours
+        const { data: participantHours, error: phError } = await supabase
+          .from('participant_hours')
+          .select('hours')
+          .eq('package_id', pkg.id)
+          .eq('legal_area', dbLegalArea);
+
+        const usedHours = participantHours?.reduce((sum, ph) => sum + (ph.hours || 0), 0) || 0;
+        const availableHours = legalAreas.hours - usedHours;
+
+        console.log('⏱️ Package', pkg.id, 'legal area hours:', legalAreas.hours, 'used:', usedHours, 'available:', availableHours, 'needed:', hoursToEnter);
+        // Add package regardless of available hours (allow overbooking)
+        qualifiedPackages.push({
+          ...pkg,
+          available_hours: availableHours,
+          is_overbooked: availableHours < hoursToEnter
+        });
+        console.log('✅ Package added:', pkg.id, availableHours >= hoursToEnter ? 'sufficient' : 'overbooked');
       }
     }
 
     console.log('✅ Qualified packages:', qualifiedPackages.length);
     setAvailablePackages(qualifiedPackages);
 
-    // Auto-select if only one package qualifies
+    // Auto-select if only one package
     if (qualifiedPackages.length === 1) {
       console.log('🎯 Auto-selecting single package:', qualifiedPackages[0].id);
       setHoursFormData(prev => ({
@@ -2021,38 +2033,48 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                     </div>
 
                     {/* Contract/Package Selection */}
-                    {availableContracts.length > 0 && hoursFormData.legal_area && (
+                    {availableContracts.length > 0 && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Paket auswählen
                         </label>
-                        <select
-                          value={hoursFormData.package_id}
-                          onChange={(e) => {
-                            console.log('📦 Package selection changed:', e.target.value);
-                            const selectedPackage = availablePackages.find(p => p.id === e.target.value);
-                            console.log('📦 Selected package:', selectedPackage);
-                            if (selectedPackage) {
-                              setHoursFormData(prev => ({
-                                ...prev,
-                                package_id: selectedPackage.id,
-                                contract_id: selectedPackage.contract_id
-                              }));
-                              console.log('✅ Package set in form:', selectedPackage.id, selectedPackage.contract_id);
-                            }
-                          }}
-                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
-                          required
-                        >
-                          <option value="">Paket auswählen</option>
-                          {availablePackages.map(pkg => (
-                            <option key={pkg.id} value={pkg.id}>
-                              {pkg.custom_name || 'Paket'} ({pkg.contract_number}) - {pkg.hours_total - pkg.hours_used} Std. verfügbar
-                            </option>
-                          ))}
-                        </select>
-                        {availablePackages.length === 0 && (
-                          <p className="mt-1 text-xs text-amber-600">Kein Paket mit ausreichenden Stunden verfügbar</p>
+                        {!hoursFormData.legal_area ? (
+                          <p className="mt-1 text-xs text-gray-500">Bitte zuerst Rechtsgebiet auswählen</p>
+                        ) : (
+                          <>
+                            <select
+                              value={hoursFormData.package_id}
+                              onChange={(e) => {
+                                console.log('📦 Package selection changed:', e.target.value);
+                                const selectedPackage = availablePackages.find(p => p.id === e.target.value);
+                                console.log('📦 Selected package:', selectedPackage);
+                                if (selectedPackage) {
+                                  setHoursFormData(prev => ({
+                                    ...prev,
+                                    package_id: selectedPackage.id,
+                                    contract_id: selectedPackage.contract_id
+                                  }));
+                                  console.log('✅ Package set in form:', selectedPackage.id, selectedPackage.contract_id);
+                                }
+                              }}
+                              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                              required
+                            >
+                              <option value="">Paket auswählen</option>
+                              {availablePackages.map(pkg => (
+                                <option key={pkg.id} value={pkg.id}>
+                                  {pkg.custom_name || 'Paket'} ({pkg.contract_number}) - {pkg.available_hours?.toFixed(2) || (pkg.hours_total - pkg.hours_used).toFixed(2)} Std. verfügbar
+                                  {pkg.is_overbooked ? ' ⚠️ Überbucht' : ''}
+                                </option>
+                              ))}
+                            </select>
+                            {availablePackages.length === 0 && (
+                              <p className="mt-1 text-xs text-amber-600">Kein Paket für dieses Rechtsgebiet verfügbar</p>
+                            )}
+                            {availablePackages.some(pkg => pkg.is_overbooked) && (
+                              <p className="mt-1 text-xs text-red-600">⚠️ Einige Pakete sind überbucht</p>
+                            )}
+                          </>
                         )}
                       </div>
                     )}
