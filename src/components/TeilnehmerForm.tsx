@@ -2600,10 +2600,12 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                                         if (area === 'oeffentliches_recht') return 'öffentliches Recht';
                                         return area.charAt(0).toUpperCase() + area.slice(1);
                                       };
+                                      const totalHours = pla.hours || 0;
+                                      const usedHours = (usedLegalAreaHours[pla.legal_area] || 0);
                                       return (
                                         <div key={pla.id} className="flex items-center justify-between bg-white rounded px-2 py-1">
                                           <span className="text-blue-700">{formatLegalArea(pla.legal_area)}</span>
-                                          <span className="font-medium text-blue-900">{pla.hours} Std.</span>
+                                          <span className="font-medium text-blue-900">{usedHours} / {totalHours} Std.</span>
                                         </div>
                                       );
                                     })}
