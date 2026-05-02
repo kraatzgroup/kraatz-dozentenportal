@@ -2349,7 +2349,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                         onChange={(e) => setActivityFormData({ ...activityFormData, description: e.target.value })}
                         rows={3}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
-                        placeholder="z.B. Vorbereitung Unterlagen, Korrektur von Arbeiten..."
+                        placeholder={selectedActivityType === 'elite_klausur' ? 'Beschreibung ...' : 'z.B. Vorbereitung Unterlagen, Korrektur von Arbeiten...'}
                         required
                       />
                     </div>
