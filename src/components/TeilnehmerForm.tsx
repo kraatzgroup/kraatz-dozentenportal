@@ -2438,7 +2438,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                         return (
                           <div className="bg-blue-50 rounded-md p-3 mt-4">
                             <h5 className="text-xs font-medium text-blue-800 mb-2">Rechtsgebiete</h5>
-                            <div className="grid grid-cols-3 gap-2 text-xs">
+                            <div className="grid grid-cols-2 gap-2 text-xs">
                               {legalAreas.map((area) => {
                                 const total = legalAreaTotals[area] || 0;
                                 const used = legalAreaUsed[area] || 0;
@@ -2594,7 +2594,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                               {cp.contract_package_legal_areas && cp.contract_package_legal_areas.length > 0 && (
                                 <div className="bg-blue-50 rounded-md p-3">
                                   <h5 className="text-xs font-medium text-blue-800 mb-2">Rechtsgebiete</h5>
-                                  <div className="grid grid-cols-3 gap-2 text-xs">
+                                  <div className="grid grid-cols-2 gap-2 text-xs">
                                     {cp.contract_package_legal_areas.map((pla: any) => {
                                       const formatLegalArea = (area: string) => {
                                         if (area === 'oeffentliches_recht') return 'öffentliches Recht';
