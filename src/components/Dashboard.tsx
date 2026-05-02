@@ -104,7 +104,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const [showUnreadPopup, setShowUnreadPopup] = useState(false);
   const [showActivityDialog, setShowActivityDialog] = useState(false);
   const [showActivityTypeDialog, setShowActivityTypeDialog] = useState(false);
-  const [selectedActivityType, setSelectedActivityType] = useState<'sonstige' | 'elite_klausur' | null>(null);
+  const [selectedActivityType, setSelectedActivityType] = useState<'sonstige' | 'Elite Klausur Korrektur' | null>(null);
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [showAvailabilityPopup, setShowAvailabilityPopup] = useState(false);
   const [currentAvailability, setCurrentAvailability] = useState<{status: string; notes?: string} | null>(null);
@@ -735,7 +735,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
         date: activityFormData.date,
         description: activityFormData.description,
         exam_type: activityFormData.exam_type,
-        category: selectedActivityType === 'elite_klausur' ? 'elite_klausur' : 'sonstige'
+        category: selectedActivityType === 'Elite Klausur Korrektur' ? 'Elite Klausur Korrektur' : 'sonstige'
       });
       
       setShowActivityDialog(false);
@@ -2258,7 +2258,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   <button
                     type="button"
                     onClick={() => {
-                      setSelectedActivityType('elite_klausur');
+                      setSelectedActivityType('Elite Klausur Korrektur');
                       setShowActivityTypeDialog(false);
                       setShowActivityDialog(true);
                     }}
@@ -2301,7 +2301,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
               <form onSubmit={handleActivitySubmit}>
                 <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                   <h3 className="text-lg font-medium text-gray-900 mb-4">
-                    {selectedActivityType === 'elite_klausur' ? 'Elite Kleingruppe Klausurenkorrektur hinzufügen' : 'Sonstige Tätigkeit hinzufügen'}
+                    {selectedActivityType === 'Elite Klausur Korrektur' ? 'Elite Kleingruppe Klausurenkorrektur hinzufügen' : 'Sonstige Tätigkeit hinzufügen'}
                   </h3>
                   
                   <div className="space-y-4">
@@ -2349,7 +2349,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                         onChange={(e) => setActivityFormData({ ...activityFormData, description: e.target.value })}
                         rows={3}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
-                        placeholder={selectedActivityType === 'elite_klausur' ? 'Beschreibung ...' : 'z.B. Vorbereitung Unterlagen, Korrektur von Arbeiten...'}
+                        placeholder={selectedActivityType === 'Elite Klausur Korrektur' ? 'Beschreibung ...' : 'z.B. Vorbereitung Unterlagen, Korrektur von Arbeiten...'}
                         required
                       />
                     </div>
