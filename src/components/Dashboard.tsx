@@ -147,6 +147,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const [availableContracts, setAvailableContracts] = useState<any[]>([]);
   const [availablePackages, setAvailablePackages] = useState<any[]>([]);
   const [availableLegalAreas, setAvailableLegalAreas] = useState<string[]>([]);
+  const [filteredAssignedTeilnehmer, setFilteredAssignedTeilnehmer] = useState<any[]>([]);
   const [activityFormData, setActivityFormData] = useState({
     hours: '',
     date: new Date().toISOString().split('T')[0],
@@ -293,6 +294,53 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     const cleanup = setupMessageSubscription();
     return cleanup;
   }, [user, fetchFolders, fetchMessages, fetchMonthlySummary, fetchTeilnehmer, fetchTrialLessons, setupMessageSubscription, selectedYear, selectedMonth, isDozent]);
+
+  // Filter assigned participants based on hours added in last 6 months or assignment in last 6 months
+  useEffect(() => {
+    if (!user || teilnehmer.length === 0) return;
+
+    const filterAssignedTeilnehmer = async () => {
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+      const filtered = await Promise.all(
+        teilnehmer.map(async (t) => {
+          // Check if dozent is assigned to this participant
+          const isAssigned = 
+            t.dozent_zivilrecht_id === user.id ||
+            t.dozent_strafrecht_id === user.id ||
+            t.dozent_oeffentliches_recht_id === user.id;
+
+          if (!isAssigned) return null;
+
+          // Check if assignment occurred in last 6 months
+          const assignmentDate = t.active_since ? new Date(t.active_since) : new Date(t.created_at);
+          const isRecentAssignment = assignmentDate >= sixMonthsAgo;
+
+          // Check if dozent added hours in last 6 months
+          const { data: hoursEntries, error } = await supabase
+            .from('participant_hours')
+            .select('id')
+            .eq('dozent_id', user.id)
+            .eq('teilnehmer_id', t.id)
+            .gte('date', sixMonthsAgo.toISOString().split('T')[0]);
+
+          const hasRecentHours = !error && hoursEntries && hoursEntries.length > 0;
+
+          // Include if either condition is met
+          if (isRecentAssignment || hasRecentHours) {
+            return t;
+          }
+
+          return null;
+        })
+      );
+
+      setFilteredAssignedTeilnehmer(filtered.filter(t => t !== null));
+    };
+
+    filterAssignedTeilnehmer();
+  }, [user, teilnehmer]);
 
   // Close activity dropdown when clicking outside
   useEffect(() => {
@@ -1807,10 +1855,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                                       .eq('id', user.id)
                                       .single();
 
-                                    const assignedAreas: string[] = [];
-                                    if (profile && participant.dozent_zivilrecht_id === profile.id) assignedAreas.push('Zivilrecht');
-                                    if (profile && participant.dozent_strafrecht_id === profile.id) assignedAreas.push('Strafrecht');
-                                    if (profile && participant.dozent_oeffentliches_recht_id === profile.id) assignedAreas.push('Öffentliches Recht');
+                                    // TEMPORARY: Show all legal areas regardless of dozent assignment
+                                    const assignedAreas: string[] = ['Zivilrecht', 'Strafrecht', 'Öffentliches Recht'];
                                     setAvailableLegalAreas(assignedAreas);
 
                                     // Pre-select if only one area
@@ -1825,7 +1871,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                                   .from('contracts')
                                   .select('*, contract_packages(*)')
                                   .eq('teilnehmer_id', t.id)
-                                  .eq('status', 'active');
+                                  .eq('status', 'active')
+                                  .throwOnError();
 
                                 console.log('📄 Contracts fetched for participant (autocomplete):', t.id, contracts);
                                 console.log('📄 Contract details:', contracts?.map(c => ({
@@ -1836,12 +1883,10 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                                 })));
 
                                 if (contracts) {
-                                  const today = new Date();
-                                  today.setHours(0, 0, 0, 0);
+                                  // TEMPORARY: Don't filter by end date to show packages from expired contracts
                                   const activeContracts = contracts.filter(c => {
                                     const startDate = new Date(c.start_date);
-                                    const endDate = c.end_date ? new Date(c.end_date) : null;
-                                    return startDate <= today && (!endDate || endDate >= today);
+                                    return startDate <= new Date();
                                   });
                                   console.log('📅 Active contracts after date filter (autocomplete):', activeContracts.length);
                                   setAvailableContracts(activeContracts);
@@ -1881,11 +1926,11 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                         </div>
                       )}
                       {/* Show assigned teilnehmer as quick select */}
-                      {teilnehmer.length > 0 && !showTeilnehmerDropdown && !selectedTeilnehmerName && (
+                      {filteredAssignedTeilnehmer.length > 0 && !showTeilnehmerDropdown && !selectedTeilnehmerName && (
                         <div className="mt-2">
                           <p className="text-xs text-gray-500 mb-1">Zugewiesene Teilnehmer:</p>
                           <div className="flex flex-wrap gap-1">
-                            {teilnehmer.slice(0, 5).map((t) => (
+                            {filteredAssignedTeilnehmer.map((t) => (
                               <button
                                 key={t.id}
                                 type="button"
@@ -1913,10 +1958,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                                         .eq('id', user.id)
                                         .single();
 
-                                      const assignedAreas: string[] = [];
-                                      if (profile && participant.dozent_zivilrecht_id === profile.id) assignedAreas.push('Zivilrecht');
-                                      if (profile && participant.dozent_strafrecht_id === profile.id) assignedAreas.push('Strafrecht');
-                                      if (profile && participant.dozent_oeffentliches_recht_id === profile.id) assignedAreas.push('Öffentliches Recht');
+                                      // TEMPORARY: Show all legal areas regardless of dozent assignment
+                                      const assignedAreas: string[] = ['Zivilrecht', 'Strafrecht', 'Öffentliches Recht'];
                                       setAvailableLegalAreas(assignedAreas);
 
                                       // Pre-select if only one area
@@ -1943,12 +1986,10 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                                   })));
 
                                   if (contracts) {
-                                    const today = new Date();
-                                    today.setHours(0, 0, 0, 0);
+                                    // TEMPORARY: Don't filter by end date to show packages from expired contracts
                                     const activeContracts = contracts.filter(c => {
                                       const startDate = new Date(c.start_date);
-                                      const endDate = c.end_date ? new Date(c.end_date) : null;
-                                      return startDate <= today && (!endDate || endDate >= today);
+                                      return startDate <= new Date();
                                     });
                                     console.log('📅 Active contracts after date filter:', activeContracts.length);
                                     setAvailableContracts(activeContracts);
@@ -2088,11 +2129,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Paket auswählen
                         </label>
-                        {!hoursFormData.legal_area ? (
-                          <p className="mt-1 text-xs text-gray-500">Bitte zuerst Rechtsgebiet auswählen</p>
-                        ) : (
-                          <>
-                            <select
+                        {/* TEMPORARY: Show package selection even without legal area */}
+                        <select
                               value={hoursFormData.package_id}
                               onChange={(e) => {
                                 console.log('📦 Package selection changed:', e.target.value);
@@ -2118,13 +2156,11 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                               ))}
                             </select>
                             {availablePackages.length === 0 && (
-                              <p className="mt-1 text-xs text-amber-600">Kein Paket für dieses Rechtsgebiet verfügbar</p>
+                              <p className="mt-1 text-xs text-amber-600">Kein Paket verfügbar</p>
                             )}
                             {availablePackages.some(pkg => pkg.is_overbooked) && (
                               <p className="mt-1 text-xs text-red-600">⚠️ Einige Pakete sind überbucht</p>
                             )}
-                          </>
-                        )}
                       </div>
                     )}
 

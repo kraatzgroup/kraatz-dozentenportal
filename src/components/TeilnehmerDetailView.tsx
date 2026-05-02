@@ -67,20 +67,21 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
       .from('contracts')
       .select('id, contract_number, start_date, end_date, status, contract_packages(*)')
       .eq('teilnehmer_id', teilnehmerId)
-      .eq('status', 'active');
+      .eq('status', 'active')
+      .throwOnError();
 
     if (!contracts) {
       setAvailablePackages([]);
       return;
     }
 
+    // TEMPORARY: Don't filter by end date to show packages from expired contracts
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const activeContracts = contracts.filter(c => {
       const startDate = new Date(c.start_date);
-      const endDate = c.end_date ? new Date(c.end_date) : null;
-      return startDate <= today && (!endDate || endDate >= today);
+      return startDate <= today;
     });
 
     const allPackages: any[] = [];
@@ -1047,7 +1048,8 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
                       <option value="Strafrecht">Strafrecht</option>
                     </select>
                   </div>
-                  {availablePackages.length > 0 && hoursFormData.legal_area && (
+                  {/* TEMPORARY: Show package selection even without legal area */}
+                  {availablePackages.length > 0 && (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Paket auswählen

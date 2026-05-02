@@ -127,7 +127,7 @@ export const useTeilnehmerStore = create<TeilnehmerState>((set, get) => ({
         console.log('✅ Admin: Found', data?.length || 0, 'teilnehmer');
         set({ teilnehmer: data || [] });
       } else {
-        // Dozents see teilnehmer where they are assigned via any field
+        // Dozents see teilnehmer where they are assigned via any field OR where they added hours in last 6 months
         console.log('🔍 Dozent: Fetching own teilnehmer...');
         const [legacyResult, zivilResult, strafResult, oeffResult] = await Promise.all([
           supabase.from('teilnehmer').select('*').eq('dozent_id', user.id),
@@ -148,6 +148,28 @@ export const useTeilnehmerStore = create<TeilnehmerState>((set, get) => ({
         ];
         const uniqueMap = new Map();
         allData.forEach(t => uniqueMap.set(t.id, t));
+
+        // Fetch participants where dozent added hours in last 6 months
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+        const { data: hoursTeilnehmer } = await supabase
+          .from('participant_hours')
+          .select('teilnehmer_id')
+          .eq('dozent_id', user.id)
+          .gte('date', sixMonthsAgo.toISOString().split('T')[0]);
+
+        if (hoursTeilnehmer && hoursTeilnehmer.length > 0) {
+          const teilnehmerIds = hoursTeilnehmer.map(h => h.teilnehmer_id);
+          const { data: additionalTeilnehmer } = await supabase
+            .from('teilnehmer')
+            .select('*')
+            .in('id', teilnehmerIds);
+
+          if (additionalTeilnehmer) {
+            additionalTeilnehmer.forEach(t => uniqueMap.set(t.id, t));
+          }
+        }
+
         const data = Array.from(uniqueMap.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
         console.log('✅ Dozent: Found', data.length, 'teilnehmer');

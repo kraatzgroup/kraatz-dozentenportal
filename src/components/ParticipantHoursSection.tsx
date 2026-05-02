@@ -41,6 +41,7 @@ export function ParticipantHoursSection({
   const [showTeilnehmerManagement, setShowTeilnehmerManagement] = useState(false);
   const [selectedTeilnehmer, setSelectedTeilnehmer] = useState<{ id: string; name: string } | null>(null);
   const [contractData, setContractData] = useState<{ [teilnehmerId: string]: { totalHours: number; usedHours: number } }>({});
+  const [teilnehmerWithHoursInMonth, setTeilnehmerWithHoursInMonth] = useState<Set<string>>(new Set());
 
   // Fetch contract data for all participants
   useEffect(() => {
@@ -58,27 +59,27 @@ export function ParticipantHoursSection({
           continue;
         }
 
-        if (contracts && contracts.length > 0) {
-          let totalHours = 0;
-          let usedHours = 0;
+        let totalHours = 0;
+        let usedHours = 0;
 
-          for (const contract of contracts) {
-            if (contract.contract_packages) {
-              for (const pkg of contract.contract_packages) {
+        if (contracts) {
+          for (const c of contracts) {
+            if (c.contract_packages) {
+              for (const pkg of c.contract_packages) {
                 totalHours += pkg.hours_total || 0;
                 usedHours += pkg.hours_used || 0;
               }
             }
-            if ((contract as any).free_hours) {
-              for (const fh of (contract as any).free_hours) {
-                totalHours += Number(fh.hours) || 0;
-                usedHours += Number(fh.hours_used) || 0;
+            if (c.free_hours) {
+              for (const fh of c.free_hours) {
+                totalHours += fh.hours || 0;
+                usedHours += fh.hours_used || 0;
               }
             }
           }
-
-          data[t.id] = { totalHours, usedHours };
         }
+
+        data[t.id] = { totalHours, usedHours };
       }
 
       console.log('📦 Final contractData:', data);
@@ -93,11 +94,10 @@ export function ParticipantHoursSection({
     const subscription = supabase
       .channel('contract-packages-changes')
       .on('postgres_changes', {
-        event: 'UPDATE',
+        event: '*',
         schema: 'public',
         table: 'contract_packages'
-      }, (payload) => {
-        console.log('📦 Contract package updated:', payload);
+      }, () => {
         fetchContractData();
       })
       .subscribe();
@@ -106,6 +106,34 @@ export function ParticipantHoursSection({
       supabase.removeChannel(subscription);
     };
   }, [teilnehmer, refreshKey]);
+
+  // Fetch hours added by dozent in selected month/year
+  useEffect(() => {
+    if (!dozentId) return;
+
+    const fetchTeilnehmerWithHours = async () => {
+      const startDate = new Date(selectedYear, selectedMonth - 1, 1);
+      const endDate = new Date(selectedYear, selectedMonth, 0);
+
+      const { data: hoursEntries, error } = await supabase
+        .from('participant_hours')
+        .select('teilnehmer_id')
+        .eq('dozent_id', dozentId)
+        .gte('date', startDate.toISOString().split('T')[0])
+        .lte('date', endDate.toISOString().split('T')[0]);
+
+      if (error) {
+        console.error('Error fetching hours entries:', error);
+        return;
+      }
+
+      const teilnehmerIds = new Set(hoursEntries?.map(h => h.teilnehmer_id) || []);
+      setTeilnehmerWithHoursInMonth(teilnehmerIds);
+      console.log('📋 Teilnehmer with hours in month:', teilnehmerIds);
+    };
+
+    fetchTeilnehmerWithHours();
+  }, [dozentId, selectedMonth, selectedYear]);
 
   const getMonthName = (month: number) => {
     return new Date(2023, month - 1).toLocaleDateString('de-DE', { month: 'long' });
@@ -234,16 +262,22 @@ export function ParticipantHoursSection({
           };
 
           const filteredTeilnehmer = teilnehmer.filter(t => {
-            // Filter by active contract
-            if (!isContractActive(t)) return false;
+            // If dozentId is provided, check if dozent added hours in current month
+            let hasHoursInMonth = false;
+            if (dozentId) {
+              hasHoursInMonth = teilnehmerWithHoursInMonth.has(t.id);
+            }
             
-            // If dozentId is provided, filter by dozent assignment
+            // Filter by active contract, unless dozent added hours in current month
+            if (!hasHoursInMonth && !isContractActive(t)) return false;
+            
+            // If dozentId is provided, filter by dozent assignment OR hours added in current month
             if (dozentId) {
               const isAssigned = 
                 t.dozent_zivilrecht_id === dozentId ||
                 t.dozent_strafrecht_id === dozentId ||
                 t.dozent_oeffentliches_recht_id === dozentId;
-              if (!isAssigned) return false;
+              if (!isAssigned && !hasHoursInMonth) return false;
             }
             
             // Filter by study goal

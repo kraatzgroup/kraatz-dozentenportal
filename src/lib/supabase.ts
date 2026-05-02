@@ -31,10 +31,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 // Admin operations should use Edge Functions instead of exposing service role key
 
 // Connection test disabled - actual authentication and database operations work fine
-// const testConnection = async () => {
-//   try {
-//     // Test basic connectivity first
-//     const response = await fetch(`${supabaseUrl}/rest/v1/`, {
 //       method: 'HEAD',
 //       headers: {
 //         'apikey': supabaseAnonKey,
