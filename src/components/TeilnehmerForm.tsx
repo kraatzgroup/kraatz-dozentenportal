@@ -2408,6 +2408,53 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                         </div>
                       </div>
 
+                      {/* Rechtsgebiete - showing used/total hours per legal area */}
+                      {editingContract && contractPackages.length > 0 && (() => {
+                        // Calculate total hours per legal area from all packages
+                        const legalAreaTotals: { [key: string]: number } = {};
+                        contractPackages.forEach((cp: any) => {
+                          if (cp.contract_package_legal_areas) {
+                            cp.contract_package_legal_areas.forEach((pla: any) => {
+                              legalAreaTotals[pla.legal_area] = (legalAreaTotals[pla.legal_area] || 0) + (pla.hours || 0);
+                            });
+                          }
+                        });
+
+                        // Calculate used hours per legal area from participant_hours
+                        const legalAreaUsed: { [key: string]: number } = usedLegalAreaHours || {};
+
+                        const formatLegalArea = (area: string) => {
+                          if (area === 'oeffentliches_recht') return 'öffentliches Recht';
+                          if (area === 'zivilrecht') return 'Zivilrecht';
+                          if (area === 'strafrecht') return 'Strafrecht';
+                          return area.charAt(0).toUpperCase() + area.slice(1);
+                        };
+
+                        const legalAreas = ['zivilrecht', 'strafrecht', 'oeffentliches_recht'];
+                        const hasLegalAreaData = legalAreas.some(area => legalAreaTotals[area] > 0);
+
+                        if (!hasLegalAreaData) return null;
+
+                        return (
+                          <div className="bg-blue-50 rounded-md p-3 mt-4">
+                            <h5 className="text-xs font-medium text-blue-800 mb-2">Rechtsgebiete</h5>
+                            <div className="grid grid-cols-3 gap-2 text-xs">
+                              {legalAreas.map((area) => {
+                                const total = legalAreaTotals[area] || 0;
+                                const used = legalAreaUsed[area] || 0;
+                                if (total === 0) return null;
+                                return (
+                                  <div key={area} className="flex items-center justify-between bg-white rounded px-2 py-1">
+                                    <span className="text-blue-700">{formatLegalArea(area)}</span>
+                                    <span className="font-medium text-blue-900">{used} / {total} Std.</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {/* Frequenz / Soll-Stunden pro Periode */}
                       <div className="space-y-3 mt-4">
                         <div className="flex items-center justify-between">
