@@ -103,6 +103,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [showUnreadPopup, setShowUnreadPopup] = useState(false);
   const [showActivityDialog, setShowActivityDialog] = useState(false);
+  const [showActivityTypeDialog, setShowActivityTypeDialog] = useState(false);
+  const [selectedActivityType, setSelectedActivityType] = useState<'sonstige' | 'elite_klausur' | null>(null);
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [showAvailabilityPopup, setShowAvailabilityPopup] = useState(false);
   const [currentAvailability, setCurrentAvailability] = useState<{status: string; notes?: string} | null>(null);
@@ -732,10 +734,12 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
         hours: parseFloat(activityFormData.hours),
         date: activityFormData.date,
         description: activityFormData.description,
-        exam_type: activityFormData.exam_type
+        exam_type: activityFormData.exam_type,
+        category: selectedActivityType === 'elite_klausur' ? 'elite_klausur' : 'sonstige'
       });
       
       setShowActivityDialog(false);
+      setSelectedActivityType(null);
       setActivityFormData({
         hours: '',
         date: new Date().toISOString().split('T')[0],
@@ -1344,7 +1348,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   selectedYear={activityReportYear}
                   onMonthChange={setActivityReportMonth}
                   onYearChange={setActivityReportYear}
-                  onShowActivityDialog={() => setShowActivityDialog(true)}
+                  onShowActivityDialog={() => setShowActivityTypeDialog(true)}
                 />
               ) : isVerfuegbarkeitFolder ? (
                 <AvailabilitySection isAdmin={canManageAll} />
@@ -2216,6 +2220,76 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
         </div>
       )}
 
+      {/* Activity Type Selection Dialog */}
+      {showActivityTypeDialog && (
+        <div className="fixed z-20 inset-0 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">
+                  Art der Tätigkeit auswählen
+                </h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  Bitte wählen Sie die Art der Tätigkeit aus. Der entsprechende Stundensatz wird automatisch verwendet.
+                </p>
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedActivityType('sonstige');
+                      setShowActivityTypeDialog(false);
+                      setShowActivityDialog(true);
+                    }}
+                    className="w-full flex items-center p-4 border border-gray-300 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors"
+                  >
+                    <div className="flex-shrink-0">
+                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Clock className="h-5 w-5 text-primary" />
+                      </div>
+                    </div>
+                    <div className="ml-4 text-left">
+                      <h4 className="text-sm font-medium text-gray-900">Sonstige Tätigkeit</h4>
+                      <p className="text-xs text-gray-500">z.B. Vorbereitung Unterlagen, Korrektur von Arbeiten...</p>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedActivityType('elite_klausur');
+                      setShowActivityTypeDialog(false);
+                      setShowActivityDialog(true);
+                    }}
+                    className="w-full flex items-center p-4 border border-gray-300 rounded-lg hover:border-amber-600 hover:bg-amber-50 transition-colors"
+                  >
+                    <div className="flex-shrink-0">
+                      <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center">
+                        <FileText className="h-5 w-5 text-amber-600" />
+                      </div>
+                    </div>
+                    <div className="ml-4 text-left">
+                      <h4 className="text-sm font-medium text-gray-900">Elite Kleingruppe Klausurenkorrektur</h4>
+                      <p className="text-xs text-gray-500">Korrektur von Klausuren für Elite Kleingruppen</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button
+                  type="button"
+                  onClick={() => setShowActivityTypeDialog(false)}
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"
+                >
+                  Abbrechen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add Activity Dialog */}
       {showActivityDialog && (
         <div className="fixed z-10 inset-0 overflow-y-auto">
@@ -2227,7 +2301,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
               <form onSubmit={handleActivitySubmit}>
                 <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                   <h3 className="text-lg font-medium text-gray-900 mb-4">
-                    Sonstige Tätigkeit hinzufügen
+                    {selectedActivityType === 'elite_klausur' ? 'Elite Kleingruppe Klausurenkorrektur hinzufügen' : 'Sonstige Tätigkeit hinzufügen'}
                   </h3>
                   
                   <div className="space-y-4">
@@ -2322,6 +2396,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                     type="button"
                     onClick={() => {
                       setShowActivityDialog(false);
+                      setSelectedActivityType(null);
                       setActivityFormData({
                         hours: '',
                         date: new Date().toISOString().split('T')[0],

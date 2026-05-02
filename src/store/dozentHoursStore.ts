@@ -20,7 +20,7 @@ interface DozentHoursState {
   error: string | null;
   subscription: RealtimeChannel | null;
   fetchDozentHours: (dozentId?: string, startDate?: string, endDate?: string) => Promise<void>;
-  createDozentHours: (data: { hours: number; date: string; description: string; dozent_id?: string }) => Promise<void>;
+  createDozentHours: (data: { hours: number; date: string; description: string; dozent_id?: string; category?: string; exam_type?: string }) => Promise<void>;
   updateDozentHours: (id: string, data: { hours: number; date: string; description: string }) => Promise<void>;
   deleteDozentHours: (id: string) => Promise<void>;
   setupRealtimeSubscription: () => void;
@@ -114,7 +114,9 @@ export const useDozentHoursStore = create<DozentHoursState>((set, get) => ({
         dozent_id: data.dozent_id || user.id,
         hours: data.hours,
         date: data.date,
-        description: data.description
+        description: data.description,
+        category: data.category,
+        exam_type: data.exam_type
       };
       
       const { data: newDozentHours, error } = await supabase
