@@ -115,17 +115,24 @@ export function ParticipantHoursSection({
       const startDate = new Date(selectedYear, selectedMonth - 1, 1);
       const endDate = new Date(selectedYear, selectedMonth, 0);
 
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+
+      console.log('📅 Fetching hours for dozent:', dozentId, 'from', startDateStr, 'to', endDateStr);
+
       const { data: hoursEntries, error } = await supabase
         .from('participant_hours')
-        .select('teilnehmer_id')
+        .select('teilnehmer_id, date, hours, legal_area')
         .eq('dozent_id', dozentId)
-        .gte('date', startDate.toISOString().split('T')[0])
-        .lte('date', endDate.toISOString().split('T')[0]);
+        .gte('date', startDateStr)
+        .lte('date', endDateStr);
 
       if (error) {
         console.error('Error fetching hours entries:', error);
         return;
       }
+
+      console.log('📋 Hours entries found:', hoursEntries);
 
       const teilnehmerIds = new Set(hoursEntries?.map(h => h.teilnehmer_id) || []);
       setTeilnehmerWithHoursInMonth(teilnehmerIds);
