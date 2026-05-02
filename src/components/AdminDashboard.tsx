@@ -2409,25 +2409,26 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                         {/* Contract Progress Bar */}
                         {t.contract_start && t.contract_end && (() => {
                           const progress = getContractProgress(t);
+                          const hoursProgress = getHoursConsumption(t);
                           return (
                             <div className="pt-1">
                               <div className="flex items-center justify-between text-xs mb-1">
-                                <span className="text-gray-500">Fortschritt</span>
-                                <span className={`font-medium ${progress.percent >= 100 ? 'text-gray-500' : progress.percent >= 75 ? 'text-orange-600' : 'text-primary'}`}>
-                                  {progress.percent}%
-                                  {progress.daysLeft > 0 && progress.percent < 100 && (
-                                    <span className="text-gray-400 font-normal ml-1">({progress.daysLeft} Tage übrig)</span>
+                                <span className="text-gray-500">Stunden-Fortschritt</span>
+                                <span className={`font-medium ${hoursProgress >= 100 ? 'text-green-600' : hoursProgress >= 75 ? 'text-orange-600' : 'text-primary'}`}>
+                                  {hoursProgress}%
+                                  {t.booked_hours > 0 && (
+                                    <span className="text-gray-400 font-normal ml-1">({t.completed_hours || 0} / {t.booked_hours}h)</span>
                                   )}
                                 </span>
                               </div>
                               <div className="w-full bg-gray-200 rounded-full h-2">
                                 <div 
                                   className={`h-2 rounded-full transition-all ${
-                                    progress.percent >= 100 ? 'bg-gray-400' : 
-                                    progress.percent >= 75 ? 'bg-orange-500' : 
+                                    hoursProgress >= 100 ? 'bg-green-500' : 
+                                    hoursProgress >= 75 ? 'bg-orange-500' : 
                                     'bg-primary'
                                   }`}
-                                  style={{ width: `${progress.percent}%` }}
+                                  style={{ width: `${Math.min(hoursProgress, 100)}%` }}
                                 />
                               </div>
                             </div>
