@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Auth } from '@supabase/auth-ui-react';
-import { ThemeSupa } from '@supabase/auth-ui-shared';
+import { Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { Logo } from './Logo';
@@ -16,6 +15,34 @@ export function AuthComponent() {
   const [resetEmail, setResetEmail] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [signInEmail, setSignInEmail] = useState('');
+  const [signInPassword, setSignInPassword] = useState('');
+  const [showSignInPassword, setShowSignInPassword] = useState(false);
+  const [signInLoading, setSignInLoading] = useState(false);
+
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccessMessage(null);
+    setSignInLoading(true);
+
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: signInEmail,
+        password: signInPassword,
+      });
+      if (signInError) throw signInError;
+    } catch (err: any) {
+      console.error('Sign in error:', err);
+      if (err?.message?.toLowerCase().includes('invalid login credentials')) {
+        setError('Ungültige Anmeldedaten. Bitte überprüfen Sie E-Mail und Passwort.');
+      } else {
+        setError(err?.message || 'Fehler bei der Anmeldung');
+      }
+    } finally {
+      setSignInLoading(false);
+    }
+  };
 
   useEffect(() => {
     // Check URL parameters for tab=reset and email
@@ -403,90 +430,64 @@ export function AuthComponent() {
             </div>
           )}
           
-          <Auth
-            supabaseClient={supabase}
-            appearance={{
-              theme: ThemeSupa,
-              variables: {
-                default: {
-                  colors: {
-                    brand: '#2C83C0',
-                    brandAccent: '#2C83C0',
-                    brandButtonText: 'white',
-                    defaultButtonBackground: '#f3f4f6',
-                    defaultButtonBackgroundHover: '#e5e7eb',
-                    inputBackground: 'white',
-                    inputBorder: '#d1d5db',
-                    inputBorderHover: '#2C83C0',
-                    inputBorderFocus: '#2C83C0',
-                  }
-                }
-              },
-              className: {
-                anchor: 'text-primary hover:text-primary/80',
-                button: 'rounded-md transition-colors',
-                container: 'space-y-4',
-                divider: 'text-gray-400',
-                input: 'rounded-md border-gray-300 focus:border-primary focus:ring focus:ring-primary/20',
-                label: 'text-sm font-medium text-gray-700',
-                loader: 'border-primary',
-                message: 'text-sm',
-              }
-            }}
-            localization={{
-              variables: {
-                sign_in: {
-                  email_label: 'E-Mail-Adresse',
-                  password_label: 'Passwort',
-                  email_input_placeholder: 'Ihre E-Mail-Adresse',
-                  password_input_placeholder: 'Ihr Passwort',
-                  button_label: 'Anmelden',
-                  loading_button_label: 'Anmeldung läuft...',
-                  social_provider_text: 'Mit {{provider}} anmelden'
-                },
-                forgotten_password: {
-                  email_label: 'E-Mail-Adresse',
-                  email_input_placeholder: 'Ihre E-Mail-Adresse',
-                  button_label: 'Passwort zurücksetzen',
-                  loading_button_label: 'Passwort-Reset wird gesendet...',
-                  link_text: 'Passwort vergessen?',
-                  confirmation_text: 'Überprüfen Sie Ihre E-Mail für den Passwort-Reset-Link'
-                },
-                update_password: {
-                  password_label: 'Neues Passwort',
-                  password_input_placeholder: 'Ihr neues Passwort',
-                  button_label: 'Passwort aktualisieren',
-                  loading_button_label: 'Passwort wird aktualisiert...',
-                  confirmation_text: 'Ihr Passwort wurde aktualisiert'
-                },
-                verify_otp: {
-                  email_input_label: 'E-Mail-Adresse',
-                  email_input_placeholder: 'Ihre E-Mail-Adresse',
-                  phone_input_label: 'Telefonnummer',
-                  phone_input_placeholder: 'Ihre Telefonnummer',
-                  token_input_label: 'Token',
-                  token_input_placeholder: 'Ihr OTP-Token',
-                  button_label: 'Token verifizieren',
-                  loading_button_label: 'Anmeldung läuft...'
-                }
-              }
-            }}
-            providers={[]}
-            redirectTo={window.location.origin}
-            onlyThirdPartyProviders={false}
-            magicLink={false}
-            showLinks={false}
-            view="sign_in"
-            additionalData={{}}
-            theme="default"
-            socialLayout="vertical"
-            socialButtonSize="medium"
-            inputFieldRequired={true}
-            passwordLimit={false}
-            socialColors={false}
-            otpType="email"
-            showPassword={true}
-          />
+          <form onSubmit={handleSignIn} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                E-Mail-Adresse
+              </label>
+              <input
+                type="email"
+                value={signInEmail}
+                onChange={(e) => setSignInEmail(e.target.value)}
+                placeholder="Ihre E-Mail-Adresse"
+                autoComplete="email"
+                required
+                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Passwort
+              </label>
+              <div className="relative">
+                <input
+                  type={showSignInPassword ? 'text' : 'password'}
+                  value={signInPassword}
+                  onChange={(e) => setSignInPassword(e.target.value)}
+                  placeholder="Ihr Passwort"
+                  autoComplete="current-password"
+                  required
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20 pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSignInPassword(!showSignInPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  aria-label={showSignInPassword ? 'Passwort verbergen' : 'Passwort anzeigen'}
+                >
+                  {showSignInPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
+                </button>
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={signInLoading}
+              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50"
+            >
+              {signInLoading ? (
+                <div className="flex items-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
+                  <span>Anmeldung läuft...</span>
+                </div>
+              ) : (
+                'Anmelden'
+              )}
+            </button>
+          </form>
           
           <div className="mt-6 text-center">
             <button

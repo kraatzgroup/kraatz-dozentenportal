@@ -86,7 +86,7 @@ export function UserManagement() {
   const [generatingLinkForUserId, setGeneratingLinkForUserId] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
   const [magicLinkEnv, setMagicLinkEnv] = useState<'localhost' | 'production'>(
-    window.location.hostname === 'localhost' ? 'localhost' : 'production'
+    window.location.hostname.includes('localhost') ? 'localhost' : 'production'
   );
 
   useEffect(() => {
@@ -450,8 +450,15 @@ export function UserManagement() {
     }
   };
 
+  const getLocalhostOrigin = () => {
+    if (typeof window !== 'undefined' && window.location.hostname.includes('localhost')) {
+      return window.location.origin;
+    }
+    return 'http://localhost:3000';
+  };
+
   const getMagicLinkForEnv = (env: 'localhost' | 'production') => {
-    const localhostRedirect = encodeURIComponent('http://localhost:3000/dashboard?tab=dashboard');
+    const localhostRedirect = encodeURIComponent(`${getLocalhostOrigin()}/dashboard?tab=dashboard`);
     const productionRedirect = encodeURIComponent('https://portal.kraatz-group.de/dashboard?tab=dashboard');
     if (env === 'localhost') {
       return magicLink.replace(/redirect_to=[^&]+/, `redirect_to=${localhostRedirect}`);

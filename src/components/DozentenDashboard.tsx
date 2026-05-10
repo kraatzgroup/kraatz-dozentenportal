@@ -1115,7 +1115,12 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     const { data } = await supabase.from('elite_kleingruppe_dozenten').select('legal_area').eq('dozent_id', user.id);
     const legalAreas = (data || []).map(d => d.legal_area);
     setIsEliteKleingruppeDozent(legalAreas.length > 0);
-    setDozentLegalAreas(legalAreas);
+    setDozentLegalAreas(prev => {
+      if (prev.length === legalAreas.length && prev.every((v, i) => v === legalAreas[i])) {
+        return prev;
+      }
+      return legalAreas;
+    });
   };
 
   const fetchChapters = async () => {
