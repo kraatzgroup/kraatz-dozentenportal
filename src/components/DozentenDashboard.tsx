@@ -566,6 +566,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   const navigate = useNavigate();
   const { isAdmin, isBuchhaltung, isMaterial, user, signOut } = useAuthStore();
   const [isEliteKleingruppeDozent, setIsEliteKleingruppeDozent] = useState(false);
+  const [dozentLegalAreas, setDozentLegalAreas] = useState<string[]>([]);
   const [internalShowEliteKleingruppe, setInternalShowEliteKleingruppe] = useState(false);
   const showEliteKleingruppe = externalShowEliteKleingruppe ?? internalShowEliteKleingruppe;
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -1098,8 +1099,8 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   useEffect(() => { 
     // Alle wichtigen Daten beim Start laden
     fetchChapters();
-    fetchBulletinPosts(); 
-    fetchWidgets(); 
+    fetchBulletinPosts();
+    fetchWidgets();
     fetchSections();
     // Materialien nur laden, wenn sie benötigt werden
     if (showMaterialsView) {
@@ -1107,12 +1108,14 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     }
     fetchFolders();
     checkEliteKleingruppeDozent();
-  }, [showMaterialsView]);
+  }, [showMaterialsView, dozentLegalAreas]);
 
   const checkEliteKleingruppeDozent = async () => {
     if (!user) return;
-    const { data } = await supabase.from('elite_kleingruppe_dozenten').select('id').eq('dozent_id', user.id);
-    setIsEliteKleingruppeDozent((data && data.length > 0) || false);
+    const { data } = await supabase.from('elite_kleingruppe_dozenten').select('legal_area').eq('dozent_id', user.id);
+    const legalAreas = (data || []).map(d => d.legal_area);
+    setIsEliteKleingruppeDozent(legalAreas.length > 0);
+    setDozentLegalAreas(legalAreas);
   };
 
   const fetchChapters = async () => {
@@ -1154,29 +1157,39 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     let allMaterials: any[] = [];
     let from = 0;
     const batchSize = 1000;
-    
+
+    // For Dozenten, filter by legal areas to improve performance
+    const shouldFilterByLegalArea = !isAdmin && !isBuchhaltung && !isMaterial && dozentLegalAreas.length > 0;
+
     while (true) {
-      const { data, error } = await supabase
+      let query = supabase
         .from('teaching_materials')
         .select('*')
         .eq('is_active', true)
         .order('created_at', { ascending: false }) // Newest first
         .range(from, from + batchSize - 1);
-      
+
+      // Filter by legal areas for Dozenten
+      if (shouldFilterByLegalArea) {
+        query = query.or(dozentLegalAreas.map(area => `category.ilike.%${area}%`).join(','));
+      }
+
+      const { data, error } = await query;
+
       if (error) {
         console.error('Error fetching materials:', error);
         break;
       }
-      
+
       if (!data || data.length === 0) break;
-      
+
       allMaterials = [...allMaterials, ...data];
       console.log(`Fetched batch ${from}-${from + data.length - 1}, total: ${allMaterials.length}`);
-      
+
       if (data.length < batchSize) break;
       from += batchSize;
     }
-    
+
     console.log('Total materials loaded:', allMaterials.length);
     setMaterials(allMaterials);
   };
@@ -1187,13 +1200,23 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     let from = 0;
     const batchSize = 1000;
 
+    // For Dozenten, filter by legal areas to improve performance
+    const shouldFilterByLegalArea = !isAdmin && !isBuchhaltung && !isMaterial && dozentLegalAreas.length > 0;
+
     while (true) {
-      const { data, error } = await supabase
+      let query = supabase
         .from('material_folders')
         .select('*')
         .eq('is_active', true)
         .order('position')
         .range(from, from + batchSize - 1);
+
+      // Filter by legal areas for Dozenten
+      if (shouldFilterByLegalArea) {
+        query = query.or(dozentLegalAreas.map(area => `name.ilike.%${area}%`).join(','));
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error('Error fetching folders:', error);
