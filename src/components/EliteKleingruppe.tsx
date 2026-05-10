@@ -221,6 +221,7 @@ interface ScheduledRelease {
   recurrence_count: number | null;
   parent_release_id: string | null;
   dozent_id: string | null;
+  dozent_name?: string;
   elite_kleingruppe_id: string | null;
   event_type: EventType;
   end_date: string | null;
@@ -379,6 +380,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   const [releaseStartTime, setReleaseStartTime] = useState<string>('09:00');
   const [releaseEndTime, setReleaseEndTime] = useState<string>('11:30');
   const [releaseZoomLink, setReleaseZoomLink] = useState<string>('');
+  const [releaseDozentId, setReleaseDozentId] = useState<string>('');
   const [releaseKlausurFolderId, setReleaseKlausurFolderId] = useState<string>('');
   const [releaseSolutionMaterialIds, setReleaseSolutionMaterialIds] = useState<string[]>([]);
   const [solutionReleaseMode, setSolutionReleaseMode] = useState<'auto' | 'custom'>('auto');
@@ -1154,15 +1156,15 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         ? [...allSelectedMaterialIds, additionalMaterialId]
         : allSelectedMaterialIds;
 
-      // Determine dozent_id based on event type and legal area
+      // Determine dozent_id based on user selection or fallback to automatic assignment
       const eliteGroupId = selectedEliteGroupId || (eliteGroups.length === 1 ? eliteGroups[0].id : null);
-      let assignedDozentId: string | null = null;
-      
-      if (releaseEventType === 'einheit' && releaseLegalArea && eliteGroupId) {
-        // For 'einheit' events, assign dozent based on legal area
+      let assignedDozentId: string | null = releaseDozentId || null;
+
+      // Fallback: if no dozent manually selected, auto-assign based on legal area
+      if (!assignedDozentId && releaseEventType === 'einheit' && releaseLegalArea && eliteGroupId) {
         assignedDozentId = await getDozentIdForLegalArea(releaseLegalArea, eliteGroupId);
-      } else {
-        // For other event types (e.g., 'termin'), use current user
+      } else if (!assignedDozentId) {
+        // For other event types without manual selection, use current user
         assignedDozentId = user?.id || null;
       }
 
@@ -1235,6 +1237,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       }
 
       setShowReleaseModal(false);
+      setReleaseDozentId('');
       setAdditionalDocument(null);
       setAdditionalDocumentTitle('');
       fetchData();
@@ -1417,6 +1420,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       start_time: releaseStartTime || null,
       end_time: releaseEndTime || null,
       zoom_link: releaseZoomLink || null,
+      dozent_id: editingRelease.dozent_id || null,
       klausur_folder_id: releaseKlausurFolderId || null,
       solution_material_ids: releaseSolutionMaterialIds,
       solution_release_date: solutionReleaseMode === 'custom' && customSolutionReleaseDate ? customSolutionReleaseDate : null,
@@ -3451,6 +3455,46 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                   )}
                 </div>
 
+                {/* Dozent - nur für Einheiten, gefiltert nach Rechtsgebiet */}
+                {releaseEventType === 'einheit' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Dozent</label>
+                    <select
+                      value={releaseDozentId || ''}
+                      onChange={(e) => setReleaseDozentId(e.target.value || '')}
+                      disabled={!releaseLegalArea}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    >
+                      <option value="">{releaseLegalArea ? 'Kein Dozent zugewiesen' : 'Bitte zuerst Rechtsgebiet wählen...'}</option>
+                      {releaseLegalArea && (() => {
+                        // Filtere Dozenten nach dem ausgewählten Rechtsgebiet
+                        const legalAreaMapping: Record<string, string> = {
+                          'Zivilrecht': 'Zivilrecht',
+                          'Strafrecht': 'Strafrecht',
+                          'Öffentliches Recht': 'Öffentliches Recht'
+                        };
+                        const mappedLegalArea = legalAreaMapping[releaseLegalArea] || releaseLegalArea;
+                        
+                        return dozentAssignments
+                          .filter(a => a.legal_area === mappedLegalArea)
+                          .map(assignment => {
+                            const dozent = allDozenten.find(d => d.id === assignment.dozent_id);
+                            return dozent ? (
+                              <option key={dozent.id} value={dozent.id}>
+                                {dozent.name} ({dozent.email})
+                              </option>
+                            ) : null;
+                          });
+                      })()}
+                    </select>
+                    {releaseDozentId && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Aktueller Dozent: {allDozenten.find(d => d.id === releaseDozentId)?.name || 'Unbekannt'}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* Dokumente aus Klausur-Ordner - nur wenn Klausur-Ordner gewählt */}
                 {releaseKlausurFolderId && (() => {
                   // Finde den Ordnernamen
@@ -5453,6 +5497,46 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     })()}
                   </select>
                 </div>
+
+                {/* Dozent - nur für Einheiten, gefiltert nach Rechtsgebiet */}
+                {editingRelease.event_type === 'einheit' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Dozent</label>
+                    <select
+                      value={editingRelease.dozent_id || ''}
+                      onChange={(e) => setEditingRelease({ ...editingRelease, dozent_id: e.target.value || null })}
+                      disabled={!editingRelease.legal_area || isReadOnly}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    >
+                      <option value="">{editingRelease.legal_area ? 'Kein Dozent zugewiesen' : 'Bitte zuerst Rechtsgebiet wählen...'}</option>
+                      {editingRelease.legal_area && (() => {
+                        // Filtere Dozenten nach dem ausgewählten Rechtsgebiet
+                        const legalAreaMapping: Record<string, string> = {
+                          'Zivilrecht': 'Zivilrecht',
+                          'Strafrecht': 'Strafrecht',
+                          'Öffentliches Recht': 'Öffentliches Recht'
+                        };
+                        const mappedLegalArea = legalAreaMapping[editingRelease.legal_area] || editingRelease.legal_area;
+                        
+                        return dozentAssignments
+                          .filter(a => a.legal_area === mappedLegalArea)
+                          .map(assignment => {
+                            const dozent = allDozenten.find(d => d.id === assignment.dozent_id);
+                            return dozent ? (
+                              <option key={dozent.id} value={dozent.id}>
+                                {dozent.name} ({dozent.email})
+                              </option>
+                            ) : null;
+                          });
+                      })()}
+                    </select>
+                    {editingRelease.dozent_id && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Aktueller Dozent: {editingRelease.dozent_name || allDozenten.find(d => d.id === editingRelease.dozent_id)?.name || 'Unbekannt'}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* Dokumente aus Klausur-Ordner */}
                 {releaseKlausurFolderId && (() => {
