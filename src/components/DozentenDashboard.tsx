@@ -1154,7 +1154,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     setSections(data || []);
   };
 
-  const fetchMaterials = async () => {
+  const fetchMaterials = async (allowedFolderIds?: Set<string>) => {
     console.log('Fetching materials...');
     // Use range to get all materials - Supabase has a max of 1000 per query
     // So we need to fetch in batches
@@ -1166,6 +1166,11 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     // For Dozenten, filter by legal areas to improve performance
     const shouldFilterByLegalArea = !isAdmin && !isBuchhaltung && !isMaterial && dozentLegalAreas.length > 0;
 
+    // If filtering needed but no allowedFolderIds provided, fetch folders first
+    if (shouldFilterByLegalArea && !allowedFolderIds) {
+      allowedFolderIds = await fetchFolders();
+    }
+
     while (true) {
       let query = supabase
         .from('teaching_materials')
@@ -1175,8 +1180,8 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
         .range(from, from + batchSize - 1);
 
       // Filter by legal areas for Dozenten
-      if (shouldFilterByLegalArea) {
-        query = query.or(dozentLegalAreas.map(area => `category.ilike.%${area}%`).join(','));
+      if (shouldFilterByLegalArea && allowedFolderIds) {
+        query = query.in('folder_id', Array.from(allowedFolderIds));
       }
 
       const { data, error } = await query;
@@ -1205,9 +1210,6 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     let from = 0;
     const batchSize = 1000;
 
-    // For Dozenten, filter by legal areas to improve performance
-    const shouldFilterByLegalArea = !isAdmin && !isBuchhaltung && !isMaterial && dozentLegalAreas.length > 0;
-
     while (true) {
       let query = supabase
         .from('material_folders')
@@ -1215,11 +1217,6 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
         .eq('is_active', true)
         .order('position')
         .range(from, from + batchSize - 1);
-
-      // Filter by legal areas for Dozenten
-      if (shouldFilterByLegalArea) {
-        query = query.or(dozentLegalAreas.map(area => `name.ilike.%${area}%`).join(','));
-      }
 
       const { data, error } = await query;
 
@@ -1237,7 +1234,49 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     }
 
     console.log('Total folders loaded:', allFolders.length);
-    setFolders(allFolders);
+
+    // For Dozenten, filter by legal areas using folder hierarchy
+    const shouldFilterByLegalArea = !isAdmin && !isBuchhaltung && !isMaterial && dozentLegalAreas.length > 0;
+    let filteredFolders = allFolders;
+    let allowedFolderIds: Set<string> | undefined;
+
+    if (shouldFilterByLegalArea) {
+      // Find folders that match legal areas by name
+      const matchedFolderIds = new Set<string>();
+      allFolders.forEach(folder => {
+        if (dozentLegalAreas.some(area => folder.name.toLowerCase().includes(area.toLowerCase()))) {
+          matchedFolderIds.add(folder.id);
+        }
+      });
+
+      // Include all descendants of matched folders
+      const getAllDescendantIds = (parentId: string): Set<string> => {
+        const descendants = new Set<string>();
+        const queue = [parentId];
+        while (queue.length > 0) {
+          const currentId = queue.shift()!;
+          allFolders.forEach(f => {
+            if (f.parent_id === currentId && !descendants.has(f.id)) {
+              descendants.add(f.id);
+              queue.push(f.id);
+            }
+          });
+        }
+        return descendants;
+      };
+
+      allowedFolderIds = new Set<string>([...matchedFolderIds]);
+      matchedFolderIds.forEach(id => {
+        const descendants = getAllDescendantIds(id);
+        descendants.forEach(d => allowedFolderIds!.add(d));
+      });
+
+      filteredFolders = allFolders.filter(f => allowedFolderIds!.has(f.id));
+      console.log('Filtered folders for legal areas:', filteredFolders.length, 'Allowed folder IDs:', Array.from(allowedFolderIds!));
+    }
+
+    setFolders(filteredFolders);
+    return allowedFolderIds;
   };
 
   const openMaterialModal = (m?: TeachingMaterial) => {
