@@ -658,6 +658,29 @@ export function Chat() {
     return `${date.toLocaleDateString('de-DE')}, ${time}`;
   };
 
+  // Helper function to parse and render links in message content
+  const renderMessageContent = (content: string, isOwnMessage: boolean) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = content.split(urlRegex);
+    
+    return parts.map((part, index) => {
+      if (part.match(urlRegex)) {
+        return (
+          <a
+            key={index}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-400 hover:text-blue-300 underline break-all"
+          >
+            {part}
+          </a>
+        );
+      }
+      return <span key={index}>{part}</span>;
+    });
+  };
+
   // Get last message timestamp for a contact
   const getLastMessageTime = (contactId: string) => {
     const contactMessages = allMessages.filter(msg => 
@@ -1029,7 +1052,7 @@ export function Chat() {
                             }`}
                           >
                             <div
-                              className={`max-w-[70%] rounded-lg p-3 ${
+                              className={`rounded-lg p-3 ${
                                 message.sender_id === user?.id 
                                   ? 'bg-[#2a83bf] text-white'
                                   : 'bg-gray-100 text-gray-900'
@@ -1081,7 +1104,7 @@ export function Chat() {
                                   <Download className="h-4 w-4 flex-shrink-0" />
                                 </button>
                               )}
-                              {message.content && <p>{message.content}</p>}
+                              {message.content && <p className="break-words">{renderMessageContent(message.content, message.sender_id === user?.id)}</p>}
                               <div className="flex items-center justify-end mt-1 space-x-1">
                                 <span className={`text-xs ${
                                   message.sender_id === user?.id
@@ -1261,7 +1284,7 @@ export function Chat() {
                           }`}
                         >
                           <div
-                            className={`max-w-[70%] rounded-lg p-3 ${
+                            className={`rounded-lg p-3 ${
                               message.is_deleted
                                 ? 'bg-gray-100 text-gray-600'
                                 : message.sender_id === user?.id 
@@ -1312,7 +1335,7 @@ export function Chat() {
                                     <Download className="h-4 w-4 flex-shrink-0" />
                                   </button>
                                 )}
-                                {message.content && <p>{message.content}</p>}
+                                {message.content && <p className="break-words">{renderMessageContent(message.content, message.sender_id === user?.id)}</p>}
                               </>
                             )}
                             <div className="flex items-center justify-end mt-1 space-x-1">
