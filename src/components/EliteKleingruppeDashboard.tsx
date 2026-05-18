@@ -70,6 +70,7 @@ interface Klausur {
   corrected_at?: string;
   corrected_file_url?: string;
   corrected_excel_url?: string;
+  dozent_id?: string | null;
 }
 
 interface CourseTime {
@@ -473,8 +474,10 @@ export function EliteKleingruppeDashboard() {
         
         const { data: eliteDozenten, error: eliteError } = await supabase
           .from('elite_kleingruppe_dozenten')
-          .select('dozent_id, legal_area')
-          .eq('elite_kleingruppe_id', teilnehmerData.elite_kleingruppe_id);
+          .select('dozent_id, legal_area, sort_order')
+          .eq('elite_kleingruppe_id', teilnehmerData.elite_kleingruppe_id)
+          .order('sort_order', { ascending: true })
+          .order('created_at', { ascending: true });
         
         if (import.meta.env.DEV) {
           console.log('[fetchDozenten] Elite-Kleingruppe dozenten query result:', eliteDozenten);
@@ -3400,6 +3403,29 @@ export function EliteKleingruppeDashboard() {
                               {formatDate(klausur.submitted_at)}
                               <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{klausur.legal_area}</span>
                             </p>
+                            {(() => {
+                              // Resolve responsible dozent: prefer the one explicitly set on the klausur
+                              // (auto-assigned by trigger or claimed via "Korrektur starten");
+                              // fall back to the first dozent assigned to the legal area in this group.
+                              const assigned = klausur.dozent_id
+                                ? dozenten.find(d => d.id === klausur.dozent_id)
+                                : null;
+                              const fallback = !assigned
+                                ? dozenten.find(d => d.legal_areas?.includes(klausur.legal_area))
+                                : null;
+                              const dozent = assigned || fallback;
+                              if (!dozent) return null;
+                              const label =
+                                klausur.status === 'completed' ? 'Korrigiert von' :
+                                klausur.status === 'in_review' ? 'In Bearbeitung von' :
+                                'Zuständig:';
+                              return (
+                                <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                                  <Users className="h-3 w-3 text-gray-400" />
+                                  <span>{label} <span className="text-gray-700">{dozent.name}</span></span>
+                                </p>
+                              );
+                            })()}
                           </div>
                         </div>
                         <div className="flex items-center space-x-4">
