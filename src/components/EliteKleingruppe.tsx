@@ -27,10 +27,52 @@ import {
   Trash2,
   Info,
   HelpCircle,
-  Video
+  Video,
+  GripVertical
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+// Wrapper that makes a single dozent-assignment row draggable.
+// Provides drag handle props via render-prop so the visible row JSX stays inline.
+function SortableDozentItem({
+  id,
+  children,
+}: {
+  id: string;
+  children: (handle: { listeners: any; attributes: any; isDragging: boolean }) => React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+    zIndex: isDragging ? 10 : undefined,
+    position: 'relative',
+  };
+  return (
+    <div ref={setNodeRef} style={style}>
+      {children({ listeners, attributes, isDragging })}
+    </div>
+  );
+}
 
 // Helper function to get unit duration from settings
 export const getUnitDurationFromSettings = (unitDurations: any, unitType: string): number => {
@@ -264,6 +306,8 @@ interface DozentAssignment {
   dozent_name?: string;
   legal_area: string;
   zoom_link?: string;
+  elite_kleingruppe_id?: string;
+  sort_order?: number;
 }
 
 interface Message {
@@ -614,8 +658,12 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         setKlausuren(klausurenWithNames);
       }
       
-      // Fetch Dozent assignments
-      const { data: assignmentsData } = await supabase.from('elite_kleingruppe_dozenten').select('*');
+      // Fetch Dozent assignments (ordered by priority within legal area)
+      const { data: assignmentsData } = await supabase
+        .from('elite_kleingruppe_dozenten')
+        .select('*')
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: true });
       setDozentAssignments(assignmentsData || []);
       
       // Fetch all dozenten for assignment
@@ -1019,6 +1067,44 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       fetchData();
     } catch (error) {
       console.error('Error saving zoom link:', error);
+    }
+  };
+
+  // Sensors for drag-and-drop reordering of dozent assignments per legal area
+  const dozentDndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleAssignmentDragEnd = async (event: DragEndEvent, list: DozentAssignment[]) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = list.findIndex(a => a.id === active.id);
+    const newIndex = list.findIndex(a => a.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const reordered = arrayMove(list, oldIndex, newIndex).map((a, idx) => ({ ...a, sort_order: idx }));
+    const reorderedIds = new Set(reordered.map(a => a.id));
+
+    // Optimistic UI update
+    setDozentAssignments(prev => {
+      const others = prev.filter(a => !reorderedIds.has(a.id));
+      return [...others, ...reordered];
+    });
+
+    // Persist new sort_order values
+    try {
+      await Promise.all(
+        reordered.map(a =>
+          supabase
+            .from('elite_kleingruppe_dozenten')
+            .update({ sort_order: a.sort_order })
+            .eq('id', a.id)
+        )
+      );
+    } catch (error) {
+      console.error('Error persisting dozent assignment order:', error);
+      fetchData(); // rollback by re-fetching
     }
   };
 
@@ -2066,8 +2152,14 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   };
 
   const handleStartKorrektur = async (klausur: Klausur) => {
+    if (!user) return;
     try {
-      await supabase.from('elite_kleingruppe_klausuren').update({ status: 'in_review' }).eq('id', klausur.id);
+      // Claim the klausur: set status and assign current dozent so other dozenten
+      // in the same legal area see who is working on it.
+      await supabase
+        .from('elite_kleingruppe_klausuren')
+        .update({ status: 'in_review', dozent_id: user.id })
+        .eq('id', klausur.id);
       fetchData();
     } catch (error) { console.error('Error starting correction:', error); }
   };
@@ -2901,76 +2993,155 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
               <div className="p-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {['Zivilrecht', 'Strafrecht', 'Öffentliches Recht'].map(area => {
-                    const assignment = dozentAssignments.find(a => a.legal_area === area);
-                    const dozent = assignment ? allDozenten.find(d => d.id === assignment.dozent_id) : null;
+                    const areaAssignments = dozentAssignments.filter(a =>
+                      a.legal_area === area &&
+                      (!selectedEliteGroupId || a.elite_kleingruppe_id === selectedEliteGroupId)
+                    );
                     return (
                       <div key={area} className="border border-gray-200 rounded-lg p-4">
-                        <h4 className="font-medium text-gray-900 mb-2">{area}</h4>
-                        {dozent ? (
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center">
-                                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                                  <Users className="h-4 w-4 text-primary" />
-                                </div>
-                                <span className="ml-2 text-sm text-gray-700">{dozent.name}</span>
-                              </div>
-                              <button onClick={() => handleRemoveDozentAssignment(assignment!.id)} className="text-red-500 hover:text-red-700">
-                                <X className="h-4 w-4" />
-                              </button>
-                            </div>
-                            {/* Zoom-Link Bearbeitung */}
-                            <div className="pt-2 border-t border-gray-100">
-                              <label className="block text-xs font-medium text-gray-500 mb-1">Zoom-Link</label>
-                              {editingZoomLink === assignment!.id ? (
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="url"
-                                    value={tempZoomLink}
-                                    onChange={(e) => setTempZoomLink(e.target.value)}
-                                    placeholder="https://zoom.us/j/..."
-                                    className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-primary focus:border-primary"
-                                  />
-                                  <button
-                                    onClick={() => handleSaveZoomLink(assignment!.id, tempZoomLink)}
-                                    className="p-1 text-green-600 hover:bg-green-50 rounded"
-                                  >
-                                    <Save className="h-4 w-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => { setEditingZoomLink(null); setTempZoomLink(''); }}
-                                    className="p-1 text-gray-400 hover:bg-gray-100 rounded"
-                                  >
+                        <h4 className="font-medium text-gray-900 mb-2">
+                          {area}
+                          {areaAssignments.length > 1 && (
+                            <span className="ml-2 text-xs font-normal text-gray-500">({areaAssignments.length} Dozenten)</span>
+                          )}
+                        </h4>
+                        {areaAssignments.length === 0 ? (
+                          <p className="text-sm text-gray-400 italic">Kein Dozent zugewiesen</p>
+                        ) : (() => {
+                          const isReorderable = areaAssignments.length > 1;
+                          const renderRow = (
+                            assignment: DozentAssignment,
+                            idx: number,
+                            dragHandle?: { listeners: any; attributes: any }
+                          ) => {
+                            const dozent = allDozenten.find(d => d.id === assignment.dozent_id);
+                            const groupName = !selectedEliteGroupId
+                              ? eliteGroups.find(g => g.id === assignment.elite_kleingruppe_id)?.name
+                              : null;
+                            return (
+                              <div className={`space-y-3 ${idx > 0 ? 'pt-3' : ''}`}>
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center min-w-0">
+                                    {dragHandle && (
+                                      <span
+                                        {...dragHandle.listeners}
+                                        {...dragHandle.attributes}
+                                        role="button"
+                                        tabIndex={0}
+                                        className="p-1 mr-1 text-gray-300 hover:text-gray-600 cursor-grab active:cursor-grabbing flex-shrink-0 inline-flex touch-none select-none"
+                                        title="Zum Verschieben ziehen"
+                                        aria-label="Reihenfolge ändern"
+                                      >
+                                        <GripVertical className="h-4 w-4" />
+                                      </span>
+                                    )}
+                                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 relative">
+                                      <Users className="h-4 w-4 text-primary" />
+                                      {isReorderable && (
+                                        <span
+                                          className={`absolute -top-1 -right-1 h-4 w-4 rounded-full text-[10px] font-semibold flex items-center justify-center ${idx === 0 ? 'bg-primary text-white' : 'bg-gray-200 text-gray-700'}`}
+                                          title={idx === 0 ? 'Primärer Dozent (erhält Klausur-Zuweisung & E-Mail)' : `Position ${idx + 1}`}
+                                        >
+                                          {idx + 1}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="ml-2 min-w-0">
+                                      <span className="text-sm text-gray-700 block truncate">{dozent?.name || 'Unbekannt'}</span>
+                                      {groupName && (
+                                        <span className="text-xs text-gray-400 block truncate">{groupName}</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <button onClick={() => handleRemoveDozentAssignment(assignment.id)} className="text-red-500 hover:text-red-700 flex-shrink-0 ml-2" title="Zuweisung entfernen">
                                     <X className="h-4 w-4" />
                                   </button>
                                 </div>
-                              ) : (
-                                <div className="flex items-center justify-between">
-                                  {assignment?.zoom_link ? (
-                                    <a 
-                                      href={assignment.zoom_link} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer"
-                                      className="text-xs text-primary hover:underline truncate max-w-[150px]"
-                                    >
-                                      {assignment.zoom_link}
-                                    </a>
+                                {/* Zoom-Link Bearbeitung */}
+                                <div className="pt-2 border-t border-gray-100">
+                                  <label className="block text-xs font-medium text-gray-500 mb-1">Zoom-Link</label>
+                                  {editingZoomLink === assignment.id ? (
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="url"
+                                        value={tempZoomLink}
+                                        onChange={(e) => setTempZoomLink(e.target.value)}
+                                        placeholder="https://zoom.us/j/..."
+                                        className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-primary focus:border-primary"
+                                      />
+                                      <button
+                                        onClick={() => handleSaveZoomLink(assignment.id, tempZoomLink)}
+                                        className="p-1 text-green-600 hover:bg-green-50 rounded"
+                                      >
+                                        <Save className="h-4 w-4" />
+                                      </button>
+                                      <button
+                                        onClick={() => { setEditingZoomLink(null); setTempZoomLink(''); }}
+                                        className="p-1 text-gray-400 hover:bg-gray-100 rounded"
+                                      >
+                                        <X className="h-4 w-4" />
+                                      </button>
+                                    </div>
                                   ) : (
-                                    <span className="text-xs text-gray-400 italic">Nicht hinterlegt</span>
+                                    <div className="flex items-center justify-between">
+                                      {assignment.zoom_link ? (
+                                        <a
+                                          href={assignment.zoom_link}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-xs text-primary hover:underline truncate max-w-[150px]"
+                                        >
+                                          {assignment.zoom_link}
+                                        </a>
+                                      ) : (
+                                        <span className="text-xs text-gray-400 italic">Nicht hinterlegt</span>
+                                      )}
+                                      <button
+                                        onClick={() => { setEditingZoomLink(assignment.id); setTempZoomLink(assignment.zoom_link || ''); }}
+                                        className="p-1 text-gray-400 hover:text-primary hover:bg-primary/10 rounded"
+                                      >
+                                        <PenTool className="h-3 w-3" />
+                                      </button>
+                                    </div>
                                   )}
-                                  <button
-                                    onClick={() => { setEditingZoomLink(assignment!.id); setTempZoomLink(assignment?.zoom_link || ''); }}
-                                    className="p-1 text-gray-400 hover:text-primary hover:bg-primary/10 rounded"
-                                  >
-                                    <PenTool className="h-3 w-3" />
-                                  </button>
                                 </div>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="text-sm text-gray-400 italic">Kein Dozent zugewiesen</p>
-                        )}
+                              </div>
+                            );
+                          };
+
+                          if (!isReorderable) {
+                            return (
+                              <div className="space-y-3 divide-y divide-gray-100">
+                                {areaAssignments.map((assignment, idx) => (
+                                  <div key={assignment.id}>{renderRow(assignment, idx)}</div>
+                                ))}
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <DndContext
+                              sensors={dozentDndSensors}
+                              collisionDetection={closestCenter}
+                              onDragEnd={(e) => handleAssignmentDragEnd(e, areaAssignments)}
+                            >
+                              <SortableContext
+                                items={areaAssignments.map(a => a.id)}
+                                strategy={verticalListSortingStrategy}
+                              >
+                                <div className="space-y-3 divide-y divide-gray-100">
+                                  {areaAssignments.map((assignment, idx) => (
+                                    <SortableDozentItem key={assignment.id} id={assignment.id}>
+                                      {({ listeners, attributes }) =>
+                                        renderRow(assignment, idx, { listeners, attributes })
+                                      }
+                                    </SortableDozentItem>
+                                  ))}
+                                </div>
+                              </SortableContext>
+                            </DndContext>
+                          );
+                        })()}
                       </div>
                     );
                   })}
@@ -3036,9 +3207,26 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                           <p className="text-xs text-gray-500 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                             <span>{klausur.teilnehmer_name}</span>
                             <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{klausur.legal_area}</span>
-                            {getDozentForLegalArea(klausur.legal_area) && (
-                              <span className="text-gray-400">→ {getDozentForLegalArea(klausur.legal_area)}</span>
-                            )}
+                            {(() => {
+                              const claimerName = klausur.dozent_id
+                                ? allDozenten.find(d => d.id === klausur.dozent_id)?.name
+                                : null;
+                              if (klausur.status === 'in_review' && claimerName) {
+                                const isMine = klausur.dozent_id === user?.id;
+                                return (
+                                  <span className={`px-1.5 py-0.5 rounded text-xs ${isMine ? 'bg-yellow-100 text-yellow-800' : 'bg-amber-100 text-amber-800'}`}>
+                                    {isMine ? 'In Bearbeitung (Du)' : `In Bearbeitung von ${claimerName}`}
+                                  </span>
+                                );
+                              }
+                              if (klausur.status === 'completed' && claimerName) {
+                                return (
+                                  <span className="text-gray-400">Korrigiert von {claimerName}</span>
+                                );
+                              }
+                              const fallback = getDozentForLegalArea(klausur.legal_area);
+                              return fallback ? <span className="text-gray-400">→ {fallback}</span> : null;
+                            })()}
                           </p>
                         </div>
                       </div>
