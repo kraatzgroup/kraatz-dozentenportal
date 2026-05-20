@@ -55,6 +55,7 @@ export function Chat() {
   const [showDeleteMessageModal, setShowDeleteMessageModal] = useState(false);
   const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
   const [fileTypeWarning, setFileTypeWarning] = useState<string | null>(null);
+  const [showMobileChat, setShowMobileChat] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -750,7 +751,7 @@ export function Chat() {
           <div className="bg-white rounded-lg shadow">
             <div className="grid grid-cols-1 sm:grid-cols-3">
               {/* Contacts List */}
-              <div className="col-span-1 sm:border-r border-gray-200 border-b sm:border-b-0 flex flex-col">
+              <div className={`col-span-1 sm:border-r border-gray-200 border-b sm:border-b-0 flex flex-col ${showMobileChat ? 'hidden sm:flex' : 'flex'}`}>
                 <div className="p-4 border-b border-gray-200 flex-shrink-0">
                   <div className="flex items-center justify-between mb-3">
                     <h2 className="text-base sm:text-lg font-medium text-gray-900">Kontakte</h2>
@@ -774,7 +775,7 @@ export function Chat() {
                     />
                   </div>
                 </div>
-                <div className="overflow-y-auto flex-1 max-h-[600px]">
+                <div className="overflow-y-auto flex-1 h-[calc(100vh-280px)] sm:max-h-[600px]">
                   {/* Groups Section */}
                   {groups.length > 0 && (
                     <>
@@ -796,6 +797,7 @@ export function Chat() {
                                 onClick={() => {
                                   setSelectedGroup(group);
                                   setSelectedContact(null);
+                                  setShowMobileChat(true);
                                 }}
                                 className={`w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors duration-150 relative ${
                                   isSelected ? 'bg-blue-50' : ''
@@ -871,6 +873,7 @@ export function Chat() {
                               onClick={() => {
                                 setSelectedContact(contact);
                                 setSelectedGroup(null);
+                                setShowMobileChat(true);
                               }}
                               className={`w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors duration-150 relative ${
                                 unreadCount > 0 ? 'border-l-4 border-red-500' : 'border-l-4 border-transparent'
@@ -944,6 +947,7 @@ export function Chat() {
                               onClick={() => {
                                 setSelectedContact(contact);
                                 setSelectedGroup(null);
+                                setShowMobileChat(true);
                               }}
                               className={`w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors duration-150 relative ${
                                 isSelected ? 'bg-blue-50' : ''
@@ -999,12 +1003,18 @@ export function Chat() {
               </div>
 
               {/* Chat Area */}
-              <div className="col-span-1 sm:col-span-2 flex flex-col">
+              <div className={`col-span-1 sm:col-span-2 flex flex-col ${!showMobileChat ? 'hidden sm:flex' : 'flex'} h-[calc(100vh-180px)] sm:h-auto`}>
                 {selectedGroup ? (
                   <>
                     <div className="p-4 border-b border-gray-200">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => setShowMobileChat(false)}
+                            className="sm:hidden p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full"
+                          >
+                            <ArrowLeft className="h-5 w-5" />
+                          </button>
                           <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                             <Users className="h-5 w-5 text-primary" />
                           </div>
@@ -1036,7 +1046,7 @@ export function Chat() {
                         )}
                       </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 h-[300px] sm:h-auto">
+                    <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 h-[calc(100vh-320px)] sm:h-auto">
                       {messages.length === 0 ? (
                         <div className="text-center text-gray-500 py-8">
                           <Users className="h-12 w-12 mx-auto mb-3 text-gray-400" />
@@ -1052,7 +1062,7 @@ export function Chat() {
                             }`}
                           >
                             <div
-                              className={`rounded-lg p-3 ${
+                              className={`rounded-lg p-2 sm:p-3 max-w-[85%] sm:max-w-[70%] ${
                                 message.sender_id === user?.id 
                                   ? 'bg-[#2a83bf] text-white'
                                   : 'bg-gray-100 text-gray-900'
@@ -1243,7 +1253,7 @@ export function Chat() {
                         />
                         <label
                           htmlFor="group-file-upload"
-                          className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 cursor-pointer"
+                          className="inline-flex items-center px-2 sm:px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 cursor-pointer flex-shrink-0"
                         >
                           <Paperclip className="h-4 w-4" />
                         </label>
@@ -1252,12 +1262,12 @@ export function Chat() {
                           value={newMessage}
                           onChange={(e) => setNewMessage(e.target.value)}
                           placeholder="Nachricht an die Gruppe schreiben..."
-                          className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200"
+                          className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 text-sm"
                         />
                         <button
                           type="submit"
                           disabled={(!newMessage.trim() && !selectedFile) || isUploading}
-                          className="inline-flex items-center px-3 sm:px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-[#2a83bf] hover:bg-[#2a83bf]/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2a83bf] disabled:opacity-50"
+                          className="inline-flex items-center px-3 sm:px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-[#2a83bf] hover:bg-[#2a83bf]/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2a83bf] disabled:opacity-50 flex-shrink-0"
                         >
                           {isUploading ? (
                             <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -1271,11 +1281,19 @@ export function Chat() {
                 ) : selectedContact ? (
                   <>
                     <div className="p-4 border-b border-gray-200">
-                      <h2 className="text-base sm:text-lg font-medium text-gray-900">
-                        Chat mit {selectedContact.full_name}
-                      </h2>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => setShowMobileChat(false)}
+                          className="sm:hidden p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full"
+                        >
+                          <ArrowLeft className="h-5 w-5" />
+                        </button>
+                        <h2 className="text-base sm:text-lg font-medium text-gray-900">
+                          Chat mit {selectedContact.full_name}
+                        </h2>
+                      </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 max-h-[600px]">
+                    <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 h-[calc(100vh-320px)] sm:h-auto">
                       {messages.map(message => (
                         <div
                           key={message.id}
@@ -1284,7 +1302,7 @@ export function Chat() {
                           }`}
                         >
                           <div
-                            className={`rounded-lg p-3 ${
+                            className={`rounded-lg p-2 sm:p-3 max-w-[85%] sm:max-w-[70%] ${
                               message.is_deleted
                                 ? 'bg-gray-100 text-gray-600'
                                 : message.sender_id === user?.id 
@@ -1443,7 +1461,7 @@ export function Chat() {
                         />
                         <label
                           htmlFor="file-upload"
-                          className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 cursor-pointer"
+                          className="inline-flex items-center px-2 sm:px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 cursor-pointer flex-shrink-0"
                         >
                           <Paperclip className="h-4 w-4" />
                         </label>
@@ -1452,12 +1470,12 @@ export function Chat() {
                           value={newMessage}
                           onChange={(e) => setNewMessage(e.target.value)}
                           placeholder="Nachricht schreiben..."
-                          className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200"
+                          className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 text-sm"
                         />
                         <button
                           type="submit"
                           disabled={(!newMessage.trim() && !selectedFile) || isUploading}
-                          className="inline-flex items-center px-3 sm:px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-[#2a83bf] hover:bg-[#2a83bf]/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2a83bf] disabled:opacity-50"
+                          className="inline-flex items-center px-3 sm:px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-[#2a83bf] hover:bg-[#2a83bf]/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2a83bf] disabled:opacity-50 flex-shrink-0"
                         >
                           {isUploading ? (
                             <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -1552,6 +1570,7 @@ export function Chat() {
                           setSelectedContact(null);
                           setShowNewChatModal(false);
                           setNewChatSearchQuery('');
+                          setShowMobileChat(true);
                         }}
                         className="w-full text-left p-4 hover:bg-gray-50 transition-colors border-b border-gray-100"
                       >
@@ -1591,6 +1610,7 @@ export function Chat() {
                       setSelectedGroup(null);
                       setShowNewChatModal(false);
                       setNewChatSearchQuery('');
+                      setShowMobileChat(true);
                     }}
                     className="w-full text-left p-4 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0"
                   >
