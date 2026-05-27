@@ -173,6 +173,15 @@ export const calculateEndTime = (startTime: string, durationMinutes: number): st
   return `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
 };
 
+export const calculateDuration = (startTime: string, endTime: string): number => {
+  const [startHours, startMins] = startTime.split(':').map(Number);
+  const [endHours, endMins] = endTime.split(':').map(Number);
+  const startTotal = startHours * 60 + startMins;
+  const endTotal = endHours * 60 + endMins;
+  const duration = endTotal - startTotal;
+  return duration < 0 ? duration + 24 * 60 : duration; // Handle overnight
+};
+
 // Helper function to get embeddable video URL
 const getEmbedUrl = (url: string): { type: 'iframe' | 'video'; embedUrl: string } => {
   // Loom
@@ -423,6 +432,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   const [releaseUnitType, setReleaseUnitType] = useState<UnitType | ''>('');
   const [releaseStartTime, setReleaseStartTime] = useState<string>('09:00');
   const [releaseEndTime, setReleaseEndTime] = useState<string>('11:30');
+  const [releaseDuration, setReleaseDuration] = useState<number>(150);
   const [releaseZoomLink, setReleaseZoomLink] = useState<string>('');
   const [releaseDozentId, setReleaseDozentId] = useState<string>('');
   const [releaseKlausurFolderId, setReleaseKlausurFolderId] = useState<string>('');
@@ -1040,6 +1050,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       setReleaseStartTime(defaultStartTime);
       // Automatisch Endzeit berechnen mit konfigurierbarer Dauer
       const duration = getUnitDurationFromSettings(unitDurations, unitType);
+      setReleaseDuration(duration);
       const endTime = calculateEndTime(defaultStartTime, duration);
       setReleaseEndTime(endTime);
       // Automatisch Zoom-Link aus den Einstellungen laden (nach Rechtsgebiet)
@@ -1052,11 +1063,16 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
 
   const handleStartTimeChange = (time: string) => {
     setReleaseStartTime(time);
-    if (releaseUnitType && UNIT_TYPES[releaseUnitType]) {
-      const duration = getUnitDurationFromSettings(unitDurations, releaseUnitType);
-      const endTime = calculateEndTime(time, duration);
-      setReleaseEndTime(endTime);
-    }
+    // Calculate duration based on current end time
+    const duration = calculateDuration(time, releaseEndTime);
+    setReleaseDuration(duration);
+  };
+
+  const handleEndTimeChange = (time: string) => {
+    setReleaseEndTime(time);
+    // Calculate duration based on current start time
+    const duration = calculateDuration(releaseStartTime, time);
+    setReleaseDuration(duration);
   };
 
   const handleSaveZoomLink = async (assignmentId: string, zoomLink: string) => {
@@ -1263,7 +1279,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         is_released: new Date() >= selectedDate,
         legal_area: releaseLegalArea || null,
         unit_type: releaseUnitType || null,
-        duration_minutes: releaseUnitType ? getUnitDurationFromSettings(unitDurations, releaseUnitType) : null,
+        duration_minutes: releaseEventType === 'einheit' ? releaseDuration : null,
         start_time: (releaseEventType === 'einheit' || !isAllDay) ? (releaseStartTime || null) : null,
         end_time: (releaseEventType === 'einheit' || !isAllDay) ? (releaseEndTime || null) : null,
         zoom_link: releaseZoomLink || null,
@@ -1290,6 +1306,23 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         .single();
 
       if (firstError) throw firstError;
+
+      // Tätigkeitsbericht-Eintrag erstellen für Unterrichtseinheiten und Wiederholungseinheiten
+      if (releaseEventType === 'einheit' && assignedDozentId && releaseDuration > 0) {
+        const hours = releaseDuration / 60;
+        const category = releaseUnitType?.startsWith('wiederholung') ? 'Wiederholungseinheit' : 'Unterrichtseinheit';
+        const { error: hoursError } = await supabase.from('dozent_hours').insert({
+          dozent_id: assignedDozentId,
+          date: selectedDate.toISOString().split('T')[0],
+          hours: hours,
+          description: `${category}: ${releaseTitle} (${releaseLegalArea || 'Allgemein'})`,
+          category: category,
+          status: 'pending'
+        });
+        if (hoursError) {
+          console.error('Error creating dozent_hours entry:', hoursError);
+        }
+      }
 
       // Wiederkehrende Termine erstellen
       if (releaseIsRecurring && firstRelease) {
@@ -1319,6 +1352,24 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
 
         if (recurringReleases.length > 0) {
           await supabase.from('elite_kleingruppe_releases').insert(recurringReleases);
+
+          // Tätigkeitsbericht-Einträge für wiederkehrende Termine erstellen
+          if (releaseEventType === 'einheit' && assignedDozentId && releaseDuration > 0) {
+            const hours = releaseDuration / 60;
+            const category = releaseUnitType?.startsWith('wiederholung') ? 'Wiederholungseinheit' : 'Unterrichtseinheit';
+            const hoursEntries = recurringReleases.map(release => ({
+              dozent_id: assignedDozentId,
+              date: release.release_date,
+              hours: hours,
+              description: `${category}: ${release.title} (${releaseLegalArea || 'Allgemein'})`,
+              category: category,
+              status: 'pending'
+            }));
+            const { error: recurringHoursError } = await supabase.from('dozent_hours').insert(hoursEntries);
+            if (recurringHoursError) {
+              console.error('Error creating dozent_hours entries for recurring releases:', recurringHoursError);
+            }
+          }
         }
       }
 
@@ -1349,8 +1400,13 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
     setReleaseDescription(release.description || '');
     setReleaseLegalArea(release.legal_area || '');
     setReleaseUnitType(release.unit_type || '');
-    setReleaseStartTime(release.start_time?.slice(0, 5) || '09:00');
-    setReleaseEndTime(release.end_time?.slice(0, 5) || '11:30');
+    const startTime = release.start_time?.slice(0, 5) || '09:00';
+    const endTime = release.end_time?.slice(0, 5) || '11:30';
+    setReleaseStartTime(startTime);
+    setReleaseEndTime(endTime);
+    // Calculate duration from start and end time
+    const duration = calculateDuration(startTime, endTime);
+    setReleaseDuration(duration);
     setReleaseZoomLink(release.zoom_link || '');
     setReleaseKlausurFolderId(release.klausur_folder_id || '');
     setReleaseSolutionMaterialIds(release.solution_material_ids || []);
@@ -1502,7 +1558,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       folder_ids: selectedFolders,
       legal_area: releaseLegalArea || null,
       unit_type: releaseUnitType || null,
-      duration_minutes: releaseUnitType ? getUnitDurationFromSettings(unitDurations, releaseUnitType) : null,
+      duration_minutes: releaseUnitType ? releaseDuration : null,
       start_time: releaseStartTime || null,
       end_time: releaseEndTime || null,
       zoom_link: releaseZoomLink || null,
@@ -1558,6 +1614,50 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         .eq('id', editingRelease.id);
 
       if (error) throw error;
+
+      // Tätigkeitsbericht-Eintrag aktualisieren für Unterrichtseinheiten und Wiederholungseinheiten
+      if (releaseUnitType && editingRelease.dozent_id && releaseDuration > 0) {
+        const hours = releaseDuration / 60;
+        const category = releaseUnitType?.startsWith('wiederholung') ? 'Wiederholungseinheit' : 'Unterrichtseinheit';
+        const description = `${category}: ${releaseTitle} (${releaseLegalArea || 'Allgemein'})`;
+
+        // Prüfen ob bereits ein Eintrag für dieses Release existiert
+        const { data: existingHours } = await supabase
+          .from('dozent_hours')
+          .select('id')
+          .eq('dozent_id', editingRelease.dozent_id)
+          .eq('date', newDate)
+          .ilike('description', `%${editingRelease.title}%`)
+          .limit(1);
+
+        if (existingHours && existingHours.length > 0) {
+          // Bestehenden Eintrag aktualisieren
+          const { error: updateHoursError } = await supabase
+            .from('dozent_hours')
+            .update({
+              hours: hours,
+              description: description,
+              category: category
+            })
+            .eq('id', existingHours[0].id);
+          if (updateHoursError) {
+            console.error('Error updating dozent_hours entry:', updateHoursError);
+          }
+        } else {
+          // Neuen Eintrag erstellen
+          const { error: insertHoursError } = await supabase.from('dozent_hours').insert({
+            dozent_id: editingRelease.dozent_id,
+            date: newDate,
+            hours: hours,
+            description: description,
+            category: category,
+            status: 'pending'
+          });
+          if (insertHoursError) {
+            console.error('Error creating dozent_hours entry:', insertHoursError);
+          }
+        }
+      }
 
       // Notify participants if description was changed on a released unit
       if (descriptionChanged && releaseDescription && editingRelease.is_released) {
@@ -3487,19 +3587,18 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Endzeit {releaseEventType === 'einheit' ? '(automatisch)' : ''}</label>
-                    <input 
-                      type="time" 
-                      value={releaseEndTime} 
-                      onChange={(e) => releaseEventType !== 'einheit' && setReleaseEndTime(e.target.value)}
-                      readOnly={releaseEventType === 'einheit'}
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary ${releaseEventType === 'einheit' ? 'border-gray-200 bg-gray-50 text-gray-600' : 'border-gray-300'}`} 
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Endzeit {releaseEventType === 'einheit' ? '(automatisch, änderbar)' : ''}</label>
+                    <input
+                      type="time"
+                      value={releaseEndTime}
+                      onChange={(e) => handleEndTimeChange(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Dauer</label>
                     <div className="px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600">
-                      {releaseUnitType ? formatDuration(getUnitDurationFromSettings(unitDurations, releaseUnitType)) : '-'}
+                      {formatDuration(releaseDuration)}
                     </div>
                         </div>
                       </div>
@@ -4038,7 +4137,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     <div>Typ: <strong>{releaseUnitType ? UNIT_TYPES[releaseUnitType].label : '-'}</strong></div>
                     <div>Rechtsgebiet: <strong>{releaseLegalArea || '-'}</strong></div>
                     <div>Zeit: <strong>{releaseStartTime} - {releaseEndTime}</strong></div>
-                    <div>Dauer: <strong>{releaseUnitType ? formatDuration(getUnitDurationFromSettings(unitDurations, releaseUnitType)) : '-'}</strong></div>
+                    <div>Dauer: <strong>{releaseEventType === 'einheit' ? formatDuration(releaseDuration) : '-'}</strong></div>
                     {releaseKlausurFolderId && <div className="col-span-2">Klausur: <strong>{folders.find(f => f.id === releaseKlausurFolderId)?.name || '-'}</strong></div>}
                     {releaseIsRecurring && <div className="col-span-2">Wiederholung: <strong>{releaseRecurrenceType === 'weekly' ? 'Wöchentlich' : 'Monatlich'}, {releaseRecurrenceCount} Termine</strong></div>}
                     {releaseSolutionMaterialIds.length > 0 && <div className="col-span-2">Lösungen (nach Termin): <strong>{releaseSolutionMaterialIds.length} Dateien</strong></div>}
@@ -5619,18 +5718,18 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Endzeit (automatisch)</label>
-                    <input 
-                      type="time" 
-                      value={releaseEndTime} 
-                      readOnly
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600" 
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Endzeit (automatisch, änderbar)</label>
+                    <input
+                      type="time"
+                      value={releaseEndTime}
+                      onChange={(e) => handleEndTimeChange(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Dauer</label>
                     <div className="px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600">
-                      {releaseUnitType ? formatDuration(getUnitDurationFromSettings(unitDurations, releaseUnitType)) : '-'}
+                      {formatDuration(releaseDuration)}
                     </div>
                   </div>
                 </div>
