@@ -27,6 +27,7 @@ const DozentenPortalTutorials = lazy(() => import('./components/DozentenTutorial
   })
 })));
 const TypeformSurvey = lazy(() => import('./components/TypeformSurvey').then(m => ({ default: m.TypeformSurvey })));
+const FeedbackAdmin = lazy(() => import('./components/FeedbackAdmin').then(m => ({ default: m.FeedbackAdmin })));
 import { useAuthStore } from './store/authStore';
 import { usePreviewStore } from './store/previewStore';
 import { PreviewBanner } from './components/PreviewBanner';
@@ -68,7 +69,7 @@ function App() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       console.log('App: Auth state changed:', _event, session?.user?.email);
-      
+
       // Don't process if user is already set and this is the same user
       if (user && session?.user && user.id === session.user.id && _event !== 'SIGNED_OUT') {
         console.log('App: User already set, ignoring duplicate auth event');
@@ -76,6 +77,13 @@ function App() {
       }
       setUser(session?.user ?? null);
       setAppLoading(false);
+
+      // Redirect participants to dashboard?tab=dashboard if not already there
+      // Check role directly from auth store to avoid hook dependency issues
+      const { isTeilnehmer: currentIsTeilnehmer } = useAuthStore.getState();
+      if (currentIsTeilnehmer && window.location.pathname === '/dashboard' && !window.location.search.includes('tab=')) {
+        window.history.replaceState({}, '', '/dashboard?tab=dashboard');
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -210,7 +218,15 @@ function App() {
           <Route path="/messages" element={<Chat />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/feedback-elite-25" element={<TypeformSurvey />} />
-          
+          <Route
+            path="/feedback"
+            element={
+              (showAdminView || showBuchhaltungView || showVerwaltungView) ?
+                <FeedbackAdmin /> :
+                <Navigate to="/dashboard" replace />
+            }
+          />
+
           {/* Dozenten-Ordner Routen */}
           <Route path="/rechnungen/:id" element={<DozentenRechnungen />} />
           <Route path="/taetigkeitsbericht/:id" element={<DozentenTaetigkeitsbericht />} />
