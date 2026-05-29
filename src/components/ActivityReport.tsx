@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Calendar, Clock, User, BookOpen, FileText, Plus, Edit, Trash2, Check, X, AlertCircle, Users } from 'lucide-react';
+import { Calendar, Clock, User, BookOpen, FileText, Plus, Edit, Trash2, Check, X, AlertCircle, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useHoursStore } from '../store/hoursStore';
@@ -80,6 +80,15 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
     description: '',
     legal_area: ''
   });
+  const [showAllHours, setShowAllHours] = useState(false);
+  const [showAllTeilnehmer, setShowAllTeilnehmer] = useState(false);
+
+  // Debug logging for load more functionality
+  useEffect(() => {
+    console.log('🔍 Debug: combinedHours.length =', combinedHours.length, 'showAllHours =', showAllHours);
+    console.log('🔍 Debug: Should show all?', showAllHours);
+    console.log('🔍 Debug: Should show first 3?', !showAllHours && combinedHours.length > 3);
+  }, [combinedHours.length, showAllHours]);
 
   // Use dozentId if provided (Admin View), otherwise use current user (Dozent View)
   const targetDozentId = dozentId || user?.id;
@@ -513,7 +522,10 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
         <div className="p-6">
           {activeTeilnehmer.length > 0 ? (
             <div className="space-y-3">
-              {activeTeilnehmer.map((teilnehmer) => {
+              {showAllTeilnehmer ? (
+                <>
+                  {/* Show all participants */}
+                  {activeTeilnehmer.map((teilnehmer) => {
                 const bookedHours = teilnehmer.booked_hours || 0;
                 const completedHours = teilnehmer.completed_hours || 0;
                 const progressPercent = bookedHours > 0 ? Math.min((completedHours / bookedHours) * 100, 100) : 0;
@@ -579,18 +591,119 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
                   </div>
                 );
               })}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              <Users className="mx-auto h-10 w-10 text-gray-300 mb-2" />
-              <p>Keine aktiven Teilnehmer ({examType})</p>
-              <p className="text-xs mt-2">Es sind derzeit keine Teilnehmer mit diesem Studienziel zugewiesen.</p>
-            </div>
-          )}
+
+                {/* Show less button */}
+                {activeTeilnehmer.length > 3 && (
+                  <div className="flex items-center justify-center py-4">
+                    <button
+                      onClick={() => setShowAllTeilnehmer(false)}
+                      className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
+                    >
+                      <ChevronUp className="h-4 w-4 mr-2" />
+                      Weniger anzeigen
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                {/* Show first 3 participants */}
+                {activeTeilnehmer.slice(0, 3).map((teilnehmer) => {
+                const bookedHours = teilnehmer.booked_hours || 0;
+                const completedHours = teilnehmer.completed_hours || 0;
+                const progressPercent = bookedHours > 0 ? Math.min((completedHours / bookedHours) * 100, 100) : 0;
+                const hasMonthlyHours = teilnehmer.monthly_hours > 0;
+                
+                return (
+                  <div key={teilnehmer.id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition-colors">
+                    <div className="flex items-center flex-1">
+                      <div className="flex-shrink-0">
+                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                          <User className="h-5 w-5 text-primary" />
+                        </div>
+                      </div>
+                      <div className="ml-4 flex-1">
+                        <div className="flex items-center">
+                          <h4 className="text-sm font-medium text-gray-900">{teilnehmer.name}</h4>
+                        </div>
+                        {teilnehmer.contract_start && teilnehmer.contract_end && (
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            <Calendar className="h-3 w-3 inline mr-1" />
+                            {new Date(teilnehmer.contract_start).toLocaleDateString('de-DE')} - {new Date(teilnehmer.contract_end).toLocaleDateString('de-DE')}
+                          </div>
+                        )}
+                        {bookedHours > 0 && (
+                          <div className="mt-1.5">
+                            <div className="flex items-center space-x-2">
+                              <div className="w-32 bg-gray-200 rounded-full h-1.5">
+                                <div 
+                                  className={`h-1.5 rounded-full ${
+                                    progressPercent >= 100 ? 'bg-green-500' : 
+                                    progressPercent >= 75 ? 'bg-yellow-500' : 'bg-primary'
+                                  }`}
+                                  style={{ width: `${progressPercent}%` }}
+                                />
+                              </div>
+                              <span className="text-xs text-gray-500">{completedHours}/{bookedHours}h gesamt</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right ml-4">
+                      {hasMonthlyHours ? (
+                        <>
+                          <div className="text-lg font-semibold text-primary">
+                            {teilnehmer.monthly_hours}h
+                          </div>
+                          <div className="text-xs text-green-600">
+                            {getMonthName(selectedMonth)}
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-lg font-semibold text-gray-400">
+                            0h
+                          </div>
+                          <div className="text-xs text-gray-400">
+                            Keine Stunden
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+                {/* Load more button */}
+                {activeTeilnehmer.length > 3 && (
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-50 pointer-events-none" style={{ height: '40px' }}></div>
+                    <div className="flex items-center justify-center py-4 relative z-10">
+                      <button
+                        onClick={() => setShowAllTeilnehmer(true)}
+                        className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-900 hover:bg-gray-50 transition-colors shadow-sm"
+                      >
+                        <ChevronDown className="h-4 w-4 mr-2" />
+                        {activeTeilnehmer.length - 3} weitere Teilnehmer laden
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="text-center py-8 text-gray-500">
+            <Users className="mx-auto h-10 w-10 text-gray-300 mb-2" />
+            <p>Keine aktiven Teilnehmer ({examType})</p>
+            <p className="text-xs mt-2">Es sind derzeit keine Teilnehmer mit diesem Studienziel zugewiesen.</p>
+          </div>
+        )}
         </div>
       </div>
-      {/* Pending Hours Section */}
-      {pendingHours.length > 0 && (
+      {/* Pending Hours Section - only for 1. Staatsexamen since Elite-Kleingruppe is only for 1. Staatsexamen */}
+      {pendingHours.length > 0 && examType === '1. Staatsexamen' && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg shadow">
           <div className="px-6 py-4 border-b border-yellow-200 flex items-center justify-between">
             <div className="flex items-center">
@@ -695,73 +808,178 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
           </div>
         ) : (
           <div className="p-6 space-y-4">
-            {combinedHours.map((entry, index) => (
-              <React.Fragment key={entry.id}>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start space-x-4 flex-1">
-                   <div>
-                     <div className="flex items-center mb-2">
-                       <Calendar className="h-4 w-4 mr-1" />
-                       <span className="font-medium">Datum {formatDate(entry.date)}</span>
-                     </div>
-                     {entry.type === 'participant' && (
-                       <div className="flex items-center text-sm text-gray-500">
-                         <User className="h-4 w-4 mr-1" />
-                         <span>Teilnehmer {entry.teilnehmer_name}</span>
-                       </div>
-                     )}
-                     <div className="flex items-center space-x-4 mb-3">
-                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${entry.type === 'participant' ? 'bg-blue-100 text-blue-800' : entry.category === 'Elite-Kleingruppe Korrektur' || entry.description?.includes('Elite-Kleingruppe') ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}`}>
-                         {entry.type === 'participant' 
-                           ? 'Einzelunterricht'
-                           : entry.category === 'Elite-Kleingruppe Korrektur' ? 'Elite-Kleingruppe Klausurenkorrektur'
-                           : entry.description?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe'
-                           : entry.category || 'Sonstige Tätigkeit'
-                         }
-                       </span>
-                       <div className="flex items-center text-sm text-gray-900">
-                         <Clock className="h-4 w-4 mr-1 text-primary" />
-                         <span className="font-semibold">Anzahl Stunden: {entry.hours}</span>
-                       </div>
-                     </div>
-                  
-                     {entry.description && (
-                       <div className="flex items-start">
-                         <BookOpen className="h-4 w-4 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
-                         <div className="text-sm text-gray-700">
-                           <span className="font-medium">
-                             {entry.type === 'participant' ? 'Inhalt (Thema): ' : 'Tätigkeit: '}
-                           </span>
-                           {entry.description}
+            {showAllHours ? (
+              <>
+                {/* Show all entries */}
+                {combinedHours.map((entry, index) => (
+                  <React.Fragment key={entry.id}>
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start space-x-4 flex-1">
+                       <div>
+                         <div className="flex items-center mb-2">
+                           <Calendar className="h-4 w-4 mr-1" />
+                           <span className="font-medium">Datum {formatDate(entry.date)}</span>
                          </div>
+                         {entry.type === 'participant' && (
+                           <div className="flex items-center text-sm text-gray-500">
+                             <User className="h-4 w-4 mr-1" />
+                             <span>Teilnehmer {entry.teilnehmer_name}</span>
+                           </div>
+                         )}
+                         <div className="flex items-center space-x-4 mb-3">
+                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${entry.type === 'participant' ? 'bg-blue-100 text-blue-800' : entry.category === 'Elite-Kleingruppe Korrektur' || entry.description?.includes('Elite-Kleingruppe') ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}`}>
+                             {entry.type === 'participant'
+                               ? 'Einzelunterricht'
+                               : entry.category === 'Elite-Kleingruppe Korrektur' ? 'Elite-Kleingruppe Klausurenkorrektur'
+                               : entry.description?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe'
+                               : entry.category || 'Sonstige Tätigkeit'
+                             }
+                           </span>
+                           <div className="flex items-center text-sm text-gray-900">
+                             <Clock className="h-4 w-4 mr-1 text-primary" />
+                             <span className="font-semibold">Anzahl Stunden: {entry.hours}</span>
+                           </div>
+                         </div>
+
+                         {entry.description && (
+                           <div className="flex items-start">
+                             <BookOpen className="h-4 w-4 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
+                             <div className="text-sm text-gray-700">
+                               <span className="font-medium">
+                                 {entry.type === 'participant' ? 'Inhalt (Thema): ' : 'Tätigkeit: '}
+                               </span>
+                               {entry.description}
+                             </div>
+                           </div>
+                         )}
                        </div>
-                     )}
-                   </div>
-                  </div>
-                  <div className="flex items-center space-x-2 ml-4">
+                      </div>
+                      <div className="flex items-center space-x-2 ml-4">
+                        <button
+                          onClick={() => handleEditEntry(entry)}
+                          className="text-gray-400 hover:text-primary transition-colors"
+                          title="Eintrag bearbeiten"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteEntry(entry)}
+                          className="text-gray-400 hover:text-red-500 transition-colors"
+                          title="Eintrag löschen"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Separator line for visual clarity */}
+                    {index < combinedHours.length - 1 && (
+                      <div className="mt-4 border-b border-gray-100"></div>
+                    )}
+                  </React.Fragment>
+                ))}
+
+                {/* Show less button */}
+                {combinedHours.length > 3 && (
+                  <div className="flex items-center justify-center py-4">
                     <button
-                      onClick={() => handleEditEntry(entry)}
-                      className="text-gray-400 hover:text-primary transition-colors"
-                      title="Eintrag bearbeiten"
+                      onClick={() => setShowAllHours(false)}
+                      className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
                     >
-                      <Edit className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteEntry(entry)}
-                      className="text-gray-400 hover:text-red-500 transition-colors"
-                      title="Eintrag löschen"
-                    >
-                      <Trash2 className="h-4 w-4" />
+                      <ChevronUp className="h-4 w-4 mr-2" />
+                      Weniger anzeigen
                     </button>
                   </div>
-                </div>
-              
-                {/* Separator line for visual clarity */}
-                {index < combinedHours.length - 1 && (
-                  <div className="mt-4 border-b border-gray-100"></div>
                 )}
-              </React.Fragment>
-            ))}
+              </>
+            ) : (
+              <>
+                {/* Show first 3 entries */}
+                {combinedHours.slice(0, 3).map((entry, index) => (
+                  <React.Fragment key={entry.id}>
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start space-x-4 flex-1">
+                       <div>
+                         <div className="flex items-center mb-2">
+                           <Calendar className="h-4 w-4 mr-1" />
+                           <span className="font-medium">Datum {formatDate(entry.date)}</span>
+                         </div>
+                         {entry.type === 'participant' && (
+                           <div className="flex items-center text-sm text-gray-500">
+                             <User className="h-4 w-4 mr-1" />
+                             <span>Teilnehmer {entry.teilnehmer_name}</span>
+                           </div>
+                         )}
+                         <div className="flex items-center space-x-4 mb-3">
+                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${entry.type === 'participant' ? 'bg-blue-100 text-blue-800' : entry.category === 'Elite-Kleingruppe Korrektur' || entry.description?.includes('Elite-Kleingruppe') ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}`}>
+                             {entry.type === 'participant'
+                               ? 'Einzelunterricht'
+                               : entry.category === 'Elite-Kleingruppe Korrektur' ? 'Elite-Kleingruppe Klausurenkorrektur'
+                               : entry.description?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe'
+                               : entry.category || 'Sonstige Tätigkeit'
+                             }
+                           </span>
+                           <div className="flex items-center text-sm text-gray-900">
+                             <Clock className="h-4 w-4 mr-1 text-primary" />
+                             <span className="font-semibold">Anzahl Stunden: {entry.hours}</span>
+                           </div>
+                         </div>
+
+                         {entry.description && (
+                           <div className="flex items-start">
+                             <BookOpen className="h-4 w-4 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
+                             <div className="text-sm text-gray-700">
+                               <span className="font-medium">
+                                 {entry.type === 'participant' ? 'Inhalt (Thema): ' : 'Tätigkeit: '}
+                               </span>
+                               {entry.description}
+                             </div>
+                           </div>
+                         )}
+                       </div>
+                      </div>
+                      <div className="flex items-center space-x-2 ml-4">
+                        <button
+                          onClick={() => handleEditEntry(entry)}
+                          className="text-gray-400 hover:text-primary transition-colors"
+                          title="Eintrag bearbeiten"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteEntry(entry)}
+                          className="text-gray-400 hover:text-red-500 transition-colors"
+                          title="Eintrag löschen"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Separator line for visual clarity */}
+                    {index < 2 && (
+                      <div className="mt-4 border-b border-gray-100"></div>
+                    )}
+                  </React.Fragment>
+                ))}
+
+                {/* Fade to 4th entry */}
+                {combinedHours.length > 3 && (
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-50 pointer-events-none" style={{ height: '40px' }}></div>
+                    <div className="flex items-center justify-center py-4 relative z-10">
+                      <button
+                        onClick={() => setShowAllHours(true)}
+                        className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-900 hover:bg-gray-50 transition-colors shadow-sm"
+                      >
+                        <ChevronDown className="h-4 w-4 mr-2" />
+                        {combinedHours.length - 3} weitere Einträge laden
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>
@@ -773,123 +991,64 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
             <div className="fixed inset-0 transition-opacity" aria-hidden="true">
               <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
             </div>
+            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
             <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-              <form onSubmit={handleUpdateEntry}>
-                <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">
-                    {editingEntry.type === 'participant' ? 'Unterrichtsstunde bearbeiten' : 'Sonstige Tätigkeit bearbeiten'}
-                  </h3>
-                  
-                  <div className="space-y-4">
-                    {editingEntry.type === 'participant' && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          <User className="h-4 w-4 inline mr-1" />
-                          Teilnehmer
-                        </label>
-                        <input
-                          type="text"
-                          value={editingEntry.teilnehmer_name || ''}
-                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm bg-gray-100"
-                          disabled
-                        />
-                      </div>
-                    )}
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        <Clock className="h-4 w-4 inline mr-1" />
-                        Stunden
-                      </label>
-                      <input
-                        type="number"
-                        step="0.25"
-                        min="0"
-                        max="24"
-                        value={editFormData.hours}
-                        onChange={(e) => setEditFormData({ ...editFormData, hours: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        <Calendar className="h-4 w-4 inline mr-1" />
-                        Datum
-                      </label>
-                      <input
-                        type="date"
-                        value={editFormData.date}
-                        onChange={(e) => setEditFormData({ ...editFormData, date: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
-                        required
-                      />
-                    </div>
-
-                    {editingEntry.type === 'participant' && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Rechtsgebiet
-                        </label>
-                        <select
-                          value={editFormData.legal_area}
-                          onChange={(e) => setEditFormData({ ...editFormData, legal_area: e.target.value })}
-                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
-                          required
-                        >
-                          <option value="">Rechtsgebiet auswählen</option>
-                          <option value="Zivilrecht">Zivilrecht</option>
-                          <option value="Öffentliches Recht">Öffentliches Recht</option>
-                          <option value="Strafrecht">Strafrecht</option>
-                        </select>
-                      </div>
-                    )}
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {editingEntry.type === 'participant' ? 'Beschreibung (optional)' : 'Tätigkeit'}
-                      </label>
-                      <textarea
-                        value={editFormData.description}
-                        onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
-                        rows={3}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
-                        placeholder={editingEntry.type === 'participant' ? 'Was wurde in dieser Stunde behandelt...' : 'z.B. Vorbereitung Unterlagen, Korrektur von Arbeiten...'}
-                        required={editingEntry.type === 'dozent'}
-                      />
-                    </div>
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Eintrag bearbeiten</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Anzahl Stunden</label>
+                    <input
+                      type="number"
+                      step="0.25"
+                      min="0"
+                      value={editFormData.hours}
+                      onChange={(e) => setEditFormData({ ...editFormData, hours: e.target.value })}
+                      className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Datum</label>
+                    <input
+                      type="date"
+                      value={editFormData.date}
+                      onChange={(e) => setEditFormData({ ...editFormData, date: e.target.value })}
+                      className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Inhalt/Thema</label>
+                    <textarea
+                      value={editFormData.description}
+                      onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                      rows={3}
+                      className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                    />
                   </div>
                 </div>
-                <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                  <button
-                    type="submit"
-                    className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary text-base font-medium text-white hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:ml-3 sm:w-auto sm:text-sm"
-                  >
-                    Speichern
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowEditDialog(false);
-                      setEditingEntry(null);
-                      setEditFormData({
-                        hours: '',
-                        date: '',
-                        description: '',
-                        legal_area: ''
-                      });
-                    }}
-                    className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"
-                  >
-                    Abbrechen
-                  </button>
-                </div>
-              </form>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button
+                  onClick={handleUpdateEntry}
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary text-base font-medium text-white hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:ml-3 sm:w-auto sm:text-sm"
+                >
+                  Speichern
+                </button>
+                <button
+                  onClick={() => {
+                    setShowEditDialog(false);
+                    setEditingEntry(null);
+                    setEditFormData({ hours: '', date: '', description: '', legal_area: '' });
+                  }}
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                >
+                  Abbrechen
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
     </div>
   );
-}
+};

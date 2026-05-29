@@ -122,7 +122,7 @@ export function EliteKleingruppeDashboard() {
     const saved = localStorage.getItem('eliteKleingruppeDashboardTab');
     return (saved as Tab) || 'dashboard';
   });
-  
+
   // Helper function to change tab and update URL
   const setActiveTab = useCallback((tab: Tab) => {
     setActiveTabState(tab);
@@ -1027,7 +1027,7 @@ export function EliteKleingruppeDashboard() {
         <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex">
-              <div className="flex-shrink-0 flex items-center">
+              <div className="flex-shrink-0 flex items-center cursor-pointer" onClick={() => navigate('/dashboard')}>
                 <Logo />
                 <span className="ml-2 text-xl font-semibold text-gray-900">Elite-Kleingruppe</span>
               </div>

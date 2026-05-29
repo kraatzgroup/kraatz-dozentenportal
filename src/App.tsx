@@ -160,13 +160,31 @@ function App() {
                 <Dashboard isAdmin={false} />
             }
           />
-          <Route 
-            path="/dashboard/elite-kleingruppe/:subTab?" 
+          <Route
+            path="/dashboard/elite-kleingruppe/:subTab?"
             element={
               showTeilnehmerView ?
                 <EliteKleingruppeDashboard /> :
                 <Dashboard isAdmin={showAdminView || showVerwaltungView || showVertriebView} />
-            } 
+            }
+          />
+          <Route
+            path="/dashboard/taetigkeitsbericht"
+            element={
+              isMaterial ?
+                <DozentenDashboard /> :
+              showTeilnehmerView ?
+                <EliteKleingruppeDashboard /> :
+              showVertriebView ?
+                <VertriebDashboard /> :
+              showBuchhaltungView ?
+                <AdminDashboard mode="accounting" /> :
+              showVerwaltungView ?
+                <AdminDashboard mode="verwaltung" /> :
+              showAdminView ?
+                <AdminDashboard mode="admin" /> :
+                <Dashboard isAdmin={false} />
+            }
           />
 
           {/* Sub-routes */}

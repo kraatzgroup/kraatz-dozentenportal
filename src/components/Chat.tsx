@@ -727,11 +727,11 @@ export function Chat() {
         <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
-              <div className="flex-shrink-0 flex items-center">
+              <div className="flex-shrink-0 flex items-center cursor-pointer" onClick={() => navigate('/dashboard')}>
                 <Logo />
                 <span className="ml-2 text-lg sm:text-xl font-semibold text-gray-900 hidden sm:block">Dozenten-Portal</span>
                 <span className="ml-2 text-sm font-semibold text-gray-900 sm:hidden">Portal</span>
-              </div> 
+              </div>
             </div>
             <div className="flex items-center">
               <button

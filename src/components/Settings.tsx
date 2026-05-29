@@ -173,7 +173,7 @@ export function Settings() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between h-16">
               <div className="flex">
-                <div className="flex-shrink-0 flex items-center">
+                <div className="flex-shrink-0 flex items-center cursor-pointer" onClick={() => window.location.href = '/dashboard'}>
                   <Logo />
                   <span className="ml-2 text-xl font-semibold text-gray-900">Dozenten-Portal</span>
                 </div>
@@ -196,7 +196,7 @@ export function Settings() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex">
-              <div className="flex-shrink-0 flex items-center">
+              <div className="flex-shrink-0 flex items-center cursor-pointer" onClick={() => window.location.href = '/dashboard'}>
                 <Logo />
                 <span className="ml-2 text-xl font-semibold text-gray-900">Dozenten-Portal</span>
               </div>

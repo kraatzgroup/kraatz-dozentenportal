@@ -870,7 +870,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex justify-between h-16">
                 <div className="flex">
-                  <div className="flex-shrink-0 flex items-center">
+                  <div className="flex-shrink-0 flex items-center cursor-pointer" onClick={() => navigate('/dashboard')}>
                     <Logo />
                     <span className="ml-2 text-xl font-semibold text-gray-900">Dozenten-Portal</span>
                   </div>
@@ -1272,7 +1272,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   } bg-white rounded-lg shadow p-4 transition-all`}
                 >
                   <button
-                    onClick={() => { setSelectedFolder(null); navigate('/dashboard/elite-kleingruppe/einheiten-materialfreigabe'); }}
+                    onClick={() => { setSelectedFolder(null); navigate('/dashboard?tab=elite-kleingruppe'); }}
                     className="w-full flex items-center text-left"
                   >
                     <Users className="h-6 w-6 text-primary" />
@@ -1664,11 +1664,11 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
 
           {/* DozentenDashboard für Dozenten - nur anzeigen wenn kein Ordner ausgewählt ist */}
           {isDozent && !selectedFolder && (
-            <DozentenDashboard 
+            <DozentenDashboard
               showEliteKleingruppe={showEliteKleingruppe}
               ekSubTab={ekSubTab}
-              onEkSubTabChange={(tab: string) => navigate(`/dashboard/elite-kleingruppe/${EK_SUB_TAB_REVERSE[tab] || 'einheiten-materialfreigabe'}`)}
-              onCloseEliteKleingruppe={() => navigate('/dashboard')} 
+              onEkSubTabChange={(tab: string) => navigate(`/dashboard?tab=${tab}`)}
+              onCloseEliteKleingruppe={() => navigate('/dashboard')}
             />
           )}
 
