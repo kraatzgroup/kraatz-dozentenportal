@@ -505,6 +505,9 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
 
   const totalHours = combinedHours.reduce((sum, entry) => sum + entry.hours, 0);
 
+  // Filter participants to only show those with hours in the selected month
+  const activeTeilnehmerWithHours = activeTeilnehmer.filter(t => t.monthly_hours > 0);
+
   return (
     <div className="space-y-6">
       {/* Active Participants Section */}
@@ -520,12 +523,12 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
           </div>
         </div>
         <div className="p-6">
-          {activeTeilnehmer.length > 0 ? (
+          {activeTeilnehmerWithHours.length > 0 ? (
             <div className="space-y-3">
               {showAllTeilnehmer ? (
                 <>
                   {/* Show all participants */}
-                  {activeTeilnehmer.map((teilnehmer) => {
+                  {activeTeilnehmerWithHours.map((teilnehmer) => {
                 const bookedHours = teilnehmer.booked_hours || 0;
                 const completedHours = teilnehmer.completed_hours || 0;
                 const progressPercent = bookedHours > 0 ? Math.min((completedHours / bookedHours) * 100, 100) : 0;
@@ -593,7 +596,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
               })}
 
                 {/* Show less button */}
-                {activeTeilnehmer.length > 3 && (
+                {activeTeilnehmerWithHours.length > 3 && (
                   <div className="flex items-center justify-center py-4">
                     <button
                       onClick={() => setShowAllTeilnehmer(false)}
@@ -608,7 +611,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
             ) : (
               <>
                 {/* Show first 3 participants */}
-                {activeTeilnehmer.slice(0, 3).map((teilnehmer) => {
+                {activeTeilnehmerWithHours.slice(0, 3).map((teilnehmer) => {
                 const bookedHours = teilnehmer.booked_hours || 0;
                 const completedHours = teilnehmer.completed_hours || 0;
                 const progressPercent = bookedHours > 0 ? Math.min((completedHours / bookedHours) * 100, 100) : 0;
@@ -676,7 +679,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
               })}
 
                 {/* Load more button */}
-                {activeTeilnehmer.length > 3 && (
+                {activeTeilnehmerWithHours.length > 3 && (
                   <div className="relative">
                     <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-50 pointer-events-none" style={{ height: '40px' }}></div>
                     <div className="flex items-center justify-center py-4 relative z-10">
@@ -685,7 +688,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
                         className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-900 hover:bg-gray-50 transition-colors shadow-sm"
                       >
                         <ChevronDown className="h-4 w-4 mr-2" />
-                        {activeTeilnehmer.length - 3} weitere Teilnehmer laden
+                        {activeTeilnehmerWithHours.length - 3} weitere Teilnehmer laden
                       </button>
                     </div>
                   </div>
