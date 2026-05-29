@@ -1152,7 +1152,10 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
     try {
       const { data, error } = await supabase
         .from('participant_hours')
-        .select('*')
+        .select(`
+          *,
+          author:profiles!participant_hours_author_id_fkey(full_name)
+        `)
         .eq('teilnehmer_id', teilnehmerId)
         .order('date', { ascending: false });
       if (error) throw error;
@@ -5409,7 +5412,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                               </div>
                             </div>
                             <div className="text-right flex items-center space-x-3">
-                              <div className="text-xs text-gray-500">Eingetragen am</div>
+                              <div className="text-xs text-gray-500">Eingetragen von {hour.author?.full_name || 'Unbekannt'}</div>
                               <div className="text-sm text-gray-900">
                                 {new Date(hour.created_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}, {new Date(hour.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
                               </div>
