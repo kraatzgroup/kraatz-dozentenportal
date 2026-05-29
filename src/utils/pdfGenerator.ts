@@ -320,39 +320,37 @@ export const generateTeilnehmerStundenPDF = async (data: TeilnehmerPDFData) => {
   yPosition += 20;
   
   // Summary section
-  checkPageBreak(40);
+  // Calculate required height based on dozenten lines
+  const dozentenText = data.uniqueDozenten.join(', ');
+  const maxDozentenWidth = contentWidth - 105;
+  const dozentenLines = doc.splitTextToSize(`Dozenten: ${dozentenText}`, maxDozentenWidth);
+  const extraLines = Math.max(0, dozentenLines.length - 1);
+  const summaryBoxHeight = 35 + (extraLines * 6);
+
+  checkPageBreak(summaryBoxHeight + 20);
   doc.setFillColor(240, 248, 255);
-  doc.rect(margin, yPosition, contentWidth, 35, 'F');
+  doc.rect(margin, yPosition, contentWidth, summaryBoxHeight, 'F');
   doc.setDrawColor(200, 200, 200);
   doc.setLineWidth(0.5);
-  doc.rect(margin, yPosition, contentWidth, 35);
-  
+  doc.rect(margin, yPosition, contentWidth, summaryBoxHeight);
+
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(0, 0, 0);
   addText('Zusammenfassung', margin + 5, yPosition + 10);
-  
+
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
   addText(`Gesamtstunden: ${data.totalHours.toFixed(2).replace('.', ',')} Std`, margin + 5, yPosition + 20);
   addText(`Anzahl Einträge: ${data.hours.length}`, margin + 5, yPosition + 28);
   addText(`Anzahl Dozenten: ${data.uniqueDozenten.length}`, margin + 100, yPosition + 20);
-  
-  // List dozenten with proper text wrapping
-  const dozentenText = data.uniqueDozenten.join(', ');
-  const maxDozentenWidth = contentWidth - 105;
-  const dozentenLines = doc.splitTextToSize(`Dozenten: ${dozentenText}`, maxDozentenWidth);
-  
+
   // Display all lines of dozenten names
   dozentenLines.forEach((line, index) => {
     addText(line, margin + 100, yPosition + 28 + (index * 6));
   });
-  
-  // Adjust yPosition based on number of lines used
-  const extraLines = Math.max(0, dozentenLines.length - 1);
-  yPosition += extraLines * 6;
-  
-  yPosition += 45;
+
+  yPosition += summaryBoxHeight + 10;
   
   // Hours entries header
   checkPageBreak(20);
