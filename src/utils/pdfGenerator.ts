@@ -426,28 +426,32 @@ export const generateTeilnehmerStundenPDF = async (data: TeilnehmerPDFData) => {
     
     // Table rows
     data.hours.forEach((entry, index) => {
-      const rowHeight = 12;
+      // Calculate row height based on dozent name length
+      const dozentNameLines = doc.splitTextToSize(entry.dozent_name, colWidths.dozent - 4);
+      const dozentLineCount = dozentNameLines.length;
+      const rowHeight = 12 + ((dozentLineCount - 1) * 6);
+
       checkPageBreak(rowHeight);
-      
+
       // Alternating row colors
       if (index % 2 === 0) {
         doc.setFillColor(250, 250, 250);
         doc.rect(margin, yPosition, contentWidth, rowHeight, 'F');
       }
-      
+
       // Row border
       doc.setDrawColor(220, 220, 220);
       doc.setLineWidth(0.3);
       doc.rect(margin, yPosition, contentWidth, rowHeight);
-      
+
       // Cell content
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(0, 0, 0);
-      
+
       xPos = margin + 2;
       const cellY = yPosition + 8;
-      
+
       // Date
       const formattedDate = new Date(entry.date).toLocaleDateString('de-DE', {
         day: '2-digit',
@@ -455,41 +459,50 @@ export const generateTeilnehmerStundenPDF = async (data: TeilnehmerPDFData) => {
         year: 'numeric'
       });
       addText(formattedDate, xPos, cellY);
-      
-      // Dozent
+
+      // Dozent - with text wrapping
       xPos += colWidths.date;
-      addText(entry.dozent_name, xPos, cellY);
-      
-      // Hours
+      if (dozentLineCount > 1) {
+        dozentNameLines.forEach((line: string, lineIndex: number) => {
+          addText(line, xPos, cellY + (lineIndex * 6));
+        });
+      } else {
+        addText(entry.dozent_name, xPos, cellY);
+      }
+
+      // Hours - adjust position based on dozent lines
       xPos += colWidths.dozent;
+      const hoursY = cellY + ((dozentLineCount > 1) ? 3 : 0);
       doc.setFont('helvetica', 'bold');
-      addText(`${entry.hours}h`, xPos, cellY);
+      addText(`${entry.hours}h`, xPos, hoursY);
       doc.setFont('helvetica', 'normal');
-      
-      // Rechtsgebiet
+
+      // Rechtsgebiet - adjust position based on dozent lines
       xPos += colWidths.hours;
+      const rechtsgebietY = cellY + ((dozentLineCount > 1) ? 3 : 0);
       if (entry.legal_area) {
         doc.setFontSize(8);
-        addText(entry.legal_area, xPos, cellY);
+        addText(entry.legal_area, xPos, rechtsgebietY);
         doc.setFontSize(9);
       } else {
         doc.setFont('helvetica', 'italic');
-        addText('-', xPos, cellY);
+        addText('-', xPos, rechtsgebietY);
         doc.setFont('helvetica', 'normal');
       }
-      
-      // Description
+
+      // Description - adjust position based on dozent lines
       xPos += colWidths.rechtsgebiet;
+      const descriptionY = cellY + ((dozentLineCount > 1) ? 3 : 0);
       if (entry.description) {
         const maxDescWidth = colWidths.description - 4;
         const lines = doc.splitTextToSize(entry.description, maxDescWidth);
         const maxLines = 1; // Limit to 1 line per row
         const displayLines = lines.slice(0, maxLines);
-        
-        addText(displayLines[0] || '', xPos, cellY);
-        
+
+        addText(displayLines[0] || '', xPos, descriptionY);
+
         if (lines.length > maxLines) {
-          addText('...', xPos + doc.getTextWidth(displayLines[0]) + 2, cellY);
+          addText('...', xPos + doc.getTextWidth(displayLines[0]) + 2, descriptionY);
         }
       }
       
