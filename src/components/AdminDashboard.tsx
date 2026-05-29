@@ -1152,14 +1152,30 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
     try {
       const { data, error } = await supabase
         .from('participant_hours')
-        .select(`
-          *,
-          author:profiles!participant_hours_author_id_fkey(full_name)
-        `)
+        .select('*')
         .eq('teilnehmer_id', teilnehmerId)
         .order('date', { ascending: false });
       if (error) throw error;
-      setParticipantHours(data || []);
+
+      // Fetch author names separately
+      const authorIds = [...new Set(data?.map(h => h.author_id).filter(Boolean) || [])];
+      let authorMap: Record<string, string> = {};
+      if (authorIds.length > 0) {
+        const { data: authors } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', authorIds);
+        if (authors) {
+          authorMap = authors.reduce((acc, a) => ({ ...acc, [a.id]: a.full_name }), {});
+        }
+      }
+
+      const hoursWithAuthors = (data || []).map(h => ({
+        ...h,
+        author: { full_name: authorMap[h.author_id] || 'Unbekannt' }
+      }));
+
+      setParticipantHours(hoursWithAuthors);
     } catch (error) {
       console.error('Error fetching participant hours:', error);
       addToast('Fehler beim Laden der Stunden', 'error');
