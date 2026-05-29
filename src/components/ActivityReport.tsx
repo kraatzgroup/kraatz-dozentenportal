@@ -230,20 +230,20 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
 
   const fetchActiveTeilnehmer = async () => {
     if (!targetDozentId) return;
-    
+
     try {
       const startDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
       const lastDayOfMonth = new Date(selectedYear, selectedMonth, 0).getDate();
       const endDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
-      
+
       // Fetch all teilnehmer assigned to this dozent
       const { data: teilnehmerData, error: teilnehmerError } = await supabase
         .from('teilnehmer')
         .select('*')
         .or(`dozent_zivilrecht_id.eq.${targetDozentId},dozent_strafrecht_id.eq.${targetDozentId},dozent_oeffentliches_recht_id.eq.${targetDozentId}`);
-      
+
       if (teilnehmerError) throw teilnehmerError;
-      
+
       // Filter by exam type and active contract
       const filteredTeilnehmer = (teilnehmerData || []).filter(t => {
         // Check if contract is active
@@ -252,7 +252,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
         const start = new Date(t.contract_start);
         const end = new Date(t.contract_end);
         if (!(now >= start && now <= end)) return false;
-        
+
         // Filter by exam type
         if (examType === '2. Staatsexamen') {
           // Only show if study_goal includes "2. Staatsexamen" and NOT elite_kleingruppe
@@ -267,27 +267,55 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
         }
         return true;
       });
-      
-      // Fetch hours for each teilnehmer for the selected month
+
+      // Fetch contracts for all teilnehmer to get booked hours
+      const teilnehmerIds = filteredTeilnehmer.map(t => t.id);
+      const { data: contractsData } = await supabase
+        .from('contracts')
+        .select('id, teilnehmer_id, total_hours')
+        .in('teilnehmer_id', teilnehmerIds);
+
+      const contractsByTeilnehmer: Record<string, any> = {};
+      (contractsData || []).forEach(c => {
+        if (!contractsByTeilnehmer[c.teilnehmer_id]) {
+          contractsByTeilnehmer[c.teilnehmer_id] = { totalHours: 0 };
+        }
+        contractsByTeilnehmer[c.teilnehmer_id].totalHours += c.total_hours || 0;
+      });
+
+      // Fetch hours for each teilnehmer for the selected month and total hours
       const teilnehmerWithHours: TeilnehmerWithHours[] = await Promise.all(
         filteredTeilnehmer.map(async (t) => {
-          const { data: hoursData } = await supabase
+          // Fetch monthly hours
+          const { data: monthlyHoursData } = await supabase
             .from('participant_hours')
             .select('hours')
             .eq('teilnehmer_id', t.id)
             .eq('dozent_id', targetDozentId)
             .gte('date', startDate)
             .lte('date', endDate);
-          
-          const monthly_hours = (hoursData || []).reduce((sum, h) => sum + parseFloat(h.hours.toString()), 0);
-          
+
+          const monthly_hours = (monthlyHoursData || []).reduce((sum, h) => sum + parseFloat(h.hours.toString()), 0);
+
+          // Fetch total hours (all time)
+          const { data: totalHoursData } = await supabase
+            .from('participant_hours')
+            .select('hours')
+            .eq('teilnehmer_id', t.id);
+
+          const completed_hours = (totalHoursData || []).reduce((sum, h) => sum + parseFloat(h.hours.toString()), 0);
+
+          const booked_hours = contractsByTeilnehmer[t.id]?.totalHours || t.booked_hours || 0;
+
           return {
             ...t,
-            monthly_hours
+            monthly_hours,
+            completed_hours,
+            booked_hours
           };
         })
       );
-      
+
       setActiveTeilnehmer(teilnehmerWithHours);
     } catch (error: any) {
       console.error('Error fetching active teilnehmer:', error);
