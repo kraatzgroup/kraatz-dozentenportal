@@ -269,13 +269,18 @@ interface TeilnehmerPDFData {
 
 export const generateTeilnehmerStundenPDF = async (data: TeilnehmerPDFData) => {
   const { jsPDF } = await import('jspdf');
-  
+
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 20;
   const contentWidth = pageWidth - 2 * margin;
-  
+
+  // Company colors
+  const primaryColor = { r: 59, g: 130, b: 246 }; // Blue
+  const secondaryColor = { r: 245, g: 158, b: 11 }; // Orange
+  const bgColor = { r: 240, g: 248, b: 255 }; // Light blue
+
   let yPosition = margin;
   
   // Helper function to check if we need a new page
@@ -295,11 +300,28 @@ export const generateTeilnehmerStundenPDF = async (data: TeilnehmerPDFData) => {
     doc.text(cleanText, x, y, options);
   };
   
-  // Header
+  // Header with logo
+  try {
+    const logoResponse = await fetch('/KraatzGroup_Logo_web.png');
+    const logoBlob = await logoResponse.blob();
+    const logoDataUrl = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.readAsDataURL(logoBlob);
+    });
+
+    // Add logo to the right side of the header
+    doc.addImage(logoDataUrl, 'PNG', pageWidth - margin - 40, yPosition, 35, 35);
+  } catch (error) {
+    console.error('Error loading logo:', error);
+  }
+
+  // Title
   doc.setFontSize(24);
   doc.setFont('helvetica', 'bold');
-  addText('Stundenübersicht', pageWidth / 2, yPosition, { align: 'center' });
-  yPosition += 20;
+  doc.setTextColor(primaryColor.r, primaryColor.g, primaryColor.b);
+  addText('Stundenübersicht', margin, yPosition + 20);
+  yPosition += 45;
   
   // Teilnehmer info
   doc.setFontSize(14);
@@ -328,25 +350,26 @@ export const generateTeilnehmerStundenPDF = async (data: TeilnehmerPDFData) => {
   const summaryBoxHeight = 35 + (extraLines * 6);
 
   checkPageBreak(summaryBoxHeight + 20);
-  doc.setFillColor(240, 248, 255);
+  doc.setFillColor(bgColor.r, bgColor.g, bgColor.b);
   doc.rect(margin, yPosition, contentWidth, summaryBoxHeight, 'F');
-  doc.setDrawColor(200, 200, 200);
+  doc.setDrawColor(primaryColor.r, primaryColor.g, primaryColor.b);
   doc.setLineWidth(0.5);
   doc.rect(margin, yPosition, contentWidth, summaryBoxHeight);
 
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(0, 0, 0);
+  doc.setTextColor(primaryColor.r, primaryColor.g, primaryColor.b);
   addText('Zusammenfassung', margin + 5, yPosition + 10);
 
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
+  doc.setTextColor(0, 0, 0);
   addText(`Gesamtstunden: ${data.totalHours.toFixed(2).replace('.', ',')} Std`, margin + 5, yPosition + 20);
   addText(`Anzahl Einträge: ${data.hours.length}`, margin + 5, yPosition + 28);
   addText(`Anzahl Dozenten: ${data.uniqueDozenten.length}`, margin + 100, yPosition + 20);
 
   // Display all lines of dozenten names
-  dozentenLines.forEach((line, index) => {
+  dozentenLines.forEach((line: string, index: number) => {
     addText(line, margin + 100, yPosition + 28 + (index * 6));
   });
 
@@ -356,6 +379,7 @@ export const generateTeilnehmerStundenPDF = async (data: TeilnehmerPDFData) => {
   checkPageBreak(20);
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
+  doc.setTextColor(primaryColor.r, primaryColor.g, primaryColor.b);
   addText('Alle Stundeneinträge (chronologisch)', margin, yPosition);
   yPosition += 15;
   
@@ -372,19 +396,19 @@ export const generateTeilnehmerStundenPDF = async (data: TeilnehmerPDFData) => {
       rechtsgebiet: 30,
       description: contentWidth - 105
     };
-    
+
     // Table header
     checkPageBreak(12);
-    doc.setFillColor(245, 245, 245);
+    doc.setFillColor(primaryColor.r, primaryColor.g, primaryColor.b);
     doc.rect(margin, yPosition, contentWidth, 10, 'F');
-    doc.setDrawColor(200, 200, 200);
+    doc.setDrawColor(primaryColor.r, primaryColor.g, primaryColor.b);
     doc.setLineWidth(0.5);
     doc.rect(margin, yPosition, contentWidth, 10);
-    
+
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(60, 60, 60);
-    
+    doc.setTextColor(255, 255, 255);
+
     let xPos = margin + 2;
     addText('Datum', xPos, yPosition + 7);
     xPos += colWidths.date;
@@ -469,19 +493,19 @@ export const generateTeilnehmerStundenPDF = async (data: TeilnehmerPDFData) => {
       
       yPosition += rowHeight;
     });
-    
+
     // Total sum row at end of table
     checkPageBreak(16);
-    doc.setFillColor(230, 230, 230);
+    doc.setFillColor(secondaryColor.r, secondaryColor.g, secondaryColor.b);
     doc.rect(margin, yPosition, contentWidth, 12, 'F');
-    doc.setDrawColor(200, 200, 200);
+    doc.setDrawColor(primaryColor.r, primaryColor.g, primaryColor.b);
     doc.setLineWidth(0.5);
     doc.rect(margin, yPosition, contentWidth, 12);
-    
+
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(0, 0, 0);
-    
+
     // Position total in the right bottom corner
     const totalText = `GESAMT: ${data.totalHours.toFixed(2).replace('.', ',')} Std`;
     const totalTextWidth = doc.getTextWidth(totalText);
