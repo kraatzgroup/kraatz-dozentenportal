@@ -26,6 +26,7 @@ const DozentenPortalTutorials = lazy(() => import('./components/DozentenTutorial
     pageSubtitle: 'Videos mit Anleitungen und Erklärungen für das Dozenten-Portal',
   })
 })));
+const TypeformSurvey = lazy(() => import('./components/TypeformSurvey').then(m => ({ default: m.TypeformSurvey })));
 import { useAuthStore } from './store/authStore';
 import { usePreviewStore } from './store/previewStore';
 import { PreviewBanner } from './components/PreviewBanner';
@@ -208,6 +209,7 @@ function App() {
           {/* Common routes */}
           <Route path="/messages" element={<Chat />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/feedback" element={<TypeformSurvey />} />
           
           {/* Dozenten-Ordner Routen */}
           <Route path="/rechnungen/:id" element={<DozentenRechnungen />} />
