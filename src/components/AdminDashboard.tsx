@@ -5317,7 +5317,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="bg-white overflow-hidden shadow rounded-lg">
                     <div className="p-5">
                       <div className="flex items-center">
@@ -5326,7 +5326,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                         </div>
                         <div className="ml-5 w-0 flex-1">
                           <dl>
-                            <dt className="text-sm font-medium text-gray-500 truncate">Meine Stunden</dt>
+                            <dt className="text-sm font-medium text-gray-500 truncate">Stunden</dt>
                             <dd className="text-lg font-medium text-gray-900">
                               {participantHours.reduce((sum, h) => sum + (h.hours || 0), 0).toFixed(2)} Std
                             </dd>
@@ -5343,25 +5343,8 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                         </div>
                         <div className="ml-5 w-0 flex-1">
                           <dl>
-                            <dt className="text-sm font-medium text-gray-500 truncate">Meine Einträge</dt>
+                            <dt className="text-sm font-medium text-gray-500 truncate">Einträge</dt>
                             <dd className="text-lg font-medium text-gray-900">{participantHours.length}</dd>
-                          </dl>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="bg-white overflow-hidden shadow rounded-lg">
-                    <div className="p-5">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0">
-                          <GraduationCap className="h-8 w-8 text-blue-600" />
-                        </div>
-                        <div className="ml-5 w-0 flex-1">
-                          <dl>
-                            <dt className="text-sm font-medium text-gray-500 truncate">Rechtsgebiete</dt>
-                            <dd className="text-lg font-medium text-gray-900">
-                              {new Set(participantHours.map(h => h.legal_area)).size}
-                            </dd>
                           </dl>
                         </div>
                       </div>
