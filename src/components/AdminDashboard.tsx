@@ -25,6 +25,7 @@ import { VertriebDashboard } from './VertriebDashboard';
 import { IntegrationsTab } from './IntegrationsTab';
 import { DozentenDashboard } from './DozentenDashboard';
 import { EliteKleingruppe } from './EliteKleingruppe';
+import { generateTeilnehmerStundenPDF } from '../utils/pdfGenerator';
 
 // Helper function to check if teilnehmer is active based on contract dates
 const isContractActive = (t: any): boolean => {
@@ -5331,6 +5332,37 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                   <div className="flex space-x-2">
                     <button
                       type="button"
+                      onClick={async () => {
+                        try {
+                          const hoursWithDozentNames = await Promise.all(
+                            participantHours.map(async (h) => {
+                              const { data: dozent } = await supabase
+                                .from('profiles')
+                                .select('full_name, email')
+                                .eq('id', h.dozent_id)
+                                .single();
+                              return {
+                                ...h,
+                                dozent_name: dozent?.full_name || 'Unbekannt',
+                                dozent_email: dozent?.email || ''
+                              };
+                            })
+                          );
+
+                          const uniqueDozenten = [...new Set(hoursWithDozentNames.map(h => h.dozent_name))];
+                          const totalHours = participantHours.reduce((sum, h) => sum + (h.hours || 0), 0);
+
+                          await generateTeilnehmerStundenPDF({
+                            teilnehmerName: selectedTeilnehmerForHours.name,
+                            hours: hoursWithDozentNames,
+                            totalHours,
+                            uniqueDozenten
+                          });
+                        } catch (error) {
+                          console.error('Error generating PDF:', error);
+                          addToast('Fehler beim Erstellen des Berichts', 'error');
+                        }
+                      }}
                       className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-primary/90"
                     >
                       <FileText className="h-4 w-4 mr-2" />
