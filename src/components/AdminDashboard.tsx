@@ -849,8 +849,10 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
           sonstiges: { used: 0, total: 0 }
         };
         const freeHrs = freeHoursByTeilnehmer[t.id];
-        // Prefer package-level hours (matches modal calculation), fall back to participant_hours
-        const baseCompletedHours = packageHours?.usedHours ?? hoursMap[t.id] ?? 0;
+        // Always include participant_hours in the calculation
+        const participantHoursUsed = hoursMap[t.id] ?? 0;
+        const packageUsedHours = packageHours?.usedHours ?? 0;
+        const baseCompletedHours = Math.max(participantHoursUsed, packageUsedHours);
         const completedHours = baseCompletedHours + (freeHrs?.used || 0);
         const baseTotalHours = packageHours?.totalHours || contractData?.totalHours || t.booked_hours || 0;
         const totalHours = baseTotalHours + (freeHrs?.total || 0);
