@@ -17,8 +17,6 @@ interface FeedbackResponse {
   q5_exam_improvement: string | null;
   q6_material_quality: number | null;
   q7_material_help: string | null;
-  q8_enjoy_individual: string | null;
-  q9_more_than_group: string | null;
   q10_video_quality: number | null;
   q11_video_improvement: string | null;
   q12_timing_works: string | null;
@@ -159,8 +157,6 @@ export const FeedbackAdmin = () => {
       'Klausuren Verbesserung',
       'Material Qualität',
       'Material Hilfe',
-      'Einzelunterricht genießen',
-      'Mehr als Gruppenkurs',
       'Video Qualität',
       'Video Verbesserung',
       'Terminabsprache funktioniert',
@@ -192,8 +188,6 @@ export const FeedbackAdmin = () => {
       r.q5_exam_improvement || '',
       r.q6_material_quality || '',
       r.q7_material_help || '',
-      r.q8_enjoy_individual || '',
-      r.q9_more_than_group || '',
       r.q10_video_quality || '',
       r.q11_video_improvement || '',
       r.q12_timing_works || '',
@@ -330,7 +324,7 @@ export const FeedbackAdmin = () => {
             </div>
           </div>
 
-      <div className="mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+      <div className="mb-6 flex gap-4 items-center justify-between">
         <div className="flex items-center gap-2 flex-1">
           <Filter className="w-5 h-5 text-gray-400" />
           <input
@@ -408,139 +402,183 @@ export const FeedbackAdmin = () => {
                             </button>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <p className="font-medium text-gray-700 mb-1">Quelle</p>
-                              <p className="text-gray-600">{response.q2_source || '-'}</p>
-                            </div>
-                            <div>
-                              <p className="font-medium text-gray-700 mb-1">Klausuren Qualität</p>
-                              <p className="text-gray-600">{response.q3_exam_quality || '-'}</p>
-                            </div>
-                            <div>
-                              <p className="font-medium text-gray-700 mb-1">Klausuren Hilfe</p>
-                              <p className="text-gray-600">{response.q4_exam_help || '-'}</p>
-                            </div>
-                            <div>
-                              <p className="font-medium text-gray-700 mb-1">Material Qualität</p>
-                              <p className="text-gray-600">{response.q6_material_quality || '-'}</p>
-                            </div>
-                            <div>
-                              <p className="font-medium text-gray-700 mb-1">Einzelunterricht genießen</p>
-                              <p className="text-gray-600">{response.q8_enjoy_individual || '-'}</p>
-                            </div>
-                            <div>
-                              <p className="font-medium text-gray-700 mb-1">Mehr als Gruppenkurs</p>
-                              <p className="text-gray-600">{response.q9_more_than_group || '-'}</p>
-                            </div>
-                            <div>
-                              <p className="font-medium text-gray-700 mb-1">Video Qualität</p>
-                              <p className="text-gray-600">{response.q10_video_quality || '-'}</p>
-                            </div>
-                            <div>
-                              <p className="font-medium text-gray-700 mb-1">Terminabsprache funktioniert</p>
-                              <p className="text-gray-600">{response.q12_timing_works || '-'}</p>
-                            </div>
-                            <div>
-                              <p className="font-medium text-gray-700 mb-1">Empfehlen</p>
-                              <p className="text-gray-600">{response.q26_recommend || '-'}</p>
-                            </div>
+                          <div className="space-y-4 text-sm">
+                            {response.q2_source && (
+                              <div className="bg-gray-50 p-3 rounded-lg">
+                                <p className="font-medium text-gray-700 mb-1">Wie sind Sie auf den Unterricht der Kraatz Group aufmerksam geworden?</p>
+                                <p className="text-gray-600">{response.q2_source}</p>
+                              </div>
+                            )}
+                            {response.q3_exam_quality && (
+                              <div className="bg-gray-50 p-3 rounded-lg">
+                                <p className="font-medium text-gray-700 mb-1">Welche Qualität haben für Sie die unterrichtsbegleitenden Klausuren (ohne Zusatzmaterialien)? (1 = Sehr gut, 6 = ungenügend)</p>
+                                <p className="text-gray-600">{response.q3_exam_quality}</p>
+                              </div>
+                            )}
+                            {response.q4_exam_help && (
+                              <div className="bg-gray-50 p-3 rounded-lg">
+                                <p className="font-medium text-gray-700 mb-1">Sind Ihnen diese eine Hilfe beim Verstehen der Themenkomplexe?</p>
+                                <p className="text-gray-600">{response.q4_exam_help}</p>
+                              </div>
+                            )}
+                            {response.q5_exam_improvement && (
+                              <div className="bg-gray-50 p-3 rounded-lg">
+                                <p className="font-medium text-gray-700 mb-1">Was hätte besser gemacht werden können und sollen? (Klausuren)</p>
+                                <p className="text-gray-600">{response.q5_exam_improvement}</p>
+                              </div>
+                            )}
+                            {response.q6_material_quality && (
+                              <div className="bg-gray-50 p-3 rounded-lg">
+                                <p className="font-medium text-gray-700 mb-1">Welche Qualität haben für Sie die unterrichtsbegleitenden Zusatzmaterialien (ohne Klausuren)? (1 = Sehr gut, 6 = Ungenügend)</p>
+                                <p className="text-gray-600">{response.q6_material_quality}</p>
+                              </div>
+                            )}
+                            {response.q7_material_help && (
+                              <div className="bg-gray-50 p-3 rounded-lg">
+                                <p className="font-medium text-gray-700 mb-1">Sind Ihnen diese eine Hilfe beim Verstehen der Themenkomplexe? (Materialien)</p>
+                                <p className="text-gray-600">{response.q7_material_help}</p>
+                              </div>
+                            )}
+                            {response.q10_video_quality && (
+                              <div className="bg-gray-50 p-3 rounded-lg">
+                                <p className="font-medium text-gray-700 mb-1">Wie gefallen Ihnen die Videos aus dem Kraatz Club? (1 = Sehr gut, 6 = Ungenügend)</p>
+                                <p className="text-gray-600">{response.q10_video_quality}</p>
+                              </div>
+                            )}
+                            {response.q11_video_improvement && (
+                              <div className="bg-gray-50 p-3 rounded-lg">
+                                <p className="font-medium text-gray-700 mb-1">Was hätte besser gemacht werden können und sollen? (Videos)</p>
+                                <p className="text-gray-600">{response.q11_video_improvement}</p>
+                              </div>
+                            )}
+                            {response.q12_timing_works && (
+                              <div className="bg-gray-50 p-3 rounded-lg">
+                                <p className="font-medium text-gray-700 mb-1">Funktioniert die Terminabsprache mit den Dozenten? Erhalten Sie die Materialien pünktlich?</p>
+                                <p className="text-gray-600">{response.q12_timing_works}</p>
+                              </div>
+                            )}
+                            {response.q13_timing_improvement && (
+                              <div className="bg-gray-50 p-3 rounded-lg">
+                                <p className="font-medium text-gray-700 mb-1">Was hätte besser gemacht werden können und sollen? (Terminabsprache)</p>
+                                <p className="text-gray-600">{response.q13_timing_improvement}</p>
+                              </div>
+                            )}
+                            {response.q26_recommend && (
+                              <div className="bg-gray-50 p-3 rounded-lg">
+                                <p className="font-medium text-gray-700 mb-1">Würden Sie die Elite Kleingruppe der Kraatz Group zum jetzigen Zeitpunkt empfehlen?</p>
+                                <p className="text-gray-600">{response.q26_recommend}</p>
+                              </div>
+                            )}
+                            {response.q27_not_recommend_reason && (
+                              <div className="bg-gray-50 p-3 rounded-lg">
+                                <p className="font-medium text-gray-700 mb-1">Was hätte besser gemacht werden können und sollen? (Nicht empfehlen)</p>
+                                <p className="text-gray-600">{response.q27_not_recommend_reason}</p>
+                              </div>
+                            )}
+                            {response.q28_final_comments && (
+                              <div className="bg-gray-50 p-3 rounded-lg">
+                                <p className="font-medium text-gray-700 mb-1">Abschließend haben Sie hier die Möglichkeit für sonstige Bemerkungen, sei es Lob, Kritik oder Verbesserungsvorschläge:</p>
+                                <p className="text-gray-600">{response.q28_final_comments}</p>
+                              </div>
+                            )}
                           </div>
 
-                          {(response.q5_exam_improvement || response.q11_video_improvement || 
-                            response.q13_timing_improvement || response.q27_not_recommend_reason ||
-                            response.q28_final_comments) && (
-                            <div className="mt-4 pt-4 border-t border-gray-200">
-                              <p className="font-medium text-gray-700 mb-2">Kommentare & Verbesserungsvorschläge</p>
-                              <div className="space-y-2 text-sm text-gray-600">
-                                {response.q5_exam_improvement && (
-                                  <p><span className="font-medium">Klausuren:</span> {response.q5_exam_improvement}</p>
-                                )}
-                                {response.q11_video_improvement && (
-                                  <p><span className="font-medium">Videos:</span> {response.q11_video_improvement}</p>
-                                )}
-                                {response.q13_timing_improvement && (
-                                  <p><span className="font-medium">Terminabsprache:</span> {response.q13_timing_improvement}</p>
-                                )}
-                                {response.q27_not_recommend_reason && (
-                                  <p><span className="font-medium">Nicht empfehlen:</span> {response.q27_not_recommend_reason}</p>
-                                )}
-                                {response.q28_final_comments && (
-                                  <p><span className="font-medium">Sonstiges:</span> {response.q28_final_comments}</p>
-                                )}
-                              </div>
-                            </div>
-                          )}
-
-                          {(response.q14_zivil_didaktik || response.q15_zivil_freundlichkeit || 
+                          {(response.q14_zivil_didaktik || response.q15_zivil_freundlichkeit ||
                             response.q16_zivil_souveranitaet || response.q17_zivil_comments) && (
-                            <div className="mt-4 pt-4 border-t border-gray-200">
-                              <p className="font-medium text-gray-700 mb-2">Zivilrecht Dozent</p>
-                              <div className="grid grid-cols-3 gap-2 text-sm">
-                                <div>
-                                  <p className="text-gray-500">Didaktik</p>
-                                  <p className="text-gray-600">{response.q14_zivil_didaktik || '-'}</p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500">Freundlichkeit</p>
-                                  <p className="text-gray-600">{response.q15_zivil_freundlichkeit || '-'}</p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500">Souveränität</p>
-                                  <p className="text-gray-600">{response.q16_zivil_souveranitaet || '-'}</p>
-                                </div>
+                            <div className="mt-6 pt-4 border-t border-gray-200">
+                              <p className="font-medium text-gray-700 mb-4 text-base">Zivilrecht Dozent</p>
+                              <div className="space-y-3 text-sm">
+                                {response.q14_zivil_didaktik && (
+                                  <div className="bg-gray-50 p-3 rounded-lg">
+                                    <p className="font-medium text-gray-700 mb-1">Didaktik - Wie gelingt es dem Dozenten, die teils schwierigen Themen zu vermitteln und "rüberzubringen"? Wie ist seine Unterrichtsführung? (1 = Sehr gut, 6 = ungenügend)</p>
+                                    <p className="text-gray-600">{response.q14_zivil_didaktik}</p>
+                                  </div>
+                                )}
+                                {response.q15_zivil_freundlichkeit && (
+                                  <div className="bg-gray-50 p-3 rounded-lg">
+                                    <p className="font-medium text-gray-700 mb-1">Freundlichkeit - Hat der Dozent immer ein "offenes Ohr" für Sie und wie geht er mit Ihren individuellen Problemen bzgl. der anstehenden Prüfung um? (1 = Sehr gut, 6 = ungenügend)</p>
+                                    <p className="text-gray-600">{response.q15_zivil_freundlichkeit}</p>
+                                  </div>
+                                )}
+                                {response.q16_zivil_souveranitaet && (
+                                  <div className="bg-gray-50 p-3 rounded-lg">
+                                    <p className="font-medium text-gray-700 mb-1">Souveränität - Wie souverän wirkt der Dozent auf Sie? Behält der Dozent auch bei schwierigen Themenkomplexen und Nachfragen Ihrerseits stets die Souveränität und gerät nicht ins "Wanken"? (1 = Sehr gut, 6 = ungenügend)</p>
+                                    <p className="text-gray-600">{response.q16_zivil_souveranitaet}</p>
+                                  </div>
+                                )}
+                                {response.q17_zivil_comments && (
+                                  <div className="bg-gray-50 p-3 rounded-lg">
+                                    <p className="font-medium text-gray-700 mb-1">Sonstige Anmerkungen zum Zivilrecht Dozenten</p>
+                                    <p className="text-gray-600 italic">{response.q17_zivil_comments}</p>
+                                  </div>
+                                )}
                               </div>
-                              {response.q17_zivil_comments && (
-                                <p className="mt-2 text-sm text-gray-600 italic">{response.q17_zivil_comments}</p>
-                              )}
                             </div>
                           )}
 
-                          {(response.q18_oef_didaktik || response.q19_oef_freundlichkeit || 
+                          {(response.q18_oef_didaktik || response.q19_oef_freundlichkeit ||
                             response.q20_oef_souveranitaet || response.q21_oef_comments) && (
-                            <div className="mt-4 pt-4 border-t border-gray-200">
-                              <p className="font-medium text-gray-700 mb-2">Öffentliches Recht Dozent</p>
-                              <div className="grid grid-cols-3 gap-2 text-sm">
-                                <div>
-                                  <p className="text-gray-500">Didaktik</p>
-                                  <p className="text-gray-600">{response.q18_oef_didaktik || '-'}</p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500">Freundlichkeit</p>
-                                  <p className="text-gray-600">{response.q19_oef_freundlichkeit || '-'}</p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500">Souveränität</p>
-                                  <p className="text-gray-600">{response.q20_oef_souveranitaet || '-'}</p>
-                                </div>
+                            <div className="mt-6 pt-4 border-t border-gray-200">
+                              <p className="font-medium text-gray-700 mb-4 text-base">Öffentliches Recht Dozent</p>
+                              <div className="space-y-3 text-sm">
+                                {response.q18_oef_didaktik && (
+                                  <div className="bg-gray-50 p-3 rounded-lg">
+                                    <p className="font-medium text-gray-700 mb-1">Didaktik - Wie gelingt es dem Dozenten, die teils schwierigen Themen zu vermitteln und "rüberzubringen"? Wie ist seine Unterrichtsführung? (1 = Sehr gut, 6 = ungenügend)</p>
+                                    <p className="text-gray-600">{response.q18_oef_didaktik}</p>
+                                  </div>
+                                )}
+                                {response.q19_oef_freundlichkeit && (
+                                  <div className="bg-gray-50 p-3 rounded-lg">
+                                    <p className="font-medium text-gray-700 mb-1">Freundlichkeit - Hat der Dozent immer ein "offenes Ohr" für Sie und wie geht er mit Ihren individuellen Problemen bzgl. der anstehenden Prüfung um? (1 = Sehr gut, 6 = ungenügend)</p>
+                                    <p className="text-gray-600">{response.q19_oef_freundlichkeit}</p>
+                                  </div>
+                                )}
+                                {response.q20_oef_souveranitaet && (
+                                  <div className="bg-gray-50 p-3 rounded-lg">
+                                    <p className="font-medium text-gray-700 mb-1">Souveränität - Wie souverän wirkt der Dozent auf Sie? Behält der Dozent auch bei schwierigen Themenkomplexen und Nachfragen Ihrerseits stets die Souveränität und gerät nicht ins "Wanken"? (1 = Sehr gut, 6 = ungenügend)</p>
+                                    <p className="text-gray-600">{response.q20_oef_souveranitaet}</p>
+                                  </div>
+                                )}
+                                {response.q21_oef_comments && (
+                                  <div className="bg-gray-50 p-3 rounded-lg">
+                                    <p className="font-medium text-gray-700 mb-1">Sonstige Anmerkungen zum Öffentliches Recht Dozenten</p>
+                                    <p className="text-gray-600 italic">{response.q21_oef_comments}</p>
+                                  </div>
+                                )}
                               </div>
-                              {response.q21_oef_comments && (
-                                <p className="mt-2 text-sm text-gray-600 italic">{response.q21_oef_comments}</p>
-                              )}
                             </div>
                           )}
 
-                          {(response.q22_straf_didaktik || response.q23_straf_freundlichkeit || 
+                          {(response.q22_straf_didaktik || response.q23_straf_freundlichkeit ||
                             response.q24_straf_souveranitaet || response.q25_straf_comments) && (
-                            <div className="mt-4 pt-4 border-t border-gray-200">
-                              <p className="font-medium text-gray-700 mb-2">Strafrecht Dozent</p>
-                              <div className="grid grid-cols-3 gap-2 text-sm">
-                                <div>
-                                  <p className="text-gray-500">Didaktik</p>
-                                  <p className="text-gray-600">{response.q22_straf_didaktik || '-'}</p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500">Freundlichkeit</p>
-                                  <p className="text-gray-600">{response.q23_straf_freundlichkeit || '-'}</p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500">Souveränität</p>
-                                  <p className="text-gray-600">{response.q24_straf_souveranitaet || '-'}</p>
-                                </div>
+                            <div className="mt-6 pt-4 border-t border-gray-200">
+                              <p className="font-medium text-gray-700 mb-4 text-base">Strafrecht Dozent</p>
+                              <div className="space-y-3 text-sm">
+                                {response.q22_straf_didaktik && (
+                                  <div className="bg-gray-50 p-3 rounded-lg">
+                                    <p className="font-medium text-gray-700 mb-1">Didaktik - Wie gelingt es dem Dozenten, die teils schwierigen Themen zu vermitteln und "rüberzubringen"? Wie ist seine Unterrichtsführung? (1 = Sehr gut, 6 = ungenügend)</p>
+                                    <p className="text-gray-600">{response.q22_straf_didaktik}</p>
+                                  </div>
+                                )}
+                                {response.q23_straf_freundlichkeit && (
+                                  <div className="bg-gray-50 p-3 rounded-lg">
+                                    <p className="font-medium text-gray-700 mb-1">Freundlichkeit - Hat der Dozent immer ein "offenes Ohr" für Sie und wie geht er mit Ihren individuellen Problemen bzgl. der anstehenden Prüfung um? (1 = Sehr gut, 6 = ungenügend)</p>
+                                    <p className="text-gray-600">{response.q23_straf_freundlichkeit}</p>
+                                  </div>
+                                )}
+                                {response.q24_straf_souveranitaet && (
+                                  <div className="bg-gray-50 p-3 rounded-lg">
+                                    <p className="font-medium text-gray-700 mb-1">Souveränität - Wie souverän wirkt der Dozent auf Sie? Behält der Dozent auch bei schwierigen Themenkomplexen und Nachfragen Ihrerseits stets die Souveränität und gerät nicht ins "Wanken"? (1 = Sehr gut, 6 = ungenügend)</p>
+                                    <p className="text-gray-600">{response.q24_straf_souveranitaet}</p>
+                                  </div>
+                                )}
+                                {response.q25_straf_comments && (
+                                  <div className="bg-gray-50 p-3 rounded-lg">
+                                    <p className="font-medium text-gray-700 mb-1">Sonstige Anmerkungen zum Strafrecht Dozenten</p>
+                                    <p className="text-gray-600 italic">{response.q25_straf_comments}</p>
+                                  </div>
+                                )}
                               </div>
-                              {response.q25_straf_comments && (
-                                <p className="mt-2 text-sm text-gray-600 italic">{response.q25_straf_comments}</p>
-                              )}
                             </div>
                           )}
                         </div>

@@ -1272,7 +1272,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   } bg-white rounded-lg shadow p-4 transition-all`}
                 >
                   <button
-                    onClick={() => { setSelectedFolder(null); navigate('/dashboard?tab=elite-kleingruppe'); }}
+                    onClick={() => { setSelectedFolder(null); navigate('/dashboard/elite-kleingruppe'); }}
                     className="w-full flex items-center text-left"
                   >
                     <Users className="h-6 w-6 text-primary" />

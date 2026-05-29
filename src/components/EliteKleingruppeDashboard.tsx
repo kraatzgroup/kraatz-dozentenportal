@@ -1616,7 +1616,7 @@ export function EliteKleingruppeDashboard() {
                   
                   const totalReleases = allReleases.filter(r => r.unit_type).length;
                   const progress = totalReleases > 0 ? (completedReleases.length / totalReleases) * 100 : 0;
-                  
+
                   return (
                     <div className="mb-6">
                       <div className="flex items-center justify-between mb-2">
@@ -1625,6 +1625,17 @@ export function EliteKleingruppeDashboard() {
                           {Math.round(progress)}%
                         </span>
                       </div>
+
+                      {/* Feedback Button - appears when progress >= 25% */}
+                      {progress >= 25 && (
+                        <button
+                          onClick={() => navigate('/feedback-elite-25')}
+                          className="w-full mt-4 px-4 py-3 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors font-medium flex items-center justify-center gap-2"
+                        >
+                          <HelpCircle className="w-5 h-5" />
+                          Feedback zur Elite Kleingruppe geben
+                        </button>
+                      )}
                       <div className="relative w-full bg-gray-200 rounded-full h-4">
                         <div 
                           className="bg-gradient-to-r from-primary to-blue-500 h-4 rounded-full transition-all duration-500"
@@ -1633,22 +1644,26 @@ export function EliteKleingruppeDashboard() {
                         
                         {/* Milestone markers */}
                         {[25, 50, 75].map(milestone => (
-                          <div 
+                          <div
                             key={milestone}
                             className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2"
                             style={{ left: `${milestone}%` }}
                           >
-                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
-                              progress >= milestone 
-                                ? 'bg-primary border-primary shadow-lg' 
-                                : 'bg-white border-gray-300'
-                            }`}>
+                            <button
+                              onClick={() => milestone === 25 && progress >= 25 ? navigate('/feedback-elite-25') : undefined}
+                              className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
+                                progress >= milestone
+                                  ? 'bg-primary border-primary shadow-lg'
+                                  : 'bg-white border-gray-300'
+                              } ${milestone === 25 && progress >= 25 ? 'cursor-pointer hover:scale-110' : 'cursor-default'}`}
+                              title={milestone === 25 && progress >= 25 ? 'Feedback geben' : undefined}
+                            >
                               {progress >= milestone ? (
                                 <CheckCircle className="w-3.5 h-3.5 text-white" />
                               ) : (
                                 <div className="w-2 h-2 rounded-full bg-gray-300" />
                               )}
-                            </div>
+                            </button>
                             <div className={`absolute top-7 left-1/2 -translate-x-1/2 text-xs font-medium whitespace-nowrap transition-colors ${
                               progress >= milestone ? 'text-primary' : 'text-gray-400'
                             }`}>

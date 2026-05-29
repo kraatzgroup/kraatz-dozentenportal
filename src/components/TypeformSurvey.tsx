@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { ChevronRight, ChevronLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
+import { Logo } from './Logo';
 
 interface Question {
   id: number;
@@ -27,7 +29,7 @@ const questions: Question[] = [
   },
   {
     id: 2,
-    text: 'Wie sind Sie auf den Einzelunterricht bei der Kraatz Group aufmerksam geworden?',
+    text: 'Wie sind Sie auf den Unterricht der Kraatz Group aufmerksam geworden?',
     type: 'select',
     options: ['Google', 'Social Media', 'Werbung', 'YouTube', 'Empfehlung', 'Kostenloses Angebot (Newsletter, Crashkurse)'],
     required: true
@@ -65,20 +67,6 @@ const questions: Question[] = [
     text: 'Sind Ihnen diese eine Hilfe beim Verstehen der Themenkomplexe?',
     type: 'select',
     options: ['Ja', 'Teilweise', 'Nein'],
-    required: false
-  },
-  {
-    id: 8,
-    text: 'Genießen Sie den Vorteil des Einzel-Unterrichts?',
-    type: 'select',
-    options: ['Ja', 'Nein'],
-    required: false
-  },
-  {
-    id: 9,
-    text: 'Würden Sie sagen, durch den Einzel-Unterricht mehr zu lernen und vom Unterricht mitzunehmen als in einem Gruppen-Rep-Kurs?',
-    type: 'select',
-    options: ['Ja', 'Nein'],
     required: false
   },
   {
@@ -199,7 +187,7 @@ const questions: Question[] = [
   },
   {
     id: 26,
-    text: 'Würden Sie den Einzelunterricht an bei der Kraatz Group zum jetzigen Zeitpunkt weiterempfehlen?',
+    text: 'Würden Sie die Elite Kleingruppe der Kraatz Group zum jetzigen Zeitpunkt empfehlen?',
     type: 'yes_no',
     required: false
   },
@@ -219,11 +207,13 @@ const questions: Question[] = [
 ];
 
 export const TypeformSurvey = () => {
+  const navigate = useNavigate();
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [formData, setFormData] = useState<FormData>({});
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showIntro, setShowIntro] = useState(true);
   const { fullName } = useAuthStore();
 
   // Pre-fill name fields if user is logged in
@@ -287,8 +277,6 @@ export const TypeformSurvey = () => {
           q5_exam_improvement: formData['5'] || null,
           q6_material_quality: formData['6'] ? parseInt(formData['6']) : null,
           q7_material_help: formData['7'] || null,
-          q8_enjoy_individual: formData['8'] || null,
-          q9_more_than_group: formData['9'] || null,
           q10_video_quality: formData['10'] ? parseInt(formData['10']) : null,
           q11_video_improvement: formData['11'] || null,
           q12_timing_works: formData['12'] || null,
@@ -338,14 +326,65 @@ export const TypeformSurvey = () => {
     setFormData({ ...formData, [key || currentQ.id]: value });
   };
 
-  const canProceed = currentQ.required 
-    ? formData[currentQ.id]?.length > 0 
+  const canProceed = currentQ.required
+    ? formData[currentQ.id]?.length > 0
     : true;
+
+  if (showIntro) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 md:p-12 max-w-2xl w-full text-center">
+          {/* Logo and Back Button */}
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex-1"></div>
+            <div className="flex-1 flex justify-center">
+              <Logo />
+            </div>
+            <div className="flex-1 flex justify-end">
+              <button
+                onClick={() => navigate('/dashboard?tab=dashboard')}
+                className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                Zurück zum Portal
+              </button>
+            </div>
+          </div>
+          <div className="mb-6">
+            <h2 className="text-3xl font-bold text-gray-800 mb-4">Feedback zur Elite Kleingruppe</h2>
+            <p className="text-gray-600 text-lg leading-relaxed">
+              Es ist Zeit für Ihr erstes Feedback, 25 % der Elite Kleingruppe sind bereits um. Ihr Feedback wird vertraulich behandelt und dient uns zu internen Anpassungen und dem Qualitätsmanagement.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowIntro(false)}
+            className="mt-6 px-8 py-3 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors font-medium text-lg"
+          >
+            Jetzt starten
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (isSubmitted) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl p-8 md:p-12 max-w-2xl w-full text-center">
+          {/* Logo and Back Button */}
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex-1"></div>
+            <div className="flex-1 flex justify-center">
+              <Logo />
+            </div>
+            <div className="flex-1 flex justify-end">
+              <button
+                onClick={() => navigate('/dashboard?tab=dashboard')}
+                className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                Zurück zum Portal
+              </button>
+            </div>
+          </div>
           <div className="mb-6">
             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -354,16 +393,13 @@ export const TypeformSurvey = () => {
             </div>
             <h2 className="text-3xl font-bold text-gray-800 mb-2">Vielen Dank!</h2>
             <p className="text-gray-600">Ihre Antworten wurden erfolgreich übermittelt.</p>
+            <p className="text-gray-600 mt-4">Wir wünschen Ihnen weiterhin viel Erfolg beim Lernen mit der Kraatz Group!</p>
           </div>
           <button
-            onClick={() => {
-              setCurrentQuestion(0);
-              setFormData({});
-              setIsSubmitted(false);
-            }}
+            onClick={() => navigate('/dashboard?tab=dashboard')}
             className="mt-6 px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors font-medium"
           >
-            Neue Umfrage starten
+            Zurück zum Portal
           </button>
         </div>
       </div>
@@ -374,6 +410,21 @@ export const TypeformSurvey = () => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl p-8 md:p-12 max-w-2xl w-full text-center">
+          {/* Logo and Back Button */}
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex-1"></div>
+            <div className="flex-1 flex justify-center">
+              <Logo />
+            </div>
+            <div className="flex-1 flex justify-end">
+              <button
+                onClick={() => navigate('/dashboard?tab=dashboard')}
+                className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                Zurück zum Portal
+              </button>
+            </div>
+          </div>
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
           <h2 className="text-2xl font-bold text-gray-800 mb-2">Ihre Antworten werden gespeichert...</h2>
           <p className="text-gray-600">Bitte warten Sie einen Moment.</p>
@@ -386,6 +437,21 @@ export const TypeformSurvey = () => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl p-8 md:p-12 max-w-2xl w-full text-center">
+          {/* Logo and Back Button */}
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex-1"></div>
+            <div className="flex-1 flex justify-center">
+              <Logo />
+            </div>
+            <div className="flex-1 flex justify-end">
+              <button
+                onClick={() => navigate('/dashboard?tab=dashboard')}
+                className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                Zurück zum Portal
+              </button>
+            </div>
+          </div>
           <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-10 h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -411,6 +477,22 @@ export const TypeformSurvey = () => {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl p-8 md:p-12 max-w-3xl w-full">
+        {/* Logo and Back Button */}
+        <div className="flex justify-between items-center mb-8">
+          <div className="flex-1"></div>
+          <div className="flex-1 flex justify-center">
+            <Logo />
+          </div>
+          <div className="flex-1 flex justify-end">
+            <button
+              onClick={() => navigate('/dashboard?tab=dashboard')}
+              className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              Zurück zum Portal
+            </button>
+          </div>
+        </div>
+
         {/* Progress Bar */}
         <div className="mb-8">
           <div className="flex justify-between items-center mb-2">

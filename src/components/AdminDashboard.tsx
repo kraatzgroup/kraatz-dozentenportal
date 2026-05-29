@@ -44,16 +44,11 @@ const isContractActive = (t: any): boolean => {
 };
 
 // Helper function to check if teilnehmer is truly completed
-// For Elite-Kleingruppe: all units must be released (100%)
+// Elite-Kleingruppe participants are never considered "completed" - they only appear in Elite filter
 // For regular teilnehmer: contract must be expired
 const isTeilnehmerCompleted = (t: any): boolean => {
-  // For Elite-Kleingruppe participants, check if all units are released
+  // Elite-Kleingruppe participants should never be counted as completed
   if (t.is_elite_kleingruppe || t.elite_kleingruppe) {
-    if (t.elite_progress && t.elite_progress.total > 0) {
-      const progressPercent = Math.round((t.elite_progress.released / t.elite_progress.total) * 100);
-      return progressPercent >= 100;
-    }
-    // If no progress data, not completed
     return false;
   }
   
