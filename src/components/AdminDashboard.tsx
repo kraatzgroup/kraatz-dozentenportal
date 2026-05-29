@@ -2895,228 +2895,49 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                                 <button
                                   onClick={async (e) => {
                                     e.stopPropagation();
-                                    
-                                    // Fetch all hours for this participant
-                                    const { data: hoursData, error: hoursError } = await supabase
-                                      .from('participant_hours')
-                                      .select(`
-                                        *,
-                                        dozent:profiles!participant_hours_dozent_id_fkey(full_name)
-                                      `)
-                                      .eq('teilnehmer_id', t.id)
-                                      .order('date', { ascending: false });
-                                    
-                                    if (hoursError) {
-                                      console.error('Error fetching hours:', hoursError);
-                                      return;
-                                    }
-                                    
-                                    const { jsPDF } = await import('jspdf');
-                                    const doc = new jsPDF();
-                                    
-                                    // Portal colors
-                                    const primaryColor = { r: 44, g: 131, b: 192 }; // #2C83C0
-                                    const lightBg = { r: 215, g: 229, b: 243 }; // #D7E5F3
-                                    
-                                    // Add logo
+
                                     try {
-                                      const logoImg = new Image();
-                                      logoImg.crossOrigin = 'anonymous';
-                                      await new Promise((resolve, reject) => {
-                                        logoImg.onload = resolve;
-                                        logoImg.onerror = reject;
-                                        logoImg.src = '/KraatzGroup_Logo_web.png';
-                                      });
-                                      // Logo aspect ratio ~2:1 (width:height)
-                                      doc.addImage(logoImg, 'PNG', 15, 8, 40, 22);
-                                    } catch (err) {
-                                      console.log('Logo could not be loaded');
-                                    }
-                                    
-                                    // Header bar
-                                    doc.setFillColor(primaryColor.r, primaryColor.g, primaryColor.b);
-                                    doc.rect(0, 35, 210, 12, 'F');
-                                    
-                                    doc.setTextColor(255, 255, 255);
-                                    doc.setFontSize(14);
-                                    doc.setFont('helvetica', 'bold');
-                                    doc.text('STUNDENÜBERSICHT', 105, 43, { align: 'center' });
-                                    
-                                    // Reset text color
-                                    doc.setTextColor(0, 0, 0);
-                                    
-                                    // Participant info box
-                                    doc.setFillColor(lightBg.r, lightBg.g, lightBg.b);
-                                    doc.roundedRect(15, 52, 180, 45, 3, 3, 'F');
-                                    
-                                    doc.setFontSize(16);
-                                    doc.setFont('helvetica', 'bold');
-                                    doc.setTextColor(primaryColor.r, primaryColor.g, primaryColor.b);
-                                    doc.text(t.name, 25, 65);
-                                    
-                                    doc.setTextColor(80, 80, 80);
-                                    doc.setFontSize(10);
-                                    doc.setFont('helvetica', 'normal');
-                                    doc.text(`E-Mail: ${t.email || '-'}`, 25, 74);
-                                    doc.text(`Studienziel: ${t.study_goal || '-'}`, 25, 81);
-                                    if (t.contract_start && t.contract_end) {
-                                      doc.text(`Vertragszeitraum: ${new Date(t.contract_start).toLocaleDateString('de-DE')} - ${new Date(t.contract_end).toLocaleDateString('de-DE')}`, 25, 88);
-                                    }
-                                    
-                                    // Hours summary box
-                                    doc.setFillColor(255, 255, 255);
-                                    doc.setDrawColor(primaryColor.r, primaryColor.g, primaryColor.b);
-                                    doc.roundedRect(120, 58, 70, 35, 2, 2, 'FD');
-                                    
-                                    doc.setFontSize(9);
-                                    doc.setTextColor(100, 100, 100);
-                                    doc.text('Gebuchte Std.:', 125, 67);
-                                    doc.text('Absolviert:', 125, 76);
-                                    doc.text('Ausstehend:', 125, 85);
-                                    
-                                    doc.setFont('helvetica', 'bold');
-                                    doc.setTextColor(primaryColor.r, primaryColor.g, primaryColor.b);
-                                    doc.text(`${t.booked_hours || 0}`, 175, 67, { align: 'right' });
-                                    doc.setTextColor(34, 139, 34);
-                                    doc.text(`${t.completed_hours || 0}`, 175, 76, { align: 'right' });
-                                    const remaining = (t.booked_hours || 0) - (t.completed_hours || 0);
-                                    doc.setTextColor(remaining > 0 ? 200 : 34, remaining > 0 ? 120 : 139, remaining > 0 ? 50 : 34);
-                                    doc.text(`${remaining}`, 175, 85, { align: 'right' });
-                                    
-                                    // Dozenten section
-                                    let yPos = 105;
-                                    doc.setTextColor(primaryColor.r, primaryColor.g, primaryColor.b);
-                                    doc.setFontSize(11);
-                                    doc.setFont('helvetica', 'bold');
-                                    doc.text('Zugewiesene Dozenten', 20, yPos);
-                                    yPos += 2;
-                                    doc.setDrawColor(primaryColor.r, primaryColor.g, primaryColor.b);
-                                    doc.line(20, yPos, 80, yPos);
-                                    yPos += 8;
-                                    
-                                    doc.setTextColor(60, 60, 60);
-                                    doc.setFontSize(10);
-                                    doc.setFont('helvetica', 'normal');
-                                    
-                                    if (t.dozent_zivilrecht_id) {
-                                      const dozent = dozenten.find(d => d.id === t.dozent_zivilrecht_id);
-                                      doc.text(`• Zivilrecht: ${dozent?.full_name || '-'}`, 25, yPos);
-                                      yPos += 6;
-                                    }
-                                    if (t.dozent_strafrecht_id) {
-                                      const dozent = dozenten.find(d => d.id === t.dozent_strafrecht_id);
-                                      doc.text(`• Strafrecht: ${dozent?.full_name || '-'}`, 25, yPos);
-                                      yPos += 6;
-                                    }
-                                    if (t.dozent_oeffentliches_recht_id) {
-                                      const dozent = dozenten.find(d => d.id === t.dozent_oeffentliches_recht_id);
-                                      doc.text(`• Öffentliches Recht: ${dozent?.full_name || '-'}`, 25, yPos);
-                                      yPos += 6;
-                                    }
-                                    if (!t.dozent_zivilrecht_id && !t.dozent_strafrecht_id && !t.dozent_oeffentliches_recht_id) {
-                                      doc.text('Keine Dozenten zugewiesen', 25, yPos);
-                                      yPos += 6;
-                                    }
-                                    
-                                    // Detailed hours entries
-                                    yPos += 10;
-                                    doc.setTextColor(primaryColor.r, primaryColor.g, primaryColor.b);
-                                    doc.setFontSize(11);
-                                    doc.setFont('helvetica', 'bold');
-                                    doc.text('Stundeneinträge', 20, yPos);
-                                    yPos += 2;
-                                    doc.line(20, yPos, 70, yPos);
-                                    yPos += 8;
-                                    
-                                    if (hoursData && hoursData.length > 0) {
-                                      // Table header with background
-                                      doc.setFillColor(primaryColor.r, primaryColor.g, primaryColor.b);
-                                      doc.rect(15, yPos - 5, 180, 8, 'F');
-                                      
-                                      doc.setFontSize(9);
-                                      doc.setFont('helvetica', 'bold');
-                                      doc.setTextColor(255, 255, 255);
-                                      doc.text('Datum', 20, yPos);
-                                      doc.text('Dozent', 50, yPos);
-                                      doc.text('Std.', 115, yPos);
-                                      doc.text('Inhalt', 130, yPos);
-                                      yPos += 8;
-                                      
-                                      doc.setFont('helvetica', 'normal');
-                                      doc.setTextColor(60, 60, 60);
-                                      let totalHours = 0;
-                                      let rowIndex = 0;
-                                      
-                                      for (const entry of hoursData) {
-                                        // Check if we need a new page
-                                        if (yPos > 265) {
-                                          doc.addPage();
-                                          yPos = 20;
-                                          // Repeat table header on new page
-                                          doc.setFillColor(primaryColor.r, primaryColor.g, primaryColor.b);
-                                          doc.rect(15, yPos - 5, 180, 8, 'F');
-                                          doc.setFont('helvetica', 'bold');
-                                          doc.setTextColor(255, 255, 255);
-                                          doc.text('Datum', 20, yPos);
-                                          doc.text('Dozent', 50, yPos);
-                                          doc.text('Std.', 115, yPos);
-                                          doc.text('Inhalt', 130, yPos);
-                                          yPos += 8;
-                                          doc.setFont('helvetica', 'normal');
-                                          doc.setTextColor(60, 60, 60);
-                                        }
-                                        
-                                        // Alternating row background
-                                        if (rowIndex % 2 === 0) {
-                                          doc.setFillColor(245, 248, 252);
-                                          doc.rect(15, yPos - 4, 180, 7, 'F');
-                                        }
-                                        
-                                        const dateStr = new Date(entry.date).toLocaleDateString('de-DE');
-                                        const dozentName = entry.dozent?.full_name || '-';
-                                        const hours = parseFloat(entry.hours?.toString() || '0');
-                                        totalHours += hours;
-                                        const description = entry.description || '-';
-                                        
-                                        // Truncate long descriptions
-                                        const maxDescLength = 32;
-                                        const truncatedDesc = description.length > maxDescLength 
-                                          ? description.substring(0, maxDescLength) + '...' 
-                                          : description;
-                                        
-                                        doc.setFontSize(9);
-                                        doc.text(dateStr, 20, yPos);
-                                        doc.text(dozentName.substring(0, 28), 50, yPos);
-                                        doc.text(hours.toString(), 115, yPos);
-                                        doc.text(truncatedDesc, 130, yPos);
-                                        yPos += 7;
-                                        rowIndex++;
+                                      // Fetch all hours for this participant
+                                      const { data: hoursData, error: hoursError } = await supabase
+                                        .from('participant_hours')
+                                        .select('*')
+                                        .eq('teilnehmer_id', t.id)
+                                        .order('date', { ascending: false });
+
+                                      if (hoursError) {
+                                        console.error('Error fetching hours:', hoursError);
+                                        addToast('Fehler beim Laden der Stunden', 'error');
+                                        return;
                                       }
-                                      
-                                      // Total row
-                                      yPos += 2;
-                                      doc.setFillColor(primaryColor.r, primaryColor.g, primaryColor.b);
-                                      doc.rect(15, yPos - 4, 180, 8, 'F');
-                                      doc.setFont('helvetica', 'bold');
-                                      doc.setTextColor(255, 255, 255);
-                                      doc.text('GESAMT:', 20, yPos);
-                                      doc.text(`${totalHours} Stunden`, 115, yPos);
-                                    } else {
-                                      doc.setFontSize(10);
-                                      doc.setTextColor(100, 100, 100);
-                                      doc.text('Keine Stundeneinträge vorhanden.', 25, yPos);
+
+                                      const hoursWithDozentNames = await Promise.all(
+                                        (hoursData || []).map(async (h) => {
+                                          const { data: dozent } = await supabase
+                                            .from('profiles')
+                                            .select('full_name, email')
+                                            .eq('id', h.dozent_id)
+                                            .single();
+                                          return {
+                                            ...h,
+                                            dozent_name: dozent?.full_name || 'Unbekannt',
+                                            dozent_email: dozent?.email || ''
+                                          };
+                                        })
+                                      );
+
+                                      const uniqueDozenten = [...new Set(hoursWithDozentNames.map(h => h.dozent_name))];
+                                      const totalHours = (hoursData || []).reduce((sum, h) => sum + (h.hours || 0), 0);
+
+                                      await generateTeilnehmerStundenPDF({
+                                        teilnehmerName: t.name,
+                                        hours: hoursWithDozentNames,
+                                        totalHours,
+                                        uniqueDozenten
+                                      });
+                                    } catch (error) {
+                                      console.error('Error generating PDF:', error);
+                                      addToast('Fehler beim Erstellen des Berichts', 'error');
                                     }
-                                    
-                                    // Footer
-                                    doc.setFillColor(lightBg.r, lightBg.g, lightBg.b);
-                                    doc.rect(0, 280, 210, 17, 'F');
-                                    doc.setFont('helvetica', 'normal');
-                                    doc.setFontSize(8);
-                                    doc.setTextColor(100, 100, 100);
-                                    doc.text(`Erstellt am: ${new Date().toLocaleDateString('de-DE')} um ${new Date().toLocaleTimeString('de-DE')}`, 20, 288);
-                                    doc.text('info@kraatz-group.de', 190, 288, { align: 'right' });
-                                    
-                                    doc.save(`Stundenübersicht_${t.name.replace(/\s+/g, '_')}.pdf`);
                                   }}
                                   className="p-1.5 text-gray-400 hover:text-primary hover:bg-gray-100 rounded transition-colors"
                                   title="Stundenübersicht als PDF herunterladen"
