@@ -277,7 +277,7 @@ export const generateTeilnehmerStundenPDF = async (data: TeilnehmerPDFData) => {
   const contentWidth = pageWidth - 2 * margin;
 
   // Company colors
-  const primaryColor = { r: 59, g: 130, b: 246 }; // Blue
+  const primaryColor = { r: 42, g: 131, b: 191 }; // #2a83bf
   const secondaryColor = { r: 245, g: 158, b: 11 }; // Orange
   const bgColor = { r: 240, g: 248, b: 255 }; // Light blue
 
