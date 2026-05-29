@@ -209,7 +209,7 @@ function App() {
           {/* Common routes */}
           <Route path="/messages" element={<Chat />} />
           <Route path="/settings" element={<Settings />} />
-          <Route path="/feedback" element={<TypeformSurvey />} />
+          <Route path="/feedback-elite-25" element={<TypeformSurvey />} />
           
           {/* Dozenten-Ordner Routen */}
           <Route path="/rechnungen/:id" element={<DozentenRechnungen />} />
