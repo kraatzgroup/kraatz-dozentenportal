@@ -310,9 +310,9 @@ export const generateTeilnehmerStundenPDF = async (data: TeilnehmerPDFData) => {
       reader.readAsDataURL(logoBlob);
     });
 
-    // Add logo to the right side of the header with better positioning
-    const logoWidth = 50;
-    const logoHeight = 20;
+    // Add logo to the right side of the header with correct aspect ratio
+    const logoWidth = 60;
+    const logoHeight = 30;
     doc.addImage(logoDataUrl, 'PNG', pageWidth - margin - logoWidth, yPosition, logoWidth, logoHeight);
   } catch (error) {
     console.error('Error loading logo:', error);
@@ -322,8 +322,8 @@ export const generateTeilnehmerStundenPDF = async (data: TeilnehmerPDFData) => {
   doc.setFontSize(24);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(primaryColor.r, primaryColor.g, primaryColor.b);
-  addText('Stundenübersicht', margin, yPosition + 12);
-  yPosition += 30;
+  addText('Stundenübersicht', margin, yPosition + 18);
+  yPosition += 35;
   
   // Teilnehmer info
   doc.setFontSize(14);
