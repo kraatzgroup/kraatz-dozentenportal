@@ -221,6 +221,10 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   const [expandedTeilnehmer, setExpandedTeilnehmer] = useState<string | null>(null);
   const [showStundenzettel, setShowStundenzettel] = useState(false);
   const [selectedTeilnehmerForStundenzettel, setSelectedTeilnehmerForStundenzettel] = useState<any>(null);
+  const [showHoursOverview, setShowHoursOverview] = useState(false);
+  const [participantHours, setParticipantHours] = useState<any[]>([]);
+  const [selectedTeilnehmerForHours, setSelectedTeilnehmerForHours] = useState<any>(null);
+  const [hoursFilter, setHoursFilter] = useState<string>('alle');
   const [dozentPage, setDozentPage] = useState(1);
   const DOZENT_PER_PAGE = 10;
   const [dozentSearch, setDozentSearch] = useState('');
@@ -1141,6 +1145,21 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
     } catch (error) {
       console.error('Error fetching notes:', error);
       addToast('Fehler beim Laden der Notizen', 'error');
+    }
+  };
+
+  const fetchParticipantHours = async (teilnehmerId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('participant_hours')
+        .select('*')
+        .eq('teilnehmer_id', teilnehmerId)
+        .order('date', { ascending: false });
+      if (error) throw error;
+      setParticipantHours(data || []);
+    } catch (error) {
+      console.error('Error fetching participant hours:', error);
+      addToast('Fehler beim Laden der Stunden', 'error');
     }
   };
 
@@ -2734,22 +2753,30 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                             </td>
                             <td className="px-4 sm:px-6 py-4">
                               {t.booked_hours ? (
-                                <div className="space-y-1.5 min-w-[110px]">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    setSelectedTeilnehmerForHours(t);
+                                    await fetchParticipantHours(t.id);
+                                    setShowHoursOverview(true);
+                                  }}
+                                  className="space-y-1.5 min-w-[110px] text-left hover:bg-gray-50 rounded p-1 transition-colors"
+                                >
                                   <div className="flex items-center justify-between text-xs">
                                     <span className="font-medium text-gray-900">{t.completed_hours || 0} / {t.booked_hours} Std.</span>
                                   </div>
                                   {/* Hours Progress Bar */}
                                   <div className="w-full bg-gray-200 rounded-full h-1.5">
-                                    <div 
+                                    <div
                                       className={`h-1.5 rounded-full transition-all ${
-                                        (t.completed_hours || 0) >= t.booked_hours ? 'bg-green-500' : 
-                                        (t.completed_hours || 0) / t.booked_hours >= 0.75 ? 'bg-orange-500' : 
+                                        (t.completed_hours || 0) >= t.booked_hours ? 'bg-green-500' :
+                                        (t.completed_hours || 0) / t.booked_hours >= 0.75 ? 'bg-orange-500' :
                                         'bg-primary'
                                       }`}
                                       style={{ width: `${Math.min(100, ((t.completed_hours || 0) / t.booked_hours) * 100)}%` }}
                                     />
                                   </div>
-                                </div>
+                                </button>
                               ) : (
                                 <span className="text-gray-400 text-xs">-</span>
                               )}
@@ -5253,6 +5280,199 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                     </>
                   )}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hours Overview Dialog */}
+      {showHoursOverview && selectedTeilnehmerForHours && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white shadow overflow-hidden sm:rounded-md max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowHoursOverview(false)}
+                      className="mr-4 p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded-full"
+                    >
+                      <ChevronLeft className="h-5 w-5" />
+                    </button>
+                    <div>
+                      <h3 className="text-lg font-medium text-gray-900">Stundenübersicht für {selectedTeilnehmerForHours.name}</h3>
+                      <p className="text-sm text-gray-500">Ihre eingetragenen Stunden für diesen Teilnehmer</p>
+                    </div>
+                  </div>
+                  <div className="flex space-x-2">
+                    <button
+                      type="button"
+                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-primary/90"
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      Bericht erstellen
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div className="bg-white overflow-hidden shadow rounded-lg">
+                    <div className="p-5">
+                      <div className="flex items-center">
+                        <div className="flex-shrink-0">
+                          <Clock className="h-8 w-8 text-primary" />
+                        </div>
+                        <div className="ml-5 w-0 flex-1">
+                          <dl>
+                            <dt className="text-sm font-medium text-gray-500 truncate">Meine Stunden</dt>
+                            <dd className="text-lg font-medium text-gray-900">
+                              {participantHours.reduce((sum, h) => sum + (h.hours || 0), 0).toFixed(2)} Std
+                            </dd>
+                          </dl>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-white overflow-hidden shadow rounded-lg">
+                    <div className="p-5">
+                      <div className="flex items-center">
+                        <div className="flex-shrink-0">
+                          <Calendar className="h-8 w-8 text-green-600" />
+                        </div>
+                        <div className="ml-5 w-0 flex-1">
+                          <dl>
+                            <dt className="text-sm font-medium text-gray-500 truncate">Meine Einträge</dt>
+                            <dd className="text-lg font-medium text-gray-900">{participantHours.length}</dd>
+                          </dl>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-white overflow-hidden shadow rounded-lg">
+                    <div className="p-5">
+                      <div className="flex items-center">
+                        <div className="flex-shrink-0">
+                          <GraduationCap className="h-8 w-8 text-blue-600" />
+                        </div>
+                        <div className="ml-5 w-0 flex-1">
+                          <dl>
+                            <dt className="text-sm font-medium text-gray-500 truncate">Rechtsgebiete</dt>
+                            <dd className="text-lg font-medium text-gray-900">
+                              {new Set(participantHours.map(h => h.legal_area)).size}
+                            </dd>
+                          </dl>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white shadow overflow-hidden sm:rounded-md">
+                  <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-lg font-medium text-gray-900">Meine Stundeneinträge</h3>
+                        <p className="mt-1 text-sm text-gray-500">Ihre eingetragenen Stunden für {selectedTeilnehmerForHours.name}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm text-gray-600">Filter:</label>
+                        <select
+                          value={hoursFilter}
+                          onChange={(e) => setHoursFilter(e.target.value)}
+                          className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                        >
+                          <option value="alle">Alle</option>
+                          <option value="Zivilrecht">Zivilrecht</option>
+                          <option value="Strafrecht">Strafrecht</option>
+                          <option value="Öffentliches Recht">Öffentliches Recht</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <ul className="divide-y divide-gray-200">
+                    {participantHours.filter(h => hoursFilter === 'alle' || h.legal_area === hoursFilter).length === 0 ? (
+                      <li className="px-4 py-6 sm:px-6 text-center text-gray-500">
+                        Keine Stundeneinträge vorhanden
+                      </li>
+                    ) : (
+                      participantHours.filter(h => hoursFilter === 'alle' || h.legal_area === hoursFilter).map((hour, idx) => (
+                        <li key={idx} className="px-4 py-6 sm:px-6">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center">
+                                  <div className="flex-shrink-0">
+                                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                                      <Clock className="h-5 w-5 text-primary" />
+                                    </div>
+                                  </div>
+                                  <div className="ml-4">
+                                    <div className="flex items-center space-x-3">
+                                      <span className="text-lg font-semibold text-primary">{hour.hours}h</span>
+                                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                        {hour.legal_area}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center mt-1 text-sm text-gray-500 space-x-4">
+                                      <div className="flex items-center">
+                                        <Calendar className="h-4 w-4 mr-1" />
+                                        <span>{new Date(hour.date).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right flex items-center space-x-3">
+                              <div className="text-xs text-gray-500">Eingetragen am</div>
+                              <div className="text-sm text-gray-900">
+                                {new Date(hour.created_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}, {new Date(hour.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                            </div>
+                          </div>
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                </div>
+
+                <div className="bg-white shadow overflow-hidden sm:rounded-md">
+                  <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
+                    <h3 className="text-lg font-medium text-gray-900">Stunden nach Rechtsgebiet</h3>
+                    <p className="mt-1 text-sm text-gray-500">Stundenübersicht für {selectedTeilnehmerForHours.name} nach Rechtsgebiet</p>
+                  </div>
+                  <ul className="divide-y divide-gray-200">
+                    {['Zivilrecht', 'Strafrecht', 'Öffentliches Recht'].map((area) => {
+                      const hoursInArea = participantHours.filter(h => h.legal_area === area).reduce((sum, h) => sum + (h.hours || 0), 0);
+                      if (hoursInArea === 0) return null;
+                      const color = area === 'Zivilrecht' ? 'blue' : area === 'Strafrecht' ? 'red' : 'green';
+                      return (
+                        <li key={area} className="px-4 py-4 sm:px-6">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center flex-1 min-w-0">
+                              <div className="flex-shrink-0">
+                                <div className={`h-8 w-8 rounded-full bg-${color}-50 flex items-center justify-center`}>
+                                  <GraduationCap className={`h-4 w-4 text-${color}-600`} />
+                                </div>
+                              </div>
+                              <div className="ml-3 flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium text-gray-900">{area}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right ml-4">
+                              <div className="text-lg font-semibold text-primary">{hoursInArea.toFixed(2)}h</div>
+                              <div className="text-xs text-gray-400 italic">keine Verteilung</div>
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
               </div>
             </div>
           </div>
