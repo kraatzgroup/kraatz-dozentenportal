@@ -852,7 +852,8 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
         // Always include participant_hours in the calculation
         const participantHoursUsed = hoursMap[t.id] ?? 0;
         const packageUsedHours = packageHours?.usedHours ?? 0;
-        const baseCompletedHours = Math.max(participantHoursUsed, packageUsedHours);
+        // Use participant_hours if available, otherwise use package hours
+        const baseCompletedHours = participantHoursUsed > 0 ? participantHoursUsed : packageUsedHours;
         const completedHours = baseCompletedHours + (freeHrs?.used || 0);
         const baseTotalHours = packageHours?.totalHours || contractData?.totalHours || t.booked_hours || 0;
         const totalHours = baseTotalHours + (freeHrs?.total || 0);
@@ -1159,25 +1160,25 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
         .order('date', { ascending: false });
       if (error) throw error;
 
-      // Fetch author names separately
-      const authorIds = [...new Set(data?.map(h => h.author_id).filter(Boolean) || [])];
-      let authorMap: Record<string, string> = {};
-      if (authorIds.length > 0) {
-        const { data: authors } = await supabase
+      // Fetch dozent names separately
+      const dozentIds = [...new Set(data?.map(h => h.dozent_id).filter(Boolean) || [])];
+      let dozentMap: Record<string, string> = {};
+      if (dozentIds.length > 0) {
+        const { data: dozents } = await supabase
           .from('profiles')
           .select('id, full_name')
-          .in('id', authorIds);
-        if (authors) {
-          authorMap = authors.reduce((acc, a) => ({ ...acc, [a.id]: a.full_name }), {});
+          .in('id', dozentIds);
+        if (dozents) {
+          dozentMap = dozents.reduce((acc, d) => ({ ...acc, [d.id]: d.full_name }), {});
         }
       }
 
-      const hoursWithAuthors = (data || []).map(h => ({
+      const hoursWithDozents = (data || []).map(h => ({
         ...h,
-        author: { full_name: authorMap[h.author_id] || 'Unbekannt' }
+        author: { full_name: dozentMap[h.dozent_id] || 'Unbekannt' }
       }));
 
-      setParticipantHours(hoursWithAuthors);
+      setParticipantHours(hoursWithDozents);
     } catch (error) {
       console.error('Error fetching participant hours:', error);
       addToast('Fehler beim Laden der Stunden', 'error');
