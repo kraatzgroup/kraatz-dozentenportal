@@ -404,7 +404,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                 subtitle: `Klausur eingereicht (${k.legal_area})`,
                 timestamp: k.submitted_at,
                 icon: 'klausur',
-                link: '/dashboard/elite-kleingruppe/klausurenkorrekturen'
+                link: '/dashboard/elite-kleingruppe/klausuren'
               });
             });
           }
