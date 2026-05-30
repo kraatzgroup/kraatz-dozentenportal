@@ -2042,7 +2042,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
 
   // Elite-Kleingruppe View
   if (showEliteKleingruppe && !isMaterial) {
-    const activeSubTab = ekSubTab || urlSubTab || 'einheiten';
+    const activeSubTab = urlSubTab || ekSubTab || 'einheiten';
     const handleSubTabChange = (tab: string) => {
       if (onEkSubTabChange) {
         onEkSubTabChange(tab);
@@ -2050,6 +2050,8 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
         navigate(`/dashboard/elite-kleingruppe/${tab}`);
       }
     };
+
+    console.log('🎯 EliteKleingruppe View:', { activeSubTab, urlSubTab, ekSubTab });
 
     return (
       <div className="space-y-6">
