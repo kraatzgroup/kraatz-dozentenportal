@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useToastStore } from '../store/toastStore';
@@ -564,11 +564,12 @@ interface DozentenDashboardProps {
 
 export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKleingruppe, ekSubTab, onEkSubTabChange, onCloseEliteKleingruppe }: DozentenDashboardProps = {}) {
   const navigate = useNavigate();
+  const { subTab: urlSubTab } = useParams<{ subTab?: string }>();
   const { isAdmin, isBuchhaltung, isMaterial, user, signOut } = useAuthStore();
   const [isEliteKleingruppeDozent, setIsEliteKleingruppeDozent] = useState(false);
   const [dozentLegalAreas, setDozentLegalAreas] = useState<string[]>([]);
   const [internalShowEliteKleingruppe, setInternalShowEliteKleingruppe] = useState(false);
-  const showEliteKleingruppe = externalShowEliteKleingruppe ?? internalShowEliteKleingruppe;
+  const showEliteKleingruppe = externalShowEliteKleingruppe ?? internalShowEliteKleingruppe ?? !!urlSubTab;
   const [activeTab, setActiveTab] = useState('dashboard');
   const setShowEliteKleingruppe = (val: boolean) => {
     if (!val && onCloseEliteKleingruppe) {
@@ -2031,15 +2032,24 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
 
   // Elite-Kleingruppe View
   if (showEliteKleingruppe && !isMaterial) {
+    const activeSubTab = ekSubTab || urlSubTab || 'einheiten';
+    const handleSubTabChange = (tab: string) => {
+      if (onEkSubTabChange) {
+        onEkSubTabChange(tab);
+      } else {
+        navigate(`/dashboard/elite-kleingruppe/${tab}`);
+      }
+    };
+
     return (
       <div className="space-y-6">
         <div className="bg-white rounded-xl shadow-md p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => setShowEliteKleingruppe(false)} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronDown className="h-5 w-5 rotate-90" /></button>
+            <button onClick={() => navigate('/dashboard')} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronDown className="h-5 w-5 rotate-90" /></button>
             <Users className="h-6 w-6 text-primary" /><h1 className="text-lg font-semibold">Elite-Kleingruppe</h1>
           </div>
         </div>
-        <EliteKleingruppe isAdmin={false} activeSubTabProp={ekSubTab} onSubTabChange={onEkSubTabChange} />
+        <EliteKleingruppe isAdmin={false} activeSubTabProp={activeSubTab} onSubTabChange={handleSubTabChange} />
       </div>
     );
   }

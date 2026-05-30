@@ -174,6 +174,8 @@ function App() {
             element={
               showTeilnehmerView ?
                 <EliteKleingruppeDashboard /> :
+              isMaterial ?
+                <DozentenDashboard /> :
                 <Dashboard isAdmin={showAdminView || showVerwaltungView || showVertriebView} />
             }
           />
