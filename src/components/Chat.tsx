@@ -747,16 +747,7 @@ export function Chat() {
 
       <div className="max-w-7xl mx-auto py-4 sm:py-6 px-2 sm:px-6 lg:px-8">
         <div className="py-4">
-          <div className="flex items-center gap-3 mb-4">
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Zurück zum Dashboard"
-            >
-              <ArrowLeft className="h-5 w-5 text-gray-600" />
-            </button>
-            <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Nachrichten</h1>
-          </div>
+          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-4">Nachrichten</h1>
           <div className="bg-white rounded-lg shadow">
             <div className="grid grid-cols-1 sm:grid-cols-3">
               {/* Contacts List */}
