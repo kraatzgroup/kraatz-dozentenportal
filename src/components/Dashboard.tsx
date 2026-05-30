@@ -503,8 +503,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     const tab = params.get('tab');
 
     // Handle Elite-Kleingruppe sub-tabs
-    if (tab === 'klausuren' || tab === 'kurszeiten') {
-      const subTab = tab === 'klausuren' ? 'klausuren' : 'kurszeiten';
+    if (tab === 'klausuren' || tab === 'kurszeiten' || tab === 'einheiten') {
+      const subTab = tab === 'klausuren' ? 'klausuren' : tab === 'kurszeiten' ? 'kurszeiten' : 'einheiten';
       navigate(`/dashboard/elite-kleingruppe/${subTab}`);
       return;
     }

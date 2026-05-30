@@ -680,8 +680,8 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     console.log('📊 DozentenDashboard: showMaterialsView:', showMaterialsView);
 
     // Handle Elite-Kleingruppe sub-tabs
-    if (tab === 'klausuren' || tab === 'kurszeiten') {
-      const subTab = tab === 'klausuren' ? 'klausuren' : 'kurszeiten';
+    if (tab === 'klausuren' || tab === 'kurszeiten' || tab === 'einheiten') {
+      const subTab = tab === 'klausuren' ? 'klausuren' : tab === 'kurszeiten' ? 'kurszeiten' : 'einheiten';
       navigate(`/dashboard/elite-kleingruppe/${subTab}`);
       return;
     }
