@@ -501,7 +501,14 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get('tab');
-    
+
+    // Handle Elite-Kleingruppe sub-tabs
+    if (tab === 'klausuren' || tab === 'kurszeiten') {
+      const subTab = tab === 'klausuren' ? 'klausuren' : 'kurszeiten';
+      navigate(`/dashboard/elite-kleingruppe/${subTab}`);
+      return;
+    }
+
     if (tab && folders.length > 0) {
       // Reverse map tab names to folder names
       const tabToFolderMap: Record<string, string> = {
@@ -510,7 +517,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
         'teilnehmer': 'Aktive Teilnehmer',
         'probestunden': 'Probestunden'
       };
-      
+
       const folderName = tabToFolderMap[tab];
       if (folderName) {
         const folder = folders.find(f => f.name === folderName);
@@ -519,7 +526,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
         }
       }
     }
-  }, [folders]);
+  }, [folders, navigate]);
 
   // Check if selected folder is "Aktive Teilnehmer"
   const isActiveTeilnehmerFolder = selectedFolder?.name === 'Aktive Teilnehmer';
