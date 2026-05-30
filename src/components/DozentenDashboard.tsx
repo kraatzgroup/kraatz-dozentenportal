@@ -577,6 +577,16 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     }
     setInternalShowEliteKleingruppe(val);
   };
+
+  console.log('🔍 DozentenDashboard Routing Debug:', {
+    urlSubTab,
+    externalShowEliteKleingruppe,
+    internalShowEliteKleingruppe,
+    showEliteKleingruppe,
+    ekSubTab,
+    isMaterial,
+    user: user?.email
+  });
   const { addToast } = useToastStore();
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [isLoading, setIsLoading] = useState(false);
