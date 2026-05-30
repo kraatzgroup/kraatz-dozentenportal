@@ -668,6 +668,13 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     console.log('📊 DozentenDashboard: isMaterial:', isMaterial);
     console.log('📊 DozentenDashboard: showMaterialsView:', showMaterialsView);
 
+    // Handle Elite-Kleingruppe sub-tabs
+    if (tab === 'klausuren' || tab === 'kurszeiten') {
+      const subTab = tab === 'klausuren' ? 'klausuren' : 'kurszeiten';
+      navigate(`/dashboard/elite-kleingruppe/${subTab}`);
+      return;
+    }
+
     // Set active tab based on URL
     if (tab === 'rechnungen') {
       setActiveTab('rechnungen');
@@ -688,7 +695,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     } else if (tab.startsWith('unterrichtsmaterialien') && !showMaterialsView) {
       setShowMaterialsView(true);
     }
-  }, [isMaterial, showMaterialsView]);
+  }, [isMaterial, showMaterialsView, navigate]);
 
   // Debug: Log when showBundeslaenderModal changes
   useEffect(() => {
