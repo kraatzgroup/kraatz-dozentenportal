@@ -2364,18 +2364,44 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         console.error('❌ Error sending notification email:', emailError);
       }
       
-      // Tätigkeitsbericht-Eintrag erstellen falls Dauer angegeben
+      // Tätigkeitsbericht-Eintrag erstellen oder aktualisieren falls Dauer angegeben
       if (korrekturDuration && parseFloat(korrekturDuration) > 0) {
-        const { error: hoursError } = await supabase.from('dozent_hours').insert({
-          dozent_id: user.id,
-          date: new Date().toISOString().split('T')[0],
-          hours: parseFloat(korrekturDuration),
-          description: `Klausurkorrektur: ${selectedKlausur.title} (${selectedKlausur.teilnehmer_name}) - ${korrekturScore ? korrekturScore + ' Punkte' : 'ohne Bewertung'}`,
-          category: 'Elite-Kleingruppe Korrektur',
-          status: 'pending'
-        });
-        if (hoursError) {
-          console.error('Error creating dozent_hours entry:', hoursError);
+        const description = `Klausurkorrektur: ${selectedKlausur.title} (${selectedKlausur.teilnehmer_name}) - ${korrekturScore ? korrekturScore + ' Punkte' : 'ohne Bewertung'}`;
+        
+        // Prüfen, ob bereits ein Eintrag für diese Klausur existiert
+        const { data: existingHours } = await supabase
+          .from('dozent_hours')
+          .select('id')
+          .eq('dozent_id', user.id)
+          .ilike('description', `Klausurkorrektur: ${selectedKlausur.title}%`)
+          .single();
+        
+        if (existingHours) {
+          // Existierenden Eintrag aktualisieren
+          const { error: updateError } = await supabase.from('dozent_hours').update({
+            hours: parseFloat(korrekturDuration),
+            description: description,
+            category: 'Elite-Kleingruppe Korrektur',
+            status: 'pending'
+          }).eq('id', existingHours.id);
+          
+          if (updateError) {
+            console.error('Error updating dozent_hours entry:', updateError);
+          }
+        } else {
+          // Neuen Eintrag erstellen
+          const { error: hoursError } = await supabase.from('dozent_hours').insert({
+            dozent_id: user.id,
+            date: new Date().toISOString().split('T')[0],
+            hours: parseFloat(korrekturDuration),
+            description: description,
+            category: 'Elite-Kleingruppe Korrektur',
+            status: 'pending'
+          });
+          
+          if (hoursError) {
+            console.error('Error creating dozent_hours entry:', hoursError);
+          }
         }
       }
       
