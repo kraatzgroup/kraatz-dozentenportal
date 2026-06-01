@@ -427,6 +427,15 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
 
       if (dozentError) throw dozentError;
 
+      // Get dozent profile with hourly rates
+      const { data: dozentProfile, error: dozentProfileError } = await supabase
+        .from('profiles')
+        .select('full_name, street, house_number, postal_code, city, email, phone, tax_id, bank_name, iban, bic, hourly_rate_unterricht, hourly_rate_elite, hourly_rate_elite_korrektur, hourly_rate_sonstige')
+        .eq('id', invoice.dozent_id)
+        .single();
+
+      if (dozentProfileError) throw dozentProfileError;
+
       // Get flat rate items (sonstige Posten)
       const { data: flatRateItems, error: flatRateError } = await supabase
         .from('dozent_flat_rate_items')
@@ -445,7 +454,7 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
       }));
 
       await generateInvoicePDF({
-        invoice: invoice as any,
+        invoice: { ...invoice, dozent: dozentProfile } as any,
         participantHours: normalizedParticipantHours as any,
         dozentHours: (dozentHours || []) as any,
         flatRateItems: (flatRateItems || []) as any
