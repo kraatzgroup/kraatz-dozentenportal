@@ -16,6 +16,15 @@ interface DozentHour {
   category?: string;
 }
 
+interface FlatRateItem {
+  date: string;
+  name: string;
+  description?: string;
+  quantity: number;
+  amount_euro: number;
+  total_euro: number;
+}
+
 interface Invoice {
   id: string;
   invoice_number: string;
@@ -48,6 +57,7 @@ interface InvoicePDFData {
   invoice: Invoice;
   participantHours: ParticipantHour[];
   dozentHours: DozentHour[];
+  flatRateItems?: FlatRateItem[];
 }
 
 export const generateInvoicePDF = async (data: InvoicePDFData) => {
@@ -251,7 +261,11 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
   const amountElite = totalElite * rateElite;
   const amountEliteKorrektur = totalEliteKorrektur * rateEliteKorrektur;
   const amountSonstige = totalSonstige * rateSonstige;
-  const totalAmount = amountRegular + amountElite + amountEliteKorrektur + amountSonstige;
+
+  // Calculate flat rate items total
+  const flatRateTotal = (data.flatRateItems || []).reduce((sum, item) => sum + item.total_euro, 0);
+
+  const totalAmount = amountRegular + amountElite + amountEliteKorrektur + amountSonstige + flatRateTotal;
 
   // Summary table
   doc.setFontSize(10);
@@ -300,6 +314,14 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
     addText(`${formatNumber(totalSonstige)} Std.`, margin + 90, yPosition);
     addText(rateSonstige > 0 ? `${formatNumber(rateSonstige)} \u20ac` : '-', margin + 120, yPosition);
     addText(rateSonstige > 0 ? `${formatNumber(amountSonstige)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
+    yPosition += 5;
+  }
+
+  if (flatRateTotal > 0) {
+    addText('Pauschale Verguetungen', margin + 2, yPosition);
+    addText('-', margin + 90, yPosition);
+    addText('-', margin + 120, yPosition);
+    addText(`${formatNumber(flatRateTotal)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
     yPosition += 5;
   }
 
@@ -557,7 +579,7 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   let totalDozentHours = 0;
 
   // Combine all hours and sort chronologically
-  const allHours: Array<{ type: 'participant' | 'dozent'; date: string; hours: number; entry: any }> = [];
+  const allHours: Array<{ type: 'participant' | 'dozent' | 'flatrate'; date: string; hours: number; entry: any }> = [];
   
   if (data.participantHours && data.participantHours.length > 0) {
     data.participantHours.forEach(entry => {
@@ -568,6 +590,13 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   if (data.dozentHours && data.dozentHours.length > 0) {
     data.dozentHours.forEach(entry => {
       allHours.push({ type: 'dozent', date: entry.date, hours: entry.hours, entry });
+    });
+  }
+
+  // Add flat rate items (sonstige Posten)
+  if (data.flatRateItems && data.flatRateItems.length > 0) {
+    data.flatRateItems.forEach(entry => {
+      allHours.push({ type: 'flatrate', date: entry.date, hours: 0, entry });
     });
   }
 
@@ -587,7 +616,7 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       addText(item.hours.toString(), pageWidth - margin - 2, yPosition, { align: 'right' });
       totalParticipantHours += item.hours;
       yPosition += 5;
-    } else {
+    } else if (item.type === 'dozent') {
       const type = item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.category?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : item.entry.category || 'Sonstige Tätigkeit';
       addText(type, margin + 25, yPosition);
       const descYPosition = yPosition;
@@ -611,6 +640,12 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
       totalDozentHours += item.hours;
       yPosition += 5 + (extraLines * 4);
+    } else if (item.type === 'flatrate') {
+      addText('Sonstiger Posten', margin + 25, yPosition);
+      const desc = `${item.entry.name}${item.entry.description ? ' - ' + item.entry.description : ''}`.substring(0, 60);
+      addText(desc, margin + 70, yPosition);
+      addText(`${item.entry.quantity} x ${item.entry.amount_euro.toFixed(2)}€`, pageWidth - margin - 2, yPosition, { align: 'right' });
+      yPosition += 5;
     }
   }
 
@@ -642,7 +677,11 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   const amountElite = totalElite * rateElite;
   const amountEliteKorrektur = totalEliteKorrektur * rateEliteKorrektur;
   const amountSonstige = totalSonstige * rateSonstige;
-  const totalAmount = amountRegular + amountElite + amountEliteKorrektur + amountSonstige;
+
+  // Calculate flat rate items total
+  const flatRateTotal = (data.flatRateItems || []).reduce((sum, item) => sum + item.total_euro, 0);
+
+  const totalAmount = amountRegular + amountElite + amountEliteKorrektur + amountSonstige + flatRateTotal;
 
   // Summary table
   doc.setFillColor(240, 240, 240);
@@ -687,6 +726,14 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     addText(`${formatNumber(totalSonstige)} Std.`, margin + 90, yPosition);
     addText(rateSonstige > 0 ? `${formatNumber(rateSonstige)} \u20ac` : '-', margin + 120, yPosition);
     addText(rateSonstige > 0 ? `${formatNumber(amountSonstige)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
+    yPosition += 5;
+  }
+
+  if (flatRateTotal > 0) {
+    addText('Pauschale Verguetungen', margin + 2, yPosition);
+    addText('-', margin + 90, yPosition);
+    addText('-', margin + 120, yPosition);
+    addText(`${formatNumber(flatRateTotal)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
     yPosition += 5;
   }
 
@@ -767,6 +814,7 @@ interface MonthlyInvoiceData {
   period_end: string;
   participantHours: ParticipantHour[];
   dozentHours: DozentHour[];
+  flatRateItems?: FlatRateItem[];
   totalHours: number;
   totalAmount: number;
 }
@@ -1142,7 +1190,7 @@ export const generateQuarterlyInvoicePDF = async (data: QuarterlyInvoiceData) =>
     let totalDozentHours = 0;
 
     // Combine all hours and sort chronologically
-    const allHours: Array<{ type: 'participant' | 'dozent'; date: string; hours: number; entry: any }> = [];
+    const allHours: Array<{ type: 'participant' | 'dozent' | 'flatrate'; date: string; hours: number; entry: any }> = [];
     
     if (monthData.participantHours && monthData.participantHours.length > 0) {
       monthData.participantHours.forEach(entry => {
@@ -1153,6 +1201,13 @@ export const generateQuarterlyInvoicePDF = async (data: QuarterlyInvoiceData) =>
     if (monthData.dozentHours && monthData.dozentHours.length > 0) {
       monthData.dozentHours.forEach(entry => {
         allHours.push({ type: 'dozent', date: entry.date, hours: entry.hours, entry });
+      });
+    }
+
+    // Add flat rate items (sonstige Posten)
+    if (monthData.flatRateItems && monthData.flatRateItems.length > 0) {
+      monthData.flatRateItems.forEach(entry => {
+        allHours.push({ type: 'flatrate', date: entry.date, hours: 0, entry });
       });
     }
 
@@ -1172,7 +1227,7 @@ export const generateQuarterlyInvoicePDF = async (data: QuarterlyInvoiceData) =>
         addText(item.hours.toString(), pageWidth - margin - 2, yPosition, { align: 'right' });
         totalParticipantHours += item.hours;
         yPosition += 5;
-      } else {
+      } else if (item.type === 'dozent') {
         const type = item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : item.entry.category || 'Sonstige Tätigkeit';
         addText(type, margin + 25, yPosition);
         const descYPosition = yPosition;
@@ -1192,6 +1247,12 @@ export const generateQuarterlyInvoicePDF = async (data: QuarterlyInvoiceData) =>
         addText(item.hours.toString(), pageWidth - margin - 15, descYPosition, { align: 'right' });
         totalDozentHours += item.hours;
         yPosition += 5 + (extraLines * 4);
+      } else if (item.type === 'flatrate') {
+        addText('Sonstiger Posten', margin + 25, yPosition);
+        const desc = `${item.entry.name}${item.entry.description ? ' - ' + item.entry.description : ''}`.substring(0, 60);
+        addText(desc, margin + 70, yPosition);
+        addText(`${item.entry.quantity} x ${item.entry.amount_euro.toFixed(2)}€`, pageWidth - margin - 2, yPosition, { align: 'right' });
+        yPosition += 5;
       }
     }
 
@@ -1632,7 +1693,7 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
     let totalDozentHours = 0;
 
     // Combine all hours and sort chronologically
-    const allHours: Array<{ type: 'participant' | 'dozent'; date: string; hours: number; entry: any }> = [];
+    const allHours: Array<{ type: 'participant' | 'dozent' | 'flatrate'; date: string; hours: number; entry: any }> = [];
     
     if (monthData.participantHours && monthData.participantHours.length > 0) {
       monthData.participantHours.forEach(entry => {
@@ -1643,6 +1704,13 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
     if (monthData.dozentHours && monthData.dozentHours.length > 0) {
       monthData.dozentHours.forEach(entry => {
         allHours.push({ type: 'dozent', date: entry.date, hours: entry.hours, entry });
+      });
+    }
+
+    // Add flat rate items (sonstige Posten)
+    if (monthData.flatRateItems && monthData.flatRateItems.length > 0) {
+      monthData.flatRateItems.forEach(entry => {
+        allHours.push({ type: 'flatrate', date: entry.date, hours: 0, entry });
       });
     }
 
@@ -1662,7 +1730,7 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
         addText(item.hours.toString(), pageWidth - margin - 2, yPosition, { align: 'right' });
         totalParticipantHours += item.hours;
         yPosition += 5;
-      } else {
+      } else if (item.type === 'dozent') {
         const type = item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : item.entry.category || 'Sonstige Tätigkeit';
         addText(type, margin + 25, yPosition);
         const descYPosition = yPosition;
@@ -1682,6 +1750,12 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
         addText(item.hours.toString(), pageWidth - margin - 15, descYPosition, { align: 'right' });
         totalDozentHours += item.hours;
         yPosition += 5 + (extraLines * 4);
+      } else if (item.type === 'flatrate') {
+        addText('Sonstiger Posten', margin + 25, yPosition);
+        const desc = `${item.entry.name}${item.entry.description ? ' - ' + item.entry.description : ''}`.substring(0, 60);
+        addText(desc, margin + 70, yPosition);
+        addText(`${item.entry.quantity} x ${item.entry.amount_euro.toFixed(2)}€`, pageWidth - margin - 2, yPosition, { align: 'right' });
+        yPosition += 5;
       }
     }
 

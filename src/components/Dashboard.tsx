@@ -104,7 +104,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const [showUnreadPopup, setShowUnreadPopup] = useState(false);
   const [showActivityDialog, setShowActivityDialog] = useState(false);
   const [showActivityTypeDialog, setShowActivityTypeDialog] = useState(false);
-  const [selectedActivityType, setSelectedActivityType] = useState<'sonstige' | 'Elite Klausur Korrektur' | null>(null);
+  const [selectedActivityType, setSelectedActivityType] = useState<'sonstige' | 'Elite Klausur Korrektur' | 'sonstiger_posten' | null>(null);
+  const [showFlatRateDialog, setShowFlatRateDialog] = useState(false);
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [showAvailabilityPopup, setShowAvailabilityPopup] = useState(false);
   const [currentAvailability, setCurrentAvailability] = useState<{status: string; notes?: string} | null>(null);
@@ -155,6 +156,13 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     date: new Date().toISOString().split('T')[0],
     description: '',
     exam_type: '1. Staatsexamen'
+  });
+  const [flatRateFormData, setFlatRateFormData] = useState({
+    name: '',
+    description: '',
+    quantity: '1',
+    amount_euro: '',
+    date: new Date().toISOString().split('T')[0]
   });
   const [activityRefreshKey, setActivityRefreshKey] = useState(0);
   const [contractRefreshKey, setContractRefreshKey] = useState(0);
@@ -2281,6 +2289,25 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                       <p className="text-xs text-gray-500">Korrektur von Klausuren für Elite Kleingruppen</p>
                     </div>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedActivityType('sonstiger_posten');
+                      setShowActivityTypeDialog(false);
+                      setShowFlatRateDialog(true);
+                    }}
+                    className="w-full flex items-center p-4 border border-gray-300 rounded-lg hover:border-green-600 hover:bg-green-50 transition-colors"
+                  >
+                    <div className="flex-shrink-0">
+                      <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
+                        <FileText className="h-5 w-5 text-green-600" />
+                      </div>
+                    </div>
+                    <div className="ml-4 text-left">
+                      <h4 className="text-sm font-medium text-gray-900">Sonstiger Posten (pauschale Vergütung)</h4>
+                      <p className="text-xs text-gray-500">z.B. Materialkosten, Reisekosten, sonstige Pauschalen...</p>
+                    </div>
+                  </button>
                 </div>
               </div>
               <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
@@ -2409,6 +2436,171 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                         date: new Date().toISOString().split('T')[0],
                         description: '',
                         exam_type: '1. Staatsexamen'
+                      });
+                    }}
+                    className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"
+                  >
+                    Abbrechen
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Flat Rate Item Dialog */}
+      {showFlatRateDialog && (
+        <div className="fixed z-10 inset-0 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  const { data: { user } } = await supabase.auth.getUser();
+                  if (!user) return;
+
+                  const quantity = parseFloat(flatRateFormData.quantity);
+                  const amountEuro = parseFloat(flatRateFormData.amount_euro);
+                  const totalEuro = quantity * amountEuro;
+
+                  const { error } = await supabase.from('dozent_flat_rate_items').insert({
+                    dozent_id: user.id,
+                    name: flatRateFormData.name,
+                    description: flatRateFormData.description,
+                    quantity: quantity,
+                    amount_euro: amountEuro,
+                    date: flatRateFormData.date
+                  });
+
+                  if (error) throw error;
+
+                  setShowFlatRateDialog(false);
+                  setSelectedActivityType(null);
+                  setFlatRateFormData({
+                    name: '',
+                    description: '',
+                    quantity: '1',
+                    amount_euro: '',
+                    date: new Date().toISOString().split('T')[0]
+                  });
+                  await fetchMonthlySummary();
+                } catch (error) {
+                  console.error('Error creating flat rate item:', error);
+                  alert('Fehler beim Speichern des Postens: ' + error.message);
+                }
+              }}>
+                <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Sonstiger Posten (pauschale Vergütung) hinzufügen
+                  </h3>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Name des Postens
+                      </label>
+                      <input
+                        type="text"
+                        value={flatRateFormData.name}
+                        onChange={(e) => setFlatRateFormData({ ...flatRateFormData, name: e.target.value })}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                        placeholder="z.B. Materialkosten"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Beschreibung
+                      </label>
+                      <textarea
+                        value={flatRateFormData.description}
+                        onChange={(e) => setFlatRateFormData({ ...flatRateFormData, description: e.target.value })}
+                        rows={2}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                        placeholder="z.B. Druckkosten für Unterrichtsmaterialien"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Menge
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          value={flatRateFormData.quantity}
+                          onChange={(e) => setFlatRateFormData({ ...flatRateFormData, quantity: e.target.value })}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                          placeholder="1"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Betrag pro Einheit (€)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={flatRateFormData.amount_euro}
+                          onChange={(e) => setFlatRateFormData({ ...flatRateFormData, amount_euro: e.target.value })}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                          placeholder="z.B. 50.00"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    {flatRateFormData.quantity && flatRateFormData.amount_euro && (
+                      <div className="bg-green-50 border border-green-200 rounded-md p-3">
+                        <p className="text-sm font-medium text-green-800">
+                          Gesamtbetrag: {(parseFloat(flatRateFormData.quantity) * parseFloat(flatRateFormData.amount_euro)).toFixed(2)} €
+                        </p>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <Calendar className="h-4 w-4 inline mr-1" />
+                        Datum
+                      </label>
+                      <input
+                        type="date"
+                        value={flatRateFormData.date}
+                        onChange={(e) => setFlatRateFormData({ ...flatRateFormData, date: e.target.value })}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                  <button
+                    type="submit"
+                    className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary text-base font-medium text-white hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:ml-3 sm:w-auto sm:text-sm"
+                  >
+                    Hinzufügen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowFlatRateDialog(false);
+                      setSelectedActivityType(null);
+                      setFlatRateFormData({
+                        name: '',
+                        description: '',
+                        quantity: '1',
+                        amount_euro: '',
+                        date: new Date().toISOString().split('T')[0]
                       });
                     }}
                     className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"

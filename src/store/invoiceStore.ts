@@ -198,6 +198,16 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
 
       if (dozentHoursError) throw dozentHoursError;
 
+      // Fetch flat rate items (sonstige Posten)
+      const { data: flatRateItems, error: flatRateError } = await supabase
+        .from('dozent_flat_rate_items')
+        .select('total_euro')
+        .eq('dozent_id', targetDozentId)
+        .gte('date', startDate)
+        .lte('date', endDate);
+
+      if (flatRateError) throw flatRateError;
+
       // Normalize teilnehmer object (Supabase may return as array)
       const normalizedParticipantHours = (participantHours || []).map((h: any) => ({
         ...h,
@@ -258,8 +268,11 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
       const totalEliteKorrektur = eliteKorrekturHours.reduce((sum: number, h: any) => sum + parseFloat(h.hours.toString()), 0);
       const totalSonstige = sonstigeHours.reduce((sum: number, h: any) => sum + parseFloat(h.hours.toString()), 0);
 
-      // Calculate total amount based on hourly rates
-      const totalAmount = (totalRegular * rateUnterricht) + (totalElite * rateElite) + (totalEliteKorrektur * rateEliteKorrektur) + (totalSonstige * rateSonstige);
+      // Calculate total amount from flat rate items
+      const totalFlatRate = (flatRateItems || []).reduce((sum: number, h: any) => sum + parseFloat(h.total_euro.toString()), 0);
+
+      // Calculate total amount based on hourly rates + flat rate items
+      const totalAmount = (totalRegular * rateUnterricht) + (totalElite * rateElite) + (totalEliteKorrektur * rateEliteKorrektur) + (totalSonstige * rateSonstige) + totalFlatRate;
 
       // Generate invoice number if not provided
       const invoiceNumber = customInvoiceNumber || `RE${Date.now()}`;
@@ -414,6 +427,17 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
 
       if (dozentError) throw dozentError;
 
+      // Get flat rate items (sonstige Posten)
+      const { data: flatRateItems, error: flatRateError } = await supabase
+        .from('dozent_flat_rate_items')
+        .select('date, name, description, quantity, amount_euro, total_euro')
+        .eq('dozent_id', invoice.dozent_id)
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date', { ascending: true });
+
+      if (flatRateError) throw flatRateError;
+
       // Generate PDF - normalize Supabase join arrays to objects
       const normalizedParticipantHours = (participantHours || []).map((h: any) => ({
         ...h,
@@ -423,7 +447,8 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
       await generateInvoicePDF({
         invoice: invoice as any,
         participantHours: normalizedParticipantHours as any,
-        dozentHours: (dozentHours || []) as any
+        dozentHours: (dozentHours || []) as any,
+        flatRateItems: (flatRateItems || []) as any
       });
 
     } catch (error: any) {
@@ -529,6 +554,15 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
           .lte('date', endDate)
           .order('date', { ascending: true });
 
+        // Fetch flat rate items (sonstige Posten)
+        const { data: flatRateItems } = await supabase
+          .from('dozent_flat_rate_items')
+          .select('date, name, description, quantity, amount_euro, total_euro')
+          .eq('dozent_id', targetDozentId)
+          .gte('date', startDate)
+          .lte('date', endDate)
+          .order('date', { ascending: true });
+
         // Normalize teilnehmer object
         const normalizedParticipantHours = (participantHours || []).map((h: any) => ({
           ...h,
@@ -586,7 +620,10 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
         const totalSonstige = sonstigeHours.reduce((sum: number, h: any) => sum + parseFloat(h.hours.toString()), 0);
         const totalHours = totalRegular + totalElite + totalEliteKorrektur + totalSonstige;
 
-        const totalAmount = (totalRegular * rateUnterricht) + (totalElite * rateElite) + (totalEliteKorrektur * rateEliteKorrektur) + (totalSonstige * rateSonstige);
+        // Calculate flat rate items total
+        const flatRateTotal = (flatRateItems || []).reduce((sum: number, item: any) => sum + parseFloat(item.total_euro.toString()), 0);
+
+        const totalAmount = (totalRegular * rateUnterricht) + (totalElite * rateElite) + (totalEliteKorrektur * rateEliteKorrektur) + (totalSonstige * rateSonstige) + flatRateTotal;
 
         return {
           month,
@@ -595,6 +632,7 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
           period_end: endDate,
           participantHours: filteredParticipantHours as any,
           dozentHours: filteredDozentHours as any,
+          flatRateItems: (flatRateItems || []) as any,
           totalHours,
           totalAmount
         };

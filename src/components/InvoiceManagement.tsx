@@ -24,7 +24,11 @@ interface ConfirmHourEntry {
   study_goal?: string;
   teilnehmer?: { name?: string };
   teilnehmer_name?: string;
-  type: 'participant' | 'dozent';
+  type: 'participant' | 'dozent' | 'flatrate';
+  name?: string;
+  quantity?: number;
+  amount_euro?: number;
+  total_euro?: number;
 }
 
 interface InvoiceManagementProps {
@@ -751,7 +755,14 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         .gte('date', `${createFormData.year}-${String(createFormData.month).padStart(2, '0')}-01`)
         .lte('date', `${createFormData.year}-${String(createFormData.month).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`);
 
-      const allHours: HourEntry[] = [
+      const { data: flatRateItems } = await supabase
+        .from('dozent_flat_rate_items')
+        .select('id, date, name, description, quantity, amount_euro, total_euro')
+        .eq('dozent_id', dozentId)
+        .gte('date', `${createFormData.year}-${String(createFormData.month).padStart(2, '0')}-01`)
+        .lte('date', `${createFormData.year}-${String(createFormData.month).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`);
+
+      const allHours: ConfirmHourEntry[] = [
         ...(participantHours || []).map(h => ({
           id: h.id,
           date: h.date,
@@ -760,7 +771,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
           category: h.legal_area,
           elite_kleingruppe: h.description?.includes('Elite-Kleingruppe') || h.legal_area?.includes('Elite-Kleingruppe'),
           study_goal: h.legal_area,
-          teilnehmer: h.teilnehmer,
+          teilnehmer: Array.isArray(h.teilnehmer) ? h.teilnehmer[0] : h.teilnehmer,
           type: 'participant' as const
         })),
         ...(dozentHours || []).map(h => ({
@@ -771,6 +782,17 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
           category: h.category,
           elite_kleingruppe: h.description?.includes('Elite-Kleingruppe') || h.category?.includes('Elite-Kleingruppe'),
           type: 'dozent' as const
+        })),
+        ...(flatRateItems || []).map(h => ({
+          id: h.id,
+          date: h.date,
+          hours: 0,
+          description: h.description || '',
+          name: h.name || '',
+          quantity: h.quantity,
+          amount_euro: h.amount_euro,
+          total_euro: h.total_euro,
+          type: 'flatrate' as const
         }))
       ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -836,6 +858,15 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         .lte('date', invoiceData.period_end)
         .order('date', { ascending: true });
 
+      // Fetch flat rate items (sonstige Posten)
+      const { data: flatRateItems } = await supabase
+        .from('dozent_flat_rate_items')
+        .select('date, name, description, quantity, amount_euro, total_euro')
+        .eq('dozent_id', invoiceData.dozent_id)
+        .gte('date', invoiceData.period_start)
+        .lte('date', invoiceData.period_end)
+        .order('date', { ascending: true });
+
       // Normalize teilnehmer object
       const normalizedParticipantHours = (participantHours || []).map((h: any) => ({
         ...h,
@@ -893,6 +924,17 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
           category: h.category,
           elite_kleingruppe: h.description?.includes('Elite-Kleingruppe') || h.category?.includes('Elite-Kleingruppe'),
           type: 'dozent' as const
+        })),
+        ...(flatRateItems || []).map((h: any) => ({
+          id: h.id,
+          date: h.date,
+          hours: 0,
+          description: h.description || '',
+          name: h.name || '',
+          quantity: h.quantity,
+          amount_euro: h.amount_euro,
+          total_euro: h.total_euro,
+          type: 'flatrate' as const
         }))
       ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -903,7 +945,8 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       const pdfBlob = await generateInvoicePDFBlob({
         invoice: { ...invoiceData, dozent: invoiceData.dozent },
         participantHours: filteredParticipantHours as any,
-        dozentHours: filteredDozentHours as any
+        dozentHours: filteredDozentHours as any,
+        flatRateItems: (flatRateItems || []) as any
       });
       const pdfUrl = URL.createObjectURL(pdfBlob);
       setReviewPdfUrl(pdfUrl);
@@ -1241,6 +1284,17 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
 
       if (dError) throw dError;
 
+      // Fetch flat rate items (sonstige Posten)
+      const { data: flatRateItems, error: frError } = await supabase
+        .from('dozent_flat_rate_items')
+        .select('date, name, description, quantity, amount_euro, total_euro')
+        .eq('dozent_id', invoice.dozent_id)
+        .gte('date', invoice.period_start)
+        .lte('date', invoice.period_end)
+        .order('date', { ascending: true });
+
+      if (frError) throw frError;
+
       // Transform and combine data
       const hours: HourEntry[] = [
         ...(participantHours || []).map((h: any) => ({
@@ -1256,6 +1310,13 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
           description: h.description,
           legal_area: 'Sonstige',
           teilnehmer_name: h.description || 'Sonstige Tätigkeit'
+        })),
+        ...(flatRateItems || []).map((h: any) => ({
+          date: h.date,
+          hours: 0,
+          description: `${h.name}${h.description ? ' - ' + h.description : ''}`,
+          legal_area: 'Pauschale',
+          teilnehmer_name: `${h.quantity} x ${h.amount_euro.toFixed(2)}€`
         }))
       ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 

@@ -58,6 +58,18 @@ interface PendingHoursEntry {
   created_at: string;
 }
 
+interface FlatRateItem {
+  id: string;
+  dozent_id: string;
+  name: string;
+  description: string;
+  quantity: number;
+  amount_euro: number;
+  total_euro: number;
+  date: string;
+  created_at: string;
+}
+
 interface TeilnehmerWithHours extends Teilnehmer {
   monthly_hours: number;
 }
@@ -68,6 +80,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
   const [participantHours, setParticipantHours] = useState<ParticipantHoursEntry[]>([]);
   const [combinedHours, setCombinedHours] = useState<CombinedHoursEntry[]>([]);
   const [pendingHours, setPendingHours] = useState<PendingHoursEntry[]>([]);
+  const [flatRateItems, setFlatRateItems] = useState<FlatRateItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dozentName, setDozentName] = useState<string>('');
@@ -99,19 +112,20 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
     console.log('📊 ActivityReport: Current tab:', new URLSearchParams(window.location.search).get('tab'));
     console.log('📊 ActivityReport: Selected month:', selectedMonth);
     console.log('📊 ActivityReport: Selected year:', selectedYear);
-    
+
     fetchDozentName();
     fetchAllHours();
     fetchPendingHours();
     fetchActiveTeilnehmer();
-    
+    fetchFlatRateItems();
+
     // Setup real-time subscriptions
     const { setupRealtimeSubscription: setupHoursSub, cleanupSubscription: cleanupHoursSub } = useHoursStore.getState();
     const { setupRealtimeSubscription: setupDozentHoursSub, cleanupSubscription: cleanupDozentHoursSub } = useDozentHoursStore.getState();
-    
+
     setupHoursSub();
     setupDozentHoursSub();
-    
+
     // Setup realtime subscription for pending hours
     const pendingChannel = supabase
       .channel('pending-hours-changes')
@@ -124,11 +138,25 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
         fetchPendingHours();
       })
       .subscribe();
-    
+
+    // Setup realtime subscription for flat rate items
+    const flatRateChannel = supabase
+      .channel('flat-rate-items-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'dozent_flat_rate_items',
+        filter: `dozent_id=eq.${targetDozentId}`
+      }, () => {
+        fetchFlatRateItems();
+      })
+      .subscribe();
+
     return () => {
       cleanupHoursSub();
       cleanupDozentHoursSub();
       pendingChannel.unsubscribe();
+      flatRateChannel.unsubscribe();
     };
   }, [selectedMonth, selectedYear, targetDozentId]);
 
@@ -212,7 +240,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
 
   const fetchPendingHours = async () => {
     if (!targetDozentId) return;
-    
+
     try {
       const { data, error } = await supabase
         .from('pending_dozent_hours')
@@ -225,6 +253,29 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
       setPendingHours(data || []);
     } catch (error: any) {
       console.error('Error fetching pending hours:', error);
+    }
+  };
+
+  const fetchFlatRateItems = async () => {
+    if (!targetDozentId) return;
+
+    try {
+      const startDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
+      const lastDayOfMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+      const endDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
+
+      const { data, error } = await supabase
+        .from('dozent_flat_rate_items')
+        .select('*')
+        .eq('dozent_id', targetDozentId)
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date', { ascending: true });
+
+      if (error) throw error;
+      setFlatRateItems(data || []);
+    } catch (error: any) {
+      console.error('Error fetching flat rate items:', error);
     }
   };
 
@@ -522,11 +573,32 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
       try {
         const { error } = await supabase.rpc('reject_pending_hours', { pending_id: pendingId });
         if (error) throw error;
-        
+
         await fetchPendingHours();
       } catch (error: any) {
         console.error('Error rejecting pending hours:', error);
         alert('Fehler beim Ablehnen: ' + error.message);
+      }
+    }
+  };
+
+  const handleDeleteFlatRateItem = async (item: FlatRateItem) => {
+    const confirmMessage = `Möchten Sie die pauschale Vergütung "${item.name}" vom ${formatDate(item.date)} (${item.total_euro.toFixed(2)} €) wirklich löschen?`;
+
+    if (window.confirm(confirmMessage)) {
+      try {
+        const { error } = await supabase
+          .from('dozent_flat_rate_items')
+          .delete()
+          .eq('id', item.id);
+
+        if (error) throw error;
+
+        // Refresh data
+        await fetchFlatRateItems();
+      } catch (error: any) {
+        console.error('Error deleting flat rate item:', error);
+        alert('Fehler beim Löschen des Eintrags: ' + error.message);
       }
     }
   };
@@ -794,6 +866,73 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
                     >
                       <X className="h-4 w-4 mr-1" />
                       Ablehnen
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* Flat Rate Items Section */}
+      {flatRateItems.length > 0 && (
+        <div className="bg-purple-50 border border-purple-200 rounded-lg shadow">
+          <div className="px-6 py-4 border-b border-purple-200 flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-medium text-gray-900">
+                Pauschale Vergütungen
+              </h3>
+              <p className="text-sm text-gray-500">
+                Sonstige Posten und pauschale Zahlungen
+              </p>
+            </div>
+            <div className="inline-flex items-center px-4 py-2 bg-purple-100 rounded-lg">
+              <span className="text-lg font-semibold text-purple-700">
+                {flatRateItems.reduce((sum, item) => sum + item.total_euro, 0).toFixed(2)} €
+              </span>
+            </div>
+          </div>
+          <div className="p-6 space-y-4">
+            {flatRateItems.map((item) => (
+              <div key={item.id} className="bg-white border border-purple-200 rounded-lg p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center mb-2">
+                      <Calendar className="h-4 w-4 mr-1 text-gray-500" />
+                      <span className="font-medium text-gray-900">{formatDate(item.date)}</span>
+                    </div>
+                    <div className="flex items-center space-x-4 mb-2">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                        Pauschale Vergütung
+                      </span>
+                      <div className="flex items-center text-sm text-gray-900">
+                        <span className="font-semibold">{item.quantity} × {item.amount_euro.toFixed(2)} € = {item.total_euro.toFixed(2)} €</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start">
+                      <BookOpen className="h-4 w-4 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
+                      <div className="text-sm text-gray-700">
+                        <span className="font-medium">Name: </span>
+                        {item.name}
+                      </div>
+                    </div>
+                    {item.description && (
+                      <div className="flex items-start mt-1">
+                        <BookOpen className="h-4 w-4 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
+                        <div className="text-sm text-gray-700">
+                          <span className="font-medium">Beschreibung: </span>
+                          {item.description}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center space-x-2 ml-4">
+                    <button
+                      onClick={() => handleDeleteFlatRateItem(item)}
+                      className="text-gray-400 hover:text-red-500 transition-colors"
+                      title="Eintrag löschen"
+                    >
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
