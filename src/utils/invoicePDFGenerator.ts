@@ -405,7 +405,14 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
     
     // Calculate required height for this entry
     let requiredHeight = 8; // Base height for one line
-    if (item.type === 'dozent') {
+    if (item.type === 'participant') {
+      const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`;
+      const maxWidth = pageWidth - margin - 20 - (margin + 70);
+      if (desc.length > 50) {
+        const lines = doc.splitTextToSize(desc, maxWidth);
+        requiredHeight += (lines.length - 1) * 4; // Extra lines for wrapped text
+      }
+    } else if (item.type === 'dozent') {
       if (item.entry.category === 'Elite-Kleingruppe Korrektur') {
         requiredHeight += 4; // Extra line for "Klausurenkorrektur"
       }
@@ -422,6 +429,13 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
         const lines = doc.splitTextToSize(desc, maxWidth);
         requiredHeight += (lines.length - 1) * 4; // Extra lines for wrapped text
       }
+    } else if (item.type === 'flatrate') {
+      const desc = `${item.entry.name}${item.entry.description ? ' - ' + item.entry.description : ''}`;
+      const maxWidth = pageWidth - margin - 20 - (margin + 70);
+      if (desc.length > 50) {
+        const lines = doc.splitTextToSize(desc, maxWidth);
+        requiredHeight += (lines.length - 1) * 4; // Extra lines for wrapped text
+      }
     }
     
     // Check if we need a new page before adding this entry
@@ -431,11 +445,21 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
     
     if (item.type === 'participant') {
       addText('Einzelunterricht', margin + 25, yPosition);
-      const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`.substring(0, 60);
-      addText(desc, margin + 70, yPosition);
-      addText(item.hours.toString(), pageWidth - margin - 2, yPosition, { align: 'right' });
+      const descYPosition = yPosition;
+      const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`;
+      const maxWidth = pageWidth - margin - 20 - (margin + 70);
+      if (desc.length > 50) {
+        const lines = doc.splitTextToSize(desc, maxWidth);
+        lines.forEach((line: string, index: number) => {
+          addText(line, margin + 70, descYPosition + (index * 4));
+        });
+        yPosition += 5 + ((lines.length - 1) * 4);
+      } else {
+        addText(desc, margin + 70, descYPosition);
+        yPosition += 5;
+      }
+      addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
       totalParticipantHours += item.hours;
-      yPosition += 5;
     } else if (item.type === 'dozent') {
       const type = item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.category?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : item.entry.category || 'Sonstige Tätigkeit';
       addText(type, margin + 25, yPosition);
@@ -469,10 +493,20 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       yPosition += 5 + (extraLines * 4);
     } else if (item.type === 'flatrate') {
       addText('Sonstiger Posten', margin + 25, yPosition);
-      const desc = `${item.entry.name}${item.entry.description ? ' - ' + item.entry.description : ''}`.substring(0, 60);
-      addText(desc, margin + 70, yPosition);
-      addText(`${item.entry.quantity} x ${item.entry.amount_euro.toFixed(2)}€`, pageWidth - margin - 2, yPosition, { align: 'right' });
-      yPosition += 5;
+      const descYPosition = yPosition;
+      const desc = `${item.entry.name}${item.entry.description ? ' - ' + item.entry.description : ''}`;
+      const maxWidth = pageWidth - margin - 20 - (margin + 70);
+      if (desc.length > 50) {
+        const lines = doc.splitTextToSize(desc, maxWidth);
+        lines.forEach((line: string, index: number) => {
+          addText(line, margin + 70, descYPosition + (index * 4));
+        });
+        yPosition += 5 + ((lines.length - 1) * 4);
+      } else {
+        addText(desc, margin + 70, descYPosition);
+        yPosition += 5;
+      }
+      addText(`${item.entry.quantity} x ${item.entry.amount_euro.toFixed(2)}€`, pageWidth - margin - 2, descYPosition, { align: 'right' });
     }
   }
 
@@ -870,7 +904,14 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     
     // Calculate required height for this entry
     let requiredHeight = 8; // Base height for one line
-    if (item.type === 'dozent') {
+    if (item.type === 'participant') {
+      const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`;
+      const maxWidth = pageWidth - margin - 20 - (margin + 70);
+      if (desc.length > 50) {
+        const lines = doc.splitTextToSize(desc, maxWidth);
+        requiredHeight += (lines.length - 1) * 4; // Extra lines for wrapped text
+      }
+    } else if (item.type === 'dozent') {
       if (item.entry.category === 'Elite-Kleingruppe Korrektur') {
         requiredHeight += 4; // Extra line for "Klausurenkorrektur"
       }
@@ -887,6 +928,13 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
         const lines = doc.splitTextToSize(desc, maxWidth);
         requiredHeight += (lines.length - 1) * 4; // Extra lines for wrapped text
       }
+    } else if (item.type === 'flatrate') {
+      const desc = `${item.entry.name}${item.entry.description ? ' - ' + item.entry.description : ''}`;
+      const maxWidth = pageWidth - margin - 20 - (margin + 70);
+      if (desc.length > 50) {
+        const lines = doc.splitTextToSize(desc, maxWidth);
+        requiredHeight += (lines.length - 1) * 4; // Extra lines for wrapped text
+      }
     }
     
     // Check if we need a new page before adding this entry
@@ -896,11 +944,21 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     
     if (item.type === 'participant') {
       addText('Einzelunterricht', margin + 25, yPosition);
-      const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`.substring(0, 60);
-      addText(desc, margin + 70, yPosition);
-      addText(item.hours.toString(), pageWidth - margin - 2, yPosition, { align: 'right' });
+      const descYPosition = yPosition;
+      const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`;
+      const maxWidth = pageWidth - margin - 20 - (margin + 70);
+      if (desc.length > 50) {
+        const lines = doc.splitTextToSize(desc, maxWidth);
+        lines.forEach((line: string, index: number) => {
+          addText(line, margin + 70, descYPosition + (index * 4));
+        });
+        yPosition += 5 + ((lines.length - 1) * 4);
+      } else {
+        addText(desc, margin + 70, descYPosition);
+        yPosition += 5;
+      }
+      addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
       totalParticipantHours += item.hours;
-      yPosition += 5;
     } else if (item.type === 'dozent') {
       const type = item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.category?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : item.entry.category || 'Sonstige Tätigkeit';
       addText(type, margin + 25, yPosition);
@@ -934,10 +992,20 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       yPosition += 5 + (extraLines * 4);
     } else if (item.type === 'flatrate') {
       addText('Sonstiger Posten', margin + 25, yPosition);
-      const desc = `${item.entry.name}${item.entry.description ? ' - ' + item.entry.description : ''}`.substring(0, 60);
-      addText(desc, margin + 70, yPosition);
-      addText(`${item.entry.quantity} x ${item.entry.amount_euro.toFixed(2)}€`, pageWidth - margin - 2, yPosition, { align: 'right' });
-      yPosition += 5;
+      const descYPosition = yPosition;
+      const desc = `${item.entry.name}${item.entry.description ? ' - ' + item.entry.description : ''}`;
+      const maxWidth = pageWidth - margin - 20 - (margin + 70);
+      if (desc.length > 50) {
+        const lines = doc.splitTextToSize(desc, maxWidth);
+        lines.forEach((line: string, index: number) => {
+          addText(line, margin + 70, descYPosition + (index * 4));
+        });
+        yPosition += 5 + ((lines.length - 1) * 4);
+      } else {
+        addText(desc, margin + 70, descYPosition);
+        yPosition += 5;
+      }
+      addText(`${item.entry.quantity} x ${item.entry.amount_euro.toFixed(2)}€`, pageWidth - margin - 2, descYPosition, { align: 'right' });
     }
   }
 
@@ -1495,17 +1563,69 @@ export const generateQuarterlyInvoicePDF = async (data: QuarterlyInvoiceData) =>
 
     // Display all hours in chronological order
     for (const item of sortedAllHours) {
-      checkPageBreak(8);
       doc.setFontSize(8);
+      
+      // Calculate required height for this entry
+      let requiredHeight = 8; // Base height for one line
+      if (item.type === 'participant') {
+        const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`;
+        const maxWidth = pageWidth - margin - 20 - (margin + 70);
+        if (desc.length > 50) {
+          const lines = doc.splitTextToSize(desc, maxWidth);
+          requiredHeight += (lines.length - 1) * 4; // Extra lines for wrapped text
+        }
+      } else if (item.type === 'dozent') {
+        if (item.entry.category === 'Elite-Kleingruppe Korrektur') {
+          requiredHeight += 4; // Extra line for "Klausurenkorrektur"
+        }
+        const groupMatch = item.entry.description?.match(/- Elite-Kleingruppe\s+(\d{4}\/\d{4}\s*-\s*\d+)/);
+        if (groupMatch) {
+          requiredHeight += 4; // Extra line for group match
+        }
+        let desc;
+        if (item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe')) {
+          desc = item.entry.description?.startsWith('Klausurkorrektur:') 
+            ? item.entry.description.replace('Klausurkorrektur:', '').trim().replace(/-\s*\d+\s*(?:Punkte|Punkte?)$/, '').trim()
+            : item.entry.description || '-';
+        } else {
+          desc = item.entry.description || '-';
+        }
+        const maxWidth = pageWidth - margin - 20 - (margin + 70);
+        if (desc.length > 50) {
+          const lines = doc.splitTextToSize(desc, maxWidth);
+          requiredHeight += (lines.length - 1) * 4; // Extra lines for wrapped text
+        }
+      } else if (item.type === 'flatrate') {
+        const desc = `${item.entry.name}${item.entry.description ? ' - ' + item.entry.description : ''}`;
+        const maxWidth = pageWidth - margin - 20 - (margin + 70);
+        if (desc.length > 50) {
+          const lines = doc.splitTextToSize(desc, maxWidth);
+          requiredHeight += (lines.length - 1) * 4; // Extra lines for wrapped text
+        }
+      }
+      
+      // Check if we need a new page before adding this entry
+      checkPageBreak(requiredHeight);
+      
       addText(formatDate(item.date), margin + 2, yPosition);
       
       if (item.type === 'participant') {
         addText('Einzelunterricht', margin + 25, yPosition);
-        const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`.substring(0, 60);
-        addText(desc, margin + 70, yPosition);
-        addText(item.hours.toString(), pageWidth - margin - 2, yPosition, { align: 'right' });
+        const descYPosition = yPosition;
+        const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`;
+        const maxWidth = pageWidth - margin - 20 - (margin + 70);
+        if (desc.length > 50) {
+          const lines = doc.splitTextToSize(desc, maxWidth);
+          lines.forEach((line: string, index: number) => {
+            addText(line, margin + 70, descYPosition + (index * 4));
+          });
+          yPosition += 5 + ((lines.length - 1) * 4);
+        } else {
+          addText(desc, margin + 70, descYPosition);
+          yPosition += 5;
+        }
+        addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
         totalParticipantHours += item.hours;
-        yPosition += 5;
       } else if (item.type === 'dozent') {
         const type = item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : item.entry.category || 'Sonstige Tätigkeit';
         addText(type, margin + 25, yPosition);
@@ -1521,17 +1641,43 @@ export const generateQuarterlyInvoicePDF = async (data: QuarterlyInvoiceData) =>
           addText(groupMatch[1], margin + 25, yPosition);
           extraLines = 1;
         }
-        const desc = (item.entry.description?.startsWith('Klausurkorrektur:') && (item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe')) ? item.entry.description.replace('Klausurkorrektur:', '').trim().replace(/-\s*\d+\s*(?:Punkte|Punkte?)$/, '').trim().replace(/- Elite-Kleingruppe\s+\d{4}\/\d{4}\s*-\s*\d+/, '').trim() : item.entry.description?.includes('Elite-Kleingruppe') ? item.entry.description.replace(/- Elite-Kleingruppe\s+\d{4}\/\d{4}\s*-\s*\d+/, '').trim() : item.entry.description || '-').substring(0, 80);
-        addText(desc, margin + 70, descYPosition);
+        let desc;
+        if (item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe')) {
+          desc = item.entry.description?.startsWith('Klausurkorrektur:') 
+            ? item.entry.description.replace('Klausurkorrektur:', '').trim().replace(/-\s*\d+\s*(?:Punkte|Punkte?)$/, '').trim()
+            : item.entry.description || '-';
+        } else {
+          desc = item.entry.description || '-';
+        }
+        const maxWidth = pageWidth - margin - 20 - (margin + 70);
+        if (desc.length > 50) {
+          const lines = doc.splitTextToSize(desc, maxWidth);
+          lines.forEach((line: string, index: number) => {
+            addText(line, margin + 70, descYPosition + (index * 4));
+          });
+          extraLines = Math.max(extraLines, lines.length - 1);
+        } else {
+          addText(desc, margin + 70, descYPosition);
+        }
         addText(item.hours.toString(), pageWidth - margin - 15, descYPosition, { align: 'right' });
         totalDozentHours += item.hours;
         yPosition += 5 + (extraLines * 4);
       } else if (item.type === 'flatrate') {
         addText('Sonstiger Posten', margin + 25, yPosition);
-        const desc = `${item.entry.name}${item.entry.description ? ' - ' + item.entry.description : ''}`.substring(0, 60);
-        addText(desc, margin + 70, yPosition);
-        addText(`${item.entry.quantity} x ${item.entry.amount_euro.toFixed(2)}€`, pageWidth - margin - 2, yPosition, { align: 'right' });
-        yPosition += 5;
+        const descYPosition = yPosition;
+        const desc = `${item.entry.name}${item.entry.description ? ' - ' + item.entry.description : ''}`;
+        const maxWidth = pageWidth - margin - 20 - (margin + 70);
+        if (desc.length > 50) {
+          const lines = doc.splitTextToSize(desc, maxWidth);
+          lines.forEach((line: string, index: number) => {
+            addText(line, margin + 70, descYPosition + (index * 4));
+          });
+          yPosition += 5 + ((lines.length - 1) * 4);
+        } else {
+          addText(desc, margin + 70, descYPosition);
+          yPosition += 5;
+        }
+        addText(`${item.entry.quantity} x ${item.entry.amount_euro.toFixed(2)}€`, pageWidth - margin - 2, descYPosition, { align: 'right' });
       }
     }
 
@@ -2005,17 +2151,69 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
 
     // Display all hours in chronological order
     for (const item of sortedAllHours) {
-      checkPageBreak(8);
       doc.setFontSize(8);
+      
+      // Calculate required height for this entry
+      let requiredHeight = 8; // Base height for one line
+      if (item.type === 'participant') {
+        const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`;
+        const maxWidth = pageWidth - margin - 20 - (margin + 70);
+        if (desc.length > 50) {
+          const lines = doc.splitTextToSize(desc, maxWidth);
+          requiredHeight += (lines.length - 1) * 4; // Extra lines for wrapped text
+        }
+      } else if (item.type === 'dozent') {
+        if (item.entry.category === 'Elite-Kleingruppe Korrektur') {
+          requiredHeight += 4; // Extra line for "Klausurenkorrektur"
+        }
+        const groupMatch = item.entry.description?.match(/- Elite-Kleingruppe\s+(\d{4}\/\d{4}\s*-\s*\d+)/);
+        if (groupMatch) {
+          requiredHeight += 4; // Extra line for group match
+        }
+        let desc;
+        if (item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe')) {
+          desc = item.entry.description?.startsWith('Klausurkorrektur:') 
+            ? item.entry.description.replace('Klausurkorrektur:', '').trim().replace(/-\s*\d+\s*(?:Punkte|Punkte?)$/, '').trim()
+            : item.entry.description || '-';
+        } else {
+          desc = item.entry.description || '-';
+        }
+        const maxWidth = pageWidth - margin - 20 - (margin + 70);
+        if (desc.length > 50) {
+          const lines = doc.splitTextToSize(desc, maxWidth);
+          requiredHeight += (lines.length - 1) * 4; // Extra lines for wrapped text
+        }
+      } else if (item.type === 'flatrate') {
+        const desc = `${item.entry.name}${item.entry.description ? ' - ' + item.entry.description : ''}`;
+        const maxWidth = pageWidth - margin - 20 - (margin + 70);
+        if (desc.length > 50) {
+          const lines = doc.splitTextToSize(desc, maxWidth);
+          requiredHeight += (lines.length - 1) * 4; // Extra lines for wrapped text
+        }
+      }
+      
+      // Check if we need a new page before adding this entry
+      checkPageBreak(requiredHeight);
+      
       addText(formatDate(item.date), margin + 2, yPosition);
       
       if (item.type === 'participant') {
         addText('Einzelunterricht', margin + 25, yPosition);
-        const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`.substring(0, 60);
-        addText(desc, margin + 70, yPosition);
-        addText(item.hours.toString(), pageWidth - margin - 2, yPosition, { align: 'right' });
+        const descYPosition = yPosition;
+        const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`;
+        const maxWidth = pageWidth - margin - 20 - (margin + 70);
+        if (desc.length > 50) {
+          const lines = doc.splitTextToSize(desc, maxWidth);
+          lines.forEach((line: string, index: number) => {
+            addText(line, margin + 70, descYPosition + (index * 4));
+          });
+          yPosition += 5 + ((lines.length - 1) * 4);
+        } else {
+          addText(desc, margin + 70, descYPosition);
+          yPosition += 5;
+        }
+        addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
         totalParticipantHours += item.hours;
-        yPosition += 5;
       } else if (item.type === 'dozent') {
         const type = item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : item.entry.category || 'Sonstige Tätigkeit';
         addText(type, margin + 25, yPosition);
@@ -2031,17 +2229,43 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
           addText(groupMatch[1], margin + 25, yPosition);
           extraLines = 1;
         }
-        const desc = (item.entry.description?.startsWith('Klausurkorrektur:') && (item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe')) ? item.entry.description.replace('Klausurkorrektur:', '').trim().replace(/-\s*\d+\s*(?:Punkte|Punkte?)$/, '').trim().replace(/- Elite-Kleingruppe\s+\d{4}\/\d{4}\s*-\s*\d+/, '').trim() : item.entry.description?.includes('Elite-Kleingruppe') ? item.entry.description.replace(/- Elite-Kleingruppe\s+\d{4}\/\d{4}\s*-\s*\d+/, '').trim() : item.entry.description || '-').substring(0, 80);
-        addText(desc, margin + 70, descYPosition);
+        let desc;
+        if (item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe')) {
+          desc = item.entry.description?.startsWith('Klausurkorrektur:') 
+            ? item.entry.description.replace('Klausurkorrektur:', '').trim().replace(/-\s*\d+\s*(?:Punkte|Punkte?)$/, '').trim()
+            : item.entry.description || '-';
+        } else {
+          desc = item.entry.description || '-';
+        }
+        const maxWidth = pageWidth - margin - 20 - (margin + 70);
+        if (desc.length > 50) {
+          const lines = doc.splitTextToSize(desc, maxWidth);
+          lines.forEach((line: string, index: number) => {
+            addText(line, margin + 70, descYPosition + (index * 4));
+          });
+          extraLines = Math.max(extraLines, lines.length - 1);
+        } else {
+          addText(desc, margin + 70, descYPosition);
+        }
         addText(item.hours.toString(), pageWidth - margin - 15, descYPosition, { align: 'right' });
         totalDozentHours += item.hours;
         yPosition += 5 + (extraLines * 4);
       } else if (item.type === 'flatrate') {
         addText('Sonstiger Posten', margin + 25, yPosition);
-        const desc = `${item.entry.name}${item.entry.description ? ' - ' + item.entry.description : ''}`.substring(0, 60);
-        addText(desc, margin + 70, yPosition);
-        addText(`${item.entry.quantity} x ${item.entry.amount_euro.toFixed(2)}€`, pageWidth - margin - 2, yPosition, { align: 'right' });
-        yPosition += 5;
+        const descYPosition = yPosition;
+        const desc = `${item.entry.name}${item.entry.description ? ' - ' + item.entry.description : ''}`;
+        const maxWidth = pageWidth - margin - 20 - (margin + 70);
+        if (desc.length > 50) {
+          const lines = doc.splitTextToSize(desc, maxWidth);
+          lines.forEach((line: string, index: number) => {
+            addText(line, margin + 70, descYPosition + (index * 4));
+          });
+          yPosition += 5 + ((lines.length - 1) * 4);
+        } else {
+          addText(desc, margin + 70, descYPosition);
+          yPosition += 5;
+        }
+        addText(`${item.entry.quantity} x ${item.entry.amount_euro.toFixed(2)}€`, pageWidth - margin - 2, descYPosition, { align: 'right' });
       }
     }
 
