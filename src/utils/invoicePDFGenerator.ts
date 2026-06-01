@@ -524,6 +524,9 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
   }
   yPosition += 15;
 
+  // Check if we need a new page for the remaining content
+  checkPageBreak(80);
+
   // Tax notice
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
@@ -1091,6 +1094,9 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   }
   yPosition += 15;
 
+  // Check if we need a new page for the remaining content
+  checkPageBreak(80);
+
   // Tax notice
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
@@ -1462,6 +1468,9 @@ export const generateQuarterlyInvoicePDF = async (data: QuarterlyInvoiceData) =>
     addText(`${formatNumber(grandTotalAmount)} €`, pageWidth - margin - 2, yPosition, { align: 'right' });
   }
   yPosition += 15;
+
+  // Check if we need a new page for the remaining content
+  checkPageBreak(80);
 
   // Tax notice
   doc.setFontSize(9);
@@ -2049,6 +2058,9 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
     addText(`${formatNumber(grandTotalAmount)} €`, pageWidth - margin - 2, yPosition, { align: 'right' });
   }
   yPosition += 15;
+
+  // Check if we need a new page for the remaining content
+  checkPageBreak(80);
 
   // Tax notice
   doc.setFontSize(9);
