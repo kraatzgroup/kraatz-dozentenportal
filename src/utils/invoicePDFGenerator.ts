@@ -339,6 +339,150 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
   }
   yPosition += 15;
 
+  // Detailed hours listing
+  doc.addPage();
+  yPosition = margin;
+  
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  addText('Detaillierte Leistungsauflistung:', margin, yPosition);
+  yPosition += 10;
+
+  // Hours table header
+  checkPageBreak(40);
+  doc.setFillColor(240, 240, 240);
+  doc.rect(margin, yPosition - 3, contentWidth, 8, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  addText('Datum', margin + 2, yPosition + 2);
+  addText('Typ', margin + 25, yPosition + 2);
+  addText('Beschreibung', margin + 70, yPosition + 2);
+  addText('Stunden', pageWidth - margin - 2, yPosition + 2, { align: 'right' });
+  yPosition += 10;
+
+  // Hours entries
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+
+  let totalParticipantHours = 0;
+  let totalDozentHours = 0;
+
+  // Combine all hours and sort chronologically
+  const allHours: Array<{ type: 'participant' | 'dozent' | 'flatrate'; date: string; hours: number; entry: any }> = [];
+  
+  if (data.participantHours && data.participantHours.length > 0) {
+    data.participantHours.forEach(entry => {
+      allHours.push({ type: 'participant', date: entry.date, hours: entry.hours, entry });
+    });
+  }
+  
+  if (data.dozentHours && data.dozentHours.length > 0) {
+    data.dozentHours.forEach(entry => {
+      allHours.push({ type: 'dozent', date: entry.date, hours: entry.hours, entry });
+    });
+  }
+
+  // Add flat rate items (sonstige Posten)
+  if (data.flatRateItems && data.flatRateItems.length > 0) {
+    data.flatRateItems.forEach(entry => {
+      allHours.push({ type: 'flatrate', date: entry.date, hours: 0, entry });
+    });
+  }
+
+  // Sort all hours chronologically
+  const sortedAllHours = allHours.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  // Display all hours in chronological order
+  for (const item of sortedAllHours) {
+    doc.setFontSize(8);
+    
+    // Calculate required height for this entry
+    let requiredHeight = 8; // Base height for one line
+    if (item.type === 'dozent') {
+      if (item.entry.category === 'Elite-Kleingruppe Korrektur') {
+        requiredHeight += 4; // Extra line for "Klausurenkorrektur"
+      }
+      let desc;
+      if (item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe')) {
+        desc = item.entry.description?.startsWith('Klausurkorrektur:') 
+          ? item.entry.description.replace('Klausurkorrektur:', '').trim().replace(/-\s*\d+\s*(?:Punkte|Punkte?)$/, '').trim()
+          : item.entry.description || '-';
+      } else {
+        desc = item.entry.description || '-';
+      }
+      const maxWidth = pageWidth - margin - 20 - (margin + 70);
+      if (desc.length > 50) {
+        const lines = doc.splitTextToSize(desc, maxWidth);
+        requiredHeight += (lines.length - 1) * 4; // Extra lines for wrapped text
+      }
+    }
+    
+    // Check if we need a new page before adding this entry
+    checkPageBreak(requiredHeight);
+    
+    addText(formatDate(item.date), margin + 2, yPosition);
+    
+    if (item.type === 'participant') {
+      addText('Einzelunterricht', margin + 25, yPosition);
+      const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`.substring(0, 60);
+      addText(desc, margin + 70, yPosition);
+      addText(item.hours.toString(), pageWidth - margin - 2, yPosition, { align: 'right' });
+      totalParticipantHours += item.hours;
+      yPosition += 5;
+    } else if (item.type === 'dozent') {
+      const type = item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.category?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : item.entry.category || 'Sonstige Tätigkeit';
+      addText(type, margin + 25, yPosition);
+      const descYPosition = yPosition;
+      let extraLines = 0;
+      if (item.entry.category === 'Elite-Kleingruppe Korrektur') {
+        yPosition += 4;
+        addText('Klausurenkorrektur', margin + 25, yPosition);
+        extraLines = 1;
+      }
+      let desc;
+      if (item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe')) {
+        desc = item.entry.description?.startsWith('Klausurkorrektur:') 
+          ? item.entry.description.replace('Klausurkorrektur:', '').trim().replace(/-\s*\d+\s*(?:Punkte|Punkte?)$/, '').trim()
+          : item.entry.description || '-';
+      } else {
+        desc = item.entry.description || '-';
+      }
+      const maxWidth = pageWidth - margin - 20 - (margin + 70);
+      if (desc.length > 50) {
+        const lines = doc.splitTextToSize(desc, maxWidth);
+        lines.forEach((line: string, index: number) => {
+          addText(line.substring(0, 80), margin + 70, descYPosition + (index * 4));
+        });
+        extraLines = Math.max(extraLines, lines.length - 1);
+      } else {
+        addText(desc.substring(0, 80), margin + 70, descYPosition);
+      }
+      addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
+      totalDozentHours += item.hours;
+      yPosition += 5 + (extraLines * 4);
+    } else if (item.type === 'flatrate') {
+      addText('Sonstiger Posten', margin + 25, yPosition);
+      const desc = `${item.entry.name}${item.entry.description ? ' - ' + item.entry.description : ''}`.substring(0, 60);
+      addText(desc, margin + 70, yPosition);
+      addText(`${item.entry.quantity} x ${item.entry.amount_euro.toFixed(2)}€`, pageWidth - margin - 2, yPosition, { align: 'right' });
+      yPosition += 5;
+    }
+  }
+
+  // Total line for detailed listing
+  yPosition += 3;
+  doc.setDrawColor(0);
+  doc.line(margin, yPosition, pageWidth - margin, yPosition);
+  yPosition += 8;
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  addText(`Gesamt: ${formatNumber(totalHours)} Stunden`, margin, yPosition);
+  if (totalAmount > 0) {
+    addText(`${formatNumber(totalAmount)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
+  }
+  yPosition += 15;
+
   // Tax notice
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
