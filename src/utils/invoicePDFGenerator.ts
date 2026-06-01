@@ -626,7 +626,14 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
         addText('Klausurenkorrektur', margin + 25, yPosition);
         extraLines = 1;
       }
-      const desc = (item.entry.description?.startsWith('Klausurkorrektur:') && (item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe')) ? item.entry.description.replace('Klausurkorrektur:', '').trim().replace(/-\s*\d+\s*(?:Punkte|Punkte?)$/, '').trim() : item.entry.description || '-');
+      let desc;
+      if (item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe')) {
+        desc = item.entry.description?.startsWith('Klausurkorrektur:') 
+          ? item.entry.description.replace('Klausurkorrektur:', '').trim().replace(/-\s*\d+\s*(?:Punkte|Punkte?)$/, '').trim()
+          : item.entry.description || '-';
+      } else {
+        desc = item.entry.description || '-';
+      }
       const maxWidth = pageWidth - margin - 20 - (margin + 70);
       if (desc.length > 50) {
         const lines = doc.splitTextToSize(desc, maxWidth);
