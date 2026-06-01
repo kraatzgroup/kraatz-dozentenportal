@@ -1175,12 +1175,22 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         .lte('date', invoiceData.period_end)
         .order('date', { ascending: true });
 
+      // Fetch flat rate items (sonstige Posten)
+      const { data: flatRateItems } = await supabase
+        .from('dozent_flat_rate_items')
+        .select('date, name, description, quantity, amount_euro, total_euro')
+        .eq('dozent_id', invoiceData.dozent_id)
+        .gte('date', invoiceData.period_start)
+        .lte('date', invoiceData.period_end)
+        .order('date', { ascending: true });
+
       // Generate PDF
       const { generateInvoicePDFBlob } = await import('../utils/invoicePDFGenerator');
       const pdfBlob = await generateInvoicePDFBlob({
         invoice: { ...invoiceData, dozent: invoiceData.dozent },
         participantHours: (participantHours || []) as any,
-        dozentHours: (dozentHours || []) as any
+        dozentHours: (dozentHours || []) as any,
+        flatRateItems: (flatRateItems || []) as any
       });
 
       // Convert Blob to File with correct MIME type
