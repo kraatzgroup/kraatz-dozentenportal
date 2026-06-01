@@ -697,11 +697,114 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   yPosition = addWrappedText(mainText, margin, yPosition, contentWidth, 4);
   yPosition += 10;
 
-  // Leistungsübersicht header
+  // Calculate totals per category for summary table
+  const regularHours = data.participantHours.filter(h => !h.teilnehmer?.elite_kleingruppe);
+  const eliteParticipantHours = data.participantHours.filter(h => h.teilnehmer?.elite_kleingruppe);
+  const eliteUnterrichtHours = data.dozentHours.filter(h => h.category && h.category.toLowerCase().includes('elite') && !h.category.toLowerCase().includes('korrektur'));
+  const eliteKorrekturHours = data.dozentHours.filter(h => h.category && h.category.toLowerCase().includes('elite') && h.category.toLowerCase().includes('korrektur'));
+  const sonstigeHours = data.dozentHours.filter(h => !h.category || !h.category.toLowerCase().includes('elite'));
+
+  const totalRegular = regularHours.reduce((sum, h) => sum + h.hours, 0);
+  const totalElite = eliteParticipantHours.reduce((sum, h) => sum + h.hours, 0) + eliteUnterrichtHours.reduce((sum, h) => sum + h.hours, 0);
+  const totalEliteKorrektur = eliteKorrekturHours.reduce((sum, h) => sum + h.hours, 0);
+  const totalSonstige = sonstigeHours.reduce((sum, h) => sum + h.hours, 0);
+  const totalHours = totalRegular + totalElite + totalEliteKorrektur + totalSonstige;
+
+  const rateUnterricht = data.invoice.dozent.hourly_rate_unterricht || 0;
+  const rateElite = data.invoice.dozent.hourly_rate_elite || 0;
+  const rateEliteKorrektur = data.invoice.dozent.hourly_rate_elite_korrektur || 0;
+  const rateSonstige = data.invoice.dozent.hourly_rate_sonstige || 0;
+
+  const amountRegular = totalRegular * rateUnterricht;
+  const amountElite = totalElite * rateElite;
+  const amountEliteKorrektur = totalEliteKorrektur * rateEliteKorrektur;
+  const amountSonstige = totalSonstige * rateSonstige;
+
+  // Calculate flat rate items total
+  const flatRateTotal = (data.flatRateItems || []).reduce((sum, item) => sum + item.total_euro, 0);
+
+  const totalAmount = amountRegular + amountElite + amountEliteKorrektur + amountSonstige + flatRateTotal;
+
+  // Summary table
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+
+  // Table header
+  doc.setFillColor(240, 240, 240);
+  doc.rect(margin, yPosition - 3, contentWidth, 7, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  addText('Leistung', margin + 2, yPosition + 1);
+  addText('Stunden', margin + 90, yPosition + 1);
+  addText('Satz', margin + 120, yPosition + 1);
+  addText('Betrag', pageWidth - margin - 2, yPosition + 1, { align: 'right' });
+  yPosition += 8;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+
+  if (totalRegular > 0) {
+    addText('Unterrichtsstunden', margin + 2, yPosition);
+    addText(`${formatNumber(totalRegular)} Std.`, margin + 90, yPosition);
+    addText(rateUnterricht > 0 ? `${formatNumber(rateUnterricht)} \u20ac` : '-', margin + 120, yPosition);
+    addText(rateUnterricht > 0 ? `${formatNumber(amountRegular)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
+    yPosition += 5;
+  }
+
+  if (totalElite > 0) {
+    addText('Elite-Kleingruppe Unterricht', margin + 2, yPosition);
+    addText(`${formatNumber(totalElite)} Std.`, margin + 90, yPosition);
+    addText(rateElite > 0 ? `${formatNumber(rateElite)} \u20ac` : '-', margin + 120, yPosition);
+    addText(rateElite > 0 ? `${formatNumber(amountElite)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
+    yPosition += 5;
+  }
+
+  if (totalEliteKorrektur > 0) {
+    addText('Elite-Kleingruppe Korrektur', margin + 2, yPosition);
+    addText(`${formatNumber(totalEliteKorrektur)} Std.`, margin + 90, yPosition);
+    addText(rateEliteKorrektur > 0 ? `${formatNumber(rateEliteKorrektur)} \u20ac` : '-', margin + 120, yPosition);
+    addText(rateEliteKorrektur > 0 ? `${formatNumber(amountEliteKorrektur)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
+    yPosition += 5;
+  }
+
+  if (totalSonstige > 0) {
+    addText('Sonstige Taetigkeiten', margin + 2, yPosition);
+    addText(`${formatNumber(totalSonstige)} Std.`, margin + 90, yPosition);
+    addText(rateSonstige > 0 ? `${formatNumber(rateSonstige)} \u20ac` : '-', margin + 120, yPosition);
+    addText(rateSonstige > 0 ? `${formatNumber(amountSonstige)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
+    yPosition += 5;
+  }
+
+  if (flatRateTotal > 0) {
+    addText('Pauschale Verguetungen', margin + 2, yPosition);
+    addText('-', margin + 90, yPosition);
+    addText('-', margin + 120, yPosition);
+    addText(`${formatNumber(flatRateTotal)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
+    yPosition += 5;
+  }
+
+  // Total line
+  yPosition += 2;
+  doc.setDrawColor(0);
+  doc.line(margin, yPosition, pageWidth - margin, yPosition);
+  yPosition += 6;
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  addText(`Gesamt: ${formatNumber(totalHours)} Stunden`, margin, yPosition);
+  if (totalAmount > 0) {
+    addText(`${formatNumber(totalAmount)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
+  }
+  yPosition += 15;
+
+  // Detailed hours listing
+  doc.addPage();
+  yPosition = margin;
+  
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
-  addText('Leistungsuebersicht:', margin, yPosition);
-  yPosition += 8;
+  addText('Detaillierte Leistungsauflistung:', margin, yPosition);
+  yPosition += 10;
 
   // Hours table header
   checkPageBreak(40);
@@ -824,39 +927,19 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     }
   }
 
-  // Total line
+  // Total line for detailed listing
   yPosition += 3;
   doc.setDrawColor(0);
   doc.line(margin, yPosition, pageWidth - margin, yPosition);
   yPosition += 8;
 
-  // Calculate totals per category
-  const regularHours = data.participantHours.filter(h => !h.teilnehmer?.elite_kleingruppe);
-  const eliteParticipantHours2 = data.participantHours.filter(h => h.teilnehmer?.elite_kleingruppe);
-  const eliteUnterrichtHours2 = data.dozentHours.filter(h => h.category && h.category.toLowerCase().includes('elite') && !h.category.toLowerCase().includes('korrektur'));
-  const eliteKorrekturHours2 = data.dozentHours.filter(h => h.category && h.category.toLowerCase().includes('elite') && h.category.toLowerCase().includes('korrektur'));
-  const sonstigeHours2 = data.dozentHours.filter(h => !h.category || !h.category.toLowerCase().includes('elite'));
-
-  const totalRegular = regularHours.reduce((sum, h) => sum + h.hours, 0);
-  const totalElite = eliteParticipantHours2.reduce((sum, h) => sum + h.hours, 0) + eliteUnterrichtHours2.reduce((sum, h) => sum + h.hours, 0);
-  const totalEliteKorrektur = eliteKorrekturHours2.reduce((sum, h) => sum + h.hours, 0);
-  const totalSonstige = sonstigeHours2.reduce((sum, h) => sum + h.hours, 0);
-  const totalHours = totalRegular + totalElite + totalEliteKorrektur + totalSonstige;
-
-  const rateUnterricht = data.invoice.dozent.hourly_rate_unterricht || 0;
-  const rateElite = data.invoice.dozent.hourly_rate_elite || 0;
-  const rateEliteKorrektur = data.invoice.dozent.hourly_rate_elite_korrektur || 0;
-  const rateSonstige = data.invoice.dozent.hourly_rate_sonstige || 0;
-
-  const amountRegular = totalRegular * rateUnterricht;
-  const amountElite = totalElite * rateElite;
-  const amountEliteKorrektur = totalEliteKorrektur * rateEliteKorrektur;
-  const amountSonstige = totalSonstige * rateSonstige;
-
-  // Calculate flat rate items total
-  const flatRateTotal = (data.flatRateItems || []).reduce((sum, item) => sum + item.total_euro, 0);
-
-  const totalAmount = amountRegular + amountElite + amountEliteKorrektur + amountSonstige + flatRateTotal;
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  addText(`Gesamt: ${formatNumber(totalHours)} Stunden`, margin, yPosition);
+  if (totalAmount > 0) {
+    addText(`${formatNumber(totalAmount)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
+  }
+  yPosition += 15;
 
   // Summary table
   doc.setFillColor(240, 240, 240);
