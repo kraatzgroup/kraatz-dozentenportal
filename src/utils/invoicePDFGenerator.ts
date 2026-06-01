@@ -84,16 +84,23 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
   
   // Helper function to add text with proper encoding
   const addText = (text: string, x: number, y: number, options?: any) => {
-    // Convert ae, ue, oe, ss to ä, ü, ö, ß
-    const convertedText = text
+    // Convert ae, ue, oe to ä, ü, ö
+    // Only convert ss to ß in specific cases, not in words like "Unterrichtsstunden"
+    let convertedText = text
       .replace(/ae/g, 'ä')
       .replace(/ue/g, 'ü')
       .replace(/oe/g, 'ö')
-      .replace(/ss/g, 'ß')
       .replace(/AE/g, 'Ä')
       .replace(/UE/g, 'Ü')
-      .replace(/OE/g, 'Ö')
-      .replace(/SS/g, 'ß');
+      .replace(/OE/g, 'Ö');
+    
+    // Convert ss to ß only if it's not part of "Unterrichtsstunden"
+    if (!text.includes('Unterrichtsstunden')) {
+      convertedText = convertedText
+        .replace(/ss/g, 'ß')
+        .replace(/SS/g, 'ß');
+    }
+    
     doc.text(convertedText, x, y, options);
   };
 
@@ -568,16 +575,23 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   
   // Helper function to add text with proper encoding
   const addText = (text: string, x: number, y: number, options?: any) => {
-    // Convert ae, ue, oe, ss to ä, ü, ö, ß
-    const convertedText = text
+    // Convert ae, ue, oe to ä, ü, ö
+    // Only convert ss to ß in specific cases, not in words like "Unterrichtsstunden"
+    let convertedText = text
       .replace(/ae/g, 'ä')
       .replace(/ue/g, 'ü')
       .replace(/oe/g, 'ö')
-      .replace(/ss/g, 'ß')
       .replace(/AE/g, 'Ä')
       .replace(/UE/g, 'Ü')
-      .replace(/OE/g, 'Ö')
-      .replace(/SS/g, 'ß');
+      .replace(/OE/g, 'Ö');
+    
+    // Convert ss to ß only if it's not part of "Unterrichtsstunden"
+    if (!text.includes('Unterrichtsstunden')) {
+      convertedText = convertedText
+        .replace(/ss/g, 'ß')
+        .replace(/SS/g, 'ß');
+    }
+    
     doc.text(convertedText, x, y, options);
   };
 
@@ -1110,16 +1124,23 @@ export const generateQuarterlyInvoicePDF = async (data: QuarterlyInvoiceData) =>
   
   // Helper function to add text with proper encoding
   const addText = (text: string, x: number, y: number, options?: any) => {
-    // Convert ae, ue, oe, ss to ä, ü, ö, ß
-    const convertedText = text
+    // Convert ae, ue, oe to ä, ü, ö
+    // Only convert ss to ß in specific cases, not in words like "Unterrichtsstunden"
+    let convertedText = text
       .replace(/ae/g, 'ä')
       .replace(/ue/g, 'ü')
       .replace(/oe/g, 'ö')
-      .replace(/ss/g, 'ß')
       .replace(/AE/g, 'Ä')
       .replace(/UE/g, 'Ü')
-      .replace(/OE/g, 'Ö')
-      .replace(/SS/g, 'ß');
+      .replace(/OE/g, 'Ö');
+    
+    // Convert ss to ß only if it's not part of "Unterrichtsstunden"
+    if (!text.includes('Unterrichtsstunden')) {
+      convertedText = convertedText
+        .replace(/ss/g, 'ß')
+        .replace(/SS/g, 'ß');
+    }
+    
     doc.text(convertedText, x, y, options);
   };
 
@@ -1636,16 +1657,23 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
   
   // Helper function to add text with proper encoding
   const addText = (text: string, x: number, y: number, options?: any) => {
-    // Convert ae, ue, oe, ss to ä, ü, ö, ß
-    const convertedText = text
+    // Convert ae, ue, oe to ä, ü, ö
+    // Only convert ss to ß in specific cases, not in words like "Unterrichtsstunden"
+    let convertedText = text
       .replace(/ae/g, 'ä')
       .replace(/ue/g, 'ü')
       .replace(/oe/g, 'ö')
-      .replace(/ss/g, 'ß')
       .replace(/AE/g, 'Ä')
       .replace(/UE/g, 'Ü')
-      .replace(/OE/g, 'Ö')
-      .replace(/SS/g, 'ß');
+      .replace(/OE/g, 'Ö');
+    
+    // Convert ss to ß only if it's not part of "Unterrichtsstunden"
+    if (!text.includes('Unterrichtsstunden')) {
+      convertedText = convertedText
+        .replace(/ss/g, 'ß')
+        .replace(/SS/g, 'ß');
+    }
+    
     doc.text(convertedText, x, y, options);
   };
 
