@@ -605,8 +605,32 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
 
   // Display all hours in chronological order
   for (const item of sortedAllHours) {
-    checkPageBreak(8);
     doc.setFontSize(8);
+    
+    // Calculate required height for this entry
+    let requiredHeight = 8; // Base height for one line
+    if (item.type === 'dozent') {
+      if (item.entry.category === 'Elite-Kleingruppe Korrektur') {
+        requiredHeight += 4; // Extra line for "Klausurenkorrektur"
+      }
+      let desc;
+      if (item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe')) {
+        desc = item.entry.description?.startsWith('Klausurkorrektur:') 
+          ? item.entry.description.replace('Klausurkorrektur:', '').trim().replace(/-\s*\d+\s*(?:Punkte|Punkte?)$/, '').trim()
+          : item.entry.description || '-';
+      } else {
+        desc = item.entry.description || '-';
+      }
+      const maxWidth = pageWidth - margin - 20 - (margin + 70);
+      if (desc.length > 50) {
+        const lines = doc.splitTextToSize(desc, maxWidth);
+        requiredHeight += (lines.length - 1) * 4; // Extra lines for wrapped text
+      }
+    }
+    
+    // Check if we need a new page before adding this entry
+    checkPageBreak(requiredHeight);
+    
     addText(formatDate(item.date), margin + 2, yPosition);
     
     if (item.type === 'participant') {
