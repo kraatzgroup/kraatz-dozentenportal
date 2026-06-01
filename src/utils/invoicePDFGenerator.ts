@@ -1026,6 +1026,9 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   }
   yPosition += 15;
 
+  // Check if we need a new page for the remaining content
+  checkPageBreak(80);
+
   // Summary table
   doc.setFillColor(240, 240, 240);
   doc.rect(margin, yPosition - 3, contentWidth, 7, 'F');
