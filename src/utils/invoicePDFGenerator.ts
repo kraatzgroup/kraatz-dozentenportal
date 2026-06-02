@@ -440,7 +440,8 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       if (item.type === 'dozent') {
         if (item.entry.category === 'Elite-Kleingruppe Korrektur') return 'elite_korrektur';
         if (item.entry.category?.includes('Elite-Kleingruppe')) return 'elite_unterricht';
-        return 'sonstige';
+        // For other dozent entries, use their specific category as sort key
+        return item.entry.category || 'sonstige';
       }
       return 'sonstige';
     };
@@ -458,6 +459,9 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
     const orderB = categoryOrder[categoryB] || 99;
 
     if (orderA !== orderB) return orderA - orderB;
+    
+    // Within same type order, sort by specific category name (for dozent hours)
+    if (categoryA !== categoryB) return categoryA.localeCompare(categoryB);
     
     // Within same category, sort by student name (for participant hours)
     const studentA = getStudentName(a);
@@ -481,7 +485,8 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       if (item.type === 'dozent') {
         if (item.entry.category === 'Elite-Kleingruppe Korrektur') return 'elite_korrektur';
         if (item.entry.category?.includes('Elite-Kleingruppe')) return 'elite_unterricht';
-        return 'sonstige';
+        // For other dozent entries, use their specific category as sort key
+        return item.entry.category || 'sonstige';
       }
       return 'sonstige';
     };
@@ -1063,7 +1068,8 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       if (item.type === 'dozent') {
         if (item.entry.category === 'Elite-Kleingruppe Korrektur') return 'elite_korrektur';
         if (item.entry.category?.includes('Elite-Kleingruppe')) return 'elite_unterricht';
-        return 'sonstige';
+        // For other dozent entries, use their specific category as sort key
+        return item.entry.category || 'sonstige';
       }
       return 'sonstige';
     };
@@ -1081,6 +1087,9 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     const orderB = categoryOrder[categoryB] || 99;
 
     if (orderA !== orderB) return orderA - orderB;
+    
+    // Within same type order, sort by specific category name (for dozent hours)
+    if (categoryA !== categoryB) return categoryA.localeCompare(categoryB);
     
     // Within same category, sort by student name (for participant hours)
     const studentA = getStudentName(a);
@@ -1104,7 +1113,8 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       if (item.type === 'dozent') {
         if (item.entry.category === 'Elite-Kleingruppe Korrektur') return 'elite_korrektur';
         if (item.entry.category?.includes('Elite-Kleingruppe')) return 'elite_unterricht';
-        return 'sonstige';
+        // For other dozent entries, use their specific category as sort key
+        return item.entry.category || 'sonstige';
       }
       return 'sonstige';
     };
