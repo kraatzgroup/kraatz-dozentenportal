@@ -517,15 +517,14 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       // Render student name in bold
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
-      const nameWidth = doc.getTextWidth(studentName);
       addText(studentName, margin + 70, descYPosition);
       
-      // Render the rest of the description in normal font
+      // Render the rest of the description in normal font at fixed position
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
-      const startX = margin + 70 + nameWidth + 4; // Add small gap
+      const startX = margin + 70 + 35; // Fixed position after name (35 units for name space)
       if (restDesc.length > 50) {
-        const lines = doc.splitTextToSize(restDesc, maxWidth - nameWidth);
+        const lines = doc.splitTextToSize(restDesc, maxWidth - 35);
         lines.forEach((line: string, index: number) => {
           addText(line, startX, descYPosition + (index * 4));
         });
@@ -1095,15 +1094,14 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       // Render student name in bold
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
-      const nameWidth = doc.getTextWidth(studentName);
       addText(studentName, margin + 70, descYPosition);
       
-      // Render the rest of the description in normal font
+      // Render the rest of the description in normal font at fixed position
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
-      const startX = margin + 70 + nameWidth + 4; // Add small gap
+      const startX = margin + 70 + 35; // Fixed position after name (35 units for name space)
       if (restDesc.length > 50) {
-        const lines = doc.splitTextToSize(restDesc, maxWidth - nameWidth);
+        const lines = doc.splitTextToSize(restDesc, maxWidth - 35);
         lines.forEach((line: string, index: number) => {
           addText(line, startX, descYPosition + (index * 4));
         });
