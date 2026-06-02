@@ -558,8 +558,8 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       let courseNumber = '';
       let restDesc = desc;
       if (item.entry.category?.includes('Elite-Kleingruppe')) {
-        // Match pattern "Elite-Kleingruppe [number]" or "Elite-Kleingruppe [number] - ..."
-        const match = desc.match(/(Elite-Kleingruppe\s+\d+)/);
+        // Match pattern "Elite-Kleingruppe 2025/2026 101" or "Elite-Kleingruppe 2025/2026 101 - ..."
+        const match = desc.match(/(Elite-Kleingruppe\s+\d{4}\/\d{4}\s+\d+)/);
         if (match) {
           courseNumber = match[1];
           restDesc = desc.replace(courseNumber, '').trim();
@@ -1172,8 +1172,8 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       let courseNumber = '';
       let restDesc = desc;
       if (item.entry.category?.includes('Elite-Kleingruppe')) {
-        // Match pattern "Elite-Kleingruppe [number]" or "Elite-Kleingruppe [number] - ..."
-        const match = desc.match(/(Elite-Kleingruppe\s+\d+)/);
+        // Match pattern "Elite-Kleingruppe 2025/2026 101" or "Elite-Kleingruppe 2025/2026 101 - ..."
+        const match = desc.match(/(Elite-Kleingruppe\s+\d{4}\/\d{4}\s+\d+)/);
         if (match) {
           courseNumber = match[1];
           restDesc = desc.replace(courseNumber, '').trim();
