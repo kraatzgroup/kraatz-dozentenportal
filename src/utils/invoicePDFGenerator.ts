@@ -512,7 +512,7 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       const descYPosition = yPosition;
       const studentName = item.entry.teilnehmer?.name || '-';
       const restDesc = `${item.entry.legal_area || '-'} - ${item.entry.description || '-'}`;
-      const maxWidth = pageWidth - margin - 20 - (margin + 70);
+      const maxWidth = pageWidth - margin - 20 - (margin + 70) - 20; // Reduce by 20 to avoid overlapping hours column
       
       // Render student name in bold
       doc.setFont('helvetica', 'bold');
@@ -1089,7 +1089,7 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       const descYPosition = yPosition;
       const studentName = item.entry.teilnehmer?.name || '-';
       const restDesc = `${item.entry.legal_area || '-'} - ${item.entry.description || '-'}`;
-      const maxWidth = pageWidth - margin - 20 - (margin + 70);
+      const maxWidth = pageWidth - margin - 20 - (margin + 70) - 20; // Reduce by 20 to avoid overlapping hours column
       
       // Render student name in bold
       doc.setFont('helvetica', 'bold');
