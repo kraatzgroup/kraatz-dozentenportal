@@ -970,7 +970,6 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
                       <span className="font-medium text-gray-900">{formatDate(item.date)}</span>
                     </div>
                     <div className="flex items-center space-x-4 mb-2">
-                    <div className="flex items-center space-x-4 mb-2">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                         {item.name || 'Pauschale Vergütung'}
                       </span>
