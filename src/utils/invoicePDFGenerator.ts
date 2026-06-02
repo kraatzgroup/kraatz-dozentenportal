@@ -574,21 +574,27 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       const maxWidth = maxDescX - (margin + 70 + 35);
       
       if (courseNumber && item.entry.category?.includes('Elite-Kleingruppe')) {
-        // Render only "Elite-Kleingruppe" in bold
+        // Render course number in bold
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8);
-        addText('Elite-Kleingruppe', margin + 70, descYPosition);
         
-        // Render the rest (year/number and description) in normal font on next line
+        // Start course number on new line if it's too long
+        let courseYPosition = descYPosition;
+        if (courseNumber.length > 25) {
+          courseYPosition = descYPosition + 4;
+          extraLines = Math.max(extraLines, 1);
+        }
+        addText(courseNumber, margin + 70, courseYPosition);
+        
+        // Render the rest of the description in normal font next to course number
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
-        const yearNumberAndDesc = courseNumber.replace('Elite-Kleingruppe', '').trim() + ' ' + restDesc;
-        const startX = margin + 70;
-        const lines = doc.splitTextToSize(yearNumberAndDesc, maxWidth);
+        const startX = margin + 70 + 35;
+        const lines = doc.splitTextToSize(restDesc, maxWidth);
         lines.forEach((line: string, index: number) => {
-          addText(line, startX, descYPosition + 4 + (index * 4));
+          addText(line, startX, courseYPosition + (index * 4));
         });
-        extraLines = Math.max(extraLines, lines.length);
+        extraLines = Math.max(extraLines, lines.length - 1);
       } else {
         const maxWidth = pageWidth - margin - 20 - (margin + 70);
         if (desc.length > 50) {
@@ -1189,21 +1195,27 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       const maxWidth = maxDescX - (margin + 70 + 35);
       
       if (courseNumber && item.entry.category?.includes('Elite-Kleingruppe')) {
-        // Render only "Elite-Kleingruppe" in bold
+        // Render course number in bold
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8);
-        addText('Elite-Kleingruppe', margin + 70, descYPosition);
         
-        // Render the rest (year/number and description) in normal font on next line
+        // Start course number on new line if it's too long
+        let courseYPosition = descYPosition;
+        if (courseNumber.length > 25) {
+          courseYPosition = descYPosition + 4;
+          extraLines = Math.max(extraLines, 1);
+        }
+        addText(courseNumber, margin + 70, courseYPosition);
+        
+        // Render the rest of the description in normal font next to course number
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
-        const yearNumberAndDesc = courseNumber.replace('Elite-Kleingruppe', '').trim() + ' ' + restDesc;
-        const startX = margin + 70;
-        const lines = doc.splitTextToSize(yearNumberAndDesc, maxWidth);
+        const startX = margin + 70 + 35;
+        const lines = doc.splitTextToSize(restDesc, maxWidth);
         lines.forEach((line: string, index: number) => {
-          addText(line, startX, descYPosition + 4 + (index * 4));
+          addText(line, startX, courseYPosition + (index * 4));
         });
-        extraLines = Math.max(extraLines, lines.length);
+        extraLines = Math.max(extraLines, lines.length - 1);
       } else {
         const maxWidth = pageWidth - margin - 20 - (margin + 70);
         if (desc.length > 50) {
