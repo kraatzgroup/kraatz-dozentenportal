@@ -514,7 +514,8 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       const restDesc = `${item.entry.legal_area || '-'} - ${item.entry.description || '-'}`;
       const hoursColumnWidth = 25; // Width reserved for hours column
       const maxDescX = pageWidth - margin - hoursColumnWidth - 5; // Max x position for description
-      const maxWidth = maxDescX - (margin + 70 + 35); // Calculate max width based on available space
+      const descColumnX = margin + 70 + 50; // Fixed description column (aligned with Elite-Kleingruppe)
+      const maxWidth = maxDescX - descColumnX; // Calculate max width based on available space
       
       // Render student name in bold
       doc.setFont('helvetica', 'bold');
@@ -524,7 +525,7 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       // Render the rest of the description in normal font at fixed position
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
-      const startX = margin + 70 + 35; // Fixed position after name (35 units for name space)
+      const startX = descColumnX; // Fixed description column for clean alignment
       
       // Always wrap text to avoid overlapping hours column
       const lines = doc.splitTextToSize(restDesc, maxWidth);
@@ -578,13 +579,10 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
         doc.setFontSize(8);
         addText(courseNumber, margin + 70, descYPosition);
         
-        // Measure the actual width of the bold course number
-        const courseNumberWidth = doc.getTextWidth(courseNumber);
-        
-        // Render the rest of the description in normal font next to course number (dynamic position)
+        // Render the rest of the description in normal font at fixed column (aligned with Einzelunterricht)
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
-        const startX = margin + 70 + courseNumberWidth + 3; // Start right after bold text with small gap
+        const startX = margin + 70 + 50; // Fixed description column for clean alignment
         const dynamicMaxWidth = maxDescX - startX;
         const lines = doc.splitTextToSize(restDesc, dynamicMaxWidth);
         lines.forEach((line: string, index: number) => {
@@ -1131,7 +1129,8 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       const restDesc = `${item.entry.legal_area || '-'} - ${item.entry.description || '-'}`;
       const hoursColumnWidth = 25; // Width reserved for hours column
       const maxDescX = pageWidth - margin - hoursColumnWidth - 5; // Max x position for description
-      const maxWidth = maxDescX - (margin + 70 + 35); // Calculate max width based on available space
+      const descColumnX = margin + 70 + 50; // Fixed description column (aligned with Elite-Kleingruppe)
+      const maxWidth = maxDescX - descColumnX; // Calculate max width based on available space
       
       // Render student name in bold
       doc.setFont('helvetica', 'bold');
@@ -1141,7 +1140,7 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       // Render the rest of the description in normal font at fixed position
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
-      const startX = margin + 70 + 35; // Fixed position after name (35 units for name space)
+      const startX = descColumnX; // Fixed description column for clean alignment
       
       // Always wrap text to avoid overlapping hours column
       const lines = doc.splitTextToSize(restDesc, maxWidth);
@@ -1195,13 +1194,10 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
         doc.setFontSize(8);
         addText(courseNumber, margin + 70, descYPosition);
         
-        // Measure the actual width of the bold course number
-        const courseNumberWidth = doc.getTextWidth(courseNumber);
-        
-        // Render the rest of the description in normal font next to course number (dynamic position)
+        // Render the rest of the description in normal font at fixed column (aligned with Einzelunterricht)
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
-        const startX = margin + 70 + courseNumberWidth + 3; // Start right after bold text with small gap
+        const startX = margin + 70 + 50; // Fixed description column for clean alignment
         const dynamicMaxWidth = maxDescX - startX;
         const lines = doc.splitTextToSize(restDesc, dynamicMaxWidth);
         lines.forEach((line: string, index: number) => {
