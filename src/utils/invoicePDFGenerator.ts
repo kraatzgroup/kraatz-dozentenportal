@@ -571,28 +571,24 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       
       const hoursColumnWidth = 25;
       const maxDescX = pageWidth - margin - hoursColumnWidth - 5;
-      const maxWidth = maxDescX - (margin + 70 + 35);
       
       if (courseNumber && item.entry.category?.includes('Elite-Kleingruppe')) {
         // Render course number in bold
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8);
+        addText(courseNumber, margin + 70, descYPosition);
         
-        // Start course number on new line if it's too long
-        let courseYPosition = descYPosition;
-        if (courseNumber.length > 25) {
-          courseYPosition = descYPosition + 4;
-          extraLines = Math.max(extraLines, 1);
-        }
-        addText(courseNumber, margin + 70, courseYPosition);
+        // Measure the actual width of the bold course number
+        const courseNumberWidth = doc.getTextWidth(courseNumber);
         
-        // Render the rest of the description in normal font next to course number
+        // Render the rest of the description in normal font next to course number (dynamic position)
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
-        const startX = margin + 70 + 35;
-        const lines = doc.splitTextToSize(restDesc, maxWidth);
+        const startX = margin + 70 + courseNumberWidth + 3; // Start right after bold text with small gap
+        const dynamicMaxWidth = maxDescX - startX;
+        const lines = doc.splitTextToSize(restDesc, dynamicMaxWidth);
         lines.forEach((line: string, index: number) => {
-          addText(line, startX, courseYPosition + (index * 4));
+          addText(line, startX, descYPosition + (index * 4));
         });
         extraLines = Math.max(extraLines, lines.length - 1);
       } else {
@@ -1192,28 +1188,24 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       
       const hoursColumnWidth = 25;
       const maxDescX = pageWidth - margin - hoursColumnWidth - 5;
-      const maxWidth = maxDescX - (margin + 70 + 35);
       
       if (courseNumber && item.entry.category?.includes('Elite-Kleingruppe')) {
         // Render course number in bold
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8);
+        addText(courseNumber, margin + 70, descYPosition);
         
-        // Start course number on new line if it's too long
-        let courseYPosition = descYPosition;
-        if (courseNumber.length > 25) {
-          courseYPosition = descYPosition + 4;
-          extraLines = Math.max(extraLines, 1);
-        }
-        addText(courseNumber, margin + 70, courseYPosition);
+        // Measure the actual width of the bold course number
+        const courseNumberWidth = doc.getTextWidth(courseNumber);
         
-        // Render the rest of the description in normal font next to course number
+        // Render the rest of the description in normal font next to course number (dynamic position)
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
-        const startX = margin + 70 + 35;
-        const lines = doc.splitTextToSize(restDesc, maxWidth);
+        const startX = margin + 70 + courseNumberWidth + 3; // Start right after bold text with small gap
+        const dynamicMaxWidth = maxDescX - startX;
+        const lines = doc.splitTextToSize(restDesc, dynamicMaxWidth);
         lines.forEach((line: string, index: number) => {
-          addText(line, startX, courseYPosition + (index * 4));
+          addText(line, startX, descYPosition + (index * 4));
         });
         extraLines = Math.max(extraLines, lines.length - 1);
       } else {
