@@ -1409,7 +1409,6 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
           </div>
         </div>
       )}
-      )}
     </div>
   );
 };
