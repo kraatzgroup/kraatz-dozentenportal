@@ -580,24 +580,21 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
         
         // Start course number on new line if it's too long
         let courseYPosition = descYPosition;
-        let descriptionStartX = margin + 70 + 35;
-        let descriptionYOffset = 0;
         if (courseNumber.length > 25) {
           courseYPosition = descYPosition + 4;
-          descriptionStartX = margin + 70; // Start description on new line below course number
-          descriptionYOffset = 4; // Start description on next line after course number
           extraLines = Math.max(extraLines, 1);
         }
         addText(courseNumber, margin + 70, courseYPosition);
         
-        // Render the rest of the description in normal font
+        // Render the rest of the description in normal font next to course number
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
+        const startX = margin + 70 + 35;
         const lines = doc.splitTextToSize(restDesc, maxWidth);
         lines.forEach((line: string, index: number) => {
-          addText(line, descriptionStartX, courseYPosition + descriptionYOffset + (index * 4));
+          addText(line, startX, courseYPosition + (index * 4));
         });
-        extraLines = Math.max(extraLines, lines.length - 1 + (descriptionYOffset > 0 ? 1 : 0));
+        extraLines = Math.max(extraLines, lines.length - 1);
       } else {
         const maxWidth = pageWidth - margin - 20 - (margin + 70);
         if (desc.length > 50) {
@@ -1204,24 +1201,21 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
         
         // Start course number on new line if it's too long
         let courseYPosition = descYPosition;
-        let descriptionStartX = margin + 70 + 35;
-        let descriptionYOffset = 0;
         if (courseNumber.length > 25) {
           courseYPosition = descYPosition + 4;
-          descriptionStartX = margin + 70; // Start description on new line below course number
-          descriptionYOffset = 4; // Start description on next line after course number
           extraLines = Math.max(extraLines, 1);
         }
         addText(courseNumber, margin + 70, courseYPosition);
         
-        // Render the rest of the description in normal font
+        // Render the rest of the description in normal font next to course number
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
+        const startX = margin + 70 + 35;
         const lines = doc.splitTextToSize(restDesc, maxWidth);
         lines.forEach((line: string, index: number) => {
-          addText(line, descriptionStartX, courseYPosition + descriptionYOffset + (index * 4));
+          addText(line, startX, courseYPosition + (index * 4));
         });
-        extraLines = Math.max(extraLines, lines.length - 1 + (descriptionYOffset > 0 ? 1 : 0));
+        extraLines = Math.max(extraLines, lines.length - 1);
       } else {
         const maxWidth = pageWidth - margin - 20 - (margin + 70);
         if (desc.length > 50) {
