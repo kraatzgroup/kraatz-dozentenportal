@@ -1308,6 +1308,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
             </div>
           </div>
         </div>
+      )}
       {/* Edit Flat Rate Item Dialog */}
       {showEditFlatRateDialog && editingFlatRateItem && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-end sm:items-center justify-center z-50">
