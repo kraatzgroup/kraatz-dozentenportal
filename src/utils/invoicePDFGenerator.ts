@@ -566,14 +566,26 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       totalParticipantHours += item.hours;
     } else if (item.type === 'dozent') {
       const type = item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.category?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : item.entry.category || 'Sonstige Tätigkeit';
-      addText(type, margin + 25, yPosition);
-      const descYPosition = yPosition;
       let extraLines = 0;
+      
+      // Wrap long category names
+      const typeMaxWidth = 45; // Max width for category name
+      const typeLines = splitTextKeepingWords(doc, type, typeMaxWidth);
+      typeLines.forEach((line: string, index: number) => {
+        addText(line, margin + 25, yPosition + (index * 4));
+      });
+      extraLines = Math.max(extraLines, typeLines.length - 1);
+      yPosition += (typeLines.length * 4);
+      
       if (item.entry.category === 'Elite-Kleingruppe Korrektur') {
-        yPosition += 4;
         addText('Klausurenkorrektur', margin + 25, yPosition);
-        extraLines = 1;
+        extraLines += 1;
+        yPosition += 4;
       }
+      
+      // Update descYPosition to where description should start
+      const descYPositionForDesc = yPosition;
+      
       let desc;
       if (item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe')) {
         desc = item.entry.description?.startsWith('Klausurkorrektur:') 
@@ -604,7 +616,7 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
         // Render course number in bold
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8);
-        addText(courseNumber, margin + 70, descYPosition);
+        addText(courseNumber, margin + 70, descYPositionForDesc);
         
         // Render the rest of the description in normal font at fixed column (aligned with Einzelunterricht)
         doc.setFont('helvetica', 'normal');
@@ -613,7 +625,7 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
         const dynamicMaxWidth = maxDescX - startX;
         const lines = splitTextKeepingWords(doc, restDesc, dynamicMaxWidth);
         lines.forEach((line: string, index: number) => {
-          addText(line, startX, descYPosition + (index * 4));
+          addText(line, startX, descYPositionForDesc + (index * 4));
         });
         extraLines = Math.max(extraLines, lines.length - 1);
       } else {
@@ -621,11 +633,11 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
         const elseMaxWidth = (pageWidth - margin - hoursColumnWidth - 5) - (margin + 70);
         const lines = splitTextKeepingWords(doc, desc, elseMaxWidth);
         lines.forEach((line: string, index: number) => {
-          addText(line, margin + 70, descYPosition + (index * 4));
+          addText(line, margin + 70, descYPositionForDesc + (index * 4));
         });
         extraLines = Math.max(extraLines, lines.length - 1);
       }
-      addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
+      addText(item.hours.toString(), pageWidth - margin - 2, descYPositionForDesc, { align: 'right' });
       totalDozentHours += item.hours;
       yPosition += 5 + (extraLines * 4);
     } else if (item.type === 'flatrate') {
@@ -1177,14 +1189,26 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       totalParticipantHours += item.hours;
     } else if (item.type === 'dozent') {
       const type = item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.category?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : item.entry.category || 'Sonstige Tätigkeit';
-      addText(type, margin + 25, yPosition);
-      const descYPosition = yPosition;
       let extraLines = 0;
+      
+      // Wrap long category names
+      const typeMaxWidth = 45; // Max width for category name
+      const typeLines = splitTextKeepingWords(doc, type, typeMaxWidth);
+      typeLines.forEach((line: string, index: number) => {
+        addText(line, margin + 25, yPosition + (index * 4));
+      });
+      extraLines = Math.max(extraLines, typeLines.length - 1);
+      yPosition += (typeLines.length * 4);
+      
       if (item.entry.category === 'Elite-Kleingruppe Korrektur') {
-        yPosition += 4;
         addText('Klausurenkorrektur', margin + 25, yPosition);
-        extraLines = 1;
+        extraLines += 1;
+        yPosition += 4;
       }
+      
+      // Update descYPosition to where description should start
+      const descYPositionForDesc = yPosition;
+      
       let desc;
       if (item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe')) {
         desc = item.entry.description?.startsWith('Klausurkorrektur:') 
@@ -1215,7 +1239,7 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
         // Render course number in bold
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8);
-        addText(courseNumber, margin + 70, descYPosition);
+        addText(courseNumber, margin + 70, descYPositionForDesc);
         
         // Render the rest of the description in normal font at fixed column (aligned with Einzelunterricht)
         doc.setFont('helvetica', 'normal');
@@ -1224,7 +1248,7 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
         const dynamicMaxWidth = maxDescX - startX;
         const lines = splitTextKeepingWords(doc, restDesc, dynamicMaxWidth);
         lines.forEach((line: string, index: number) => {
-          addText(line, startX, descYPosition + (index * 4));
+          addText(line, startX, descYPositionForDesc + (index * 4));
         });
         extraLines = Math.max(extraLines, lines.length - 1);
       } else {
@@ -1232,11 +1256,11 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
         const elseMaxWidth = (pageWidth - margin - hoursColumnWidth - 5) - (margin + 70);
         const lines = splitTextKeepingWords(doc, desc, elseMaxWidth);
         lines.forEach((line: string, index: number) => {
-          addText(line, margin + 70, descYPosition + (index * 4));
+          addText(line, margin + 70, descYPositionForDesc + (index * 4));
         });
         extraLines = Math.max(extraLines, lines.length - 1);
       }
-      addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
+      addText(item.hours.toString(), pageWidth - margin - 2, descYPositionForDesc, { align: 'right' });
       totalDozentHours += item.hours;
       yPosition += 5 + (extraLines * 4);
     } else if (item.type === 'flatrate') {
