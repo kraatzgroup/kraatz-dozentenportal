@@ -971,7 +971,8 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
                     </div>
                     <div className="flex items-center space-x-4 mb-2">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                        Pauschale Vergütung
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                        {item.name || 'Pauschale Vergütung'}
                       </span>
                       <div className="flex items-center text-sm text-gray-900">
                         <span className="font-semibold">{item.quantity} × {item.amount_euro.toFixed(2)} € = {item.total_euro.toFixed(2)} €</span>
