@@ -168,8 +168,14 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     description: '',
     exam_type: '1. Staatsexamen'
   });
+  const FLAT_RATE_CATEGORIES = [
+    'Auslagen',
+    'Reisekosten',
+    'Pauschalvereinbarungen'
+  ];
+
   const [flatRateFormData, setFlatRateFormData] = useState({
-    name: '',
+    category: '',
     description: '',
     quantity: '1',
     amount_euro: '',
@@ -2502,7 +2508,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
 
                   const { error } = await supabase.from('dozent_flat_rate_items').insert({
                     dozent_id: user.id,
-                    name: flatRateFormData.name,
+                    name: flatRateFormData.category,
                     description: flatRateFormData.description,
                     quantity: quantity,
                     amount_euro: amountEuro,
@@ -2514,7 +2520,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   setShowFlatRateDialog(false);
                   setSelectedActivityType(null);
                   setFlatRateFormData({
-                    name: '',
+                    category: '',
                     description: '',
                     quantity: '1',
                     amount_euro: '',
@@ -2534,16 +2540,19 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Name des Postens
+                        Kategorie
                       </label>
-                      <input
-                        type="text"
-                        value={flatRateFormData.name}
-                        onChange={(e) => setFlatRateFormData({ ...flatRateFormData, name: e.target.value })}
+                      <select
+                        value={flatRateFormData.category}
+                        onChange={(e) => setFlatRateFormData({ ...flatRateFormData, category: e.target.value })}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
-                        placeholder="z.B. Materialkosten"
                         required
-                      />
+                      >
+                        <option value="">Kategorie wählen...</option>
+                        {FLAT_RATE_CATEGORIES.map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
                     </div>
 
                     <div>
@@ -2629,7 +2638,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                       setShowFlatRateDialog(false);
                       setSelectedActivityType(null);
                       setFlatRateFormData({
-                        name: '',
+                        category: '',
                         description: '',
                         quantity: '1',
                         amount_euro: '',
