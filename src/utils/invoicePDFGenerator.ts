@@ -396,10 +396,39 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
     });
   }
 
-  // Sort all hours chronologically
-  const sortedAllHours = allHours.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  // Sort all hours by category instead of chronologically
+  const categoryOrder: { [key: string]: number } = {
+    'participant': 1,
+    'elite_unterricht': 2,
+    'elite_korrektur': 3,
+    'sonstige': 4,
+    'flatrate': 5
+  };
 
-  // Display all hours in chronological order
+  const sortedAllHours = allHours.sort((a, b) => {
+    const getCategory = (item: any) => {
+      if (item.type === 'participant') return 'participant';
+      if (item.type === 'flatrate') return 'flatrate';
+      if (item.type === 'dozent') {
+        if (item.entry.category === 'Elite-Kleingruppe Korrektur') return 'elite_korrektur';
+        if (item.entry.category?.includes('Elite-Kleingruppe')) return 'elite_unterricht';
+        return 'sonstige';
+      }
+      return 'sonstige';
+    };
+
+    const categoryA = getCategory(a);
+    const categoryB = getCategory(b);
+    const orderA = categoryOrder[categoryA] || 99;
+    const orderB = categoryOrder[categoryB] || 99;
+
+    if (orderA !== orderB) return orderA - orderB;
+    
+    // Within same category, sort by date
+    return new Date(a.date).getTime() - new Date(b.date).getTime();
+  });
+
+  // Display all hours in category order
   for (const item of sortedAllHours) {
     doc.setFontSize(8);
     
@@ -898,10 +927,39 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     });
   }
 
-  // Sort all hours chronologically
-  const sortedAllHours = allHours.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  // Sort all hours by category instead of chronologically
+  const categoryOrder: { [key: string]: number } = {
+    'participant': 1,
+    'elite_unterricht': 2,
+    'elite_korrektur': 3,
+    'sonstige': 4,
+    'flatrate': 5
+  };
 
-  // Display all hours in chronological order
+  const sortedAllHours = allHours.sort((a, b) => {
+    const getCategory = (item: any) => {
+      if (item.type === 'participant') return 'participant';
+      if (item.type === 'flatrate') return 'flatrate';
+      if (item.type === 'dozent') {
+        if (item.entry.category === 'Elite-Kleingruppe Korrektur') return 'elite_korrektur';
+        if (item.entry.category?.includes('Elite-Kleingruppe')) return 'elite_unterricht';
+        return 'sonstige';
+      }
+      return 'sonstige';
+    };
+
+    const categoryA = getCategory(a);
+    const categoryB = getCategory(b);
+    const orderA = categoryOrder[categoryA] || 99;
+    const orderB = categoryOrder[categoryB] || 99;
+
+    if (orderA !== orderB) return orderA - orderB;
+    
+    // Within same category, sort by date
+    return new Date(a.date).getTime() - new Date(b.date).getTime();
+  });
+
+  // Display all hours in category order
   for (const item of sortedAllHours) {
     doc.setFontSize(8);
     
@@ -1570,10 +1628,39 @@ export const generateQuarterlyInvoicePDF = async (data: QuarterlyInvoiceData) =>
       });
     }
 
-    // Sort all hours chronologically
-    const sortedAllHours = allHours.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    // Sort all hours by category instead of chronologically
+    const categoryOrder: { [key: string]: number } = {
+      'participant': 1,
+      'elite_unterricht': 2,
+      'elite_korrektur': 3,
+      'sonstige': 4,
+      'flatrate': 5
+    };
 
-    // Display all hours in chronological order
+    const sortedAllHours = allHours.sort((a, b) => {
+      const getCategory = (item: any) => {
+        if (item.type === 'participant') return 'participant';
+        if (item.type === 'flatrate') return 'flatrate';
+        if (item.type === 'dozent') {
+          if (item.entry.category === 'Elite-Kleingruppe Korrektur') return 'elite_korrektur';
+          if (item.entry.category?.includes('Elite-Kleingruppe')) return 'elite_unterricht';
+          return 'sonstige';
+        }
+        return 'sonstige';
+      };
+
+      const categoryA = getCategory(a);
+      const categoryB = getCategory(b);
+      const orderA = categoryOrder[categoryA] || 99;
+      const orderB = categoryOrder[categoryB] || 99;
+
+      if (orderA !== orderB) return orderA - orderB;
+      
+      // Within same category, sort by date
+      return new Date(a.date).getTime() - new Date(b.date).getTime();
+    });
+
+    // Display all hours in category order
     for (const item of sortedAllHours) {
       doc.setFontSize(8);
       
@@ -2161,10 +2248,39 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
       });
     }
 
-    // Sort all hours chronologically
-    const sortedAllHours = allHours.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    // Sort all hours by category instead of chronologically
+    const categoryOrder: { [key: string]: number } = {
+      'participant': 1,
+      'elite_unterricht': 2,
+      'elite_korrektur': 3,
+      'sonstige': 4,
+      'flatrate': 5
+    };
 
-    // Display all hours in chronological order
+    const sortedAllHours = allHours.sort((a, b) => {
+      const getCategory = (item: any) => {
+        if (item.type === 'participant') return 'participant';
+        if (item.type === 'flatrate') return 'flatrate';
+        if (item.type === 'dozent') {
+          if (item.entry.category === 'Elite-Kleingruppe Korrektur') return 'elite_korrektur';
+          if (item.entry.category?.includes('Elite-Kleingruppe')) return 'elite_unterricht';
+          return 'sonstige';
+        }
+        return 'sonstige';
+      };
+
+      const categoryA = getCategory(a);
+      const categoryB = getCategory(b);
+      const orderA = categoryOrder[categoryA] || 99;
+      const orderB = categoryOrder[categoryB] || 99;
+
+      if (orderA !== orderB) return orderA - orderB;
+      
+      // Within same category, sort by date
+      return new Date(a.date).getTime() - new Date(b.date).getTime();
+    });
+
+    // Display all hours in category order
     for (const item of sortedAllHours) {
       doc.setFontSize(8);
       
