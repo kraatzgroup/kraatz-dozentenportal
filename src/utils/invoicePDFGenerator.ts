@@ -684,7 +684,7 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
   // Tax notice
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  const taxNoticeText = 'Auf den Ausweis der Umsatzsteuer wurde verzichtet, da von der Befreiung nach § 4 Nr. 21 b Doppelbuchstabe b UStG Gebrauch gemacht wurde. Am Abrechnungstag ggf. noch nicht vorliegende Belege rechne ich mit der folgenden Abrechnung ab.';
+  const taxNoticeText = 'Umsatzsteuer ist richtig';
   yPosition = addWrappedText(taxNoticeText, margin, yPosition, contentWidth, 3.5);
   yPosition += 6;
 
@@ -1383,7 +1383,7 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   // Tax notice
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  const taxNoticeText = 'Auf den Ausweis der Umsatzsteuer wurde verzichtet, da von der Befreiung nach Paragraph 4 Nr. 21 b Doppelbuchstabe b UStG Gebrauch gemacht wurde. Am Abrechnungstag ggf. noch nicht vorliegende Belege rechne ich mit der folgenden Abrechnung ab.';
+  const taxNoticeText = 'Umsatzsteuer ist richtig';
   yPosition = addWrappedText(taxNoticeText, margin, yPosition, contentWidth, 3.5);
   yPosition += 6;
 
@@ -1758,7 +1758,7 @@ export const generateQuarterlyInvoicePDF = async (data: QuarterlyInvoiceData) =>
   // Tax notice
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  const taxNoticeText = 'Auf den Ausweis der Umsatzsteuer wurde verzichtet, da von der Befreiung nach § 4 Nr. 21 b Doppelbuchstabe b UStG Gebrauch gemacht wurde. Am Abrechnungstag ggf. noch nicht vorliegende Belege rechne ich mit der folgenden Abrechnung ab.';
+  const taxNoticeText = 'Umsatzsteuer ist richtig';
   yPosition = addWrappedText(taxNoticeText, margin, yPosition, contentWidth, 3.5);
   yPosition += 6;
 
@@ -2389,7 +2389,7 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
   // Tax notice
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  const taxNoticeText = 'Auf den Ausweis der Umsatzsteuer wurde verzichtet, da von der Befreiung nach Paragraph 4 Nr. 21 b Doppelbuchstabe b UStG Gebrauch gemacht wurde. Am Abrechnungstag ggf. noch nicht vorliegende Belege rechne ich mit der folgenden Abrechnung ab.';
+  const taxNoticeText = 'Umsatzsteuer ist richtig';
   yPosition = addWrappedText(taxNoticeText, margin, yPosition, contentWidth, 3.5);
   yPosition += 6;
 
