@@ -568,6 +568,9 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       const type = item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.category?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : item.entry.category || 'Sonstige Tätigkeit';
       let extraLines = 0;
       
+      // Description starts at the same Y position as the first line of category
+      const descYPositionForDesc = yPosition;
+      
       // Wrap long category names
       const typeMaxWidth = 45; // Max width for category name
       const typeLines = splitTextKeepingWords(doc, type, typeMaxWidth);
@@ -582,9 +585,6 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
         extraLines += 1;
         yPosition += 4;
       }
-      
-      // Update descYPosition to where description should start
-      const descYPositionForDesc = yPosition;
       
       let desc;
       if (item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe')) {
@@ -1191,6 +1191,9 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       const type = item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.category?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : item.entry.category || 'Sonstige Tätigkeit';
       let extraLines = 0;
       
+      // Description starts at the same Y position as the first line of category
+      const descYPositionForDesc = yPosition;
+      
       // Wrap long category names
       const typeMaxWidth = 45; // Max width for category name
       const typeLines = splitTextKeepingWords(doc, type, typeMaxWidth);
@@ -1205,9 +1208,6 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
         extraLines += 1;
         yPosition += 4;
       }
-      
-      // Update descYPosition to where description should start
-      const descYPositionForDesc = yPosition;
       
       let desc;
       if (item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.description?.includes('Elite-Kleingruppe')) {
