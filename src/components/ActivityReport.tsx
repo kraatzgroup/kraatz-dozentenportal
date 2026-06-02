@@ -87,11 +87,21 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
   const [editingEntry, setEditingEntry] = useState<CombinedHoursEntry | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [activeTeilnehmer, setActiveTeilnehmer] = useState<TeilnehmerWithHours[]>([]);
+  const ACTIVITY_CATEGORIES = [
+    'Materialüberarbeitung Grundsemester',
+    'Materialüberarbeitung Examen',
+    'Kraatz Club',
+    'Materialüberarbeitung Crashkurs',
+    'Webinar',
+    'Rechtsprechungsübersichten'
+  ];
+
   const [editFormData, setEditFormData] = useState({
     hours: '',
     date: '',
     description: '',
-    legal_area: ''
+    legal_area: '',
+    category: ''
   });
   const [showAllHours, setShowAllHours] = useState(false);
   const [showAllTeilnehmer, setShowAllTeilnehmer] = useState(false);
@@ -470,7 +480,8 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
       hours: entry.hours.toString(),
       date: entry.date,
       description: entry.description,
-      legal_area: entry.legal_area || ''
+      legal_area: entry.legal_area || '',
+      category: entry.category || ''
     });
     setShowEditDialog(true);
   };
@@ -499,7 +510,8 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
           .update({
             hours: parseFloat(editFormData.hours),
             date: editFormData.date,
-            description: editFormData.description
+            description: editFormData.description,
+            category: editFormData.category || null
           })
           .eq('id', editingEntry.id);
 
@@ -516,7 +528,8 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
         hours: '',
         date: '',
         description: '',
-        legal_area: ''
+        legal_area: '',
+        category: ''
       });
     } catch (error: any) {
       console.error('Error updating entry:', error);
@@ -1186,6 +1199,21 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
                       className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
                     />
                   </div>
+                  {editingEntry?.type === 'dozent' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Tätigkeit</label>
+                      <select
+                        value={editFormData.category}
+                        onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value })}
+                        className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                      >
+                        <option value="">Keine Kategorie</option>
+                        {ACTIVITY_CATEGORIES.map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Inhalt/Thema</label>
                     <textarea
@@ -1208,7 +1236,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
                   onClick={() => {
                     setShowEditDialog(false);
                     setEditingEntry(null);
-                    setEditFormData({ hours: '', date: '', description: '', legal_area: '' });
+                    setEditFormData({ hours: '', date: '', description: '', legal_area: '', category: '' });
                   }}
                   className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
                 >
