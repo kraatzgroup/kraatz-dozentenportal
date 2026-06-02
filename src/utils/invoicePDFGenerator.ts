@@ -618,16 +618,13 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
         });
         extraLines = Math.max(extraLines, lines.length - 1);
       } else {
-        const maxWidth = pageWidth - margin - 20 - (margin + 70);
-        if (desc.length > 50) {
-          const lines = doc.splitTextToSize(desc, maxWidth);
-          lines.forEach((line: string, index: number) => {
-            addText(line.substring(0, 80), margin + 70, descYPosition + (index * 4));
-          });
-          extraLines = Math.max(extraLines, lines.length - 1);
-        } else {
-          addText(desc.substring(0, 80), margin + 70, descYPosition);
-        }
+        // Wrap description keeping words whole and avoid overlapping the hours column
+        const elseMaxWidth = (pageWidth - margin - hoursColumnWidth - 5) - (margin + 70);
+        const lines = splitTextKeepingWords(doc, desc, elseMaxWidth);
+        lines.forEach((line: string, index: number) => {
+          addText(line, margin + 70, descYPosition + (index * 4));
+        });
+        extraLines = Math.max(extraLines, lines.length - 1);
       }
       addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
       totalDozentHours += item.hours;
@@ -1233,16 +1230,13 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
         });
         extraLines = Math.max(extraLines, lines.length - 1);
       } else {
-        const maxWidth = pageWidth - margin - 20 - (margin + 70);
-        if (desc.length > 50) {
-          const lines = doc.splitTextToSize(desc, maxWidth);
-          lines.forEach((line: string, index: number) => {
-            addText(line.substring(0, 80), margin + 70, descYPosition + (index * 4));
-          });
-          extraLines = Math.max(extraLines, lines.length - 1);
-        } else {
-          addText(desc.substring(0, 80), margin + 70, descYPosition);
-        }
+        // Wrap description keeping words whole and avoid overlapping the hours column
+        const elseMaxWidth = (pageWidth - margin - hoursColumnWidth - 5) - (margin + 70);
+        const lines = splitTextKeepingWords(doc, desc, elseMaxWidth);
+        lines.forEach((line: string, index: number) => {
+          addText(line, margin + 70, descYPosition + (index * 4));
+        });
+        extraLines = Math.max(extraLines, lines.length - 1);
       }
       addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
       totalDozentHours += item.hours;
