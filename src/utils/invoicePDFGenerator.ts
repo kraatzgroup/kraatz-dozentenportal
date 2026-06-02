@@ -579,25 +579,15 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
         doc.setFontSize(8);
         addText(courseNumber, margin + 70, descYPosition);
         
-        // Render the rest of the description in normal font
+        // Render the rest of the description in normal font next to course number
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
         const startX = margin + 70 + 35;
         const lines = doc.splitTextToSize(restDesc, maxWidth);
-        
-        // Start description on new line if it's too long
-        if (restDesc.length > 30) {
-          const startY = descYPosition + 4;
-          lines.forEach((line: string, index: number) => {
-            addText(line, margin + 70, startY + (index * 4));
-          });
-          extraLines = Math.max(extraLines, lines.length);
-        } else {
-          lines.forEach((line: string, index: number) => {
-            addText(line, startX, descYPosition + (index * 4));
-          });
-          extraLines = Math.max(extraLines, lines.length - 1);
-        }
+        lines.forEach((line: string, index: number) => {
+          addText(line, startX, descYPosition + (index * 4));
+        });
+        extraLines = Math.max(extraLines, lines.length - 1);
       } else {
         const maxWidth = pageWidth - margin - 20 - (margin + 70);
         if (desc.length > 50) {
@@ -1203,25 +1193,15 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
         doc.setFontSize(8);
         addText(courseNumber, margin + 70, descYPosition);
         
-        // Render the rest of the description in normal font
+        // Render the rest of the description in normal font next to course number
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
         const startX = margin + 70 + 35;
         const lines = doc.splitTextToSize(restDesc, maxWidth);
-        
-        // Start description on new line if it's too long
-        if (restDesc.length > 30) {
-          const startY = descYPosition + 4;
-          lines.forEach((line: string, index: number) => {
-            addText(line, margin + 70, startY + (index * 4));
-          });
-          extraLines = Math.max(extraLines, lines.length);
-        } else {
-          lines.forEach((line: string, index: number) => {
-            addText(line, startX, descYPosition + (index * 4));
-          });
-          extraLines = Math.max(extraLines, lines.length - 1);
-        }
+        lines.forEach((line: string, index: number) => {
+          addText(line, startX, descYPosition + (index * 4));
+        });
+        extraLines = Math.max(extraLines, lines.length - 1);
       } else {
         const maxWidth = pageWidth - margin - 20 - (margin + 70);
         if (desc.length > 50) {
