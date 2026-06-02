@@ -512,7 +512,9 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       const descYPosition = yPosition;
       const studentName = item.entry.teilnehmer?.name || '-';
       const restDesc = `${item.entry.legal_area || '-'} - ${item.entry.description || '-'}`;
-      const maxWidth = pageWidth - margin - 20 - (margin + 70) - 20; // Reduce by 20 to avoid overlapping hours column
+      const hoursColumnWidth = 25; // Width reserved for hours column
+      const maxDescX = pageWidth - margin - hoursColumnWidth - 5; // Max x position for description
+      const maxWidth = maxDescX - (margin + 70 + 35); // Calculate max width based on available space
       
       // Render student name in bold
       doc.setFont('helvetica', 'bold');
@@ -524,7 +526,7 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       doc.setFontSize(8);
       const startX = margin + 70 + 35; // Fixed position after name (35 units for name space)
       if (restDesc.length > 50) {
-        const lines = doc.splitTextToSize(restDesc, maxWidth - 35);
+        const lines = doc.splitTextToSize(restDesc, maxWidth);
         lines.forEach((line: string, index: number) => {
           addText(line, startX, descYPosition + (index * 4));
         });
@@ -1089,7 +1091,9 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       const descYPosition = yPosition;
       const studentName = item.entry.teilnehmer?.name || '-';
       const restDesc = `${item.entry.legal_area || '-'} - ${item.entry.description || '-'}`;
-      const maxWidth = pageWidth - margin - 20 - (margin + 70) - 20; // Reduce by 20 to avoid overlapping hours column
+      const hoursColumnWidth = 25; // Width reserved for hours column
+      const maxDescX = pageWidth - margin - hoursColumnWidth - 5; // Max x position for description
+      const maxWidth = maxDescX - (margin + 70 + 35); // Calculate max width based on available space
       
       // Render student name in bold
       doc.setFont('helvetica', 'bold');
@@ -1101,7 +1105,7 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       doc.setFontSize(8);
       const startX = margin + 70 + 35; // Fixed position after name (35 units for name space)
       if (restDesc.length > 50) {
-        const lines = doc.splitTextToSize(restDesc, maxWidth - 35);
+        const lines = doc.splitTextToSize(restDesc, maxWidth);
         lines.forEach((line: string, index: number) => {
           addText(line, startX, descYPosition + (index * 4));
         });
