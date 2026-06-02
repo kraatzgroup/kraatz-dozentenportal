@@ -86,6 +86,8 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
   const [dozentName, setDozentName] = useState<string>('');
   const [editingEntry, setEditingEntry] = useState<CombinedHoursEntry | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editingFlatRateItem, setEditingFlatRateItem] = useState<FlatRateItem | null>(null);
+  const [showEditFlatRateDialog, setShowEditFlatRateDialog] = useState(false);
   const [activeTeilnehmer, setActiveTeilnehmer] = useState<TeilnehmerWithHours[]>([]);
   const ACTIVITY_CATEGORIES = [
     'Materialüberarbeitung Grundsemester',
@@ -103,6 +105,20 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
     description: '',
     legal_area: '',
     category: ''
+  });
+
+  const FLAT_RATE_CATEGORIES = [
+    'Auslagen',
+    'Reisekosten',
+    'Pauschalvereinbarungen'
+  ];
+
+  const [editFlatRateFormData, setEditFlatRateFormData] = useState({
+    category: '',
+    description: '',
+    quantity: '',
+    amount_euro: '',
+    date: ''
   });
   const [showAllHours, setShowAllHours] = useState(false);
   const [showAllTeilnehmer, setShowAllTeilnehmer] = useState(false);
@@ -596,6 +612,44 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
     }
   };
 
+  const handleEditFlatRateItem = (item: FlatRateItem) => {
+    setEditingFlatRateItem(item);
+    setEditFlatRateFormData({
+      category: item.name,
+      description: item.description || '',
+      quantity: item.quantity.toString(),
+      amount_euro: item.amount_euro.toString(),
+      date: item.date
+    });
+    setShowEditFlatRateDialog(true);
+  };
+
+  const handleUpdateFlatRateItem = async () => {
+    if (!editingFlatRateItem) return;
+
+    try {
+      const { error } = await supabase
+        .from('dozent_flat_rate_items')
+        .update({
+          name: editFlatRateFormData.category,
+          description: editFlatRateFormData.description,
+          quantity: parseFloat(editFlatRateFormData.quantity),
+          amount_euro: parseFloat(editFlatRateFormData.amount_euro),
+          date: editFlatRateFormData.date
+        })
+        .eq('id', editingFlatRateItem.id);
+
+      if (error) throw error;
+
+      setShowEditFlatRateDialog(false);
+      setEditingFlatRateItem(null);
+      await fetchFlatRateItems();
+    } catch (error: any) {
+      console.error('Error updating flat rate item:', error);
+      alert('Fehler beim Aktualisieren des Eintrags: ' + error.message);
+    }
+  };
+
   const handleDeleteFlatRateItem = async (item: FlatRateItem) => {
     const confirmMessage = `Möchten Sie die pauschale Vergütung "${item.name}" vom ${formatDate(item.date)} (${item.total_euro.toFixed(2)} €) wirklich löschen?`;
 
@@ -942,6 +996,13 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
                   </div>
                   <div className="flex items-center space-x-2 ml-4">
                     <button
+                      onClick={() => handleEditFlatRateItem(item)}
+                      className="text-gray-400 hover:text-primary transition-colors"
+                      title="Eintrag bearbeiten"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </button>
+                    <button
                       onClick={() => handleDeleteFlatRateItem(item)}
                       className="text-gray-400 hover:text-red-500 transition-colors"
                       title="Eintrag löschen"
@@ -1247,6 +1308,106 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
             </div>
           </div>
         </div>
+      {/* Edit Flat Rate Item Dialog */}
+      {showEditFlatRateDialog && editingFlatRateItem && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-end sm:items-center justify-center z-50">
+          <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+            <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Pauschale Vergütung bearbeiten</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Kategorie</label>
+                  <select
+                    value={editFlatRateFormData.category}
+                    onChange={(e) => setEditFlatRateFormData({ ...editFlatRateFormData, category: e.target.value })}
+                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                    required
+                  >
+                    <option value="">Kategorie wählen...</option>
+                    {FLAT_RATE_CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Beschreibung</label>
+                  <textarea
+                    value={editFlatRateFormData.description}
+                    onChange={(e) => setEditFlatRateFormData({ ...editFlatRateFormData, description: e.target.value })}
+                    rows={2}
+                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                    placeholder="z.B. Druckkosten für Unterrichtsmaterialien"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Menge</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={editFlatRateFormData.quantity}
+                      onChange={(e) => setEditFlatRateFormData({ ...editFlatRateFormData, quantity: e.target.value })}
+                      className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                      placeholder="1"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Betrag (€)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={editFlatRateFormData.amount_euro}
+                      onChange={(e) => setEditFlatRateFormData({ ...editFlatRateFormData, amount_euro: e.target.value })}
+                      className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                      placeholder="z.B. 50.00"
+                      required
+                    />
+                  </div>
+                </div>
+                {editFlatRateFormData.quantity && editFlatRateFormData.amount_euro && (
+                  <div className="bg-green-50 border border-green-200 rounded-md p-3">
+                    <p className="text-sm font-medium text-green-800">
+                      Gesamtbetrag: {(parseFloat(editFlatRateFormData.quantity) * parseFloat(editFlatRateFormData.amount_euro)).toFixed(2)} €
+                    </p>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Datum</label>
+                  <input
+                    type="date"
+                    value={editFlatRateFormData.date}
+                    onChange={(e) => setEditFlatRateFormData({ ...editFlatRateFormData, date: e.target.value })}
+                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+              <button
+                onClick={handleUpdateFlatRateItem}
+                className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary text-base font-medium text-white hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:ml-3 sm:w-auto sm:text-sm"
+              >
+                Speichern
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEditFlatRateDialog(false);
+                  setEditingFlatRateItem(null);
+                  setEditFlatRateFormData({ category: '', description: '', quantity: '', amount_euro: '', date: '' });
+                }}
+                className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+              >
+                Abbrechen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       )}
     </div>
   );
