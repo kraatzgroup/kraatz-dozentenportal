@@ -553,15 +553,52 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       } else {
         desc = item.entry.description || '-';
       }
-      const maxWidth = pageWidth - margin - 20 - (margin + 70);
-      if (desc.length > 50) {
-        const lines = doc.splitTextToSize(desc, maxWidth);
+      
+      // Extract course number and rest of description for Elite-Kleingruppe
+      let courseNumber = '';
+      let restDesc = desc;
+      if (item.entry.category?.includes('Elite-Kleingruppe')) {
+        // Match pattern "Elite-Kleingruppe 2025/2026 - 101"
+        const match = desc.match(/(Elite-Kleingruppe\s+\d{4}\/\d{4}\s*-\s*\d+)/);
+        if (match) {
+          courseNumber = match[1];
+          restDesc = desc.replace(courseNumber, '').trim();
+          if (restDesc.startsWith('-')) {
+            restDesc = restDesc.substring(1).trim();
+          }
+        }
+      }
+      
+      const hoursColumnWidth = 25;
+      const maxDescX = pageWidth - margin - hoursColumnWidth - 5;
+      const maxWidth = maxDescX - (margin + 70 + 35);
+      
+      if (courseNumber && item.entry.category?.includes('Elite-Kleingruppe')) {
+        // Render course number in bold
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        addText(courseNumber, margin + 70, descYPosition);
+        
+        // Render the rest of the description in normal font
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        const startX = margin + 70 + 35;
+        const lines = doc.splitTextToSize(restDesc, maxWidth);
         lines.forEach((line: string, index: number) => {
-          addText(line.substring(0, 80), margin + 70, descYPosition + (index * 4));
+          addText(line, startX, descYPosition + (index * 4));
         });
         extraLines = Math.max(extraLines, lines.length - 1);
       } else {
-        addText(desc.substring(0, 80), margin + 70, descYPosition);
+        const maxWidth = pageWidth - margin - 20 - (margin + 70);
+        if (desc.length > 50) {
+          const lines = doc.splitTextToSize(desc, maxWidth);
+          lines.forEach((line: string, index: number) => {
+            addText(line.substring(0, 80), margin + 70, descYPosition + (index * 4));
+          });
+          extraLines = Math.max(extraLines, lines.length - 1);
+        } else {
+          addText(desc.substring(0, 80), margin + 70, descYPosition);
+        }
       }
       addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
       totalDozentHours += item.hours;
@@ -1130,15 +1167,52 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       } else {
         desc = item.entry.description || '-';
       }
-      const maxWidth = pageWidth - margin - 20 - (margin + 70);
-      if (desc.length > 50) {
-        const lines = doc.splitTextToSize(desc, maxWidth);
+      
+      // Extract course number and rest of description for Elite-Kleingruppe
+      let courseNumber = '';
+      let restDesc = desc;
+      if (item.entry.category?.includes('Elite-Kleingruppe')) {
+        // Match pattern "Elite-Kleingruppe 2025/2026 - 101"
+        const match = desc.match(/(Elite-Kleingruppe\s+\d{4}\/\d{4}\s*-\s*\d+)/);
+        if (match) {
+          courseNumber = match[1];
+          restDesc = desc.replace(courseNumber, '').trim();
+          if (restDesc.startsWith('-')) {
+            restDesc = restDesc.substring(1).trim();
+          }
+        }
+      }
+      
+      const hoursColumnWidth = 25;
+      const maxDescX = pageWidth - margin - hoursColumnWidth - 5;
+      const maxWidth = maxDescX - (margin + 70 + 35);
+      
+      if (courseNumber && item.entry.category?.includes('Elite-Kleingruppe')) {
+        // Render course number in bold
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        addText(courseNumber, margin + 70, descYPosition);
+        
+        // Render the rest of the description in normal font
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        const startX = margin + 70 + 35;
+        const lines = doc.splitTextToSize(restDesc, maxWidth);
         lines.forEach((line: string, index: number) => {
-          addText(line.substring(0, 80), margin + 70, descYPosition + (index * 4));
+          addText(line, startX, descYPosition + (index * 4));
         });
         extraLines = Math.max(extraLines, lines.length - 1);
       } else {
-        addText(desc.substring(0, 80), margin + 70, descYPosition);
+        const maxWidth = pageWidth - margin - 20 - (margin + 70);
+        if (desc.length > 50) {
+          const lines = doc.splitTextToSize(desc, maxWidth);
+          lines.forEach((line: string, index: number) => {
+            addText(line.substring(0, 80), margin + 70, descYPosition + (index * 4));
+          });
+          extraLines = Math.max(extraLines, lines.length - 1);
+        } else {
+          addText(desc.substring(0, 80), margin + 70, descYPosition);
+        }
       }
       addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
       totalDozentHours += item.hours;
