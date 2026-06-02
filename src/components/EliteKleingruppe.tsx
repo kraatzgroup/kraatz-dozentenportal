@@ -2366,7 +2366,17 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       
       // Tätigkeitsbericht-Eintrag erstellen oder aktualisieren falls Dauer angegeben
       if (korrekturDuration && parseFloat(korrekturDuration) > 0) {
-        const description = `Klausurkorrektur: ${selectedKlausur.title} (${selectedKlausur.teilnehmer_name}) - ${korrekturScore ? korrekturScore + ' Punkte' : 'ohne Bewertung'}`;
+        // Determine the Elite-Kleingruppe course number via the participant's group
+        let courseNumber = '';
+        const { data: tnGroup } = await supabase
+          .from('teilnehmer')
+          .select('elite_kleingruppe_id')
+          .eq('id', selectedKlausur.teilnehmer_id)
+          .maybeSingle();
+        if (tnGroup?.elite_kleingruppe_id) {
+          courseNumber = eliteGroups.find(g => g.id === tnGroup.elite_kleingruppe_id)?.name || '';
+        }
+        const description = `Klausurkorrektur: ${selectedKlausur.title} (${selectedKlausur.teilnehmer_name})${courseNumber ? ' - ' + courseNumber : ''} - ${korrekturScore ? korrekturScore + ' Punkte' : 'ohne Bewertung'}`;
         
         // Prüfen, ob bereits ein Eintrag für diese Klausur existiert
         const { data: existingHours } = await supabase

@@ -592,9 +592,8 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
         if (match) {
           courseNumber = match[1];
           restDesc = desc.replace(courseNumber, '').trim();
-          if (restDesc.startsWith('-')) {
-            restDesc = restDesc.substring(1).trim();
-          }
+          // Strip leading/trailing separator dashes left over after removing the course number
+          restDesc = restDesc.replace(/^[-\s]+/, '').replace(/[-\s]+$/, '').trim();
         }
       }
       
@@ -1204,9 +1203,8 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
         if (match) {
           courseNumber = match[1];
           restDesc = desc.replace(courseNumber, '').trim();
-          if (restDesc.startsWith('-')) {
-            restDesc = restDesc.substring(1).trim();
-          }
+          // Strip leading/trailing separator dashes left over after removing the course number
+          restDesc = restDesc.replace(/^[-\s]+/, '').replace(/[-\s]+$/, '').trim();
         }
       }
       
