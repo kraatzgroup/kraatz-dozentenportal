@@ -525,16 +525,14 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       const startX = margin + 70 + 35; // Fixed position after name (35 units for name space)
-      if (restDesc.length > 50) {
-        const lines = doc.splitTextToSize(restDesc, maxWidth);
-        lines.forEach((line: string, index: number) => {
-          addText(line, startX, descYPosition + (index * 4));
-        });
-        yPosition += 5 + ((lines.length - 1) * 4);
-      } else {
-        addText(restDesc, startX, descYPosition);
-        yPosition += 5;
-      }
+      
+      // Always wrap text to avoid overlapping hours column
+      const lines = doc.splitTextToSize(restDesc, maxWidth);
+      lines.forEach((line: string, index: number) => {
+        addText(line, startX, descYPosition + (index * 4));
+      });
+      yPosition += 5 + ((lines.length - 1) * 4);
+      
       addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
       totalParticipantHours += item.hours;
     } else if (item.type === 'dozent') {
@@ -1104,16 +1102,14 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       const startX = margin + 70 + 35; // Fixed position after name (35 units for name space)
-      if (restDesc.length > 50) {
-        const lines = doc.splitTextToSize(restDesc, maxWidth);
-        lines.forEach((line: string, index: number) => {
-          addText(line, startX, descYPosition + (index * 4));
-        });
-        yPosition += 5 + ((lines.length - 1) * 4);
-      } else {
-        addText(restDesc, startX, descYPosition);
-        yPosition += 5;
-      }
+      
+      // Always wrap text to avoid overlapping hours column
+      const lines = doc.splitTextToSize(restDesc, maxWidth);
+      lines.forEach((line: string, index: number) => {
+        addText(line, startX, descYPosition + (index * 4));
+      });
+      yPosition += 5 + ((lines.length - 1) * 4);
+      
       addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
       totalParticipantHours += item.hours;
     } else if (item.type === 'dozent') {
