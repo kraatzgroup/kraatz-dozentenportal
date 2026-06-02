@@ -631,7 +631,6 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
       const { error } = await supabase
         .from('dozent_flat_rate_items')
         .update({
-          name: editFlatRateFormData.category,
           description: editFlatRateFormData.description,
           quantity: parseFloat(editFlatRateFormData.quantity),
           amount_euro: parseFloat(editFlatRateFormData.amount_euro),
@@ -1318,17 +1317,9 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Kategorie</label>
-                  <select
-                    value={editFlatRateFormData.category}
-                    onChange={(e) => setEditFlatRateFormData({ ...editFlatRateFormData, category: e.target.value })}
-                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
-                    required
-                  >
-                    <option value="">Kategorie wählen...</option>
-                    {FLAT_RATE_CATEGORIES.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
+                  <div className="w-full px-3 py-2 rounded-md border border-gray-300 bg-gray-50 text-gray-700">
+                    {editFlatRateFormData.category || 'Keine Kategorie'}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Beschreibung</label>
