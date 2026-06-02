@@ -352,12 +352,22 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
     yPosition += 5;
   }
 
+  // Breakdown flat rate items by category
   if (flatRateTotal > 0) {
-    addText('Pauschale Verguetungen', margin + 2, yPosition);
-    addText('-', margin + 90, yPosition);
-    addText('-', margin + 120, yPosition);
-    addText(`${formatNumber(flatRateTotal)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
-    yPosition += 5;
+    const flatRateByCategory: { [key: string]: number } = {};
+    (data.flatRateItems || []).forEach((item: any) => {
+      const category = item.name || 'Sonstige';
+      flatRateByCategory[category] = (flatRateByCategory[category] || 0) + item.total_euro;
+    });
+
+    // Display each category
+    Object.entries(flatRateByCategory).forEach(([category, total]) => {
+      addText(category, margin + 2, yPosition);
+      addText('-', margin + 90, yPosition);
+      addText('-', margin + 120, yPosition);
+      addText(`${formatNumber(total)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
+      yPosition += 5;
+    });
   }
 
   // Total line
@@ -980,12 +990,22 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     yPosition += 5;
   }
 
+  // Breakdown flat rate items by category
   if (flatRateTotal > 0) {
-    addText('Pauschale Verguetungen', margin + 2, yPosition);
-    addText('-', margin + 90, yPosition);
-    addText('-', margin + 120, yPosition);
-    addText(`${formatNumber(flatRateTotal)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
-    yPosition += 5;
+    const flatRateByCategory: { [key: string]: number } = {};
+    (data.flatRateItems || []).forEach((item: any) => {
+      const category = item.name || 'Sonstige';
+      flatRateByCategory[category] = (flatRateByCategory[category] || 0) + item.total_euro;
+    });
+
+    // Display each category
+    Object.entries(flatRateByCategory).forEach(([category, total]) => {
+      addText(category, margin + 2, yPosition);
+      addText('-', margin + 90, yPosition);
+      addText('-', margin + 120, yPosition);
+      addText(`${formatNumber(total)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
+      yPosition += 5;
+    });
   }
 
   // Total line
@@ -1355,12 +1375,22 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     yPosition += 5;
   }
 
+  // Breakdown flat rate items by category
   if (flatRateTotal > 0) {
-    addText('Pauschale Verguetungen', margin + 2, yPosition);
-    addText('-', margin + 90, yPosition);
-    addText('-', margin + 120, yPosition);
-    addText(`${formatNumber(flatRateTotal)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
-    yPosition += 5;
+    const flatRateByCategory: { [key: string]: number } = {};
+    (data.flatRateItems || []).forEach((item: any) => {
+      const category = item.name || 'Sonstige';
+      flatRateByCategory[category] = (flatRateByCategory[category] || 0) + item.total_euro;
+    });
+
+    // Display each category
+    Object.entries(flatRateByCategory).forEach(([category, total]) => {
+      addText(category, margin + 2, yPosition);
+      addText('-', margin + 90, yPosition);
+      addText('-', margin + 120, yPosition);
+      addText(`${formatNumber(total)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
+      yPosition += 5;
+    });
   }
 
   // Total line
