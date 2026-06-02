@@ -53,9 +53,19 @@ export function DozentDetail() {
     description: '',
     legal_area: ''
   });
+  const ACTIVITY_CATEGORIES = [
+    'Materialüberarbeitung Grundsemester',
+    'Materialüberarbeitung Examen',
+    'Kraatz Club',
+    'Materialüberarbeitung Crashkurs',
+    'Webinar',
+    'Rechtsprechungsübersichten'
+  ];
+
   const [activityFormData, setActivityFormData] = useState({
     hours: '',
     date: new Date().toISOString().split('T')[0],
+    category: '',
     description: '',
     exam_type: '1. Staatsexamen'
   });
@@ -252,6 +262,7 @@ export function DozentDetail() {
         .insert({
           hours: parseFloat(activityFormData.hours),
           date: activityFormData.date,
+          category: activityFormData.category,
           description: activityFormData.description,
           exam_type: activityFormData.exam_type,
           dozent_id: dozentId
@@ -261,6 +272,7 @@ export function DozentDetail() {
       setActivityFormData({
         hours: '',
         date: new Date().toISOString().split('T')[0],
+        category: '',
         description: '',
         exam_type: '1. Staatsexamen'
       });
@@ -1068,13 +1080,29 @@ export function DozentDetail() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Tätigkeit
                       </label>
+                      <select
+                        value={activityFormData.category}
+                        onChange={(e) => setActivityFormData({ ...activityFormData, category: e.target.value })}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                        required
+                      >
+                        <option value="">Kategorie wählen...</option>
+                        {ACTIVITY_CATEGORIES.map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Beschreibung (optional)
+                      </label>
                       <textarea
                         value={activityFormData.description}
                         onChange={(e) => setActivityFormData({ ...activityFormData, description: e.target.value })}
-                        rows={3}
+                        rows={2}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
                         placeholder="z.B. Vorbereitung Unterlagen, Korrektur von Arbeiten..."
-                        required
                       />
                     </div>
 
@@ -1123,6 +1151,7 @@ export function DozentDetail() {
                       setActivityFormData({
                         hours: '',
                         date: new Date().toISOString().split('T')[0],
+                        category: '',
                         description: '',
                         exam_type: '1. Staatsexamen'
                       });

@@ -151,9 +151,19 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const [availablePackages, setAvailablePackages] = useState<any[]>([]);
   const [availableLegalAreas, setAvailableLegalAreas] = useState<string[]>([]);
   const [filteredAssignedTeilnehmer, setFilteredAssignedTeilnehmer] = useState<any[]>([]);
+  const ACTIVITY_CATEGORIES = [
+    'Materialüberarbeitung Grundsemester',
+    'Materialüberarbeitung Examen',
+    'Kraatz Club',
+    'Materialüberarbeitung Crashkurs',
+    'Webinar',
+    'Rechtsprechungsübersichten'
+  ];
+
   const [activityFormData, setActivityFormData] = useState({
     hours: '',
     date: new Date().toISOString().split('T')[0],
+    category: '',
     description: '',
     exam_type: '1. Staatsexamen'
   });
@@ -750,7 +760,9 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
         date: activityFormData.date,
         description: activityFormData.description,
         exam_type: activityFormData.exam_type,
-        category: selectedActivityType === 'Elite Klausur Korrektur' ? 'Elite Klausur Korrektur' : 'sonstige'
+        category: selectedActivityType === 'Elite Klausur Korrektur'
+          ? 'Elite Klausur Korrektur'
+          : activityFormData.category || 'sonstige'
       });
       
       setShowActivityDialog(false);
@@ -758,6 +770,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       setActivityFormData({
         hours: '',
         date: new Date().toISOString().split('T')[0],
+        category: '',
         description: '',
         exam_type: '1. Staatsexamen'
       });
@@ -2374,17 +2387,35 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                       />
                     </div>
 
+                    {selectedActivityType === 'sonstige' && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Tätigkeit
+                        </label>
+                        <select
+                          value={activityFormData.category}
+                          onChange={(e) => setActivityFormData({ ...activityFormData, category: e.target.value })}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                          required
+                        >
+                          <option value="">Kategorie wählen...</option>
+                          {ACTIVITY_CATEGORIES.map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Tätigkeit
+                        Beschreibung (optional)
                       </label>
                       <textarea
                         value={activityFormData.description}
                         onChange={(e) => setActivityFormData({ ...activityFormData, description: e.target.value })}
-                        rows={3}
+                        rows={2}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
                         placeholder={selectedActivityType === 'Elite Klausur Korrektur' ? 'Beschreibung ...' : 'z.B. Vorbereitung Unterlagen, Korrektur von Arbeiten...'}
-                        required
                       />
                     </div>
 
@@ -2434,6 +2465,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                       setActivityFormData({
                         hours: '',
                         date: new Date().toISOString().split('T')[0],
+                        category: '',
                         description: '',
                         exam_type: '1. Staatsexamen'
                       });
