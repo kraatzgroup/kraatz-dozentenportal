@@ -557,11 +557,15 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       // Extract course number and rest of description for Elite-Kleingruppe
       let courseNumber = '';
       let restDesc = desc;
-      if (item.entry.category?.includes('Elite-Kleingruppe') && desc.includes('-')) {
-        const parts = desc.split('-');
-        if (parts.length > 0) {
-          courseNumber = parts[0].trim();
-          restDesc = parts.slice(1).join('-').trim();
+      if (item.entry.category?.includes('Elite-Kleingruppe')) {
+        // Match pattern "Elite-Kleingruppe [number]" or "Elite-Kleingruppe [number] - ..."
+        const match = desc.match(/(Elite-Kleingruppe\s+\d+)/);
+        if (match) {
+          courseNumber = match[1];
+          restDesc = desc.replace(courseNumber, '').trim();
+          if (restDesc.startsWith('-')) {
+            restDesc = restDesc.substring(1).trim();
+          }
         }
       }
       
@@ -1167,11 +1171,15 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       // Extract course number and rest of description for Elite-Kleingruppe
       let courseNumber = '';
       let restDesc = desc;
-      if (item.entry.category?.includes('Elite-Kleingruppe') && desc.includes('-')) {
-        const parts = desc.split('-');
-        if (parts.length > 0) {
-          courseNumber = parts[0].trim();
-          restDesc = parts.slice(1).join('-').trim();
+      if (item.entry.category?.includes('Elite-Kleingruppe')) {
+        // Match pattern "Elite-Kleingruppe [number]" or "Elite-Kleingruppe [number] - ..."
+        const match = desc.match(/(Elite-Kleingruppe\s+\d+)/);
+        if (match) {
+          courseNumber = match[1];
+          restDesc = desc.replace(courseNumber, '').trim();
+          if (restDesc.startsWith('-')) {
+            restDesc = restDesc.substring(1).trim();
+          }
         }
       }
       
