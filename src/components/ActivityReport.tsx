@@ -93,7 +93,8 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
     'Kraatz Club',
     'Materialüberarbeitung Crashkurs',
     'Webinar',
-    'Rechtsprechungsübersichten'
+    'Rechtsprechungsübersichten',
+    'Social Media'
   ];
 
   const [editFormData, setEditFormData] = useState({

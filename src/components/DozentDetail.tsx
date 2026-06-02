@@ -59,7 +59,8 @@ export function DozentDetail() {
     'Kraatz Club',
     'Materialüberarbeitung Crashkurs',
     'Webinar',
-    'Rechtsprechungsübersichten'
+    'Rechtsprechungsübersichten',
+    'Social Media'
   ];
 
   const [activityFormData, setActivityFormData] = useState({

@@ -157,7 +157,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     'Kraatz Club',
     'Materialüberarbeitung Crashkurs',
     'Webinar',
-    'Rechtsprechungsübersichten'
+    'Rechtsprechungsübersichten',
+    'Social Media'
   ];
 
   const [activityFormData, setActivityFormData] = useState({
