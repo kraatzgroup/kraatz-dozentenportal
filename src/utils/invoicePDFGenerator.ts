@@ -510,16 +510,28 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
     if (item.type === 'participant') {
       addText('Einzelunterricht', margin + 25, yPosition);
       const descYPosition = yPosition;
-      const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`;
+      const studentName = item.entry.teilnehmer?.name || '-';
+      const restDesc = `${item.entry.legal_area || '-'} - ${item.entry.description || '-'}`;
       const maxWidth = pageWidth - margin - 20 - (margin + 70);
-      if (desc.length > 50) {
-        const lines = doc.splitTextToSize(desc, maxWidth);
+      
+      // Render student name in bold
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      const nameWidth = doc.getTextWidth(studentName);
+      addText(studentName, margin + 70, descYPosition);
+      
+      // Render the rest of the description in normal font
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      const startX = margin + 70 + nameWidth + 4; // Add small gap
+      if (restDesc.length > 50) {
+        const lines = doc.splitTextToSize(restDesc, maxWidth - nameWidth);
         lines.forEach((line: string, index: number) => {
-          addText(line, margin + 70, descYPosition + (index * 4));
+          addText(line, startX, descYPosition + (index * 4));
         });
         yPosition += 5 + ((lines.length - 1) * 4);
       } else {
-        addText(desc, margin + 70, descYPosition);
+        addText(restDesc, startX, descYPosition);
         yPosition += 5;
       }
       addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
@@ -1076,16 +1088,28 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     if (item.type === 'participant') {
       addText('Einzelunterricht', margin + 25, yPosition);
       const descYPosition = yPosition;
-      const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`;
+      const studentName = item.entry.teilnehmer?.name || '-';
+      const restDesc = `${item.entry.legal_area || '-'} - ${item.entry.description || '-'}`;
       const maxWidth = pageWidth - margin - 20 - (margin + 70);
-      if (desc.length > 50) {
-        const lines = doc.splitTextToSize(desc, maxWidth);
+      
+      // Render student name in bold
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      const nameWidth = doc.getTextWidth(studentName);
+      addText(studentName, margin + 70, descYPosition);
+      
+      // Render the rest of the description in normal font
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      const startX = margin + 70 + nameWidth + 4; // Add small gap
+      if (restDesc.length > 50) {
+        const lines = doc.splitTextToSize(restDesc, maxWidth - nameWidth);
         lines.forEach((line: string, index: number) => {
-          addText(line, margin + 70, descYPosition + (index * 4));
+          addText(line, startX, descYPosition + (index * 4));
         });
         yPosition += 5 + ((lines.length - 1) * 4);
       } else {
-        addText(desc, margin + 70, descYPosition);
+        addText(restDesc, startX, descYPosition);
         yPosition += 5;
       }
       addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
