@@ -60,6 +60,67 @@ interface InvoicePDFData {
   flatRateItems?: FlatRateItem[];
 }
 
+// Splits text to fit within maxWidth, adding a hyphen when a single word
+// must be broken across lines (Silbentrennung mit Bindestrich).
+const splitTextWithHyphenation = (doc: any, text: string, maxWidth: number): string[] => {
+  const words = text.split(/\s+/).filter(w => w.length > 0);
+  const lines: string[] = [];
+  let currentLine = '';
+
+  const fits = (s: string) => doc.getTextWidth(s) <= maxWidth;
+
+  // Break a single long word into chunks, appending a hyphen to all but the last chunk.
+  const breakWord = (word: string): string[] => {
+    const chunks: string[] = [];
+    let remaining = word;
+    while (doc.getTextWidth(remaining) > maxWidth && remaining.length > 1) {
+      let i = remaining.length;
+      // Find the largest prefix that fits including the trailing hyphen
+      while (i > 1 && doc.getTextWidth(remaining.substring(0, i) + '-') > maxWidth) {
+        i--;
+      }
+      if (i <= 1) {
+        i = Math.max(1, remaining.length - 1);
+      }
+      chunks.push(remaining.substring(0, i) + '-');
+      remaining = remaining.substring(i);
+    }
+    chunks.push(remaining);
+    return chunks;
+  };
+
+  for (const word of words) {
+    const candidate = currentLine ? currentLine + ' ' + word : word;
+    if (fits(candidate)) {
+      currentLine = candidate;
+      continue;
+    }
+
+    // Word doesn't fit on the current line
+    if (currentLine) {
+      lines.push(currentLine);
+      currentLine = '';
+    }
+
+    if (fits(word)) {
+      currentLine = word;
+    } else {
+      // Word itself is too long: break with hyphens
+      const chunks = breakWord(word);
+      for (let i = 0; i < chunks.length - 1; i++) {
+        lines.push(chunks[i]);
+      }
+      currentLine = chunks[chunks.length - 1];
+    }
+  }
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines.length > 0 ? lines : [''];
+};
+
 export const generateInvoicePDF = async (data: InvoicePDFData) => {
   console.log('🎯 generateInvoicePDF called with exam_type:', data.invoice.exam_type);
   const { jsPDF } = await import('jspdf');
@@ -527,8 +588,8 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       doc.setFontSize(8);
       const startX = descColumnX; // Fixed description column for clean alignment
       
-      // Always wrap text to avoid overlapping hours column
-      const lines = doc.splitTextToSize(restDesc, maxWidth);
+      // Always wrap text to avoid overlapping hours column (with hyphenation)
+      const lines = splitTextWithHyphenation(doc, restDesc, maxWidth);
       lines.forEach((line: string, index: number) => {
         addText(line, startX, descYPosition + (index * 4));
       });
@@ -584,7 +645,7 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
         doc.setFontSize(8);
         const startX = margin + 70 + 50; // Fixed description column for clean alignment
         const dynamicMaxWidth = maxDescX - startX;
-        const lines = doc.splitTextToSize(restDesc, dynamicMaxWidth);
+        const lines = splitTextWithHyphenation(doc, restDesc, dynamicMaxWidth);
         lines.forEach((line: string, index: number) => {
           addText(line, startX, descYPosition + (index * 4));
         });
@@ -1142,8 +1203,8 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       doc.setFontSize(8);
       const startX = descColumnX; // Fixed description column for clean alignment
       
-      // Always wrap text to avoid overlapping hours column
-      const lines = doc.splitTextToSize(restDesc, maxWidth);
+      // Always wrap text to avoid overlapping hours column (with hyphenation)
+      const lines = splitTextWithHyphenation(doc, restDesc, maxWidth);
       lines.forEach((line: string, index: number) => {
         addText(line, startX, descYPosition + (index * 4));
       });
@@ -1199,7 +1260,7 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
         doc.setFontSize(8);
         const startX = margin + 70 + 50; // Fixed description column for clean alignment
         const dynamicMaxWidth = maxDescX - startX;
-        const lines = doc.splitTextToSize(restDesc, dynamicMaxWidth);
+        const lines = splitTextWithHyphenation(doc, restDesc, dynamicMaxWidth);
         lines.forEach((line: string, index: number) => {
           addText(line, startX, descYPosition + (index * 4));
         });
