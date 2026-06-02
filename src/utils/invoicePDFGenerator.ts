@@ -510,24 +510,16 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
     if (item.type === 'participant') {
       addText('Einzelunterricht', margin + 25, yPosition);
       const descYPosition = yPosition;
-      const studentName = item.entry.teilnehmer?.name || '-';
-      const desc = `${item.entry.legal_area || '-'} - ${item.entry.description || '-'}`;
+      const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`;
       const maxWidth = pageWidth - margin - 20 - (margin + 70);
-      
-      // Highlight student name by making it bold
-      doc.setFont('helvetica', 'bold');
-      addText(studentName, margin + 70, descYPosition);
-      doc.setFont('helvetica', 'normal');
-      
-      // Add the rest of the description
       if (desc.length > 50) {
         const lines = doc.splitTextToSize(desc, maxWidth);
         lines.forEach((line: string, index: number) => {
-          addText(line, margin + 70 + (studentName.length * 4), descYPosition + (index * 4));
+          addText(line, margin + 70, descYPosition + (index * 4));
         });
         yPosition += 5 + ((lines.length - 1) * 4);
       } else {
-        addText(desc, margin + 70 + (studentName.length * 4), descYPosition);
+        addText(desc, margin + 70, descYPosition);
         yPosition += 5;
       }
       addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
@@ -1084,24 +1076,16 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     if (item.type === 'participant') {
       addText('Einzelunterricht', margin + 25, yPosition);
       const descYPosition = yPosition;
-      const studentName = item.entry.teilnehmer?.name || '-';
-      const desc = `${item.entry.legal_area || '-'} - ${item.entry.description || '-'}`;
+      const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`;
       const maxWidth = pageWidth - margin - 20 - (margin + 70);
-      
-      // Highlight student name by making it bold
-      doc.setFont('helvetica', 'bold');
-      addText(studentName, margin + 70, descYPosition);
-      doc.setFont('helvetica', 'normal');
-      
-      // Add the rest of the description
       if (desc.length > 50) {
         const lines = doc.splitTextToSize(desc, maxWidth);
         lines.forEach((line: string, index: number) => {
-          addText(line, margin + 70 + (studentName.length * 4), descYPosition + (index * 4));
+          addText(line, margin + 70, descYPosition + (index * 4));
         });
         yPosition += 5 + ((lines.length - 1) * 4);
       } else {
-        addText(desc, margin + 70 + (studentName.length * 4), descYPosition);
+        addText(desc, margin + 70, descYPosition);
         yPosition += 5;
       }
       addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
