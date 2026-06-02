@@ -344,12 +344,23 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
     yPosition += 5;
   }
 
+  // Breakdown sonstige hours by category
   if (totalSonstige > 0) {
-    addText('Sonstige Taetigkeiten', margin + 2, yPosition);
-    addText(`${formatNumber(totalSonstige)} Std.`, margin + 90, yPosition);
-    addText(rateSonstige > 0 ? `${formatNumber(rateSonstige)} \u20ac` : '-', margin + 120, yPosition);
-    addText(rateSonstige > 0 ? `${formatNumber(amountSonstige)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
-    yPosition += 5;
+    const sonstigeByCategory: { [key: string]: number } = {};
+    sonstigeHours.forEach((h: any) => {
+      const category = h.category || 'Sonstige Tätigkeiten';
+      sonstigeByCategory[category] = (sonstigeByCategory[category] || 0) + h.hours;
+    });
+
+    // Display each category
+    Object.entries(sonstigeByCategory).forEach(([category, hours]) => {
+      const amount = hours * rateSonstige;
+      addText(category, margin + 2, yPosition);
+      addText(`${formatNumber(hours)} Std.`, margin + 90, yPosition);
+      addText(rateSonstige > 0 ? `${formatNumber(rateSonstige)} \u20ac` : '-', margin + 120, yPosition);
+      addText(rateSonstige > 0 ? `${formatNumber(amount)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
+      yPosition += 5;
+    });
   }
 
   // Breakdown flat rate items by category
@@ -982,12 +993,23 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     yPosition += 5;
   }
 
+  // Breakdown sonstige hours by category
   if (totalSonstige > 0) {
-    addText('Sonstige Taetigkeiten', margin + 2, yPosition);
-    addText(`${formatNumber(totalSonstige)} Std.`, margin + 90, yPosition);
-    addText(rateSonstige > 0 ? `${formatNumber(rateSonstige)} \u20ac` : '-', margin + 120, yPosition);
-    addText(rateSonstige > 0 ? `${formatNumber(amountSonstige)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
-    yPosition += 5;
+    const sonstigeByCategory: { [key: string]: number } = {};
+    sonstigeHours.forEach((h: any) => {
+      const category = h.category || 'Sonstige Tätigkeiten';
+      sonstigeByCategory[category] = (sonstigeByCategory[category] || 0) + h.hours;
+    });
+
+    // Display each category
+    Object.entries(sonstigeByCategory).forEach(([category, hours]) => {
+      const amount = hours * rateSonstige;
+      addText(category, margin + 2, yPosition);
+      addText(`${formatNumber(hours)} Std.`, margin + 90, yPosition);
+      addText(rateSonstige > 0 ? `${formatNumber(rateSonstige)} \u20ac` : '-', margin + 120, yPosition);
+      addText(rateSonstige > 0 ? `${formatNumber(amount)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
+      yPosition += 5;
+    });
   }
 
   // Breakdown flat rate items by category
@@ -1367,12 +1389,23 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     yPosition += 5;
   }
 
+  // Breakdown sonstige hours by category
   if (totalSonstige > 0) {
-    addText('Sonstige Taetigkeiten', margin + 2, yPosition);
-    addText(`${formatNumber(totalSonstige)} Std.`, margin + 90, yPosition);
-    addText(rateSonstige > 0 ? `${formatNumber(rateSonstige)} \u20ac` : '-', margin + 120, yPosition);
-    addText(rateSonstige > 0 ? `${formatNumber(amountSonstige)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
-    yPosition += 5;
+    const sonstigeByCategory: { [key: string]: number } = {};
+    sonstigeHours.forEach((h: any) => {
+      const category = h.category || 'Sonstige Tätigkeiten';
+      sonstigeByCategory[category] = (sonstigeByCategory[category] || 0) + h.hours;
+    });
+
+    // Display each category
+    Object.entries(sonstigeByCategory).forEach(([category, hours]) => {
+      const amount = hours * rateSonstige;
+      addText(category, margin + 2, yPosition);
+      addText(`${formatNumber(hours)} Std.`, margin + 90, yPosition);
+      addText(rateSonstige > 0 ? `${formatNumber(rateSonstige)} \u20ac` : '-', margin + 120, yPosition);
+      addText(rateSonstige > 0 ? `${formatNumber(amount)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
+      yPosition += 5;
+    });
   }
 
   // Breakdown flat rate items by category
