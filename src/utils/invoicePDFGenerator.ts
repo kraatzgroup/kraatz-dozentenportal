@@ -558,14 +558,11 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       let courseNumber = '';
       let restDesc = desc;
       if (item.entry.category?.includes('Elite-Kleingruppe')) {
-        // Match pattern "Elite-Kleingruppe 2025/2026 101" or "Elite-Kleingruppe 2025/2026 101 - ..."
-        const match = desc.match(/(Elite-Kleingruppe\s+\d{4}\/\d{4}\s+\d+)/);
-        if (match) {
-          courseNumber = match[1];
-          restDesc = desc.replace(courseNumber, '').trim();
-          if (restDesc.startsWith('-')) {
-            restDesc = restDesc.substring(1).trim();
-          }
+        // Extract everything up to the first dash as course number
+        const dashIndex = desc.indexOf('-');
+        if (dashIndex > 0) {
+          courseNumber = desc.substring(0, dashIndex).trim();
+          restDesc = desc.substring(dashIndex + 1).trim();
         }
       }
       
@@ -1172,14 +1169,11 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       let courseNumber = '';
       let restDesc = desc;
       if (item.entry.category?.includes('Elite-Kleingruppe')) {
-        // Match pattern "Elite-Kleingruppe 2025/2026 101" or "Elite-Kleingruppe 2025/2026 101 - ..."
-        const match = desc.match(/(Elite-Kleingruppe\s+\d{4}\/\d{4}\s+\d+)/);
-        if (match) {
-          courseNumber = match[1];
-          restDesc = desc.replace(courseNumber, '').trim();
-          if (restDesc.startsWith('-')) {
-            restDesc = restDesc.substring(1).trim();
-          }
+        // Extract everything up to the first dash as course number
+        const dashIndex = desc.indexOf('-');
+        if (dashIndex > 0) {
+          courseNumber = desc.substring(0, dashIndex).trim();
+          restDesc = desc.substring(dashIndex + 1).trim();
         }
       }
       
