@@ -67,6 +67,7 @@ interface FlatRateItem {
   amount_euro: number;
   total_euro: number;
   date: string;
+  category?: string;
   created_at: string;
 }
 
@@ -615,7 +616,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
   const handleEditFlatRateItem = (item: FlatRateItem) => {
     setEditingFlatRateItem(item);
     setEditFlatRateFormData({
-      category: item.name,
+      category: item.category || '',
       description: item.description || '',
       quantity: item.quantity.toString(),
       amount_euro: item.amount_euro.toString(),
@@ -631,6 +632,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
       const { error } = await supabase
         .from('dozent_flat_rate_items')
         .update({
+          category: editFlatRateFormData.category,
           description: editFlatRateFormData.description,
           quantity: parseFloat(editFlatRateFormData.quantity),
           amount_euro: parseFloat(editFlatRateFormData.amount_euro),
@@ -970,7 +972,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
                     </div>
                     <div className="flex items-center space-x-4 mb-2">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                        {item.name || 'Pauschale Vergütung'}
+                        {item.category || 'Pauschale Vergütung'}
                       </span>
                       <div className="flex items-center text-sm text-gray-900">
                         <span className="font-semibold">{item.quantity} × {item.amount_euro.toFixed(2)} € = {item.total_euro.toFixed(2)} €</span>
@@ -979,19 +981,10 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
                     <div className="flex items-start">
                       <BookOpen className="h-4 w-4 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
                       <div className="text-sm text-gray-700">
-                        <span className="font-medium">Name: </span>
-                        {item.name}
+                        <span className="font-medium">Beschreibung: </span>
+                        {item.description || item.name}
                       </div>
                     </div>
-                    {item.description && (
-                      <div className="flex items-start mt-1">
-                        <BookOpen className="h-4 w-4 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
-                        <div className="text-sm text-gray-700">
-                          <span className="font-medium">Beschreibung: </span>
-                          {item.description}
-                        </div>
-                      </div>
-                    )}
                   </div>
                   <div className="flex items-center space-x-2 ml-4">
                     <button
@@ -1317,9 +1310,17 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Kategorie</label>
-                  <div className="w-full px-3 py-2 rounded-md border border-gray-300 bg-gray-50 text-gray-700">
-                    {editFlatRateFormData.category || 'Keine Kategorie'}
-                  </div>
+                  <select
+                    value={editFlatRateFormData.category}
+                    onChange={(e) => setEditFlatRateFormData({ ...editFlatRateFormData, category: e.target.value })}
+                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                    required
+                  >
+                    <option value="">Kategorie wählen</option>
+                    {FLAT_RATE_CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Beschreibung</label>

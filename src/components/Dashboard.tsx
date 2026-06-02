@@ -2512,6 +2512,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                     description: flatRateFormData.description,
                     quantity: quantity,
                     amount_euro: amountEuro,
+                    category: flatRateFormData.category,
                     date: flatRateFormData.date
                   });
 
@@ -2527,6 +2528,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                     date: new Date().toISOString().split('T')[0]
                   });
                   await fetchMonthlySummary();
+                  setActivityRefreshKey(prev => prev + 1);
                 } catch (error) {
                   console.error('Error creating flat rate item:', error);
                   alert('Fehler beim Speichern des Postens: ' + error.message);
