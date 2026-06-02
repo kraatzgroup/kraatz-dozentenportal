@@ -396,7 +396,7 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
     });
   }
 
-  // Sort all hours by category instead of chronologically
+  // Sort all hours by category, then by student, then by date
   const categoryOrder: { [key: string]: number } = {
     'participant': 1,
     'elite_unterricht': 2,
@@ -417,6 +417,13 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       return 'sonstige';
     };
 
+    const getStudentName = (item: any) => {
+      if (item.type === 'participant') {
+        return item.entry.teilnehmer?.name || '';
+      }
+      return '';
+    };
+
     const categoryA = getCategory(a);
     const categoryB = getCategory(b);
     const orderA = categoryOrder[categoryA] || 99;
@@ -424,7 +431,12 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
 
     if (orderA !== orderB) return orderA - orderB;
     
-    // Within same category, sort by date
+    // Within same category, sort by student name (for participant hours)
+    const studentA = getStudentName(a);
+    const studentB = getStudentName(b);
+    if (studentA !== studentB) return studentA.localeCompare(studentB);
+    
+    // Within same student, sort by date
     return new Date(a.date).getTime() - new Date(b.date).getTime();
   });
 
@@ -927,7 +939,7 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     });
   }
 
-  // Sort all hours by category instead of chronologically
+  // Sort all hours by category, then by student, then by date
   const categoryOrder: { [key: string]: number } = {
     'participant': 1,
     'elite_unterricht': 2,
@@ -948,6 +960,13 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       return 'sonstige';
     };
 
+    const getStudentName = (item: any) => {
+      if (item.type === 'participant') {
+        return item.entry.teilnehmer?.name || '';
+      }
+      return '';
+    };
+
     const categoryA = getCategory(a);
     const categoryB = getCategory(b);
     const orderA = categoryOrder[categoryA] || 99;
@@ -955,7 +974,12 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
 
     if (orderA !== orderB) return orderA - orderB;
     
-    // Within same category, sort by date
+    // Within same category, sort by student name (for participant hours)
+    const studentA = getStudentName(a);
+    const studentB = getStudentName(b);
+    if (studentA !== studentB) return studentA.localeCompare(studentB);
+    
+    // Within same student, sort by date
     return new Date(a.date).getTime() - new Date(b.date).getTime();
   });
 
@@ -1628,7 +1652,7 @@ export const generateQuarterlyInvoicePDF = async (data: QuarterlyInvoiceData) =>
       });
     }
 
-    // Sort all hours by category instead of chronologically
+    // Sort all hours by category, then by student, then by date
     const categoryOrder: { [key: string]: number } = {
       'participant': 1,
       'elite_unterricht': 2,
@@ -1649,6 +1673,13 @@ export const generateQuarterlyInvoicePDF = async (data: QuarterlyInvoiceData) =>
         return 'sonstige';
       };
 
+      const getStudentName = (item: any) => {
+        if (item.type === 'participant') {
+          return item.entry.teilnehmer?.name || '';
+        }
+        return '';
+      };
+
       const categoryA = getCategory(a);
       const categoryB = getCategory(b);
       const orderA = categoryOrder[categoryA] || 99;
@@ -1656,7 +1687,12 @@ export const generateQuarterlyInvoicePDF = async (data: QuarterlyInvoiceData) =>
 
       if (orderA !== orderB) return orderA - orderB;
       
-      // Within same category, sort by date
+      // Within same category, sort by student name (for participant hours)
+      const studentA = getStudentName(a);
+      const studentB = getStudentName(b);
+      if (studentA !== studentB) return studentA.localeCompare(studentB);
+      
+      // Within same student, sort by date
       return new Date(a.date).getTime() - new Date(b.date).getTime();
     });
 
@@ -2248,7 +2284,7 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
       });
     }
 
-    // Sort all hours by category instead of chronologically
+    // Sort all hours by category, then by student, then by date
     const categoryOrder: { [key: string]: number } = {
       'participant': 1,
       'elite_unterricht': 2,
@@ -2269,6 +2305,13 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
         return 'sonstige';
       };
 
+      const getStudentName = (item: any) => {
+        if (item.type === 'participant') {
+          return item.entry.teilnehmer?.name || '';
+        }
+        return '';
+      };
+
       const categoryA = getCategory(a);
       const categoryB = getCategory(b);
       const orderA = categoryOrder[categoryA] || 99;
@@ -2276,7 +2319,12 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
 
       if (orderA !== orderB) return orderA - orderB;
       
-      // Within same category, sort by date
+      // Within same category, sort by student name (for participant hours)
+      const studentA = getStudentName(a);
+      const studentB = getStudentName(b);
+      if (studentA !== studentB) return studentA.localeCompare(studentB);
+      
+      // Within same student, sort by date
       return new Date(a.date).getTime() - new Date(b.date).getTime();
     });
 
