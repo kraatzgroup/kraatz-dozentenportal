@@ -441,8 +441,31 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
   });
 
   // Display all hours in category order
+  let lastCategory = '';
+  
   for (const item of sortedAllHours) {
     doc.setFontSize(8);
+    
+    // Get current category
+    const getCategory = (item: any) => {
+      if (item.type === 'participant') return 'participant';
+      if (item.type === 'flatrate') return 'flatrate';
+      if (item.type === 'dozent') {
+        if (item.entry.category === 'Elite-Kleingruppe Korrektur') return 'elite_korrektur';
+        if (item.entry.category?.includes('Elite-Kleingruppe')) return 'elite_unterricht';
+        return 'sonstige';
+      }
+      return 'sonstige';
+    };
+    
+    const currentCategory = getCategory(item);
+    
+    // Add blank line between categories
+    if (lastCategory !== '' && lastCategory !== currentCategory) {
+      yPosition += 3;
+    }
+    
+    lastCategory = currentCategory;
     
     // Calculate required height for this entry
     let requiredHeight = 8; // Base height for one line
@@ -487,16 +510,24 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
     if (item.type === 'participant') {
       addText('Einzelunterricht', margin + 25, yPosition);
       const descYPosition = yPosition;
-      const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`;
+      const studentName = item.entry.teilnehmer?.name || '-';
+      const desc = `${item.entry.legal_area || '-'} - ${item.entry.description || '-'}`;
       const maxWidth = pageWidth - margin - 20 - (margin + 70);
+      
+      // Highlight student name by making it bold
+      doc.setFont('helvetica', 'bold');
+      addText(studentName, margin + 70, descYPosition);
+      doc.setFont('helvetica', 'normal');
+      
+      // Add the rest of the description
       if (desc.length > 50) {
         const lines = doc.splitTextToSize(desc, maxWidth);
         lines.forEach((line: string, index: number) => {
-          addText(line, margin + 70, descYPosition + (index * 4));
+          addText(line, margin + 70 + (studentName.length * 4), descYPosition + (index * 4));
         });
         yPosition += 5 + ((lines.length - 1) * 4);
       } else {
-        addText(desc, margin + 70, descYPosition);
+        addText(desc, margin + 70 + (studentName.length * 4), descYPosition);
         yPosition += 5;
       }
       addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
@@ -984,8 +1015,31 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   });
 
   // Display all hours in category order
+  let lastCategory = '';
+  
   for (const item of sortedAllHours) {
     doc.setFontSize(8);
+    
+    // Get current category
+    const getCategory = (item: any) => {
+      if (item.type === 'participant') return 'participant';
+      if (item.type === 'flatrate') return 'flatrate';
+      if (item.type === 'dozent') {
+        if (item.entry.category === 'Elite-Kleingruppe Korrektur') return 'elite_korrektur';
+        if (item.entry.category?.includes('Elite-Kleingruppe')) return 'elite_unterricht';
+        return 'sonstige';
+      }
+      return 'sonstige';
+    };
+    
+    const currentCategory = getCategory(item);
+    
+    // Add blank line between categories
+    if (lastCategory !== '' && lastCategory !== currentCategory) {
+      yPosition += 3;
+    }
+    
+    lastCategory = currentCategory;
     
     // Calculate required height for this entry
     let requiredHeight = 8; // Base height for one line
@@ -1030,16 +1084,24 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     if (item.type === 'participant') {
       addText('Einzelunterricht', margin + 25, yPosition);
       const descYPosition = yPosition;
-      const desc = `${item.entry.legal_area || '-'} - ${item.entry.teilnehmer?.name || '-'} - ${item.entry.description || '-'}`;
+      const studentName = item.entry.teilnehmer?.name || '-';
+      const desc = `${item.entry.legal_area || '-'} - ${item.entry.description || '-'}`;
       const maxWidth = pageWidth - margin - 20 - (margin + 70);
+      
+      // Highlight student name by making it bold
+      doc.setFont('helvetica', 'bold');
+      addText(studentName, margin + 70, descYPosition);
+      doc.setFont('helvetica', 'normal');
+      
+      // Add the rest of the description
       if (desc.length > 50) {
         const lines = doc.splitTextToSize(desc, maxWidth);
         lines.forEach((line: string, index: number) => {
-          addText(line, margin + 70, descYPosition + (index * 4));
+          addText(line, margin + 70 + (studentName.length * 4), descYPosition + (index * 4));
         });
         yPosition += 5 + ((lines.length - 1) * 4);
       } else {
-        addText(desc, margin + 70, descYPosition);
+        addText(desc, margin + 70 + (studentName.length * 4), descYPosition);
         yPosition += 5;
       }
       addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
