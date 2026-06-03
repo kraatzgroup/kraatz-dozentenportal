@@ -171,7 +171,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const FLAT_RATE_CATEGORIES = [
     'Auslagen',
     'Reisekosten',
-    'Pauschalvereinbarungen'
+    'Pauschalvereinbarungen',
+    'Kraatz Club Videos'
   ];
 
   const [flatRateFormData, setFlatRateFormData] = useState({
