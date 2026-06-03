@@ -201,7 +201,7 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
       // Fetch flat rate items (sonstige Posten)
       const { data: flatRateItems, error: flatRateError } = await supabase
         .from('dozent_flat_rate_items')
-        .select('total_euro')
+        .select('date, name, category, description, quantity, amount_euro, total_euro')
         .eq('dozent_id', targetDozentId)
         .gte('date', startDate)
         .lte('date', endDate);
