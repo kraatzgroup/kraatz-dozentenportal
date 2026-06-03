@@ -948,11 +948,21 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         dozentHours: filteredDozentHours as any,
         flatRateItems: (flatRateItems || []) as any
       });
+      console.log('📄 [Preview PDF] Generated blob:', {
+        size: pdfBlob.size,
+        type: pdfBlob.type,
+        flatRateItems: flatRateItems?.map((item: any) => ({
+          name: item.name,
+          category: item.category,
+          total_euro: item.total_euro
+        }))
+      });
       // Revoke old URL if it exists
       if (reviewPdfUrl) {
         URL.revokeObjectURL(reviewPdfUrl);
       }
       const pdfUrl = URL.createObjectURL(pdfBlob);
+      console.log('📄 [Preview URL] Created:', pdfUrl);
       setReviewPdfUrl(pdfUrl);
     } catch (error) {
       console.error('Error fetching invoice details:', error);
@@ -1042,10 +1052,16 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
     
     setIsSubmitting(true);
     try {
+      console.log('📄 [Download] Starting download from preview URL:', reviewPdfUrl);
       // Use the already generated PDF from the preview (reviewPdfUrl is a blob URL)
       // Fetch the blob from the URL
       const response = await fetch(reviewPdfUrl);
       const pdfBlob = await response.blob();
+      console.log('📄 [Download] Fetched blob:', {
+        size: pdfBlob.size,
+        type: pdfBlob.type,
+        previewUrl: reviewPdfUrl
+      });
       
       // Upload PDF to Supabase Storage directly - the blob already has correct type
       const monthName = getMonthName(reviewInvoice.month);
@@ -1062,6 +1078,12 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         console.error('Upload error:', uploadError);
         throw new Error('Fehler beim Hochladen der PDF');
       }
+
+      console.log('📄 [Download] PDF uploaded successfully:', {
+        fileName,
+        blobSize: pdfBlob.size,
+        uploadedAt: new Date().toISOString()
+      });
 
       // Fix MIME type in storage metadata (Supabase bug workaround)
       await supabase.rpc('fix_storage_mimetype', { file_path: fileName });
