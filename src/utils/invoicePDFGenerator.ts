@@ -2452,13 +2452,6 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
   // Check if we need a new page for the remaining content
   checkPageBreak(80);
 
-  // Tax notice
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  const taxNoticeText = 'Umsatzsteuer ist richtig';
-  yPosition = addWrappedText(taxNoticeText, margin, yPosition, contentWidth, 3.5);
-  yPosition += 6;
-
   // Add footer to cover page
   addFooter(currentPage, currentPage + data.monthlyData.length);
 
