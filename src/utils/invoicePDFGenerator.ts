@@ -112,9 +112,16 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
   
   // Helper function to add text with proper encoding
   const addText = (text: string, x: number, y: number, options?: any) => {
+    // Protect German words that naturally contain digraphs which must NOT be
+    // transliterated (e.g. "Steuer" would otherwise become "Stür" due to ue->ü)
+    const protectedTokens: string[] = [];
+    let convertedText = text.replace(/[Ss]teuer/g, (m) => {
+      protectedTokens.push(m);
+      return `\u0001${protectedTokens.length - 1}\u0001`;
+    });
+
     // Convert ae, ue, oe to ä, ü, ö
-    // Only convert ss to ß in specific cases, not in words like "Unterrichtsstunden"
-    let convertedText = text
+    convertedText = convertedText
       .replace(/ae/g, 'ä')
       .replace(/ue/g, 'ü')
       .replace(/oe/g, 'ö')
@@ -128,6 +135,9 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
         .replace(/ss/g, 'ß')
         .replace(/SS/g, 'ß');
     }
+
+    // Restore protected words
+    convertedText = convertedText.replace(/\u0001(\d+)\u0001/g, (_, i) => protectedTokens[+i]);
     
     doc.text(convertedText, x, y, options);
   };
@@ -784,9 +794,16 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   
   // Helper function to add text with proper encoding
   const addText = (text: string, x: number, y: number, options?: any) => {
+    // Protect German words that naturally contain digraphs which must NOT be
+    // transliterated (e.g. "Steuer" would otherwise become "Stür" due to ue->ü)
+    const protectedTokens: string[] = [];
+    let convertedText = text.replace(/[Ss]teuer/g, (m) => {
+      protectedTokens.push(m);
+      return `\u0001${protectedTokens.length - 1}\u0001`;
+    });
+
     // Convert ae, ue, oe to ä, ü, ö
-    // Only convert ss to ß in specific cases, not in words like "Unterrichtsstunden"
-    let convertedText = text
+    convertedText = convertedText
       .replace(/ae/g, 'ä')
       .replace(/ue/g, 'ü')
       .replace(/oe/g, 'ö')
@@ -800,6 +817,9 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
         .replace(/ss/g, 'ß')
         .replace(/SS/g, 'ß');
     }
+
+    // Restore protected words
+    convertedText = convertedText.replace(/\u0001(\d+)\u0001/g, (_, i) => protectedTokens[+i]);
     
     doc.text(convertedText, x, y, options);
   };
@@ -1540,9 +1560,16 @@ export const generateQuarterlyInvoicePDF = async (data: QuarterlyInvoiceData) =>
   
   // Helper function to add text with proper encoding
   const addText = (text: string, x: number, y: number, options?: any) => {
+    // Protect German words that naturally contain digraphs which must NOT be
+    // transliterated (e.g. "Steuer" would otherwise become "Stür" due to ue->ü)
+    const protectedTokens: string[] = [];
+    let convertedText = text.replace(/[Ss]teuer/g, (m) => {
+      protectedTokens.push(m);
+      return `\u0001${protectedTokens.length - 1}\u0001`;
+    });
+
     // Convert ae, ue, oe to ä, ü, ö
-    // Only convert ss to ß in specific cases, not in words like "Unterrichtsstunden"
-    let convertedText = text
+    convertedText = convertedText
       .replace(/ae/g, 'ä')
       .replace(/ue/g, 'ü')
       .replace(/oe/g, 'ö')
@@ -1556,6 +1583,9 @@ export const generateQuarterlyInvoicePDF = async (data: QuarterlyInvoiceData) =>
         .replace(/ss/g, 'ß')
         .replace(/SS/g, 'ß');
     }
+
+    // Restore protected words
+    convertedText = convertedText.replace(/\u0001(\d+)\u0001/g, (_, i) => protectedTokens[+i]);
     
     doc.text(convertedText, x, y, options);
   };
@@ -2195,9 +2225,16 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
   
   // Helper function to add text with proper encoding
   const addText = (text: string, x: number, y: number, options?: any) => {
+    // Protect German words that naturally contain digraphs which must NOT be
+    // transliterated (e.g. "Steuer" would otherwise become "Stür" due to ue->ü)
+    const protectedTokens: string[] = [];
+    let convertedText = text.replace(/[Ss]teuer/g, (m) => {
+      protectedTokens.push(m);
+      return `\u0001${protectedTokens.length - 1}\u0001`;
+    });
+
     // Convert ae, ue, oe to ä, ü, ö
-    // Only convert ss to ß in specific cases, not in words like "Unterrichtsstunden"
-    let convertedText = text
+    convertedText = convertedText
       .replace(/ae/g, 'ä')
       .replace(/ue/g, 'ü')
       .replace(/oe/g, 'ö')
@@ -2211,6 +2248,9 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
         .replace(/ss/g, 'ß')
         .replace(/SS/g, 'ß');
     }
+
+    // Restore protected words
+    convertedText = convertedText.replace(/\u0001(\d+)\u0001/g, (_, i) => protectedTokens[+i]);
     
     doc.text(convertedText, x, y, options);
   };
