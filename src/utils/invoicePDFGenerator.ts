@@ -395,6 +395,42 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
   }
   yPosition += 15;
 
+  // Tax notice - MUST be on page 1
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  const taxNoticeTextPage1 = 'Auf den Ausweis der Umsatzsteuer wurde verzichtet, da von der Befreiung nach § 4 Nr. 21 b Doppelbuchstabe b UStG Gebrauch gemacht wurde. Am Abrechnungstag ggf. noch nicht vorliegende Belege rechne ich mit der folgenden Abrechnung ab.';
+  yPosition = addWrappedText(taxNoticeTextPage1, margin, yPosition, contentWidth, 3.5);
+  yPosition += 6;
+
+  // Bank details
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  const bankRequestTextPage1 = 'Ich bitte, den entsprechenden Betrag, basierend auf den vereinbarten Stundensätzen, auf mein nachfolgendes Konto zu überweisen:';
+  yPosition = addWrappedText(bankRequestTextPage1, margin, yPosition, contentWidth, 4);
+  yPosition += 6;
+
+  if (data.invoice.dozent.bank_name) {
+    addText(`Bank: ${data.invoice.dozent.bank_name}`, margin, yPosition);
+    yPosition += 4;
+  }
+  if (data.invoice.dozent.iban) {
+    addText(`IBAN: ${data.invoice.dozent.iban}`, margin, yPosition);
+    yPosition += 4;
+  }
+  if (data.invoice.dozent.bic) {
+    addText(`BIC: ${data.invoice.dozent.bic}`, margin, yPosition);
+    yPosition += 4;
+  }
+  addText(`Kontoinhaber: ${data.invoice.dozent.full_name}`, margin, yPosition);
+  yPosition += 10;
+
+  // Closing
+  addText('Vielen Dank!', margin, yPosition);
+  yPosition += 8;
+  addText('Mit freundlichen Grüßen', margin, yPosition);
+  yPosition += 12;
+  addText(data.invoice.dozent.full_name, margin, yPosition);
+
   // Detailed hours listing
   doc.addPage();
   yPosition = margin;
@@ -1043,6 +1079,42 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     addText(`${formatNumber(totalAmount)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
   }
   yPosition += 15;
+
+  // Tax notice - MUST be on page 1
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  const taxNoticeTextPage1 = 'Auf den Ausweis der Umsatzsteuer wurde verzichtet, da von der Befreiung nach § 4 Nr. 21 b Doppelbuchstabe b UStG Gebrauch gemacht wurde. Am Abrechnungstag ggf. noch nicht vorliegende Belege rechne ich mit der folgenden Abrechnung ab.';
+  yPosition = addWrappedText(taxNoticeTextPage1, margin, yPosition, contentWidth, 3.5);
+  yPosition += 6;
+
+  // Bank details
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  const bankRequestTextPage1 = 'Ich bitte, den entsprechenden Betrag, basierend auf den vereinbarten Stundensätzen, auf mein nachfolgendes Konto zu überweisen:';
+  yPosition = addWrappedText(bankRequestTextPage1, margin, yPosition, contentWidth, 4);
+  yPosition += 6;
+
+  if (data.invoice.dozent.bank_name) {
+    addText(`Bank: ${data.invoice.dozent.bank_name}`, margin, yPosition);
+    yPosition += 4;
+  }
+  if (data.invoice.dozent.iban) {
+    addText(`IBAN: ${data.invoice.dozent.iban}`, margin, yPosition);
+    yPosition += 4;
+  }
+  if (data.invoice.dozent.bic) {
+    addText(`BIC: ${data.invoice.dozent.bic}`, margin, yPosition);
+    yPosition += 4;
+  }
+  addText(`Kontoinhaber: ${data.invoice.dozent.full_name}`, margin, yPosition);
+  yPosition += 10;
+
+  // Closing
+  addText('Vielen Dank!', margin, yPosition);
+  yPosition += 8;
+  addText('Mit freundlichen Grüßen', margin, yPosition);
+  yPosition += 12;
+  addText(data.invoice.dozent.full_name, margin, yPosition);
 
   // Detailed hours listing
   doc.addPage();
