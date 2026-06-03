@@ -757,7 +757,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
 
       const { data: flatRateItems } = await supabase
         .from('dozent_flat_rate_items')
-        .select('id, date, name, description, quantity, amount_euro, total_euro')
+        .select('id, date, name, category, description, quantity, amount_euro, total_euro')
         .eq('dozent_id', dozentId)
         .gte('date', `${createFormData.year}-${String(createFormData.month).padStart(2, '0')}-01`)
         .lte('date', `${createFormData.year}-${String(createFormData.month).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`);
@@ -861,7 +861,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       // Fetch flat rate items (sonstige Posten)
       const { data: flatRateItems } = await supabase
         .from('dozent_flat_rate_items')
-        .select('date, name, description, quantity, amount_euro, total_euro')
+        .select('date, name, category, description, quantity, amount_euro, total_euro')
         .eq('dozent_id', invoiceData.dozent_id)
         .gte('date', invoiceData.period_start)
         .lte('date', invoiceData.period_end)
@@ -1204,7 +1204,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       // Fetch flat rate items (sonstige Posten)
       const { data: flatRateItems } = await supabase
         .from('dozent_flat_rate_items')
-        .select('date, name, description, quantity, amount_euro, total_euro')
+        .select('date, name, category, description, quantity, amount_euro, total_euro')
         .eq('dozent_id', invoiceData.dozent_id)
         .gte('date', invoiceData.period_start)
         .lte('date', invoiceData.period_end)
@@ -1327,7 +1327,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       // Fetch flat rate items (sonstige Posten)
       const { data: flatRateItems, error: frError } = await supabase
         .from('dozent_flat_rate_items')
-        .select('date, name, description, quantity, amount_euro, total_euro')
+        .select('date, name, category, description, quantity, amount_euro, total_euro')
         .eq('dozent_id', invoice.dozent_id)
         .gte('date', invoice.period_start)
         .lte('date', invoice.period_end)
