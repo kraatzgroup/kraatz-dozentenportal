@@ -367,7 +367,7 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
   if (flatRateTotal > 0) {
     const flatRateByCategory: { [key: string]: number } = {};
     (data.flatRateItems || []).forEach((item: any) => {
-      const category = item.name || 'Sonstige';
+      const category = item.category || item.name || 'Sonstige';
       flatRateByCategory[category] = (flatRateByCategory[category] || 0) + item.total_euro;
     });
 
@@ -699,15 +699,15 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
   }
   yPosition += 15;
 
-  // Check if we need a new page for the remaining content
-  checkPageBreak(80);
-
-  // Tax notice
+  // Tax notice - MUST be on page 1
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   const taxNoticeText = 'Auf den Ausweis der Umsatzsteuer wurde verzichtet, da von der Befreiung nach § 4 Nr. 21 b Doppelbuchstabe b UStG Gebrauch gemacht wurde. Am Abrechnungstag ggf. noch nicht vorliegende Belege rechne ich mit der folgenden Abrechnung ab.';
   yPosition = addWrappedText(taxNoticeText, margin, yPosition, contentWidth, 3.5);
   yPosition += 6;
+
+  // Check if we need a new page for the remaining content
+  checkPageBreak(80);
 
   // Bank details
   doc.setFontSize(10);
@@ -1016,7 +1016,7 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   if (flatRateTotal > 0) {
     const flatRateByCategory: { [key: string]: number } = {};
     (data.flatRateItems || []).forEach((item: any) => {
-      const category = item.name || 'Sonstige';
+      const category = item.category || item.name || 'Sonstige';
       flatRateByCategory[category] = (flatRateByCategory[category] || 0) + item.total_euro;
     });
 
@@ -1412,7 +1412,7 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   if (flatRateTotal > 0) {
     const flatRateByCategory: { [key: string]: number } = {};
     (data.flatRateItems || []).forEach((item: any) => {
-      const category = item.name || 'Sonstige';
+      const category = item.category || item.name || 'Sonstige';
       flatRateByCategory[category] = (flatRateByCategory[category] || 0) + item.total_euro;
     });
 
@@ -1815,15 +1815,15 @@ export const generateQuarterlyInvoicePDF = async (data: QuarterlyInvoiceData) =>
   }
   yPosition += 15;
 
-  // Check if we need a new page for the remaining content
-  checkPageBreak(80);
-
-  // Tax notice
+  // Tax notice - MUST be on page 1
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   const taxNoticeText = 'Auf den Ausweis der Umsatzsteuer wurde verzichtet, da von der Befreiung nach § 4 Nr. 21 b Doppelbuchstabe b UStG Gebrauch gemacht wurde. Am Abrechnungstag ggf. noch nicht vorliegende Belege rechne ich mit der folgenden Abrechnung ab.';
   yPosition = addWrappedText(taxNoticeText, margin, yPosition, contentWidth, 3.5);
   yPosition += 6;
+
+  // Check if we need a new page for the remaining content
+  checkPageBreak(80);
 
   // Bank details
   doc.setFontSize(10);
