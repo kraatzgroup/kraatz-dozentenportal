@@ -703,7 +703,7 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       totalDozentHours += item.hours;
       yPosition += 5 + (extraLines * 4);
     } else if (item.type === 'flatrate') {
-      addText(item.entry.name || 'Sonstiger Posten', margin + 25, yPosition);
+      addText(item.entry.category || item.entry.name || 'Sonstiger Posten', margin + 25, yPosition);
       const descYPosition = yPosition;
       const desc = item.entry.description || '';
       const maxWidth = pageWidth - margin - 20 - (margin + 70);
@@ -1388,7 +1388,7 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       totalDozentHours += item.hours;
       yPosition += 5 + (extraLines * 4);
     } else if (item.type === 'flatrate') {
-      addText(item.entry.name || 'Sonstiger Posten', margin + 25, yPosition);
+      addText(item.entry.category || item.entry.name || 'Sonstiger Posten', margin + 25, yPosition);
       const descYPosition = yPosition;
       const desc = item.entry.description || '';
       const maxWidth = pageWidth - margin - 20 - (margin + 70);
