@@ -742,38 +742,6 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
   yPosition = addWrappedText(taxNoticeText, margin, yPosition, contentWidth, 3.5);
   yPosition += 6;
 
-  // Check if we need a new page for the remaining content
-  checkPageBreak(80);
-
-  // Bank details
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  const bankRequestText = 'Ich bitte, den entsprechenden Betrag, basierend auf den vereinbarten Stundensätzen, auf mein nachfolgendes Konto zu überweisen:';
-  yPosition = addWrappedText(bankRequestText, margin, yPosition, contentWidth, 4);
-  yPosition += 6;
-
-  if (data.invoice.dozent.bank_name) {
-    addText(`Bank: ${data.invoice.dozent.bank_name}`, margin, yPosition);
-    yPosition += 4;
-  }
-  if (data.invoice.dozent.iban) {
-    addText(`IBAN: ${data.invoice.dozent.iban}`, margin, yPosition);
-    yPosition += 4;
-  }
-  if (data.invoice.dozent.bic) {
-    addText(`BIC: ${data.invoice.dozent.bic}`, margin, yPosition);
-    yPosition += 4;
-  }
-  addText(`Kontoinhaber: ${data.invoice.dozent.full_name}`, margin, yPosition);
-  yPosition += 10;
-
-  // Closing
-  addText('Vielen Dank!', margin, yPosition);
-  yPosition += 8;
-  addText('Mit freundlichen Grüßen', margin, yPosition);
-  yPosition += 12;
-  addText(data.invoice.dozent.full_name, margin, yPosition);
-
   // Footer
   const addFooter = (pageNum: number, totalPages: number) => {
     const footerY = pageHeight - 15;
@@ -1514,43 +1482,6 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
 
   // Check if we need a new page for the remaining content
   checkPageBreak(80);
-
-  // Tax notice
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  const taxNoticeText = 'Umsatzsteuer ist richtig';
-  yPosition = addWrappedText(taxNoticeText, margin, yPosition, contentWidth, 3.5);
-  yPosition += 6;
-
-  // Bank request
-  doc.setFontSize(10);
-  const bankRequestText = 'Ich bitte, den entsprechenden Betrag, basierend auf den vereinbarten Stundensaetzen, auf mein nachfolgendes Konto zu ueberweisen:';
-  yPosition = addWrappedText(bankRequestText, margin, yPosition, contentWidth, 4);
-  yPosition += 6;
-
-  // Bank details
-  addText(`Kontoinhaber: ${data.invoice.dozent.full_name}`, margin, yPosition);
-  yPosition += 4;
-  if (data.invoice.dozent.bank_name) {
-    addText(`Bank: ${data.invoice.dozent.bank_name}`, margin, yPosition);
-    yPosition += 4;
-  }
-  if (data.invoice.dozent.iban) {
-    addText(`IBAN: ${data.invoice.dozent.iban}`, margin, yPosition);
-    yPosition += 4;
-  }
-  if (data.invoice.dozent.bic) {
-    addText(`BIC: ${data.invoice.dozent.bic}`, margin, yPosition);
-    yPosition += 4;
-  }
-  yPosition += 8;
-
-  // Closing
-  addText('Vielen Dank!', margin, yPosition);
-  yPosition += 8;
-  addText('Mit freundlichen Gruessen', margin, yPosition);
-  yPosition += 12;
-  addText(data.invoice.dozent.full_name, margin, yPosition);
 
   // Footer
   const addFooter = (pageNum: number, totalPages: number) => {
@@ -2527,36 +2458,6 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
   const taxNoticeText = 'Umsatzsteuer ist richtig';
   yPosition = addWrappedText(taxNoticeText, margin, yPosition, contentWidth, 3.5);
   yPosition += 6;
-
-  // Bank request
-  doc.setFontSize(10);
-  const bankRequestText = 'Ich bitte, den entsprechenden Betrag, basierend auf den vereinbarten Stundensaetzen, auf mein nachfolgendes Konto zu ueberweisen:';
-  yPosition = addWrappedText(bankRequestText, margin, yPosition, contentWidth, 4);
-  yPosition += 6;
-
-  // Bank details
-  addText(`Kontoinhaber: ${data.invoice.dozent.full_name}`, margin, yPosition);
-  yPosition += 4;
-  if (data.invoice.dozent.bank_name) {
-    addText(`Bank: ${data.invoice.dozent.bank_name}`, margin, yPosition);
-    yPosition += 4;
-  }
-  if (data.invoice.dozent.iban) {
-    addText(`IBAN: ${data.invoice.dozent.iban}`, margin, yPosition);
-    yPosition += 4;
-  }
-  if (data.invoice.dozent.bic) {
-    addText(`BIC: ${data.invoice.dozent.bic}`, margin, yPosition);
-    yPosition += 4;
-  }
-  yPosition += 8;
-
-  // Closing
-  addText('Vielen Dank!', margin, yPosition);
-  yPosition += 8;
-  addText('Mit freundlichen Gruessen', margin, yPosition);
-  yPosition += 12;
-  addText(data.invoice.dozent.full_name, margin, yPosition);
 
   // Add footer to cover page
   addFooter(currentPage, currentPage + data.monthlyData.length);
