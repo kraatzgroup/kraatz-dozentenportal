@@ -948,6 +948,10 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         dozentHours: filteredDozentHours as any,
         flatRateItems: (flatRateItems || []) as any
       });
+      // Revoke old URL if it exists
+      if (reviewPdfUrl) {
+        URL.revokeObjectURL(reviewPdfUrl);
+      }
       const pdfUrl = URL.createObjectURL(pdfBlob);
       setReviewPdfUrl(pdfUrl);
     } catch (error) {
@@ -1261,6 +1265,10 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         if (!downloadError && pdfData) {
           // Create blob with correct MIME type
           const pdfBlob = new Blob([pdfData], { type: 'application/pdf' });
+          // Revoke old URL if it exists
+          if (previewPdfUrl) {
+            URL.revokeObjectURL(previewPdfUrl);
+          }
           const url = URL.createObjectURL(pdfBlob);
           setPreviewPdfUrl(url);
         }
