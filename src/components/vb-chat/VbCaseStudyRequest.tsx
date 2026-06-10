@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, ArrowLeft } from 'lucide-react';
+import { BookOpen } from 'lucide-react';
 import { useVbCaseStudies } from '../../hooks/useVbCaseStudies';
 
 const LEGAL_AREAS = {

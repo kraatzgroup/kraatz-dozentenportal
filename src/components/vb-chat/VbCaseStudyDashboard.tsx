@@ -20,11 +20,6 @@ export const VbCaseStudyDashboard: React.FC = () => {
     });
   };
 
-  const filteredCaseStudies = caseStudies.filter(cs => {
-    if (filter === 'all') return true;
-    return cs.legal_area === filter;
-  });
-
   const requested = caseStudies.filter(cs => cs.status === 'requested');
   const available = caseStudies.filter(cs => cs.status === 'materials_ready');
   const uploadReady = caseStudies.filter(cs => cs.status === 'submitted');
