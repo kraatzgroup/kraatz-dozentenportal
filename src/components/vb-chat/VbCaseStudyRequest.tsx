@@ -50,9 +50,9 @@ export const VbCaseStudyRequest: React.FC = () => {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <div className="bg-white rounded-lg p-8">
+      <div className="bg-white rounded-lg shadow-sm p-8">
         <div className="flex items-center space-x-3 mb-6">
-          <BookOpen className="w-8 h-8 text-blue-600" />
+          <BookOpen className="w-8 h-8 text-primary" />
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Neuen Sachverhalt anfordern</h1>
             <p className="text-gray-600">Verfügbare Credits: {accountCredits}</p>
@@ -68,7 +68,7 @@ export const VbCaseStudyRequest: React.FC = () => {
               id="studyPhase"
               value={studyPhase}
               onChange={(e) => setStudyPhase(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary focus:border-transparent"
               required
             >
               <option value="">Bitte wähle Deine Studienphase</option>
@@ -89,7 +89,7 @@ export const VbCaseStudyRequest: React.FC = () => {
                 setLegalArea(e.target.value);
                 setSubArea('');
               }}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary focus:border-transparent"
               required
             >
               <option value="">Bitte wähle ein Rechtsgebiet</option>
@@ -105,7 +105,7 @@ export const VbCaseStudyRequest: React.FC = () => {
               type="checkbox"
               checked={randomAssignment}
               onChange={(e) => setRandomAssignment(e.target.checked)}
-              className="w-4 h-4 mt-0.5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-600 focus:ring-2"
+              className="w-4 h-4 mt-0.5 text-primary bg-gray-100 border-gray-300 rounded focus:ring-primary focus:ring-2"
             />
             <label htmlFor="randomAssignment" className="text-sm text-gray-600">
               Mein Dozent soll eine beliebige Klausur aus dem gewählten Rechtsgebiet auswählen
@@ -121,7 +121,7 @@ export const VbCaseStudyRequest: React.FC = () => {
               value={subArea}
               onChange={(e) => setSubArea(e.target.value)}
               disabled={!legalArea || randomAssignment}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-600 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
               required={!randomAssignment}
             >
               <option value="">
@@ -142,7 +142,7 @@ export const VbCaseStudyRequest: React.FC = () => {
               value={focusArea}
               onChange={(e) => setFocusArea(e.target.value)}
               rows={4}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary focus:border-transparent"
               placeholder="Gebe einen Schwerpunkt pro Klausur an, bspw.: Vertreter ohne Vertretungsmacht"
             />
             <p className="text-xs text-gray-500 mt-1">
@@ -170,7 +170,7 @@ export const VbCaseStudyRequest: React.FC = () => {
             <button
               type="submit"
               disabled={loading || accountCredits < 1}
-              className="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="flex-1 bg-primary text-white px-6 py-3 rounded-lg hover:bg-primary/90 focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? 'Wird gesendet...' : `Sachverhalt anfordern (1 Klausur)`}
             </button>
