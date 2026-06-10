@@ -607,14 +607,8 @@ export const VbCaseStudyDashboard: React.FC = () => {
         return sum + (order.package?.case_study_count || 0)
       }, 0) || 0
 
-      // Calculate used credits (case studies that are not requested)
-      const usedCredits = caseStudies.filter(cs => 
-        cs.status !== 'requested'
-      ).length
-
-      // Available credits = purchased - used
-      const credits = totalPurchasedCredits - usedCredits
-      setAvailableCredits(Math.max(0, credits))
+      // Set available credits to total purchased (showing purchased credits)
+      setAvailableCredits(totalPurchasedCredits)
 
       // Fetch case studies with dozent information
       const { data: caseStudyData, error: caseStudyError } = await supabase

@@ -72,12 +72,8 @@ export const useVbCaseStudies = () => {
         return sum + (order.package?.case_study_count || 0)
       }, 0) || 0;
 
-      // Calculate used credits (case studies that are not requested)
-      const usedCredits = data?.filter(cs => cs.status !== 'requested').length || 0;
-
-      // Available credits = purchased - used
-      const credits = totalPurchasedCredits - usedCredits;
-      setAccountCredits(Math.max(0, credits));
+      // Set available credits to total purchased (showing purchased credits)
+      setAccountCredits(totalPurchasedCredits);
     } catch (err) {
       console.error('Error fetching VB case studies:', err);
       setError(err instanceof Error ? err.message : 'Failed to load case studies');
