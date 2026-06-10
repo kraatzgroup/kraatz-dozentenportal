@@ -619,16 +619,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
       // Fetch case studies with dozent information
       const { data: caseStudyData, error: caseStudyError } = await supabase
         .from('vb_case_study_requests')
-        .select(`
-          *,
-          case_study_number,
-          assigned_dozent:assigned_dozent_id(
-            id,
-            first_name,
-            last_name,
-            profile_image_url
-          )
-        `)
+        .select('*')
         .eq('profile_id', user?.id)
         .order('created_at', { ascending: true })
 

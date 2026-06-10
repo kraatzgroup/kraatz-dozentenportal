@@ -55,16 +55,29 @@ export const useVbCaseStudies = () => {
 
       setCaseStudies(data || []);
 
-      // Fetch account credits from profiles
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('account_credits')
-        .eq('id', user.id)
-        .single();
+      // Fetch account credits from orders instead of profiles
+      const { data: ordersData } = await supabase
+        .from('vb_orders')
+        .select(`
+          *,
+          package:package_id (
+            case_study_count
+          )
+        `)
+        .eq('profile_id', user.id)
+        .eq('status', 'completed');
 
-      if (profileData) {
-        setAccountCredits(profileData.account_credits || 0);
-      }
+      // Calculate total purchased credits from completed orders
+      const totalPurchasedCredits = ordersData?.reduce((sum, order) => {
+        return sum + (order.package?.case_study_count || 0)
+      }, 0) || 0;
+
+      // Calculate used credits (case studies that are not requested)
+      const usedCredits = data?.filter(cs => cs.status !== 'requested').length || 0;
+
+      // Available credits = purchased - used
+      const credits = totalPurchasedCredits - usedCredits;
+      setAccountCredits(Math.max(0, credits));
     } catch (err) {
       console.error('Error fetching VB case studies:', err);
       setError(err instanceof Error ? err.message : 'Failed to load case studies');

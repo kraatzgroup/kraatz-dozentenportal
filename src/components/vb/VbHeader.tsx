@@ -15,15 +15,35 @@ export const VbHeader: React.FC = () => {
     const fetchUserData = async () => {
       if (user) {
         try {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('account_credits')
-            .eq('id', user.id)
-            .single();
+          // Fetch orders with packages to calculate available credits
+          const { data: ordersData } = await supabase
+            .from('vb_orders')
+            .select(`
+              *,
+              package:package_id (
+                case_study_count
+              )
+            `)
+            .eq('profile_id', user.id)
+            .eq('status', 'completed');
 
-          if (!error && data) {
-            setUserCredits(data.account_credits || 0);
-          }
+          // Calculate total purchased credits from completed orders
+          const totalPurchasedCredits = ordersData?.reduce((sum, order) => {
+            return sum + (order.package?.case_study_count || 0)
+          }, 0) || 0;
+
+          // Fetch case studies to calculate used credits
+          const { data: caseStudiesData } = await supabase
+            .from('vb_case_study_requests')
+            .select('status')
+            .eq('profile_id', user.id);
+
+          // Calculate used credits (case studies that are not requested)
+          const usedCredits = caseStudiesData?.filter(cs => cs.status !== 'requested').length || 0;
+
+          // Available credits = purchased - used
+          const credits = totalPurchasedCredits - usedCredits;
+          setUserCredits(Math.max(0, credits));
         } catch (error) {
           console.error('Error fetching user data:', error);
         }
