@@ -4,6 +4,8 @@ import { AuthComponent } from './components/AuthComponent';
 import { VbDashboard } from './components/vb-chat/VbDashboard';
 import { VbHomePage } from './components/vb-chat/VbHomePage';
 import { VbPackagesPage } from './components/vb-chat/VbPackagesPage';
+import { VbCaseStudyDashboard } from './components/vb-chat/VbCaseStudyDashboard';
+import { VbCaseStudyRequest } from './components/vb-chat/VbCaseStudyRequest';
 
 // Lazy load heavy components
 const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -159,6 +161,8 @@ function App() {
           {/* VB pages */}
           <Route path="/vb" element={<VbHomePage />} />
           <Route path="/vb/packages" element={<VbPackagesPage />} />
+          <Route path="/vb/dashboard" element={<VbCaseStudyDashboard />} />
+          <Route path="/vb/case-studies/request" element={<VbCaseStudyRequest />} />
 
           {/* Unified dashboard - renders correct view based on role */}
           <Route

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { MessageSquare, BookOpen, Video, Home } from 'lucide-react';
 import { VbChatLayout } from './VbChatLayout';
+import { VbCaseStudyDashboard } from './VbCaseStudyDashboard';
 
 type VbTab = 'overview' | 'chat' | 'case-studies' | 'video-lessons';
 
@@ -127,13 +128,7 @@ export const VbDashboard: React.FC = () => {
 
         {activeTab === 'case-studies' && (
           <div className="p-6">
-            <div className="bg-white rounded-lg p-8 border border-gray-200 shadow-sm text-center">
-              <BookOpen className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">Fallstudien</h2>
-              <p className="text-gray-600 mb-4">
-                Diese Funktion wird noch migriert. Bitte haben Sie etwas Geduld.
-              </p>
-            </div>
+            <VbCaseStudyDashboard />
           </div>
         )}
 
