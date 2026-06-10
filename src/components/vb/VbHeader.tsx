@@ -15,21 +15,28 @@ export const VbHeader: React.FC = () => {
     const fetchUserData = async () => {
       if (user) {
         try {
-          // Fetch orders with packages to calculate available credits
+          // Fetch orders
           const { data: ordersData } = await supabase
             .from('vb_orders')
-            .select(`
-              *,
-              package:package_id (
-                case_study_count
-              )
-            `)
+            .select('*')
             .eq('profile_id', user.id)
             .eq('status', 'completed');
 
-          // Calculate total purchased credits from completed orders
+          // Fetch packages separately
+          const { data: packagesData } = await supabase
+            .from('vb_packages')
+            .select('*');
+
+          // Create a map of packages for quick lookup
+          const packagesMap = new Map();
+          packagesData?.forEach(pkg => {
+            packagesMap.set(pkg.id, pkg);
+          });
+
+          // Calculate total purchased credits by joining orders with packages
           const totalPurchasedCredits = ordersData?.reduce((sum, order) => {
-            return sum + (order.package?.case_study_count || 0)
+            const pkg = packagesMap.get(order.package_id);
+            return sum + (pkg?.case_study_count || 0);
           }, 0) || 0;
 
           // Set available credits to total purchased (showing purchased credits)
