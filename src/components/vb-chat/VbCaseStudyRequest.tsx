@@ -39,7 +39,7 @@ export const VbCaseStudyRequest: React.FC = () => {
         sub_area: randomAssignment ? 'Beliebig' : subArea,
         focus_area: focusArea
       });
-      navigate('/vb/dashboard');
+      navigate('/klausurenbesprechung/dashboard');
     } catch (error) {
       console.error('Error creating case study request:', error);
       alert(error instanceof Error ? error.message : 'Fehler beim Anfordern des Sachverhalts.');
@@ -162,7 +162,7 @@ export const VbCaseStudyRequest: React.FC = () => {
           <div className="flex space-x-4">
             <button
               type="button"
-              onClick={() => navigate('/vb/dashboard')}
+              onClick={() => navigate('/klausurenbesprechung/dashboard')}
               className="flex-1 border border-gray-300 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-50 transition-colors"
             >
               Abbrechen

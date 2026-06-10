@@ -801,7 +801,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
             </p>
             {availableSlots > 0 && (
               <Link
-                to="/vb/case-studies/request"
+                to="/klausurenbesprechung/case-studies/request"
                 className="bg-primary text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base w-full sm:w-auto"
               >
                 <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -813,7 +813,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
             <div className="text-center py-4">
               <p className="text-gray-600 mb-4">Keine verfügbaren Credits.</p>
               <Link
-                to="/vb/packages"
+                to="/klausurenbesprechung/packages"
                 className="bg-primary text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base"
               >
                 <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 text-white" />

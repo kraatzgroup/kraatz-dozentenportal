@@ -8,7 +8,7 @@ export const VbLandingRedirect: React.FC = () => {
 
   // If user is authenticated, redirect to dashboard
   if (user) {
-    return <Navigate to="/vb/dashboard" replace />;
+    return <Navigate to="/klausurenbesprechung/dashboard" replace />;
   }
 
   // Otherwise show landing page

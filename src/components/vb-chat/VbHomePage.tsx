@@ -17,7 +17,7 @@ export const VbHomePage: React.FC = () => {
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center mt-8">
           <Link
-            to="/vb/packages"
+            to="/klausurenbesprechung/packages"
             className="bg-primary text-white px-8 py-3 rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center space-x-2"
           >
             <span>Pakete ansehen</span>

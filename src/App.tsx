@@ -152,7 +152,7 @@ function App() {
         }>
         <Routes>
           {/* Root redirect to unified dashboard */}
-          <Route path="/" element={<Navigate to="/vb" replace />} />
+          <Route path="/" element={<Navigate to="/klausurenbesprechung" replace />} />
 
           {/* Legacy route redirects */}
           <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
@@ -161,11 +161,11 @@ function App() {
           <Route path="/elite-kleingruppe" element={<Navigate to="/dashboard" replace />} />
 
           {/* VB pages - using VbLayout wrapper */}
-          <Route path="/vb" element={<VbLayout><VbLandingRedirect /></VbLayout>} />
-          <Route path="/vb/packages" element={<VbLayout><VbPackagesPage /></VbLayout>} />
-          <Route path="/vb/dashboard" element={<VbLayout><VbCaseStudyDashboard /></VbLayout>} />
-          <Route path="/vb/case-studies/request" element={<VbLayout><VbCaseStudyRequest /></VbLayout>} />
-          <Route path="/vb/chat" element={<VbLayout><VbChatLayout /></VbLayout>} />
+          <Route path="/klausurenbesprechung" element={<VbLayout><VbLandingRedirect /></VbLayout>} />
+          <Route path="/klausurenbesprechung/packages" element={<VbLayout><VbPackagesPage /></VbLayout>} />
+          <Route path="/klausurenbesprechung/dashboard" element={<VbLayout><VbCaseStudyDashboard /></VbLayout>} />
+          <Route path="/klausurenbesprechung/case-studies/request" element={<VbLayout><VbCaseStudyRequest /></VbLayout>} />
+          <Route path="/klausurenbesprechung/chat" element={<VbLayout><VbChatLayout /></VbLayout>} />
 
           {/* Unified dashboard - renders correct view based on role */}
           <Route
