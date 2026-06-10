@@ -21,7 +21,7 @@ interface AdditionalMaterial {
 
 interface CaseStudyRequest {
   id: string;
-  user_id: string;
+  profile_id: string;
   case_study_number: number;
   study_phase: string;
   legal_area: string;
@@ -64,7 +64,7 @@ interface CaseStudyRequest {
 interface CaseStudyRating {
   id: string;
   case_study_id: string;
-  user_id: string;
+  profile_id: string;
   rating: number;
   feedback?: string;
   created_at: string;
@@ -74,7 +74,7 @@ interface CaseStudyRating {
 interface StudentFeedback {
   id: string;
   case_study_id: string;
-  user_id: string;
+  profile_id: string;
   mistakes_learned: string;
   improvements_planned: string;
   review_date: string;
@@ -218,7 +218,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
       const { data, error } = await supabase
         .from('vb_case_study_ratings')
         .select('*')
-        .eq('user_id', user?.id)
+        .eq('profile_id', user?.id)
 
       if (error) throw error
 
@@ -238,7 +238,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
       const { data, error } = await supabase
         .from('vb_student_feedback')
         .select('*')
-        .eq('user_id', user?.id)
+        .eq('profile_id', user?.id)
 
       if (error) throw error
 
@@ -433,7 +433,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
           .from('vb_case_study_ratings')
           .insert({
             case_study_id: currentRatingCaseId,
-            user_id: user?.id,
+            profile_id: user?.id,
             rating: tempRating,
             feedback: tempFeedback || null
           })
@@ -596,7 +596,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
             profile_image_url
           )
         `)
-        .eq('user_id', user?.id)
+        .eq('profile_id', user?.id)
         .order('created_at', { ascending: true })
 
       if (caseStudyError) throw caseStudyError
