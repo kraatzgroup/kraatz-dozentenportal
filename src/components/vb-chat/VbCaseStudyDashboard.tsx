@@ -111,6 +111,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
   const [currentPDFFilename, setCurrentPDFFilename] = useState<string>('')
   const [submissions, setSubmissions] = useState<Map<string, {grade: number | null, grade_text: string | null}>>(new Map())
   const [legalAreaFilter, setLegalAreaFilter] = useState<string>('all')
+  const [availableCredits, setAvailableCredits] = useState<number>(0)
 
   // Track video view
   const handleVideoView = useCallback(async (caseStudyId: string) => {
@@ -583,6 +584,34 @@ export const VbCaseStudyDashboard: React.FC = () => {
       if (profileError) throw profileError
       setProfile(profileData)
 
+      // Fetch orders with packages to calculate available credits
+      const { data: ordersData, error: ordersError } = await supabase
+        .from('vb_orders')
+        .select(`
+          *,
+          package:package_id (
+            case_study_count
+          )
+        `)
+        .eq('profile_id', user?.id)
+        .eq('status', 'completed')
+
+      if (ordersError) throw ordersError
+
+      // Calculate total purchased credits from completed orders
+      const totalPurchasedCredits = ordersData?.reduce((sum, order) => {
+        return sum + (order.package?.case_study_count || 0)
+      }, 0) || 0
+
+      // Calculate used credits (case studies that are not requested)
+      const usedCredits = caseStudies.filter(cs => 
+        cs.status !== 'requested'
+      ).length
+
+      // Available credits = purchased - used
+      const credits = totalPurchasedCredits - usedCredits
+      setAvailableCredits(Math.max(0, credits))
+
       // Fetch case studies with dozent information
       const { data: caseStudyData, error: caseStudyError } = await supabase
         .from('vb_case_study_requests')
@@ -729,7 +758,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
     }
   }
 
-  const availableSlots = profile?.account_credits || 0
+  const availableSlots = availableCredits
   const requestedCases = caseStudies.filter(cs => cs.status === 'requested')
   const materialsReadyCases = caseStudies.filter(cs => cs.status === 'materials_ready')
   const submittedCases = caseStudies.filter(cs => cs.status === 'submitted')
