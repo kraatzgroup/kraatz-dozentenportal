@@ -778,8 +778,8 @@ export const VbCaseStudyDashboard: React.FC = () => {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Verfügbare Klausuren</h2>
             <div className="flex items-center space-x-2">
-              <CreditCard className="w-5 h-5 text-kraatz-primary" />
-              <span className="font-bold text-kraatz-primary">{availableSlots}</span>
+              <CreditCard className="w-5 h-5 text-primary" />
+              <span className="font-bold text-primary">{availableSlots}</span>
             </div>
           </div>
           <div className="space-y-3">
@@ -789,7 +789,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
             {availableSlots > 0 && (
               <Link
                 to="/vb/case-studies/request"
-                className="bg-kraatz-primary text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg hover:bg-kraatz-primary/90 transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base w-full sm:w-auto"
+                className="bg-primary text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base w-full sm:w-auto"
               >
                 <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
                 <span>Sachverhalt anfordern</span>
@@ -834,7 +834,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <span className="bg-kraatz-primary text-white text-xs font-bold px-2 py-1 rounded whitespace-nowrap">
+                        <span className="bg-primary text-white text-xs font-bold px-2 py-1 rounded whitespace-nowrap">
                           #{index + 1}
                         </span>
                         <h3 className="font-medium text-gray-900 text-sm sm:text-base truncate">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
@@ -877,7 +877,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                 >
                   <div className="mb-3">
                     <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className="bg-kraatz-primary text-white text-xs font-bold px-2 py-1 rounded whitespace-nowrap">
+                      <span className="bg-primary text-white text-xs font-bold px-2 py-1 rounded whitespace-nowrap">
                         #{caseStudy.case_study_number}
                       </span>
                       <h3 className="font-medium text-gray-900 text-sm sm:text-base break-words">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
@@ -959,7 +959,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                 >
                   <div className="mb-3">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="bg-kraatz-primary text-white text-xs font-bold px-2 py-1 rounded">
+                      <span className="bg-primary text-white text-xs font-bold px-2 py-1 rounded">
                         #{caseStudy.case_study_number}
                       </span>
                       <h3 className="font-medium text-gray-900">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
@@ -977,7 +977,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                         onDrop={(e) => handleDrop(e, caseStudy.id)}
                         className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
                           dragOver === caseStudy.id
-                            ? 'border-kraatz-primary bg-blue-50'
+                            ? 'border-primary bg-blue-50'
                             : uploadFiles.get(caseStudy.id)
                             ? 'border-green-300 bg-green-50'
                             : 'border-gray-300 bg-gray-50'
@@ -1007,7 +1007,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                             <div>
                               <p className="text-sm text-gray-600">
                                 Datei hier ablegen oder{' '}
-                                <label className="text-kraatz-primary hover:text-kraatz-primary/80 cursor-pointer font-medium">
+                                <label className="text-primary hover:text-primary/80 cursor-pointer font-medium">
                                   durchsuchen
                                   <input
                                     type="file"
@@ -1059,7 +1059,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                 >
                   <div className="mb-3">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="bg-kraatz-primary text-white text-xs font-bold px-2 py-1 rounded">
+                      <span className="bg-primary text-white text-xs font-bold px-2 py-1 rounded">
                         #{caseStudy.case_study_number}
                       </span>
                       <h3 className="font-medium text-gray-900">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
@@ -1164,7 +1164,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                           >
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="bg-kraatz-primary text-white text-xs font-bold px-2 py-1 rounded">
+                                <span className="bg-primary text-white text-xs font-bold px-2 py-1 rounded">
                                   #{caseStudy.case_study_number}
                                 </span>
                                 <h3 className="font-medium text-gray-900 text-sm sm:text-base">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
@@ -1498,7 +1498,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                           >
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="bg-kraatz-primary text-white text-xs font-bold px-2 py-1 rounded">
+                                <span className="bg-primary text-white text-xs font-bold px-2 py-1 rounded">
                                   #{caseStudy.case_study_number}
                                 </span>
                                 <h3 className="font-medium text-gray-900 text-sm sm:text-base">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
@@ -1951,7 +1951,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                     value={tempFeedback}
                     onChange={(e) => setTempFeedback(e.target.value)}
                     placeholder="Dein Feedback zur Klausurenkorrektur..."
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-kraatz-primary focus:border-transparent resize-none"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
                     rows={4}
                   />
                 </div>
@@ -1969,7 +1969,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                     className={`flex-1 px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 ${
                       tempRating === 0 || submittingRating
                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-kraatz-primary text-white hover:bg-kraatz-primary/90'
+                        : 'bg-primary text-white hover:bg-primary/90'
                     }`}
                   >
                     {submittingRating ? (

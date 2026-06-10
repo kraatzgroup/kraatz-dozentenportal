@@ -4,15 +4,8 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: '#2e83c2',
-        'kraatz-primary': '#2e83c2',
-        'page-bg': '#d3e5f3',
-        'text-primary': '#000000',
-        'text-secondary': '#404040',
-        'box-bg': '#ffffff',
-      },
-      fontFamily: {
-        'sans': ['Open Sans', 'sans-serif'],
+        primary: '#2C83C0',
+        background: '#D7E5F3',
       },
     },
   },

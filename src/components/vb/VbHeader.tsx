@@ -39,7 +39,7 @@ export const VbHeader: React.FC = () => {
   };
 
   return (
-    <header className="bg-box-bg shadow-sm border-b border-gray-200">
+    <header className="bg-white shadow-sm border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Mobile Menu Button */}
@@ -62,7 +62,7 @@ export const VbHeader: React.FC = () => {
             <div className="flex items-center space-x-4">
               <Link
                 to="/login"
-                className="text-text-secondary hover:text-kraatz-primary transition-colors"
+                className="text-gray-600 hover:text-primary transition-colors"
               >
                 Login
               </Link>
@@ -75,26 +75,26 @@ export const VbHeader: React.FC = () => {
                 <>
                   <Link
                     to="/vb/dashboard"
-                    className="text-text-secondary hover:text-kraatz-primary transition-colors"
+                    className="text-gray-600 hover:text-primary transition-colors"
                   >
                     Dashboard
                   </Link>
                   <Link
                     to="/vb/chat"
-                    className="text-text-secondary hover:text-kraatz-primary transition-colors flex items-center gap-1"
+                    className="text-gray-600 hover:text-primary transition-colors flex items-center gap-1"
                   >
                     <MessageCircle className="w-4 h-4" />
                     Chat
                   </Link>
                   <Link
                     to="/vb/results"
-                    className="text-text-secondary hover:text-kraatz-primary transition-colors"
+                    className="text-gray-600 hover:text-primary transition-colors"
                   >
                     Ergebnisse
                   </Link>
                   <Link
                     to="/vb/masterclass"
-                    className="text-text-secondary hover:text-kraatz-primary transition-colors"
+                    className="text-gray-600 hover:text-primary transition-colors"
                   >
                     Klausuren-Masterclass
                   </Link>
@@ -120,34 +120,34 @@ export const VbHeader: React.FC = () => {
                     to="/vb/packages"
                     className="flex items-center space-x-2 p-2 rounded-md hover:bg-gray-100 transition-colors"
                   >
-                    <CreditCard className="w-4 h-4 text-text-secondary" />
-                    <span className="text-sm text-text-secondary whitespace-nowrap">Credits: {userCredits}</span>
+                    <CreditCard className="w-4 h-4 text-gray-600" />
+                    <span className="text-sm text-gray-600 whitespace-nowrap">Credits: {userCredits}</span>
                   </Link>
                 </div>
 
                 <div className="relative group hidden md:block">
                   <button className="flex items-center space-x-2 p-2 rounded-md hover:bg-gray-100 transition-colors">
-                    <User className="w-5 h-5 text-text-secondary" />
-                    <span className="text-sm text-text-secondary truncate max-w-[150px]">{user.email}</span>
+                    <User className="w-5 h-5 text-gray-600" />
+                    <span className="text-sm text-gray-600 truncate max-w-[150px]">{user.email}</span>
                   </button>
                   
-                  <div className="absolute right-0 mt-2 w-48 bg-box-bg rounded-md shadow-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
                     <div className="py-1">
                       <Link
                         to="/vb/profile"
-                        className="block px-4 py-2 text-sm text-text-secondary hover:bg-gray-100 hover:text-kraatz-primary"
+                        className="block px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 hover:text-primary"
                       >
                         Profil
                       </Link>
                       <Link
                         to="/vb/settings"
-                        className="block px-4 py-2 text-sm text-text-secondary hover:bg-gray-100 hover:text-kraatz-primary"
+                        className="block px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 hover:text-primary"
                       >
                         Einstellungen
                       </Link>
                       <button
                         onClick={handleSignOut}
-                        className="w-full text-left px-4 py-2 text-sm text-text-secondary hover:bg-gray-100 hover:text-kraatz-primary flex items-center space-x-2"
+                        className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 hover:text-primary flex items-center space-x-2"
                       >
                         <LogOut className="w-4 h-4" />
                         <span>Abmelden</span>
@@ -166,14 +166,14 @@ export const VbHeader: React.FC = () => {
             <nav className="flex flex-col space-y-4">
               <Link
                 to="/vb/dashboard"
-                className="text-text-secondary hover:text-kraatz-primary transition-colors px-2 py-2 block"
+                className="text-gray-600 hover:text-primary transition-colors px-2 py-2 block"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Dashboard
               </Link>
               <Link
                 to="/vb/chat"
-                className="text-text-secondary hover:text-kraatz-primary transition-colors flex items-center gap-2 px-2 py-2"
+                className="text-gray-600 hover:text-primary transition-colors flex items-center gap-2 px-2 py-2"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 <MessageCircle className="w-4 h-4" />
@@ -181,14 +181,14 @@ export const VbHeader: React.FC = () => {
               </Link>
               <Link
                 to="/vb/results"
-                className="text-text-secondary hover:text-kraatz-primary transition-colors px-2 py-2 block"
+                className="text-gray-600 hover:text-primary transition-colors px-2 py-2 block"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Ergebnisse
               </Link>
               <Link
                 to="/vb/masterclass"
-                className="text-text-secondary hover:text-kraatz-primary transition-colors px-2 py-2 block"
+                className="text-gray-600 hover:text-primary transition-colors px-2 py-2 block"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Klausuren-Masterclass
@@ -197,7 +197,7 @@ export const VbHeader: React.FC = () => {
               <div className="border-t border-gray-200 pt-4 mt-4 space-y-4">
                 <Link
                   to="/vb/packages"
-                  className="flex items-center gap-2 px-2 py-2 text-text-secondary hover:text-kraatz-primary transition-colors"
+                  className="flex items-center gap-2 px-2 py-2 text-gray-600 hover:text-primary transition-colors"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   <CreditCard className="w-4 h-4" />
@@ -205,20 +205,20 @@ export const VbHeader: React.FC = () => {
                 </Link>
                 
                 <div className="flex items-center gap-2 px-2 py-2">
-                  <User className="w-5 h-5 text-text-secondary" />
-                  <span className="text-sm text-text-secondary truncate">{user.email}</span>
+                  <User className="w-5 h-5 text-gray-600" />
+                  <span className="text-sm text-gray-600 truncate">{user.email}</span>
                 </div>
 
                 <Link
                   to="/vb/profile"
-                  className="block px-2 py-2 text-text-secondary hover:text-kraatz-primary transition-colors"
+                  className="block px-2 py-2 text-gray-600 hover:text-primary transition-colors"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Profil
                 </Link>
                 <Link
                   to="/vb/settings"
-                  className="block px-2 py-2 text-text-secondary hover:text-kraatz-primary transition-colors"
+                  className="block px-2 py-2 text-gray-600 hover:text-primary transition-colors"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Einstellungen
@@ -228,7 +228,7 @@ export const VbHeader: React.FC = () => {
                     setMobileMenuOpen(false);
                     handleSignOut();
                   }}
-                  className="w-full text-left px-2 py-2 text-text-secondary hover:text-kraatz-primary transition-colors flex items-center gap-2"
+                  className="w-full text-left px-2 py-2 text-gray-600 hover:text-primary transition-colors flex items-center gap-2"
                 >
                   <LogOut className="w-4 h-4" />
                   <span>Abmelden</span>
