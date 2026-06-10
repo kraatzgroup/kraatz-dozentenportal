@@ -473,7 +473,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
     if (fullyAccessed) {
       return {
         containerClass: "border border-green-200 rounded-lg p-4 bg-green-50",
-        badgeClass: "px-2 py-1 bg-green-600 text-white text-xs rounded-full font-medium",
+        badgeClass: "px-2 py-1 bg-primary text-white text-xs rounded-full font-medium",
         badgeText: "✓ Vollständig angesehen",
         showNewBadge: false
       }
@@ -487,7 +487,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
     } else {
       return {
         containerClass: "border border-blue-200 rounded-lg p-4 bg-blue-50",
-        badgeClass: "px-2 py-1 bg-green-600 text-white text-xs rounded-full font-medium",
+        badgeClass: "px-2 py-1 bg-primary text-white text-xs rounded-full font-medium",
         badgeText: "✓ Abgeschlossen",
         showNewBadge: isNew
       }
@@ -801,9 +801,9 @@ export const VbCaseStudyDashboard: React.FC = () => {
               <p className="text-gray-600 mb-4">Keine verfügbaren Credits.</p>
               <Link
                 to="/vb/packages"
-                className="bg-green-600 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base"
+                className="bg-primary text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base"
               >
-                <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                 <span>Weitere Klausuren buchen</span>
               </Link>
             </div>
@@ -908,7 +908,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                             href={material.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="bg-green-600 text-white px-3 py-2 rounded-lg text-xs sm:text-sm hover:bg-green-700 transition-colors flex items-center justify-center space-x-2 whitespace-nowrap"
+                            className="bg-primary text-white px-3 py-2 rounded-lg text-xs sm:text-sm hover:bg-primary/90 transition-colors flex items-center justify-center space-x-2 whitespace-nowrap"
                           >
                             <Download className="w-4 h-4" />
                             <span>{caseStudy.additional_materials.length > 1 ? `Zusatzmaterial ${index + 1}` : 'Zusatzmaterial'}</span>
@@ -920,7 +920,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                         href={caseStudy.additional_materials_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="bg-green-600 text-white px-3 py-2 rounded-lg text-xs sm:text-sm hover:bg-green-700 transition-colors flex items-center justify-center space-x-2 whitespace-nowrap"
+                        className="bg-primary text-white px-3 py-2 rounded-lg text-xs sm:text-sm hover:bg-primary/90 transition-colors flex items-center justify-center space-x-2 whitespace-nowrap"
                       >
                         <Download className="w-4 h-4" />
                         <span>Zusatzmaterialien</span>
@@ -1030,7 +1030,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                       disabled={!uploadFiles.get(caseStudy.id) || uploadingCaseId === caseStudy.id}
                       className={`w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center space-x-2 ${
                         uploadFiles.get(caseStudy.id) && uploadingCaseId !== caseStudy.id
-                          ? 'bg-green-600 hover:bg-green-700 text-white'
+                          ? 'bg-primary hover:bg-primary/90 text-white'
                           : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       }`}
                     >
