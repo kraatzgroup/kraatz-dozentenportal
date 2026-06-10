@@ -1245,35 +1245,34 @@ export const VbCaseStudyDashboard: React.FC = () => {
                           
                           {/* Rating Button - Always Visible */}
                           <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {ratings.has(caseStudy.id) && (
-                                <div className="flex items-center gap-1">
+                            {ratings.has(caseStudy.id) ? (
+                              <div className="flex items-center gap-1 px-3 py-2 sm:py-1 bg-gray-100 text-gray-700 text-xs rounded-lg w-full sm:w-auto">
+                                <div className="flex">
                                   {[1, 2, 3, 4, 5].map((star) => (
                                     <Star
                                       key={star}
                                       className={`w-3 h-3 ${
                                         star <= (ratings.get(caseStudy.id)?.rating || 0)
-                                          ? 'text-yellow-500 fill-current'
+                                          ? 'fill-yellow-400 text-yellow-400'
                                           : 'text-gray-300'
                                       }`}
                                     />
                                   ))}
-                                  <span className="text-xs text-gray-600 ml-1">
-                                    ({ratings.get(caseStudy.id)?.rating}/5)
-                                  </span>
                                 </div>
-                              )}
-                            </div>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                openRatingModal(caseStudy.id)
-                              }}
-                              className="flex items-center justify-center gap-1 px-3 py-2 sm:py-1 bg-yellow-600 text-white text-xs rounded-lg hover:bg-yellow-700 transition-colors w-full sm:w-auto"
-                            >
-                              <Star className="w-3 h-3" />
-                              {ratings.has(caseStudy.id) ? 'Bewertung ändern' : 'Jetzt bewerten'}
-                            </button>
+                                <span className="ml-1">({ratings.get(caseStudy.id)?.rating}/5)</span>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  openRatingModal(caseStudy.id)
+                                }}
+                                className="flex items-center justify-center gap-1 px-3 py-2 sm:py-1 bg-primary text-white text-xs rounded-lg hover:bg-primary/90 transition-colors w-full sm:w-auto"
+                              >
+                                <Star className="w-3 h-3" />
+                                Jetzt bewerten
+                              </button>
+                            )}
                             {profile?.role === 'admin' && (
                               <button
                                 onClick={(e) => {
@@ -1579,35 +1578,34 @@ export const VbCaseStudyDashboard: React.FC = () => {
                           
                           {/* Rating Button - Always Visible */}
                           <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {ratings.has(caseStudy.id) && (
-                                <div className="flex items-center gap-1">
+                            {ratings.has(caseStudy.id) ? (
+                              <div className="flex items-center gap-1 px-3 py-2 sm:py-1 bg-gray-100 text-gray-700 text-xs rounded-lg w-full sm:w-auto">
+                                <div className="flex">
                                   {[1, 2, 3, 4, 5].map((star) => (
                                     <Star
                                       key={star}
                                       className={`w-3 h-3 ${
                                         star <= (ratings.get(caseStudy.id)?.rating || 0)
-                                          ? 'text-yellow-500 fill-current'
+                                          ? 'fill-yellow-400 text-yellow-400'
                                           : 'text-gray-300'
                                       }`}
                                     />
                                   ))}
-                                  <span className="text-xs text-gray-600 ml-1">
-                                    ({ratings.get(caseStudy.id)?.rating}/5)
-                                  </span>
                                 </div>
-                              )}
-                            </div>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                openRatingModal(caseStudy.id)
-                              }}
-                              className="flex items-center justify-center gap-1 px-3 py-2 sm:py-1 bg-yellow-600 text-white text-xs rounded-lg hover:bg-yellow-700 transition-colors w-full sm:w-auto"
-                            >
-                              <Star className="w-3 h-3" />
-                              {ratings.has(caseStudy.id) ? 'Bewertung ändern' : 'Jetzt bewerten'}
-                            </button>
+                                <span className="ml-1">({ratings.get(caseStudy.id)?.rating}/5)</span>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  openRatingModal(caseStudy.id)
+                                }}
+                                className="flex items-center justify-center gap-1 px-3 py-2 sm:py-1 bg-primary text-white text-xs rounded-lg hover:bg-primary/90 transition-colors w-full sm:w-auto"
+                              >
+                                <Star className="w-3 h-3" />
+                                Jetzt bewerten
+                              </button>
+                            )}
                             {profile?.role === 'admin' && (
                               <button
                                 onClick={(e) => {
