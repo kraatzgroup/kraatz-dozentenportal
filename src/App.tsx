@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthComponent } from './components/AuthComponent';
 import { VbLayout } from './components/vb/VbLayout';
 import { VbHomePage } from './components/vb-chat/VbHomePage';
+import { VbLandingRedirect } from './components/vb-chat/VbLandingRedirect';
 import { VbPackagesPage } from './components/vb-chat/VbPackagesPage';
 import { VbCaseStudyDashboard } from './components/vb-chat/VbCaseStudyDashboard';
 import { VbCaseStudyRequest } from './components/vb-chat/VbCaseStudyRequest';
@@ -160,7 +161,7 @@ function App() {
           <Route path="/elite-kleingruppe" element={<Navigate to="/dashboard" replace />} />
 
           {/* VB pages - using VbLayout wrapper */}
-          <Route path="/vb" element={<VbLayout><VbHomePage /></VbLayout>} />
+          <Route path="/vb" element={<VbLayout><VbLandingRedirect /></VbLayout>} />
           <Route path="/vb/packages" element={<VbLayout><VbPackagesPage /></VbLayout>} />
           <Route path="/vb/dashboard" element={<VbLayout><VbCaseStudyDashboard /></VbLayout>} />
           <Route path="/vb/case-studies/request" element={<VbLayout><VbCaseStudyRequest /></VbLayout>} />
