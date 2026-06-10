@@ -1,6 +1,7 @@
 import { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthComponent } from './components/AuthComponent';
+import { VbChatLayout } from './components/vb-chat/VbChatLayout';
 
 // Lazy load heavy components
 const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -160,10 +161,7 @@ function App() {
               isMaterial ?
                 <DozentenDashboard /> :
               isVideobesprechung ?
-                <div className="p-8">
-                  <h1 className="text-2xl font-bold mb-4">Videobesprechung</h1>
-                  <p className="text-gray-600">Die Videobesprechung-Funktionalität wird noch migriert. Bitte haben Sie etwas Geduld.</p>
-                </div> :
+                <VbChatLayout /> :
               showTeilnehmerView ?
                 <EliteKleingruppeDashboard /> :
               showVertriebView ?
