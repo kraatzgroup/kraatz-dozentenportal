@@ -107,7 +107,7 @@ export const VbHeader: React.FC = () => {
             {/* Logo */}
             <Link to="/vb" className="flex items-center flex-shrink-0 order-last">
               <img 
-                src="/4 Kopie (1).png" 
+                src="https://kraatz-group.de/wp-content/uploads/2023/05/KraatzGroup_Logo_web.png" 
                 alt="Kraatz Logo" 
                 className="h-7 sm:h-8 lg:h-10 w-auto object-contain" 
               />
