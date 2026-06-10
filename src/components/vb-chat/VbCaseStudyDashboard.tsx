@@ -5,10 +5,10 @@ import { CreditCard, BookOpen, Plus, Download, Upload, FileText, Video, X, Clock
 import { Link, useSearchParams } from 'react-router-dom'
 
 interface UserProfile {
-  account_credits: number
-  first_name: string
-  last_name: string
-  role: string
+  account_credits?: number
+  first_name?: string
+  last_name?: string
+  role?: string
 }
 
 interface AdditionalMaterial {
@@ -234,8 +234,11 @@ export const VbCaseStudyDashboard: React.FC = () => {
   }
 
   // Fetch student feedbacks for completed case studies
+  // TODO: Implement when vb_student_feedback table is created
   const fetchStudentFeedbacks = async () => {
     try {
+      // Table doesn't exist yet, skip for now
+      /*
       const { data, error } = await supabase
         .from('vb_student_feedback')
         .select('*')
@@ -248,6 +251,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
         feedbacksMap.set(feedback.case_study_id, feedback)
       })
       setStudentFeedbacks(feedbacksMap)
+      */
     } catch (error) {
       console.error('Error fetching student feedbacks:', error)
     }
@@ -577,7 +581,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
       // Fetch user profile from profiles table
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
-        .select('account_credits, first_name, last_name, role')
+        .select('first_name, last_name, role')
         .eq('id', user?.id)
         .single()
 
