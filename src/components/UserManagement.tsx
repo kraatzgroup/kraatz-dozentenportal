@@ -788,8 +788,8 @@ export function UserManagement() {
               <ul className="divide-y divide-gray-200">
                 {users.filter(user => {
                   // Filter out regular teilnehmer (non-elite) - they don't have login access
-                  // Keep: admin, buchhaltung, verwaltung, vertrieb, dozent, and elite-kleingruppe teilnehmer
-                  if (user.role === 'teilnehmer' && !eliteTeilnehmerIds.has(user.id)) {
+                  // Keep: admin, buchhaltung, verwaltung, vertrieb, dozent, elite-kleingruppe teilnehmer, and videobesprechung users
+                  if (user.role === 'teilnehmer' && !eliteTeilnehmerIds.has(user.id) && !(user.additional_roles || []).includes('videobesprechung')) {
                     return false; // Exclude regular teilnehmer
                   }
                   
@@ -865,11 +865,13 @@ export function UserManagement() {
                               <>
                                 {user.additional_roles.map((r) => (
                                   <span key={r} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                                    +{r === 'admin' ? 'Admin' :
+                                    {r === 'admin' ? 'Admin' :
                                       r === 'buchhaltung' ? 'Buchhaltung' :
                                       r === 'verwaltung' ? 'Verwaltung' :
                                       r === 'vertrieb' ? 'Vertrieb' :
-                                      r === 'teilnehmer' ? 'Teilnehmer' : 'Dozent'}
+                                      r === 'teilnehmer' ? 'Teilnehmer' :
+                                      r === 'videobesprechung' ? 'Videobesprechung' :
+                                      r === 'dozent' ? 'Dozent' : r}
                                   </span>
                                 ))}
                               </>
