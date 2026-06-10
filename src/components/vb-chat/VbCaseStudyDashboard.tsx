@@ -803,7 +803,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                 to="/vb/packages"
                 className="bg-green-600 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base"
               >
-                <CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />
+                <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                 <span>Weitere Klausuren buchen</span>
               </Link>
             </div>
@@ -859,8 +859,8 @@ export const VbCaseStudyDashboard: React.FC = () => {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Sachverhalt verfügbar</h2>
             <div className="flex items-center space-x-2">
-              <BookOpen className="w-5 h-5 text-blue-600" />
-              <span className="font-bold text-blue-600">{materialsReadyCases.length}</span>
+              <BookOpen className="w-5 h-5 text-primary" />
+              <span className="font-bold text-primary">{materialsReadyCases.length}</span>
             </div>
           </div>
           {materialsReadyCases.length > 0 ? (
@@ -1003,7 +1003,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                           </div>
                         ) : (
                           <div className="space-y-2">
-                            <Upload className="w-12 h-12 text-gray-400 mx-auto" />
+                            <Upload className="w-12 h-12 text-primary mx-auto" />
                             <div>
                               <p className="text-sm text-gray-600">
                                 Datei hier ablegen oder{' '}
@@ -1343,20 +1343,20 @@ export const VbCaseStudyDashboard: React.FC = () => {
                                 {submissions.has(caseStudy.id) && submissions.get(caseStudy.id)?.grade !== null && (
                                   <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded">
                                     <div className="flex items-center justify-between">
-                                      <span className="text-sm font-medium text-blue-800">📊 Deine Note:</span>
+                                      <span className="text-sm font-medium text-primary">📊 Deine Note:</span>
                                       <div className="text-right">
-                                        <span className="text-lg font-bold text-blue-900">
+                                        <span className="text-lg font-bold text-primary">
                                           {submissions.get(caseStudy.id)?.grade} Punkte
                                         </span>
                                         {submissions.get(caseStudy.id)?.grade && (
-                                          <div className="text-xs text-blue-700">
+                                          <div className="text-xs text-primary">
                                             {/* ({getGradeDescription(submissions.get(caseStudy.id)?.grade)}) */}
                                           </div>
                                         )}
                                       </div>
                                     </div>
                                     {submissions.get(caseStudy.id)?.grade_text && (
-                                      <div className="mt-2 text-sm text-blue-700">
+                                      <div className="mt-2 text-sm text-primary">
                                         <strong>Bewertung:</strong> {submissions.get(caseStudy.id)?.grade_text}
                                       </div>
                                     )}
@@ -1677,20 +1677,20 @@ export const VbCaseStudyDashboard: React.FC = () => {
                                 {submissions.has(caseStudy.id) && submissions.get(caseStudy.id)?.grade !== null && (
                                   <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded">
                                     <div className="flex items-center justify-between">
-                                      <span className="text-sm font-medium text-blue-800">📊 Deine Note:</span>
+                                      <span className="text-sm font-medium text-primary">📊 Deine Note:</span>
                                       <div className="text-right">
-                                        <span className="text-lg font-bold text-blue-900">
+                                        <span className="text-lg font-bold text-primary">
                                           {submissions.get(caseStudy.id)?.grade} Punkte
                                         </span>
                                         {submissions.get(caseStudy.id)?.grade && (
-                                          <div className="text-xs text-blue-700">
+                                          <div className="text-xs text-primary">
                                             {/* ({getGradeDescription(submissions.get(caseStudy.id)?.grade)}) */}
                                           </div>
                                         )}
                                       </div>
                                     </div>
                                     {submissions.get(caseStudy.id)?.grade_text && (
-                                      <div className="mt-2 text-sm text-blue-700">
+                                      <div className="mt-2 text-sm text-primary">
                                         <strong>Bewertung:</strong> {submissions.get(caseStudy.id)?.grade_text}
                                       </div>
                                     )}
@@ -1847,13 +1847,13 @@ export const VbCaseStudyDashboard: React.FC = () => {
             </>
           ) : (
             <div className="text-center py-8">
-              <Video className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <Video className="w-12 h-12 text-primary mx-auto mb-3" />
               {legalAreaFilter !== 'all' && completedCases.length > 0 ? (
                 <>
                   <p className="text-gray-600 mb-2">Keine Korrekturen für "{legalAreaFilter}" gefunden.</p>
                   <button
                     onClick={() => setLegalAreaFilter('all')}
-                    className="text-sm text-blue-600 hover:text-blue-800 underline"
+                    className="text-sm text-blue-600 hover:text-primary underline"
                   >
                     Alle Rechtsgebiete anzeigen
                   </button>

@@ -39,9 +39,9 @@ export const VbHeader: React.FC = () => {
   };
 
   return (
-    <header className="bg-white shadow-sm border-b border-gray-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
+    <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8">
+        <div className="flex justify-between items-center h-14 sm:h-16">
           {/* Mobile Menu Button */}
           {user && (
             <button
@@ -50,51 +50,51 @@ export const VbHeader: React.FC = () => {
               aria-label="Toggle menu"
             >
               {mobileMenuOpen ? (
-                <X className="w-6 h-6 text-gray-600" />
+                <X className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
               ) : (
-                <Menu className="w-6 h-6 text-gray-600" />
+                <Menu className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
               )}
             </button>
           )}
           
           {/* Login Link - when not logged in */}
           {!user && (
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 sm:space-x-4">
               <Link
                 to="/login"
-                className="text-gray-600 hover:text-primary transition-colors"
+                className="text-gray-600 hover:text-primary transition-colors text-sm sm:text-base"
               >
                 Login
               </Link>
             </div>
           )}
 
-          <div className="flex items-center space-x-4 sm:space-x-8">
-            <nav className="hidden md:flex items-center space-x-8">
+          <div className="flex items-center space-x-2 sm:space-x-4 lg:space-x-8">
+            <nav className="hidden md:flex items-center space-x-4 lg:space-x-8">
               {user && additionalRoles?.includes('videobesprechung') && (
                 <>
                   <Link
                     to="/vb/dashboard"
-                    className="text-gray-600 hover:text-primary transition-colors"
+                    className="text-gray-600 hover:text-primary transition-colors text-sm sm:text-base font-medium"
                   >
                     Dashboard
                   </Link>
                   <Link
                     to="/vb/chat"
-                    className="text-gray-600 hover:text-primary transition-colors flex items-center gap-1"
+                    className="text-gray-600 hover:text-primary transition-colors flex items-center gap-1 text-sm sm:text-base font-medium"
                   >
-                    <MessageCircle className="w-4 h-4" />
-                    Chat
+                    <MessageCircle className="w-4 h-4 text-primary" />
+                    <span className="hidden sm:inline">Chat</span>
                   </Link>
                   <Link
                     to="/vb/results"
-                    className="text-gray-600 hover:text-primary transition-colors"
+                    className="text-gray-600 hover:text-primary transition-colors text-sm sm:text-base font-medium"
                   >
                     Ergebnisse
                   </Link>
                   <Link
                     to="/vb/masterclass"
-                    className="text-gray-600 hover:text-primary transition-colors"
+                    className="text-gray-600 hover:text-primary transition-colors text-sm sm:text-base font-medium"
                   >
                     Klausuren-Masterclass
                   </Link>
@@ -103,13 +103,13 @@ export const VbHeader: React.FC = () => {
             </nav>
           </div>
 
-          <div className="flex items-center space-x-2 sm:space-x-4">
+          <div className="flex items-center space-x-1 sm:space-x-2 lg:space-x-4">
             {/* Logo */}
             <Link to="/vb" className="flex items-center flex-shrink-0 order-last">
               <img 
                 src="/4 Kopie (1).png" 
                 alt="Kraatz Logo" 
-                className="h-8 sm:h-10 w-auto object-contain" 
+                className="h-7 sm:h-8 lg:h-10 w-auto object-contain" 
               />
             </Link>
             
@@ -118,17 +118,18 @@ export const VbHeader: React.FC = () => {
                 <div className="relative group hidden sm:block">
                   <Link 
                     to="/vb/packages"
-                    className="flex items-center space-x-2 p-2 rounded-md hover:bg-gray-100 transition-colors"
+                    className="flex items-center space-x-1 sm:space-x-2 p-1.5 sm:p-2 rounded-md hover:bg-gray-100 transition-colors"
                   >
-                    <CreditCard className="w-4 h-4 text-gray-600" />
-                    <span className="text-sm text-gray-600 whitespace-nowrap">Credits: {userCredits}</span>
+                    <CreditCard className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-primary" />
+                    <span className="text-xs sm:text-sm text-gray-600 whitespace-nowrap hidden lg:inline">Credits: {userCredits}</span>
+                    <span className="text-xs sm:text-sm text-gray-600 whitespace-nowrap lg:hidden">{userCredits}</span>
                   </Link>
                 </div>
 
                 <div className="relative group hidden md:block">
-                  <button className="flex items-center space-x-2 p-2 rounded-md hover:bg-gray-100 transition-colors">
-                    <User className="w-5 h-5 text-gray-600" />
-                    <span className="text-sm text-gray-600 truncate max-w-[150px]">{user.email}</span>
+                  <button className="flex items-center space-x-1 sm:space-x-2 p-1.5 sm:p-2 rounded-md hover:bg-gray-100 transition-colors">
+                    <User className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                    <span className="text-xs sm:text-sm text-gray-600 truncate max-w-[80px] sm:max-w-[120px] lg:max-w-[150px] hidden sm:inline">{user.email}</span>
                   </button>
                   
                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
@@ -162,63 +163,63 @@ export const VbHeader: React.FC = () => {
 
         {/* Mobile Menu */}
         {user && mobileMenuOpen && (
-          <div className="md:hidden border-t border-gray-200 py-4">
-            <nav className="flex flex-col space-y-4">
+          <div className="md:hidden border-t border-gray-200 py-3 sm:py-4">
+            <nav className="flex flex-col space-y-2 sm:space-y-4">
               <Link
                 to="/vb/dashboard"
-                className="text-gray-600 hover:text-primary transition-colors px-2 py-2 block"
+                className="text-gray-600 hover:text-primary transition-colors px-2 py-2 block text-sm sm:text-base font-medium"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Dashboard
               </Link>
               <Link
                 to="/vb/chat"
-                className="text-gray-600 hover:text-primary transition-colors flex items-center gap-2 px-2 py-2"
+                className="text-gray-600 hover:text-primary transition-colors flex items-center gap-2 px-2 py-2 text-sm sm:text-base font-medium"
                 onClick={() => setMobileMenuOpen(false)}
               >
-                <MessageCircle className="w-4 h-4" />
+                <MessageCircle className="w-4 h-4 text-primary" />
                 Chat
               </Link>
               <Link
                 to="/vb/results"
-                className="text-gray-600 hover:text-primary transition-colors px-2 py-2 block"
+                className="text-gray-600 hover:text-primary transition-colors px-2 py-2 block text-sm sm:text-base font-medium"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Ergebnisse
               </Link>
               <Link
                 to="/vb/masterclass"
-                className="text-gray-600 hover:text-primary transition-colors px-2 py-2 block"
+                className="text-gray-600 hover:text-primary transition-colors px-2 py-2 block text-sm sm:text-base font-medium"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Klausuren-Masterclass
               </Link>
 
-              <div className="border-t border-gray-200 pt-4 mt-4 space-y-4">
+              <div className="border-t border-gray-200 pt-3 sm:pt-4 mt-3 sm:mt-4 space-y-2 sm:space-y-4">
                 <Link
                   to="/vb/packages"
-                  className="flex items-center gap-2 px-2 py-2 text-gray-600 hover:text-primary transition-colors"
+                  className="flex items-center gap-2 px-2 py-2 text-gray-600 hover:text-primary transition-colors text-sm sm:text-base"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  <CreditCard className="w-4 h-4" />
+                  <CreditCard className="w-4 h-4 text-primary" />
                   <span>Credits: {userCredits}</span>
                 </Link>
                 
                 <div className="flex items-center gap-2 px-2 py-2">
-                  <User className="w-5 h-5 text-gray-600" />
+                  <User className="w-5 h-5 text-primary" />
                   <span className="text-sm text-gray-600 truncate">{user.email}</span>
                 </div>
 
                 <Link
                   to="/vb/profile"
-                  className="block px-2 py-2 text-gray-600 hover:text-primary transition-colors"
+                  className="block px-2 py-2 text-gray-600 hover:text-primary transition-colors text-sm sm:text-base font-medium"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Profil
                 </Link>
                 <Link
                   to="/vb/settings"
-                  className="block px-2 py-2 text-gray-600 hover:text-primary transition-colors"
+                  className="block px-2 py-2 text-gray-600 hover:text-primary transition-colors text-sm sm:text-base font-medium"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Einstellungen
@@ -228,7 +229,7 @@ export const VbHeader: React.FC = () => {
                     setMobileMenuOpen(false);
                     handleSignOut();
                   }}
-                  className="w-full text-left px-2 py-2 text-gray-600 hover:text-primary transition-colors flex items-center gap-2"
+                  className="w-full text-left px-2 py-2 text-gray-600 hover:text-primary transition-colors flex items-center gap-2 text-sm sm:text-base font-medium"
                 >
                   <LogOut className="w-4 h-4" />
                   <span>Abmelden</span>
