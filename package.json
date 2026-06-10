@@ -9,7 +9,9 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "migration:export-vb-users": "tsx migration-scripts/export-vb-users.ts",
-    "migration:import-vb-users": "tsx migration-scripts/import-vb-users.ts"
+    "migration:import-vb-users": "tsx migration-scripts/import-vb-users.ts",
+    "migration:phase1-schema": "PGPASSWORD=\"F3FDla45LW4FrJAvpR8N9qZPXLP5Q5Ah2LMvLZB34D1lhIvXsw\" psql \"postgresql://postgres.gkkveloqajxghhflkfru@aws-1-eu-west-1.pooler.supabase.com:6543/postgres\" -f migration-scripts/phase1-vb-tables-schema.sql",
+    "migration:phase3-copy-data": "tsx migration-scripts/phase3-copy-data.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

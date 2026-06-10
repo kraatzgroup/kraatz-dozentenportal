@@ -38,9 +38,12 @@ import { ToastContainer } from './components/Toast';
 import { useState } from 'react';
 
 function App() {
-  const { setUser, user, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isTeilnehmer, isMaterial, userRole, isSettingUser } = useAuthStore();
+  const { setUser, user, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isTeilnehmer, isMaterial, userRole, isSettingUser, additionalRoles } = useAuthStore();
   const { isPreviewMode, previewedRole, togglePreview, setPreviewedRole } = usePreviewStore();
   const [appLoading, setAppLoading] = useState(true);
+
+  // Check if user is a videobesprechung user
+  const isVideobesprechung = additionalRoles?.includes('videobesprechung');
 
   useEffect(() => {
     // Get initial session
@@ -156,6 +159,11 @@ function App() {
             element={
               isMaterial ?
                 <DozentenDashboard /> :
+              isVideobesprechung ?
+                <div className="p-8">
+                  <h1 className="text-2xl font-bold mb-4">Videobesprechung</h1>
+                  <p className="text-gray-600">Die Videobesprechung-Funktionalität wird noch migriert. Bitte haben Sie etwas Geduld.</p>
+                </div> :
               showTeilnehmerView ?
                 <EliteKleingruppeDashboard /> :
               showVertriebView ?
