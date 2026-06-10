@@ -1,7 +1,7 @@
 import { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthComponent } from './components/AuthComponent';
-import { VbChatLayout } from './components/vb-chat/VbChatLayout';
+import { VbDashboard } from './components/vb-chat/VbDashboard';
 
 // Lazy load heavy components
 const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -161,7 +161,7 @@ function App() {
               isMaterial ?
                 <DozentenDashboard /> :
               isVideobesprechung ?
-                <VbChatLayout /> :
+                <VbDashboard /> :
               showTeilnehmerView ?
                 <EliteKleingruppeDashboard /> :
               showVertriebView ?
