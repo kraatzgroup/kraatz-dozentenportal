@@ -173,7 +173,7 @@ function App() {
               isMaterial ?
                 <DozentenDashboard /> :
               isVideobesprechung ?
-                <VbCaseStudyDashboard /> :
+                <VbLayout><VbCaseStudyDashboard /></VbLayout> :
               showTeilnehmerView ?
                 <EliteKleingruppeDashboard /> :
               showVertriebView ?
