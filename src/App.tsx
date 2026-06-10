@@ -2,6 +2,8 @@ import { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthComponent } from './components/AuthComponent';
 import { VbDashboard } from './components/vb-chat/VbDashboard';
+import { VbHomePage } from './components/vb-chat/VbHomePage';
+import { VbPackagesPage } from './components/vb-chat/VbPackagesPage';
 
 // Lazy load heavy components
 const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -146,13 +148,17 @@ function App() {
         }>
         <Routes>
           {/* Root redirect to unified dashboard */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/" element={<Navigate to="/vb" replace />} />
 
           {/* Legacy route redirects */}
           <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
           <Route path="/accounting" element={<Navigate to="/dashboard" replace />} />
           <Route path="/vertrieb" element={<Navigate to="/dashboard" replace />} />
           <Route path="/elite-kleingruppe" element={<Navigate to="/dashboard" replace />} />
+
+          {/* VB pages */}
+          <Route path="/vb" element={<VbHomePage />} />
+          <Route path="/vb/packages" element={<VbPackagesPage />} />
 
           {/* Unified dashboard - renders correct view based on role */}
           <Route
