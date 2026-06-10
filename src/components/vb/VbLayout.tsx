@@ -1,5 +1,5 @@
 import React from 'react';
-import { VbHeader } from './VbHeader';
+import { VbHeader } from '../vb/VbHeader';
 
 interface VbLayoutProps {
   children: React.ReactNode;
