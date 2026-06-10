@@ -18,7 +18,7 @@ export const VbHomePage: React.FC = () => {
         <div className="flex flex-col sm:flex-row gap-4 justify-center mt-8">
           <Link
             to="/vb/packages"
-            className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors inline-flex items-center space-x-2"
+            className="bg-primary text-white px-8 py-3 rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center space-x-2"
           >
             <span>Pakete ansehen</span>
             <ArrowRight className="w-5 h-5" />
@@ -29,7 +29,7 @@ export const VbHomePage: React.FC = () => {
       {/* Features Section */}
       <section className="grid md:grid-cols-3 gap-8">
         <div className="bg-white p-8 rounded-lg shadow-sm text-center">
-          <BookOpen className="w-12 h-12 text-blue-600 mx-auto mb-4" />
+          <BookOpen className="w-12 h-12 text-primary mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-gray-900 mb-3">
             Erprobte Sachverhalte
           </h3>
@@ -40,7 +40,7 @@ export const VbHomePage: React.FC = () => {
         </div>
 
         <div className="bg-white p-8 rounded-lg shadow-sm text-center">
-          <Users className="w-12 h-12 text-blue-600 mx-auto mb-4" />
+          <Users className="w-12 h-12 text-primary mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-gray-900 mb-3">
             Persönliches Video-Feedback
           </h3>
@@ -51,7 +51,7 @@ export const VbHomePage: React.FC = () => {
         </div>
 
         <div className="bg-white p-8 rounded-lg shadow-sm text-center">
-          <Award className="w-12 h-12 text-blue-600 mx-auto mb-4" />
+          <Award className="w-12 h-12 text-primary mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-gray-900 mb-3">
             Flexible Pakete
           </h3>
@@ -68,7 +68,7 @@ export const VbHomePage: React.FC = () => {
         </h2>
         <div className="grid md:grid-cols-4 gap-6">
           <div className="text-center">
-            <div className="bg-blue-600 text-white rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-4 text-xl font-bold">
+            <div className="bg-primary text-white rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-4 text-xl font-bold">
               1
             </div>
             <h4 className="font-semibold text-gray-900 mb-2">Paket kaufen</h4>
@@ -77,7 +77,7 @@ export const VbHomePage: React.FC = () => {
             </p>
           </div>
           <div className="text-center">
-            <div className="bg-blue-600 text-white rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-4 text-xl font-bold">
+            <div className="bg-primary text-white rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-4 text-xl font-bold">
               2
             </div>
             <h4 className="font-semibold text-gray-900 mb-2">Sachverhalt anfordern</h4>
@@ -86,7 +86,7 @@ export const VbHomePage: React.FC = () => {
             </p>
           </div>
           <div className="text-center">
-            <div className="bg-blue-600 text-white rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-4 text-xl font-bold">
+            <div className="bg-primary text-white rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-4 text-xl font-bold">
               3
             </div>
             <h4 className="font-semibold text-gray-900 mb-2">Lösung einreichen</h4>
@@ -95,7 +95,7 @@ export const VbHomePage: React.FC = () => {
             </p>
           </div>
           <div className="text-center">
-            <div className="bg-blue-600 text-white rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-4 text-xl font-bold">
+            <div className="bg-primary text-white rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-4 text-xl font-bold">
               4
             </div>
             <h4 className="font-semibold text-gray-900 mb-2">Feedback erhalten</h4>
