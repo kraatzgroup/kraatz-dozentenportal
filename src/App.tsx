@@ -151,8 +151,8 @@ function App() {
           </div>
         }>
         <Routes>
-          {/* Root redirect to unified dashboard */}
-          <Route path="/" element={<Navigate to="/klausurenbesprechung" replace />} />
+          {/* Root redirect: VB users to klausurenbesprechung, everyone else to dashboard */}
+          <Route path="/" element={<Navigate to={isVideobesprechung ? "/klausurenbesprechung" : "/dashboard"} replace />} />
 
           {/* Legacy route redirects */}
           <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
