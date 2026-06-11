@@ -2,12 +2,13 @@ import { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthComponent } from './components/AuthComponent';
 import { VbLayout } from './components/vb/VbLayout';
-import { VbHomePage } from './components/vb-chat/VbHomePage';
 import { VbLandingRedirect } from './components/vb-chat/VbLandingRedirect';
 import { VbPackagesPage } from './components/vb-chat/VbPackagesPage';
 import { VbCaseStudyDashboard } from './components/vb-chat/VbCaseStudyDashboard';
 import { VbCaseStudyRequest } from './components/vb-chat/VbCaseStudyRequest';
 import { VbChatLayout } from './components/vb-chat/VbChatLayout';
+import { VbResultsPage } from './components/vb-chat/VbResultsPage';
+import { VbMasterclassPage } from './components/vb-chat/VbMasterclassPage';
 
 // Lazy load heavy components
 const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -162,9 +163,17 @@ function App() {
 
           {/* VB pages - using VbLayout wrapper */}
           <Route path="/klausurenbesprechung" element={<VbLayout><VbLandingRedirect /></VbLayout>} />
-          <Route path="/klausurenbesprechung/packages" element={<VbLayout><VbPackagesPage /></VbLayout>} />
+          <Route path="/klausurenbesprechung/pakete" element={<VbLayout><VbPackagesPage /></VbLayout>} />
           <Route path="/klausurenbesprechung/dashboard" element={<VbLayout><VbCaseStudyDashboard /></VbLayout>} />
-          <Route path="/klausurenbesprechung/case-studies/request" element={<VbLayout><VbCaseStudyRequest /></VbLayout>} />
+          <Route path="/klausurenbesprechung/sachverhalt-anfordern" element={<VbLayout><VbCaseStudyRequest /></VbLayout>} />
+          <Route path="/klausurenbesprechung/ergebnisse" element={<VbLayout><VbResultsPage /></VbLayout>} />
+          <Route path="/klausurenbesprechung/klausuren-masterclass" element={<VbLayout><VbMasterclassPage /></VbLayout>} />
+          <Route path="/klausurenbesprechung/einstellungen" element={<VbLayout><Settings hideChrome /></VbLayout>} />
+          {/* Legacy English VB route redirects */}
+          <Route path="/klausurenbesprechung/packages" element={<Navigate to="/klausurenbesprechung/pakete" replace />} />
+          <Route path="/klausurenbesprechung/case-studies/request" element={<Navigate to="/klausurenbesprechung/sachverhalt-anfordern" replace />} />
+          <Route path="/klausurenbesprechung/results" element={<Navigate to="/klausurenbesprechung/ergebnisse" replace />} />
+          <Route path="/klausurenbesprechung/masterclass" element={<Navigate to="/klausurenbesprechung/klausuren-masterclass" replace />} />
           <Route path="/klausurenbesprechung/chat" element={<VbLayout><VbChatLayout /></VbLayout>} />
 
           {/* Unified dashboard - renders correct view based on role */}

@@ -17,7 +17,7 @@ async function migrateData() {
   // First, check which users own case studies in old database
   const { data: caseStudies, error: caseStudyError } = await oldSupabase
     .from('case_study_requests')
-    .select('user_id, id');
+    .select('*');
 
   if (caseStudyError) {
     console.error('Error fetching case studies:', caseStudyError);
@@ -25,6 +25,12 @@ async function migrateData() {
   }
 
   console.log(`Found ${caseStudies.length} case study requests in old database`);
+  
+  // Log first few case studies to see what data we have
+  console.log('Sample case studies from old database:');
+  caseStudies.slice(0, 3).forEach(cs => {
+    console.log(`  - ID: ${cs.id}, Status: ${cs.status}, Legal: ${cs.legal_area}, Sub: ${cs.sub_area}, Focus: ${cs.focus_area}, Video: ${cs.video_correction_url}`);
+  });
 
   // Get unique user IDs
   const uniqueUserIds = [...new Set(caseStudies.map(cs => cs.user_id))];
@@ -148,9 +154,9 @@ async function migrateData() {
         profile_id: newUserId,  // Map user_id to profile_id
         case_study_number: caseStudy.case_study_number,
         study_phase: caseStudy.study_phase || 'klausur',  // Default to 'klausur' if null
-        legal_area: caseStudy.legal_area || 'Allgemein',  // Default if null
-        sub_area: caseStudy.sub_area || 'Allgemein',  // Default if null
-        focus_area: caseStudy.focus_area || 'Allgemein',  // Default if null
+        legal_area: caseStudy.legal_area,
+        sub_area: caseStudy.sub_area,
+        focus_area: caseStudy.focus_area,
         status: caseStudy.status,
         pdf_url: caseStudy.pdf_url,
         case_study_material_url: caseStudy.case_study_material_url,

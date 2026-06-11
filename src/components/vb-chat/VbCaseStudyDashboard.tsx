@@ -801,7 +801,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
             </p>
             {availableSlots > 0 && (
               <Link
-                to="/klausurenbesprechung/case-studies/request"
+                to="/klausurenbesprechung/sachverhalt-anfordern"
                 className="bg-primary text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base w-full sm:w-auto"
               >
                 <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -813,7 +813,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
             <div className="text-center py-4">
               <p className="text-gray-600 mb-4">Keine verfügbaren Credits.</p>
               <Link
-                to="/klausurenbesprechung/packages"
+                to="/klausurenbesprechung/pakete"
                 className="bg-primary text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base"
               >
                 <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
@@ -824,16 +824,16 @@ export const VbCaseStudyDashboard: React.FC = () => {
         </div>
 
         {/* 2. Sachverhalt angefordert */}
+        {requestedCases.length > 0 && (
         <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 sm:mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Sachverhalt angefordert</h2>
             <div className="flex items-center space-x-2">
-              <Clock className="w-5 h-5 text-yellow-600" />
-              <span className="font-bold text-yellow-600">{requestedCases.length}</span>
+              <Clock className="w-5 h-5 text-primary" />
+              <span className="font-bold text-primary">{requestedCases.length}</span>
             </div>
           </div>
-          {requestedCases.length > 0 ? (
-            <div className="space-y-3">
+          <div className="space-y-3">
               {requestedCases.map((caseStudy, index) => (
                 <div 
                   key={caseStudy.id} 
@@ -847,7 +847,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <span className="bg-primary text-white text-xs font-bold px-2 py-1 rounded whitespace-nowrap">
+                        <span className="bg-blue-100 text-blue-600 text-xs font-semibold px-2 py-1 rounded whitespace-nowrap">
                           #{index + 1}
                         </span>
                         <h3 className="font-medium text-gray-900 text-sm sm:text-base truncate">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
@@ -862,12 +862,11 @@ export const VbCaseStudyDashboard: React.FC = () => {
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="text-gray-600 text-center py-4">Keine angeforderten Sachverhalte.</p>
-          )}
         </div>
+        )}
 
         {/* 3. Sachverhalt verfügbar */}
+        {materialsReadyCases.length > 0 && (
         <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 sm:mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Sachverhalt verfügbar</h2>
@@ -876,8 +875,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
               <span className="font-bold text-primary">{materialsReadyCases.length}</span>
             </div>
           </div>
-          {materialsReadyCases.length > 0 ? (
-            <div className="space-y-3">
+          <div className="space-y-3">
               {materialsReadyCases.map((caseStudy) => (
                 <div 
                   key={caseStudy.id} 
@@ -890,7 +888,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                 >
                   <div className="mb-3">
                     <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className="bg-primary text-white text-xs font-bold px-2 py-1 rounded whitespace-nowrap">
+                      <span className="bg-blue-100 text-blue-600 text-xs font-semibold px-2 py-1 rounded whitespace-nowrap">
                         #{caseStudy.case_study_number}
                       </span>
                       <h3 className="font-medium text-gray-900 text-sm sm:text-base break-words">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
@@ -943,22 +941,20 @@ export const VbCaseStudyDashboard: React.FC = () => {
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="text-gray-600 text-center py-4">Keine verfügbaren Sachverhalte.</p>
-          )}
         </div>
+        )}
 
         {/* 4. Upload Bearbeitung */}
+        {(materialsReadyCases.length > 0 || submittedCases.length > 0) && (
         <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 sm:mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Upload Bearbeitung</h2>
             <div className="flex items-center space-x-2">
-              <Upload className="w-5 h-5 text-orange-600" />
-              <span className="font-bold text-orange-600">{materialsReadyCases.length + submittedCases.length}</span>
+              <Upload className="w-5 h-5 text-primary" />
+              <span className="font-bold text-primary">{materialsReadyCases.length + submittedCases.length}</span>
             </div>
           </div>
-          {(materialsReadyCases.length > 0 || submittedCases.length > 0) ? (
-            <div className="space-y-4">
+          <div className="space-y-4">
               {/* Ready for upload cases */}
               {materialsReadyCases.map((caseStudy) => (
                 <div 
@@ -972,7 +968,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                 >
                   <div className="mb-3">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="bg-primary text-white text-xs font-bold px-2 py-1 rounded">
+                      <span className="bg-blue-100 text-blue-600 text-xs font-semibold px-2 py-1 rounded">
                         #{caseStudy.case_study_number}
                       </span>
                       <h3 className="font-medium text-gray-900">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
@@ -1072,7 +1068,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                 >
                   <div className="mb-3">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="bg-primary text-white text-xs font-bold px-2 py-1 rounded">
+                      <span className="bg-blue-100 text-blue-600 text-xs font-semibold px-2 py-1 rounded">
                         #{caseStudy.case_study_number}
                       </span>
                       <h3 className="font-medium text-gray-900">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
@@ -1102,19 +1098,18 @@ export const VbCaseStudyDashboard: React.FC = () => {
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="text-gray-600 text-center py-4">Keine Klausuren bereit für Upload.</p>
-          )}
         </div>
+        )}
 
         {/* 5. Video-Klausurenkorrektur verfügbar */}
+        {completedCases.length > 0 && (
         <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 sm:mb-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Video-Klausurenkorrektur verfügbar</h2>
               <div className="flex items-center space-x-2 sm:hidden">
-                <Video className="w-5 h-5 text-green-600" />
-                <span className="font-bold text-green-600">{filteredCompletedCases.length}</span>
+                <Video className="w-5 h-5 text-primary" />
+                <span className="font-bold text-primary">{filteredCompletedCases.length}</span>
               </div>
             </div>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
@@ -1132,8 +1127,8 @@ export const VbCaseStudyDashboard: React.FC = () => {
                 </select>
               </div>
               <div className="hidden sm:flex items-center space-x-2">
-                <Video className="w-5 h-5 text-green-600" />
-                <span className="font-bold text-green-600">{filteredCompletedCases.length}</span>
+                <Video className="w-5 h-5 text-primary" />
+                <span className="font-bold text-primary">{filteredCompletedCases.length}</span>
               </div>
             </div>
           </div>
@@ -1143,11 +1138,11 @@ export const VbCaseStudyDashboard: React.FC = () => {
               {/* Neue Video-Klausurenkorrekturen */}
               {newCorrections.length > 0 && (
                 <div className="mb-6">
-                  <div className="mb-4 p-4 bg-green-100 border border-green-300 rounded-lg">
+                  <div className="mb-4 p-4 bg-blue-100 border border-blue-300 rounded-lg">
                     <div className="flex items-center">
-                      <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
+                      <CheckCircle className="w-5 h-5 text-primary mr-2" />
                       <div>
-                        <h3 className="text-sm font-semibold text-green-800">🎉 Eine neue Klausur-Korrektur ist ab sofort für Dich verfügbar.</h3>
+                        <h3 className="text-sm font-semibold text-blue-800">🎉 Eine neue Klausur-Korrektur ist ab sofort für Dich verfügbar.</h3>
                       </div>
                     </div>
                   </div>
@@ -1177,7 +1172,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                           >
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="bg-primary text-white text-xs font-bold px-2 py-1 rounded">
+                                <span className="bg-blue-100 text-blue-600 text-xs font-semibold px-2 py-1 rounded">
                                   #{caseStudy.case_study_number}
                                 </span>
                                 <h3 className="font-medium text-gray-900 text-sm sm:text-base">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
@@ -1232,6 +1227,22 @@ export const VbCaseStudyDashboard: React.FC = () => {
                             </div>
                           </div>
                           
+                          {/* Video ansehen - Always Visible */}
+                          {caseStudy.video_correction_url && (
+                            <div className="mt-3">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  openVideoModal(caseStudy.video_correction_url!, caseStudy.id)
+                                }}
+                                className="flex items-center justify-center gap-1 px-3 py-2 sm:py-1 bg-primary text-white text-xs rounded-lg hover:bg-primary/90 transition-colors w-full sm:w-auto"
+                              >
+                                <Video className="w-3 h-3" />
+                                Video ansehen
+                              </button>
+                            </div>
+                          )}
+
                           {/* Rating Button - Always Visible */}
                           <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                             {ratings.has(caseStudy.id) ? (
@@ -1256,7 +1267,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                                   e.stopPropagation()
                                   openRatingModal(caseStudy.id)
                                 }}
-                                className="flex items-center justify-center gap-1 px-3 py-2 sm:py-1 bg-primary text-white text-xs rounded-lg hover:bg-primary/90 transition-colors w-full sm:w-auto"
+                                className="flex items-center justify-center gap-1 px-3 py-2 sm:py-1 bg-transparent border border-blue-400 text-blue-500 text-xs rounded-lg hover:bg-blue-50 transition-colors w-full sm:w-auto"
                               >
                                 <Star className="w-3 h-3" />
                                 Jetzt bewerten
@@ -1510,7 +1521,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                           >
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="bg-primary text-white text-xs font-bold px-2 py-1 rounded">
+                                <span className="bg-blue-100 text-blue-600 text-xs font-semibold px-2 py-1 rounded">
                                   #{caseStudy.case_study_number}
                                 </span>
                                 <h3 className="font-medium text-gray-900 text-sm sm:text-base">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
@@ -1565,6 +1576,22 @@ export const VbCaseStudyDashboard: React.FC = () => {
                             </div>
                           </div>
                           
+                          {/* Video ansehen - Always Visible */}
+                          {caseStudy.video_correction_url && (
+                            <div className="mt-3">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  openVideoModal(caseStudy.video_correction_url!, caseStudy.id)
+                                }}
+                                className="flex items-center justify-center gap-1 px-3 py-2 sm:py-1 bg-primary text-white text-xs rounded-lg hover:bg-primary/90 transition-colors w-full sm:w-auto"
+                              >
+                                <Video className="w-3 h-3" />
+                                Video ansehen
+                              </button>
+                            </div>
+                          )}
+
                           {/* Rating Button - Always Visible */}
                           <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                             {ratings.has(caseStudy.id) ? (
@@ -1589,7 +1616,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                                   e.stopPropagation()
                                   openRatingModal(caseStudy.id)
                                 }}
-                                className="flex items-center justify-center gap-1 px-3 py-2 sm:py-1 bg-primary text-white text-xs rounded-lg hover:bg-primary/90 transition-colors w-full sm:w-auto"
+                                className="flex items-center justify-center gap-1 px-3 py-2 sm:py-1 bg-transparent border border-blue-400 text-blue-500 text-xs rounded-lg hover:bg-blue-50 transition-colors w-full sm:w-auto"
                               >
                                 <Star className="w-3 h-3" />
                                 Jetzt bewerten
@@ -1878,6 +1905,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
             </div>
           )}
         </div>
+        )}
 
         {/* Video Modal */}
         {videoModalOpen && currentVideoUrl && (

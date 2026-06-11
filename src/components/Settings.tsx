@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase';
 import { ProfilePicture } from './ProfilePicture';
 import { Logo } from './Logo';
 
-export function Settings() {
+export function Settings({ hideChrome = false }: { hideChrome?: boolean } = {}) {
   const navigate = useNavigate();
   const { user, isDozent } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
@@ -168,7 +168,8 @@ export function Settings() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className={hideChrome ? '' : 'min-h-screen bg-background'}>
+        {!hideChrome && (
         <nav className="bg-white shadow-sm">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between h-16">
@@ -181,6 +182,7 @@ export function Settings() {
             </div>
           </div>
         </nav>
+        )}
         <div className="max-w-3xl mx-auto py-6 sm:px-6 lg:px-8">
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -191,7 +193,8 @@ export function Settings() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className={hideChrome ? '' : 'min-h-screen bg-background'}>
+      {!hideChrome && (
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
@@ -204,6 +207,7 @@ export function Settings() {
           </div>
         </div>
       </nav>
+      )}
 
       <div className="max-w-3xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">

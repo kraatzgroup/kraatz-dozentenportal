@@ -172,7 +172,7 @@ export const VbCaseStudyRequest: React.FC = () => {
               disabled={loading || accountCredits < 1}
               className="flex-1 bg-primary text-white px-6 py-3 rounded-lg hover:bg-primary/90 focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {loading ? 'Wird gesendet...' : `Sachverhalt anfordern (1 Klausur)`}
+              {loading ? 'Wird gesendet...' : 'Sachverhalt anfordern'}
             </button>
           </div>
         </form>
