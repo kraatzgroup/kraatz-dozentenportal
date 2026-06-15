@@ -9,6 +9,7 @@ import { VbCaseStudyRequest } from './components/vb-chat/VbCaseStudyRequest';
 import { VbChatLayout } from './components/vb-chat/VbChatLayout';
 import { VbResultsPage } from './components/vb-chat/VbResultsPage';
 import { VbMasterclassPage } from './components/vb-chat/VbMasterclassPage';
+import { VbKorrekturDashboard } from './components/vb-chat/VbKorrekturDashboard';
 
 // Lazy load heavy components
 const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -168,6 +169,16 @@ function App() {
           <Route path="/klausurenbesprechung/sachverhalt-anfordern" element={<VbLayout><VbCaseStudyRequest /></VbLayout>} />
           <Route path="/klausurenbesprechung/ergebnisse" element={<VbLayout><VbResultsPage /></VbLayout>} />
           <Route path="/klausurenbesprechung/klausuren-masterclass" element={<VbLayout><VbMasterclassPage /></VbLayout>} />
+          <Route
+            path="/klausurenbesprechung/korrektur"
+            element={
+              (isAdmin || additionalRoles?.includes('videobesprechung_dozent')) ? (
+                <VbLayout><VbKorrekturDashboard /></VbLayout>
+              ) : (
+                <Navigate to="/klausurenbesprechung" replace />
+              )
+            }
+          />
           <Route path="/klausurenbesprechung/einstellungen" element={<VbLayout><Settings hideChrome /></VbLayout>} />
           {/* Legacy English VB route redirects */}
           <Route path="/klausurenbesprechung/packages" element={<Navigate to="/klausurenbesprechung/pakete" replace />} />

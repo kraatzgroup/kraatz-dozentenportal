@@ -99,6 +99,15 @@ export const VbHeader: React.FC = () => {
                   </Link>
                 </>
               )}
+              {user && (additionalRoles?.includes('videobesprechung_dozent')) && (
+                <Link
+                  to="/klausurenbesprechung/korrektur"
+                  className="text-gray-600 hover:text-primary transition-colors flex items-center gap-1 text-sm sm:text-base font-medium"
+                >
+                  <GraduationCap className="w-4 h-4 text-primary" />
+                  <span>Korrektur</span>
+                </Link>
+              )}
             </nav>
           </div>
 

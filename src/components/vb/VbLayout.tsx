@@ -11,8 +11,12 @@ export const VbLayout: React.FC<VbLayoutProps> = ({ children }) => {
   const additionalRoles = useAuthStore(state => state.additionalRoles);
   const isAdmin = useAuthStore(state => state.isAdmin);
 
-  // Only users tagged with the 'videobesprechung' role (or admins) may access VB pages
-  const hasAccess = isAdmin || additionalRoles?.includes('videobesprechung');
+  // Users tagged with the 'videobesprechung' (student) or 'videobesprechung_dozent'
+  // (corrector) role, or admins, may access VB pages.
+  const hasAccess =
+    isAdmin ||
+    additionalRoles?.includes('videobesprechung') ||
+    additionalRoles?.includes('videobesprechung_dozent');
   if (!hasAccess) {
     return <Navigate to="/dashboard" replace />;
   }
