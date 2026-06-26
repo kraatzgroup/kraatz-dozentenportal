@@ -62,7 +62,7 @@ function DroppablePlaceholder({ sectionId, index }: { sectionId: string; index: 
   );
 }
 
-function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdit, onDelete, canEdit, isDownloadingZip, selectedFolders, onToggleSelection, viewMode }: {
+export function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdit, onDelete, canEdit, isDownloadingZip, selectedFolders, onToggleSelection, viewMode }: {
   folder: MaterialFolder;
   onOpen: (id: string) => void;
   onDownload: (id: string, name: string) => void;
@@ -578,15 +578,6 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     setInternalShowEliteKleingruppe(val);
   };
 
-  console.log('🔍 DozentenDashboard Routing Debug:', {
-    urlSubTab,
-    externalShowEliteKleingruppe,
-    internalShowEliteKleingruppe,
-    showEliteKleingruppe,
-    ekSubTab,
-    isMaterial,
-    user: user?.email
-  });
   const { addToast } = useToastStore();
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -1120,11 +1111,11 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     fetchBulletinPosts();
     fetchWidgets();
     fetchSections();
-    // Materialien nur laden, wenn sie benötigt werden
+    // Materialien und Ordner nur laden, wenn sie benötigt werden (unterrichtsmaterialien)
     if (showMaterialsView) {
       fetchMaterials();
+      fetchFolders();
     }
-    fetchFolders();
     checkEliteKleingruppeDozent();
   }, [showMaterialsView, dozentLegalAreas]);
 
@@ -1223,6 +1214,12 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   };
 
   const fetchFolders = async () => {
+    // Only fetch folders for materials view - skip if not in materials view
+    if (!showMaterialsView) {
+      setFolders([]);
+      return undefined;
+    }
+
     // Paginate to bypass Supabase's default 1000-row limit
     let allFolders: any[] = [];
     let from = 0;
@@ -1251,7 +1248,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
       from += batchSize;
     }
 
-    console.log('Total folders loaded:', allFolders.length);
+    console.log('Total material folders loaded:', allFolders.length);
 
     // For Dozenten, filter by legal areas using folder hierarchy
     const shouldFilterByLegalArea = !isAdmin && !isBuchhaltung && !isMaterial && dozentLegalAreas.length > 0;

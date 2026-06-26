@@ -10,6 +10,7 @@ import { VbChatLayout } from './components/vb-chat/VbChatLayout';
 import { VbResultsPage } from './components/vb-chat/VbResultsPage';
 import { VbMasterclassPage } from './components/vb-chat/VbMasterclassPage';
 import { VbKorrekturDashboard } from './components/vb-chat/VbKorrekturDashboard';
+import { VbKorrekturLayout } from './components/vb-chat/VbKorrekturLayout';
 
 // Lazy load heavy components
 const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -50,52 +51,84 @@ function App() {
   const { setUser, user, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isTeilnehmer, isMaterial, userRole, isSettingUser, additionalRoles } = useAuthStore();
   const { isPreviewMode, previewedRole, togglePreview, setPreviewedRole } = usePreviewStore();
   const [appLoading, setAppLoading] = useState(true);
+  const [appReady, setAppReady] = useState(false);
 
   // Check if user is a videobesprechung user
   const isVideobesprechung = additionalRoles?.includes('videobesprechung');
 
   useEffect(() => {
-    // Get initial session
-    const getInitialSession = async () => {
-      // Don't check session if user is already set
-      if (user) {
-        console.log('App: User already set, skipping initial session check');
+    // Global loading: Check session and profile before routing
+    const initializeApp = async () => {
+      console.log('🚀 App: Initializing...');
+      
+      // Get session
+      const { data: { session }, error } = await supabase.auth.getSession();
+      console.log('🔑 App: Session check:', session ? 'Found' : 'None');
+      
+      if (error) {
+        console.error('❌ App: Session error:', error);
         setAppLoading(false);
+        setAppReady(true);
         return;
       }
 
-      console.log('App: Getting initial session...');
-      const { data: { session }, error } = await supabase.auth.getSession();
-      console.log('App: Initial session:', session ? 'Found' : 'None');
-      if (error) {
-        console.error('App: Error getting initial session:', error);
-      }
       if (session?.user) {
-        console.log('App: Setting user from initial session:', session.user.email);
+        console.log('👤 App: Setting user:', session.user.email);
         setUser(session.user);
+        
+        // Wait for profile to be loaded
+        let attempts = 0;
+        const maxAttempts = 50; // 5 seconds max
+        
+        const checkProfile = setInterval(() => {
+          attempts++;
+          const { userRole, additionalRoles, isSettingUser } = useAuthStore.getState();
+          
+          console.log(`⏳ App: Profile check attempt ${attempts}/${maxAttempts}`, { userRole, isSettingUser });
+          
+          if (!isSettingUser && userRole !== null) {
+            clearInterval(checkProfile);
+            console.log('✅ App: Profile loaded, performing role check');
+            
+            // Role-based routing
+            if (userRole === 'teilnehmer' && additionalRoles?.includes('videobesprechung')) {
+              console.log('🎯 App: Redirecting videobesprechung participant to /klausurenbesprechung/dashboard');
+              if (window.location.pathname === '/dashboard' || window.location.pathname === '/klausurenbesprechung') {
+                window.history.replaceState({}, '', '/klausurenbesprechung/dashboard');
+              }
+            } else if (userRole === 'teilnehmer' && window.location.pathname === '/dashboard' && !window.location.search.includes('tab=')) {
+              console.log('🎯 App: Redirecting regular participant to /dashboard?tab=dashboard');
+              window.history.replaceState({}, '', '/dashboard?tab=dashboard');
+            }
+            
+            setAppLoading(false);
+            setAppReady(true);
+          } else if (attempts >= maxAttempts) {
+            clearInterval(checkProfile);
+            console.error('❌ App: Profile load timeout');
+            setAppLoading(false);
+            setAppReady(true);
+          }
+        }, 100);
+      } else {
+        console.log('👤 App: No session, showing login');
+        setAppLoading(false);
+        setAppReady(true);
       }
-      setAppLoading(false);
     };
     
-    getInitialSession();
+    initializeApp();
 
+    // Auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      console.log('App: Auth state changed:', _event, session?.user?.email);
-
-      // Don't process if user is already set and this is the same user
+      console.log('🔄 App: Auth state changed:', _event, session?.user?.email);
+      
       if (user && session?.user && user.id === session.user.id && _event !== 'SIGNED_OUT') {
-        console.log('App: User already set, ignoring duplicate auth event');
+        console.log('⏭️ App: User already set, ignoring duplicate auth event');
         return;
       }
+      
       setUser(session?.user ?? null);
-      setAppLoading(false);
-
-      // Redirect participants to dashboard?tab=dashboard if not already there
-      // Check role directly from auth store to avoid hook dependency issues
-      const { isTeilnehmer: currentIsTeilnehmer } = useAuthStore.getState();
-      if (currentIsTeilnehmer && window.location.pathname === '/dashboard' && !window.location.search.includes('tab=')) {
-        window.history.replaceState({}, '', '/dashboard?tab=dashboard');
-      }
     });
 
     return () => subscription.unsubscribe();
@@ -104,7 +137,7 @@ function App() {
   console.log('App: Current user:', user?.email, 'isAdmin:', isAdmin, 'isPreviewMode:', isPreviewMode);
 
   // Show loading while app is initializing or user profile is being loaded
-  if (appLoading || isSettingUser) {
+  if (appLoading || !appReady) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="bg-white p-8 rounded-lg shadow-md">
@@ -153,8 +186,8 @@ function App() {
           </div>
         }>
         <Routes>
-          {/* Root redirect: VB users to klausurenbesprechung, everyone else to dashboard */}
-          <Route path="/" element={<Navigate to={isVideobesprechung ? "/klausurenbesprechung" : "/dashboard"} replace />} />
+          {/* Root redirect: Auth check first */}
+          <Route path="/" element={!user ? <Navigate to="/login" replace /> : <Navigate to={isVideobesprechung ? "/klausurenbesprechung/dashboard" : "/dashboard"} replace />} />
 
           {/* Legacy route redirects */}
           <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
@@ -162,36 +195,43 @@ function App() {
           <Route path="/vertrieb" element={<Navigate to="/dashboard" replace />} />
           <Route path="/elite-kleingruppe" element={<Navigate to="/dashboard" replace />} />
 
+          {/* Login route */}
+          <Route path="/login" element={<AuthComponent />} />
+
           {/* VB pages - using VbLayout wrapper */}
-          <Route path="/klausurenbesprechung" element={<VbLayout><VbLandingRedirect /></VbLayout>} />
-          <Route path="/klausurenbesprechung/pakete" element={<VbLayout><VbPackagesPage /></VbLayout>} />
-          <Route path="/klausurenbesprechung/dashboard" element={<VbLayout><VbCaseStudyDashboard /></VbLayout>} />
-          <Route path="/klausurenbesprechung/sachverhalt-anfordern" element={<VbLayout><VbCaseStudyRequest /></VbLayout>} />
-          <Route path="/klausurenbesprechung/ergebnisse" element={<VbLayout><VbResultsPage /></VbLayout>} />
-          <Route path="/klausurenbesprechung/klausuren-masterclass" element={<VbLayout><VbMasterclassPage /></VbLayout>} />
+          <Route path="/klausurenbesprechung" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbLandingRedirect /></VbLayout>} />
+          <Route path="/klausurenbesprechung/pakete" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbPackagesPage /></VbLayout>} />
+          <Route path="/klausurenbesprechung/dashboard" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbCaseStudyDashboard /></VbLayout>} />
+          <Route path="/klausurenbesprechung/sachverhalt-anfordern" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbCaseStudyRequest /></VbLayout>} />
+          <Route path="/klausurenbesprechung/ergebnisse" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbResultsPage /></VbLayout>} />
+          <Route path="/klausurenbesprechung/klausuren-masterclass" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbMasterclassPage /></VbLayout>} />
           <Route
             path="/klausurenbesprechung/korrektur"
             element={
-              (isAdmin || additionalRoles?.includes('videobesprechung_dozent')) ? (
-                <VbLayout><VbKorrekturDashboard /></VbLayout>
+              !user ? (
+                <Navigate to="/login" replace />
+              ) : (isAdmin || additionalRoles?.includes('videobesprechung_dozent')) ? (
+                <VbKorrekturLayout><VbKorrekturDashboard /></VbKorrekturLayout>
               ) : (
                 <Navigate to="/klausurenbesprechung" replace />
               )
             }
           />
-          <Route path="/klausurenbesprechung/einstellungen" element={<VbLayout><Settings hideChrome /></VbLayout>} />
+          <Route path="/klausurenbesprechung/einstellungen" element={!user ? <Navigate to="/login" replace /> : <VbLayout><Settings hideChrome /></VbLayout>} />
           {/* Legacy English VB route redirects */}
-          <Route path="/klausurenbesprechung/packages" element={<Navigate to="/klausurenbesprechung/pakete" replace />} />
-          <Route path="/klausurenbesprechung/case-studies/request" element={<Navigate to="/klausurenbesprechung/sachverhalt-anfordern" replace />} />
-          <Route path="/klausurenbesprechung/results" element={<Navigate to="/klausurenbesprechung/ergebnisse" replace />} />
-          <Route path="/klausurenbesprechung/masterclass" element={<Navigate to="/klausurenbesprechung/klausuren-masterclass" replace />} />
-          <Route path="/klausurenbesprechung/chat" element={<VbLayout><VbChatLayout /></VbLayout>} />
+          <Route path="/klausurenbesprechung/packages" element={!user ? <Navigate to="/login" replace /> : <Navigate to="/klausurenbesprechung/pakete" replace />} />
+          <Route path="/klausurenbesprechung/case-studies/request" element={!user ? <Navigate to="/login" replace /> : <Navigate to="/klausurenbesprechung/sachverhalt-anfordern" replace />} />
+          <Route path="/klausurenbesprechung/results" element={!user ? <Navigate to="/login" replace /> : <Navigate to="/klausurenbesprechung/ergebnisse" replace />} />
+          <Route path="/klausurenbesprechung/masterclass" element={!user ? <Navigate to="/login" replace /> : <Navigate to="/klausurenbesprechung/klausuren-masterclass" replace />} />
+          <Route path="/klausurenbesprechung/chat" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbChatLayout /></VbLayout>} />
 
           {/* Unified dashboard - renders correct view based on role */}
           <Route
             path="/dashboard"
             element={
-              isMaterial ?
+              !user ? (
+                <Navigate to="/login" replace />
+              ) : isMaterial ?
                 <DozentenDashboard /> :
               isVideobesprechung ?
                 <VbLayout><VbCaseStudyDashboard /></VbLayout> :
@@ -211,7 +251,9 @@ function App() {
           <Route
             path="/dashboard/elite-kleingruppe/:subTab?"
             element={
-              showTeilnehmerView ?
+              !user ? (
+                <Navigate to="/login" replace />
+              ) : showTeilnehmerView ?
                 <EliteKleingruppeDashboard /> :
               isMaterial ?
                 <DozentenDashboard /> :
@@ -221,7 +263,9 @@ function App() {
           <Route
             path="/dashboard/taetigkeitsbericht"
             element={
-              isMaterial ?
+              !user ? (
+                <Navigate to="/login" replace />
+              ) : isMaterial ?
                 <DozentenDashboard /> :
               showTeilnehmerView ?
                 <EliteKleingruppeDashboard /> :
@@ -241,7 +285,9 @@ function App() {
           <Route 
             path="/users" 
             element={
-              showAdminView ? 
+              !user ? (
+                <Navigate to="/login" replace />
+              ) : showAdminView ? 
                 <UserManagement /> : 
                 <Navigate to="/dashboard" replace />
             } 
@@ -249,44 +295,50 @@ function App() {
           <Route 
             path="/dozent/:id" 
             element={
-              (showAdminView || showBuchhaltungView || showVerwaltungView || showVertriebView) ? 
+              !user ? (
+                <Navigate to="/login" replace />
+              ) : (showAdminView || showBuchhaltungView || showVerwaltungView || showVertriebView) ? 
                 <DozentDetail /> : 
                 <Navigate to="/dashboard" replace />
             } 
           />
 
           {/* Common routes */}
-          <Route path="/messages" element={<Chat />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/feedback-elite-25" element={<TypeformSurvey />} />
+          <Route path="/messages" element={!user ? <Navigate to="/login" replace /> : <Chat />} />
+          <Route path="/settings" element={!user ? <Navigate to="/login" replace /> : <Settings />} />
+          <Route path="/feedback-elite-25" element={!user ? <Navigate to="/login" replace /> : <TypeformSurvey />} />
           <Route
             path="/feedback"
             element={
-              (showAdminView || showBuchhaltungView || showVerwaltungView) ?
+              !user ? (
+                <Navigate to="/login" replace />
+              ) : (showAdminView || showBuchhaltungView || showVerwaltungView) ?
                 <FeedbackAdmin /> :
                 <Navigate to="/dashboard" replace />
             }
           />
 
           {/* Dozenten-Ordner Routen */}
-          <Route path="/rechnungen/:id" element={<DozentenRechnungen />} />
-          <Route path="/taetigkeitsbericht/:id" element={<DozentenTaetigkeitsbericht />} />
-          <Route path="/teilnehmer/:id" element={<DozentenTeilnehmer />} />
-          <Route path="/probestunden/:id" element={<DozentenProbestunden />} />
-          <Route path="/tutorials" element={<DozentenTutorials />} />
-          <Route path="/tutorials-dozenten-portal" element={<DozentenPortalTutorials />} />
+          <Route path="/rechnungen/:id" element={!user ? <Navigate to="/login" replace /> : <DozentenRechnungen />} />
+          <Route path="/taetigkeitsbericht/:id" element={!user ? <Navigate to="/login" replace /> : <DozentenTaetigkeitsbericht />} />
+          <Route path="/teilnehmer/:id" element={!user ? <Navigate to="/login" replace /> : <DozentenTeilnehmer />} />
+          <Route path="/probestunden/:id" element={!user ? <Navigate to="/login" replace /> : <DozentenProbestunden />} />
+          <Route path="/tutorials" element={!user ? <Navigate to="/login" replace /> : <DozentenTutorials />} />
+          <Route path="/tutorials-dozenten-portal" element={!user ? <Navigate to="/login" replace /> : <DozentenPortalTutorials />} />
           
           <Route 
             path="/integrationen" 
             element={
-              (showAdminView || showVerwaltungView || showVertriebView) ? 
+              !user ? (
+                <Navigate to="/login" replace />
+              ) : (showAdminView || showVerwaltungView || showVertriebView) ? 
                 <IntegrationsTab /> : 
                 <Navigate to="/dashboard" replace />
             } 
           />
 
           {/* Catch-all redirect */}
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={!user ? <Navigate to="/login" replace /> : <Navigate to="/dashboard" replace />} />
         </Routes>
         </Suspense>
         <Footer />

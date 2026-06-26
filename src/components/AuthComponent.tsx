@@ -27,11 +27,20 @@ export function AuthComponent() {
     setSignInLoading(true);
 
     try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email: signInEmail,
         password: signInPassword,
       });
+      
       if (signInError) throw signInError;
+      
+      // Save session to browser storage
+      if (data.session) {
+        console.log('Session saved to browser storage');
+        // Supabase automatically saves the session to localStorage
+      }
+      
+      setSuccessMessage('Erfolgreich angemeldet!');
     } catch (err: any) {
       console.error('Sign in error:', err);
       if (err?.message?.toLowerCase().includes('invalid login credentials')) {

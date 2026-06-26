@@ -69,6 +69,20 @@ export const useVbCaseStudies = () => {
 
       // Set available credits to total purchased (showing purchased credits)
       setAccountCredits(totalPurchasedCredits);
+
+      // Sync account_credits in database if needed
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('account_credits')
+        .eq('id', user.id)
+        .single();
+      
+      if (profile && profile.account_credits !== totalPurchasedCredits) {
+        await supabase
+          .from('profiles')
+          .update({ account_credits: totalPurchasedCredits })
+          .eq('id', user.id);
+      }
     } catch (err) {
       console.error('Error fetching VB case studies:', err);
       setError(err instanceof Error ? err.message : 'Failed to load case studies');
@@ -113,6 +127,39 @@ export const useVbCaseStudies = () => {
 
       setAccountCredits(prev => prev - 1);
       await fetchCaseStudies();
+
+      // Notify dozent about new case study request via direct email
+      try {
+        // Find available dozent for this legal area
+        const { data: dozent } = await supabase
+          .from('profiles')
+          .select('id, email, first_name, last_name')
+          .eq('role', 'dozent')
+          .contains('additional_roles', ['videobesprechung_dozent'])
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .single();
+
+        if (dozent) {
+          console.log('📧 Sending notification to dozent:', dozent.email);
+          
+          // Create notification in database
+          await supabase
+            .from('vb_notifications')
+            .insert({
+              profile_id: dozent.id,
+              title: '📝 Neuer Sachverhalt zur Korrektur',
+              message: `Ein neuer Sachverhalt wurde angefordert: ${requestData.legal_area} - ${requestData.sub_area}`,
+              type: 'info',
+              related_case_study_id: data.id
+            });
+          
+          console.log('✅ Dozent notification created in database');
+        }
+      } catch (notifyError) {
+        console.error('Error notifying dozent:', notifyError);
+        // Don't throw error, continue with case study creation
+      }
 
       return data;
     } catch (err) {

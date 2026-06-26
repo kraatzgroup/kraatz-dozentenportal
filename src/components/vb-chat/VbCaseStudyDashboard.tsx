@@ -112,6 +112,8 @@ export const VbCaseStudyDashboard: React.FC = () => {
   const [submissions, setSubmissions] = useState<Map<string, {grade: number | null, grade_text: string | null}>>(new Map())
   const [legalAreaFilter, setLegalAreaFilter] = useState<string>('all')
   const [availableCredits, setAvailableCredits] = useState<number>(0)
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 5
 
   // Track video view
   const handleVideoView = useCallback(async (caseStudyId: string) => {
@@ -757,6 +759,25 @@ export const VbCaseStudyDashboard: React.FC = () => {
   const newCorrections = filteredCompletedCases.filter(cs => !cs.correction_viewed_at)
   const viewedCorrections = filteredCompletedCases.filter(cs => cs.correction_viewed_at)
 
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredCompletedCases.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedCompletedCases = filteredCompletedCases.slice(startIndex, endIndex)
+  
+  // Calculate new corrections and viewed corrections based on pagination
+  const paginatedNewCorrections = paginatedCompletedCases.filter(cs => 
+    !cs.video_viewed_at && !cs.correction_viewed_at
+  )
+  const paginatedViewedCorrections = paginatedCompletedCases.filter(cs => 
+    cs.video_viewed_at || cs.correction_viewed_at
+  )
+  
+  // Reset to page 1 when filter changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [legalAreaFilter])
+
   // Add debug logging to see what data we have
   useEffect(() => {
     console.log('All case studies:', caseStudies)
@@ -1133,10 +1154,10 @@ export const VbCaseStudyDashboard: React.FC = () => {
             </div>
           </div>
           
-          {filteredCompletedCases.length > 0 ? (
+          {paginatedCompletedCases.length > 0 ? (
             <>
               {/* Neue Video-Klausurenkorrekturen */}
-              {newCorrections.length > 0 && (
+              {paginatedNewCorrections.length > 0 && (
                 <div className="mb-6">
                   <div className="mb-4 p-4 bg-blue-100 border border-blue-300 rounded-lg">
                     <div className="flex items-center">
@@ -1149,7 +1170,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                   
                   <h3 className="text-md font-semibold text-gray-900 mb-3">Neue Video-Klausurenkorrekturen</h3>
                   <div className="space-y-3">
-                    {newCorrections.map((caseStudy, index) => {
+                    {paginatedNewCorrections.map((caseStudy, index) => {
                       const style = getCompletedCaseStyle(caseStudy)
                       return (
                         <div 
@@ -1498,11 +1519,11 @@ export const VbCaseStudyDashboard: React.FC = () => {
               )}
 
               {/* Vergangene Video-Klausurenkorrekturen */}
-              {viewedCorrections.length > 0 && (
+              {paginatedViewedCorrections.length > 0 && (
                 <div className="mb-6">
                   <h3 className="text-md font-semibold text-gray-900 mb-3">Vergangene Video-Klausurenkorrekturen</h3>
                   <div className="space-y-3">
-                    {viewedCorrections.map((caseStudy) => {
+                    {paginatedViewedCorrections.map((caseStudy) => {
                       const style = getCompletedCaseStyle(caseStudy)
                       return (
                         <div 
@@ -1880,6 +1901,29 @@ export const VbCaseStudyDashboard: React.FC = () => {
                       )
                     })}
                   </div>
+                </div>
+              )}
+              
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-6 pt-4 border-t">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  >
+                    ← Zurück
+                  </button>
+                  <span className="text-sm text-gray-600">
+                    Seite {currentPage} von {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  >
+                    Weiter →
+                  </button>
                 </div>
               )}
             </>

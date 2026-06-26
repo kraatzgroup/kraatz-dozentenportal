@@ -48,7 +48,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { subTab: urlSubTab } = useParams<{ subTab?: string }>();
-  const { user, signOut, userRole, isAdmin: isUserAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isDozent, isMaterial } = useAuthStore();
+  const { user, signOut, userRole, isAdmin: isUserAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isDozent, isMaterial, additionalRoles } = useAuthStore();
   const { folders, fetchFolders, createFolder, updateFolder, deleteFolder } = useFolderStore();
   const { files, fetchFiles, uploadFile, deleteFile } = useFileStore();
   const { teilnehmer, fetchTeilnehmer } = useTeilnehmerStore();
@@ -121,6 +121,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       return stored ? new Set(JSON.parse(stored)) : new Set();
     } catch { return new Set(); }
   });
+
+  const [isDashboardLoading, setIsDashboardLoading] = useState(true);
 
   const unreadActivities = recentActivities.filter(a => !dismissedActivityIds.has(a.id));
 
@@ -294,13 +296,18 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   useEffect(() => {
     // Nur laden wenn Benutzer authentifiziert ist
     if (!user) return;
-    
-    // Alle Daten beim Start laden
-    fetchFolders();
-    fetchMessages();
-    fetchTeilnehmer();
-    fetchTrialLessons();
-    fetchMonthlySummary(undefined, selectedYear, selectedMonth);
+
+    // Alle Daten beim Start laden - userId explizit übergeben
+    setIsDashboardLoading(true);
+    Promise.all([
+      fetchFolders(user.id),
+      fetchMessages(),
+      fetchTeilnehmer(),
+      fetchTrialLessons(),
+      fetchMonthlySummary(undefined, selectedYear, selectedMonth)
+    ]).then(() => {
+      setIsDashboardLoading(false);
+    });
 
     // Check if user is an Elite-Kleingruppe dozent
     const checkEliteKleingruppeDozent = async () => {
@@ -1184,6 +1191,16 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
         )}
       </nav>
 
+      {/* Universal Loading Indicator */}
+      {isDashboardLoading && (
+        <div className="fixed inset-0 bg-white bg-opacity-90 flex items-center justify-center z-50">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-gray-600">Dashboard wird geladen...</p>
+          </div>
+        </div>
+      )}
+
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
           {/* Ordner-Sektion für alle Benutzer - am Anfang */}
@@ -1248,7 +1265,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                     selectedFolder?.id === folder.id
                       ? 'ring-2 ring-primary'
                       : 'hover:bg-gray-50'
-                  } bg-white rounded-lg shadow p-4 transition-all`}
+                  } bg-white rounded-lg shadow p-4`}
                 >
                   <button
                     onClick={() => handleSelectFolder(folder)}
@@ -1282,7 +1299,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                     isProbestundenFolder
                       ? 'ring-2 ring-primary'
                       : 'hover:bg-gray-50'
-                  } bg-white rounded-lg shadow p-4 transition-all`}
+                  } bg-white rounded-lg shadow p-4`}
                 >
                   <button
                     onClick={() => handleSelectFolder({ id: 'probestunden', name: 'Probestunden', is_system: true })}
@@ -1298,6 +1315,20 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   </button>
                 </div>
               )}
+              {/* Video-Klausurbesprechung Folder - only for Dozenten with videobesprechung_dozent tag */}
+              {isDozent && additionalRoles?.includes('videobesprechung_dozent') && (
+                <div
+                  className="relative block w-full text-left hover:bg-gray-50 bg-white rounded-lg shadow p-4"
+                >
+                  <button
+                    onClick={() => window.location.href = '/klausurenbesprechung/korrektur'}
+                    className="w-full flex items-center text-left"
+                  >
+                    <GraduationCap className="h-6 w-6 text-primary" />
+                    <span className="ml-3 font-medium text-gray-900">Video-Klausurbesprechung</span>
+                  </button>
+                </div>
+              )}
               {/* Elite-Kleingruppe Folder - only for assigned Dozenten */}
               {isDozent && isEliteKleingruppeDozent && (
                 <div
@@ -1305,7 +1336,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                     showEliteKleingruppe
                       ? 'ring-2 ring-primary'
                       : 'hover:bg-gray-50'
-                  } bg-white rounded-lg shadow p-4 transition-all`}
+                  } bg-white rounded-lg shadow p-4`}
                 >
                   <button
                     onClick={() => { setSelectedFolder(null); navigate('/dashboard/elite-kleingruppe'); }}
@@ -1316,7 +1347,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   </button>
                 </div>
               )}
-            </div>
+              </div>
             )}
           </div>
 

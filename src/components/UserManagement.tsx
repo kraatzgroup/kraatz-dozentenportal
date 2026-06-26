@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { UserPlus, Key, Loader2, AlertCircle, ArrowLeft, Pencil, Trash2, Download, Calendar, Search, Mail, Bell, MessageSquare, LogOut, Menu, X, LogIn, Copy, ExternalLink } from 'lucide-react';
+import { UserPlus, Key, Loader2, AlertCircle, ArrowLeft, Pencil, Trash2, Calendar, Search, Mail, Bell, MessageSquare, LogOut, Menu, X, LogIn, Copy, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useUserStore, User } from '../store/userStore';
+import { useUserStore } from '../store/userStore';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
 import { ProfilePicture } from './ProfilePicture';
@@ -56,9 +56,10 @@ export function UserManagement() {
   });
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
-  const [isBackupLoading, setIsBackupLoading] = useState(false);
-  const [isCheckingDocuments, setIsCheckingDocuments] = useState(false);
   const [checkResult, setCheckResult] = useState<any>(null);
+  // State variables for future admin features
+  const [isBackupLoading, _setIsBackupLoading] = useState(false);
+  const [isCheckingDocuments, _setIsCheckingDocuments] = useState(false);
   const [showDozentForm, setShowDozentForm] = useState(false);
   const [selectedDozentForEdit, setSelectedDozentForEdit] = useState<any>(null);
   const [showTeilnehmerForm, setShowTeilnehmerForm] = useState(false);
@@ -330,7 +331,7 @@ export function UserManagement() {
     }
   };
 
-  const handleResetPasswordForUser = async (userEmail: string, userName: string) => {
+  const handleResetPasswordForUser = async (userEmail: string, _userName: string) => {
     setConfirmation({
       show: true,
       title: 'Neues Passwort generieren',
@@ -354,7 +355,7 @@ export function UserManagement() {
     });
   };
 
-  const handleResendWelcomeEmail = async (userEmail: string, userName: string, userId: string) => {
+  const handleResendWelcomeEmail = async (userEmail: string, userName: string, _userId: string) => {
     setConfirmation({
       show: true,
       title: 'Willkommens-E-Mail erneut senden',
@@ -363,7 +364,7 @@ export function UserManagement() {
       onConfirm: async () => {
         try {
           setLocalLoading(true);
-          
+
           // Call resend-welcome-email edge function directly
           // This will generate a new magic link and send the email
           const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/resend-welcome-email`, {
@@ -440,7 +441,8 @@ export function UserManagement() {
     }
   };
 
-  const handleCopyMagicLink = async () => {
+  // Unused function - kept for future features
+  const _handleCopyMagicLink = async () => {
     try {
       await navigator.clipboard.writeText(magicLink);
       setCopySuccess(true);
@@ -481,8 +483,9 @@ export function UserManagement() {
     window.open(link, '_blank', 'width=1200,height=800,left=100,top=100');
   };
 
-  const handleDatabaseBackup = async () => {
-    setIsBackupLoading(true);
+  // Unused function - kept for future admin features
+  const _handleDatabaseBackup = async () => {
+    _setIsBackupLoading(true);
     try {
       const { data, error } = await supabase.rpc('generate_backup');
       if (error) throw error;
@@ -505,12 +508,13 @@ export function UserManagement() {
       console.error('Error creating backup:', error);
       setSuccessMessage(null);
     } finally {
-      setIsBackupLoading(false);
+      _setIsBackupLoading(false);
     }
   };
 
-  const handleMonthlyDocumentCheck = async () => {
-    setIsCheckingDocuments(true);
+  // Unused function - kept for future admin features
+  const _handleMonthlyDocumentCheck = async () => {
+    _setIsCheckingDocuments(true);
     setCheckResult(null);
     
     try {
@@ -543,7 +547,7 @@ export function UserManagement() {
         error: error instanceof Error ? error.message : 'Unbekannter Fehler'
       });
     } finally {
-      setIsCheckingDocuments(false);
+      _setIsCheckingDocuments(false);
     }
   };
 
@@ -818,7 +822,7 @@ export function UserManagement() {
                         <div className="flex items-center flex-1 min-w-0">
                         <ProfilePicture
                           userId={user.id}
-                          url={user.profile_picture_url}
+                          url={user.profile_picture_url ?? null}
                           size="sm"
                           editable={user.role !== 'admin'}
                           isAdmin={user.role === 'admin'}
@@ -871,6 +875,7 @@ export function UserManagement() {
                                       r === 'vertrieb' ? 'Vertrieb' :
                                       r === 'teilnehmer' ? 'Teilnehmer' :
                                       r === 'videobesprechung' ? 'Videobesprechung' :
+                                      r === 'videobesprechung_dozent' ? 'VB Dozent' :
                                       r === 'dozent' ? 'Dozent' : r}
                                   </span>
                                 ))}
@@ -1037,6 +1042,8 @@ export function UserManagement() {
                                   { value: 'buchhaltung', label: 'Buchhaltung' },
                                   { value: 'verwaltung', label: 'Verwaltung' },
                                   { value: 'vertrieb', label: 'Vertrieb' },
+                                  { value: 'videobesprechung', label: 'Videobesprechung (Teilnehmer)' },
+                                  { value: 'videobesprechung_dozent', label: 'Videobesprechung (Dozent)' },
                                 ]
                                   .filter(r => r.value !== dialog.userData.role)
                                   .map(r => (

@@ -14,6 +14,7 @@ interface AuthState {
   isMaterial: boolean;
   userRole: string | null;
   additionalRoles: string[];
+  vbLegalAreas: string[];
   isSigningOut: boolean;
   isSettingUser: boolean;
   setUser: (user: User | null) => void;
@@ -32,6 +33,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isMaterial: false,
   userRole: null,
   additionalRoles: [],
+  vbLegalAreas: [],
   isSigningOut: false,
   isSettingUser: false,
   setUser: (user) => {
@@ -107,6 +109,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               isMaterial: allRoles.includes('material'),
               userRole: data.role,
               additionalRoles: data.additional_roles || [],
+              vbLegalAreas: [],
               isSettingUser: false
             });
             console.log('AuthStore: User state updated successfully');
@@ -124,6 +127,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               isMaterial: false,
               userRole: null,
               additionalRoles: [],
+              vbLegalAreas: [],
               isSettingUser: false
             });
           }
@@ -144,6 +148,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               isMaterial: false,
               userRole: null,
               additionalRoles: [],
+              vbLegalAreas: [],
               isSettingUser: false
             });
           } else {
@@ -163,6 +168,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isMaterial: false,
         userRole: null,
         additionalRoles: [],
+        vbLegalAreas: [],
         isSettingUser: false
       });
     }
@@ -186,6 +192,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isMaterial: false,
         userRole: null,
         additionalRoles: [],
+        vbLegalAreas: [],
         isSigningOut: true,
         isSettingUser: false
       });
@@ -239,6 +246,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isMaterial: false,
         userRole: null,
         additionalRoles: [],
+        vbLegalAreas: [],
         isSigningOut: false,
         isSettingUser: false
       });

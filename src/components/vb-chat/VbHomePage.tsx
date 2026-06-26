@@ -1,8 +1,17 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { BookOpen, Users, Award, ArrowRight } from 'lucide-react';
+import { useAuthStore } from '../../store/authStore';
 
 export const VbHomePage: React.FC = () => {
+  const user = useAuthStore(state => state.user);
+  const { isTeilnehmer, additionalRoles } = useAuthStore();
+
+  // Redirect authenticated videobesprechung participants to dashboard
+  if (user && isTeilnehmer && additionalRoles?.includes('videobesprechung')) {
+    return <Navigate to="/klausurenbesprechung/dashboard" replace />;
+  }
+
   return (
     <div className="space-y-16">
       {/* Hero Section */}

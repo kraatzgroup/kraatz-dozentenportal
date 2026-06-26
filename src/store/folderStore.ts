@@ -35,15 +35,21 @@ export const useFolderStore = create<FolderState>((set, get) => ({
         userId = user.id;
       }
 
+      console.log('📁 Fetching folders for user:', userId);
+
       const { data, error } = await supabase
         .from('folders')
         .select('*')
         .eq('user_id', userId)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true });
 
       if (error) throw error;
+      
+      console.log('📁 Fetched folders count:', data?.length || 0);
       set({ folders: data || [] });
     } catch (error: any) {
+      console.error('❌ Error fetching folders:', error);
       set({ error: error.message });
     } finally {
       set({ isLoading: false });
