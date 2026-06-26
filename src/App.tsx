@@ -93,9 +93,7 @@ function App() {
             // Role-based routing
             if (userRole === 'teilnehmer' && additionalRoles?.includes('videobesprechung')) {
               console.log('🎯 App: Redirecting videobesprechung participant to /klausurenbesprechung/dashboard');
-              if (window.location.pathname === '/dashboard' || window.location.pathname === '/klausurenbesprechung') {
-                window.history.replaceState({}, '', '/klausurenbesprechung/dashboard');
-              }
+              window.history.replaceState({}, '', '/klausurenbesprechung/dashboard');
             } else if (userRole === 'teilnehmer' && window.location.pathname === '/dashboard' && !window.location.search.includes('tab=')) {
               console.log('🎯 App: Redirecting regular participant to /dashboard?tab=dashboard');
               window.history.replaceState({}, '', '/dashboard?tab=dashboard');

@@ -28,6 +28,12 @@ export interface KorrekturItem {
   solutionPdfUrl?: string | null
   /** VB only: scoring schema file. */
   scoringSchemaUrl?: string | null
+  /** VB only: solution sketch file name (for display). */
+  solutionFileName?: string | null
+  /** VB only: scoring schema file name (for display). */
+  schemaFileName?: string | null
+  /** VB only: correction duration in hours. */
+  correctionDurationHours?: string | null
 }
 
 // Controls which fields the modal renders for a given source.

@@ -35,6 +35,12 @@ serve(async (req) => {
     const body = await req.json()
     console.log('Received VB notification payload:', body)
 
+    // Determine redirect URL based on origin (localhost vs production)
+    const origin = req.headers.get('origin') || ''
+    const baseUrl = origin.includes('localhost') ? origin : 'https://portal.kraatz-group.de'
+    const redirectUrl = `${baseUrl}/klausurenbesprechung`
+    console.log('Origin:', origin, 'Redirect URL:', redirectUrl)
+
     // Check if this is a direct call (not a webhook trigger)
     if (body.profile_id && body.case_study_id) {
       // Direct call from frontend
@@ -61,6 +67,28 @@ serve(async (req) => {
         })
       }
 
+      // Generate magic link for direct login
+      const { data: linkData, error: linkError } = await supabaseClient.auth.admin.generateLink({
+        type: 'magiclink',
+        email: student.email,
+        options: {
+          redirectTo: redirectUrl
+        }
+      })
+
+      if (linkError) {
+        console.error('Error generating magic link:', linkError)
+        throw linkError
+      }
+
+      const magicLink = linkData?.properties?.action_link
+      if (!magicLink) {
+        console.error('No magic link returned')
+        throw new Error('Failed to generate magic link')
+      }
+
+      console.log('Magic link generated successfully for:', student.email)
+
       // Get case study details
       const { data: caseStudy } = await supabaseClient
         .from('vb_case_study_requests')
@@ -69,11 +97,12 @@ serve(async (req) => {
         .single()
 
       const isMaterialChange = body.is_material_change
+      const caseStudyNumber = body.case_study_number || 'deinem Sachverhalt'
       const notification = {
         title: isMaterialChange ? 'Material geändert' : 'Sachverhalt verfügbar',
         message: isMaterialChange 
-          ? `Das Ihnen für den Sachverhalt Klausur #${body.case_study_number} zugewiesene Material hat sich geändert.`
-          : `Dein Sachverhalt für die Klausur #${body.case_study_number} ist jetzt verfügbar. Du kannst mit der Bearbeitung beginnen.`,
+          ? `Das Ihnen für ${caseStudyNumber} zugewiesene Material hat sich geändert.`
+          : `Dein Sachverhalt ist jetzt verfügbar. Du kannst mit der Bearbeitung beginnen.`,
         related_case_study_id: body.case_study_id,
       }
 
@@ -83,15 +112,15 @@ serve(async (req) => {
 
       if (notification.message.includes('geändert')) {
         actionButton = `
-          <a href="${Deno.env.get('SITE_URL') || 'https://portal.kraatz-group.de'}/dashboard" 
-             style="display: inline-block; background-color: #2e83c2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 15px; font-weight: 500;">
+          <a href="${magicLink}" 
+             style="display: inline-block; background-color: #2e83c2; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold;">
             Neues Material ansehen
           </a>
         `
       } else {
         actionButton = `
-          <a href="${Deno.env.get('SITE_URL') || 'https://portal.kraatz-group.de'}/dashboard" 
-             style="display: inline-block; background-color: #2e83c2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 15px; font-weight: 500;">
+          <a href="${magicLink}" 
+             style="display: inline-block; background-color: #2e83c2; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold;">
             Sachverhalt ansehen
           </a>
         `
@@ -99,12 +128,13 @@ serve(async (req) => {
 
       let emailContent = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+          <!-- Header -->
           <div style="background-color: #ffffff; padding: 30px 20px; text-align: center; border-bottom: 1px solid #e9ecef;">
-            <img src="https://gkkveloqajxghhflkfru.supabase.co/storage/v1/object/public/images/logos/9674199.png" 
-                 alt="Kraatz-Club Logo" 
-                 style="height: 60px; margin: 0 auto; display: block;">
+            <h1 style="margin: 0; font-size: 22px; color: #333;">Kraatz Group</h1>
+            <p style="margin: 5px 0 0 0; font-size: 14px; color: #666;">Portal</p>
           </div>
           
+          <!-- Main Content -->
           <div style="padding: 30px 20px; background-color: white;">
             <h2 style="color: #333; margin: 0 0 20px 0; font-size: 20px;">${emailSubject}</h2>
             
@@ -119,52 +149,74 @@ serve(async (req) => {
             ${caseStudy ? `
               <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #2e83c2;">
                 <h4 style="margin: 0 0 15px 0; color: #333; font-size: 16px;">Klausur-Details:</h4>
-                <p style="margin: 8px 0; color: #555; font-size: 14px;"><strong>Rechtsgebiet:</strong> ${caseStudy.legal_area}</p>
-                <p style="margin: 8px 0; color: #555; font-size: 14px;"><strong>Teilbereich:</strong> ${caseStudy.sub_area}</p>
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td style="padding: 8px 0; color: #666; font-size: 14px; width: 40%;"><strong>Rechtsgebiet:</strong></td>
+                    <td style="padding: 8px 0; color: #333; font-size: 14px;">${caseStudy.legal_area}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #666; font-size: 14px;"><strong>Teilbereich:</strong></td>
+                    <td style="padding: 8px 0; color: #333; font-size: 14px;">${caseStudy.sub_area}</td>
+                  </tr>
+                </table>
               </div>
             ` : ''}
             
             <div style="text-align: center; margin: 30px 0;">
               ${actionButton}
             </div>
+            
+            <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
+              Mit freundlichen Grüßen<br>
+              <strong>Ihr Kraatz Group Team</strong>
+            </p>
           </div>
           
+          <!-- Footer -->
           <div style="background-color: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e9ecef;">
-            <p style="color: #666; font-size: 12px; margin: 5px 0;">Diese E-Mail wurde automatisch vom Dozentenportal System gesendet.</p>
-            <p style="color: #666; font-size: 12px; margin: 5px 0;">Bei Fragen wende dich bitte an deinen Dozenten oder das Support-Team.</p>
+            <p style="color: #666; font-size: 12px; margin: 5px 0;">Akademie Kraatz GmbH</p>
+            <p style="color: #666; font-size: 12px; margin: 5px 0;">Wilmersdorfer Str. 145/146 - 10585 Berlin</p>
+            <p style="color: #666; font-size: 12px; margin: 5px 0;">Diese E-Mail wurde automatisch vom Portal gesendet.</p>
+            <p style="color: #666; font-size: 12px; margin: 5px 0;">Bei Fragen wende dich bitte an <a href="mailto:charlenenowak@kraatz-group.de" style="color: #2e83c2; text-decoration: none;">charlenenowak@kraatz-group.de</a></p>
           </div>
         </div>
       `
 
-      // Send email via Mailgun
+      // Send email via Mailgun (non-blocking)
       const mailgunApiKey = Deno.env.get('MAILGUN_API_KEY')
       const mailgunDomain = 'kraatz-group.de'
       
-      if (!mailgunApiKey) {
-        throw new Error('MAILGUN_API_KEY not configured')
+      if (mailgunApiKey) {
+        try {
+          const formData = new FormData()
+          formData.append('from', 'Kraatz Group - Klausurenbesprechung <postmaster@kraatz-group.de>')
+          formData.append('to', student.email)
+          formData.append('subject', `[Klausurenbesprechung] ${emailSubject}`)
+          formData.append('html', emailContent)
+
+          console.log('Attempting to send email to:', student.email)
+          const response = await fetch(`https://api.eu.mailgun.net/v3/${mailgunDomain}/messages`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Basic ${btoa(`api:${mailgunApiKey}`)}`,
+            },
+            body: formData,
+          })
+
+          console.log('Mailgun response status:', response.status)
+          if (response.ok) {
+            console.log('Email sent successfully to:', student.email)
+          } else {
+            const errorText = await response.text()
+            console.error('Mailgun error - Status:', response.status, 'Body:', errorText)
+          }
+        } catch (mailgunError) {
+          console.error('Failed to send email (exception):', mailgunError)
+        }
+      } else {
+        console.log('MAILGUN_API_KEY not configured, skipping email')
       }
 
-      const formData = new FormData()
-      formData.append('from', 'Dozentenportal <postmaster@kraatz-group.de>')
-      formData.append('to', student.email)
-      formData.append('subject', emailSubject)
-      formData.append('html', emailContent)
-
-      const response = await fetch(`https://api.mailgun.net/v3/${mailgunDomain}/messages`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${btoa(`api:${mailgunApiKey}`)}`,
-        },
-        body: formData,
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error('Mailgun error:', errorText)
-        throw new Error(`Failed to send email: ${errorText}`)
-      }
-
-      console.log('Email sent successfully to:', student.email)
       return new Response(JSON.stringify({ success: true }), { 
         status: 200, 
         headers: corsHeaders 
@@ -293,9 +345,8 @@ serve(async (req) => {
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff;">
         <!-- Header -->
         <div style="background-color: #ffffff; padding: 30px 20px; text-align: center; border-bottom: 1px solid #e9ecef;">
-          <img src="https://gkkveloqajxghhflkfru.supabase.co/storage/v1/object/public/images/logos/9674199.png" 
-               alt="Kraatz-Club Logo" 
-               style="height: 60px; margin: 0 auto; display: block;">
+          <h1 style="margin: 0; font-size: 22px; color: #333;">Kraatz Group</h1>
+          <p style="margin: 5px 0 0 0; font-size: 14px; color: #666;">Portal</p>
         </div>
         
         <!-- Main Content -->
@@ -313,9 +364,16 @@ serve(async (req) => {
           ${caseStudyDetails ? `
             <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #2e83c2;">
               <h4 style="margin: 0 0 15px 0; color: #333; font-size: 16px;">Klausur-Details:</h4>
-              <p style="margin: 8px 0; color: #555; font-size: 14px;"><strong>Rechtsgebiet:</strong> ${caseStudyDetails.legal_area}</p>
-              <p style="margin: 8px 0; color: #555; font-size: 14px;"><strong>Teilbereich:</strong> ${caseStudyDetails.sub_area}</p>
-              <p style="margin: 8px 0; color: #555; font-size: 14px;"><strong>Dozent:</strong> ${dozentName}</p>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 8px 0; color: #666; font-size: 14px; width: 40%;"><strong>Rechtsgebiet:</strong></td>
+                  <td style="padding: 8px 0; color: #333; font-size: 14px;">${caseStudyDetails.legal_area}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; color: #666; font-size: 14px;"><strong>Teilbereich:</strong></td>
+                  <td style="padding: 8px 0; color: #333; font-size: 14px;">${caseStudyDetails.sub_area}</td>
+                </tr>
+              </table>
             </div>
           ` : ''}
           
@@ -323,55 +381,64 @@ serve(async (req) => {
           <div style="text-align: center; margin: 30px 0;">
             ${actionButton}
           </div>
+          
+          <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
+            Mit freundlichen Grüßen<br>
+            <strong>Ihr Kraatz Group Team</strong>
+          </p>
         </div>
         
         <!-- Footer -->
         <div style="background-color: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e9ecef;">
-          <p style="color: #666; font-size: 12px; margin: 5px 0;">Diese E-Mail wurde automatisch vom Dozentenportal System gesendet.</p>
-          <p style="color: #666; font-size: 12px; margin: 5px 0;">Bei Fragen wende dich bitte an deinen Dozenten oder das Support-Team.</p>
+          <p style="color: #666; font-size: 12px; margin: 5px 0;">Akademie Kraatz GmbH</p>
+          <p style="color: #666; font-size: 12px; margin: 5px 0;">Wilmersdorfer Str. 145/146 - 10585 Berlin</p>
+          <p style="color: #666; font-size: 12px; margin: 5px 0;">Diese E-Mail wurde automatisch vom Portal gesendet.</p>
+          <p style="color: #666; font-size: 12px; margin: 5px 0;">Bei Fragen wende dich bitte an <a href="mailto:charlenenowak@kraatz-group.de" style="color: #2e83c2; text-decoration: none;">charlenenowak@kraatz-group.de</a></p>
         </div>
       </div>
     `
 
-    // Send email via Mailgun
+    // Send email via Mailgun (non-blocking)
     const mailgunApiKey = Deno.env.get('MAILGUN_API_KEY')
     const mailgunDomain = 'kraatz-group.de'
     
-    if (!mailgunApiKey) {
-      throw new Error('MAILGUN_API_KEY not configured')
-    }
+    if (mailgunApiKey) {
+      try {
+        const formData = new FormData()
+        formData.append('from', 'Kraatz Group Portal <postmaster@kraatz-group.de>')
+        formData.append('to', student.email)
+        formData.append('subject', `[Dozentenportal] ${emailSubject}`)
+        formData.append('html', emailContent)
 
-    const formData = new FormData()
-    formData.append('from', 'Dozentenportal <postmaster@kraatz-group.de>')
-    formData.append('to', student.email)
-    formData.append('subject', `[Dozentenportal] ${emailSubject}`)
-    formData.append('html', emailContent)
+        const mailgunResponse = await fetch(
+          `https://api.eu.mailgun.net/v3/${mailgunDomain}/messages`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Basic ${btoa(`api:${mailgunApiKey}`)}`
+            },
+            body: formData
+          }
+        )
 
-    const mailgunResponse = await fetch(
-      `https://api.eu.mailgun.net/v3/${mailgunDomain}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${btoa(`api:${mailgunApiKey}`)}`
-        },
-        body: formData
+        if (mailgunResponse.ok) {
+          const mailgunResult = await mailgunResponse.json()
+          console.log('Email sent successfully:', mailgunResult)
+        } else {
+          const errorText = await mailgunResponse.text()
+          console.error('Mailgun error:', errorText)
+        }
+      } catch (mailgunError) {
+        console.error('Failed to send email:', mailgunError)
       }
-    )
-
-    if (!mailgunResponse.ok) {
-      const errorText = await mailgunResponse.text()
-      console.error('Mailgun error:', errorText)
-      throw new Error(`Mailgun API error: ${mailgunResponse.status}`)
+    } else {
+      console.log('MAILGUN_API_KEY not configured, skipping email')
     }
-
-    const mailgunResult = await mailgunResponse.json()
-    console.log('Email sent successfully:', mailgunResult)
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: 'Email notification sent to student',
-        mailgunId: mailgunResult.id 
+        message: 'Email notification sent to student'
       }),
       { 
         status: 200, 

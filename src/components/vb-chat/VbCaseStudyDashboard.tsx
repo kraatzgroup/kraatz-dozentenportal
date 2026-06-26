@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuthStore } from '../../store/authStore'
 import { supabase } from '../../lib/supabase'
-import { CreditCard, BookOpen, Plus, Download, Upload, FileText, Video, X, Clock, CheckCircle, ChevronDown, ChevronUp, Star, MessageSquare, Table, Edit3, Eye, Trash2 } from 'lucide-react'
+import { CreditCard, BookOpen, Plus, Download, Upload, FileText, Video, X, Clock, CheckCircle, ChevronDown, ChevronUp, Star, MessageSquare, Table, Edit3, Eye, Trash2, Play } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 interface UserProfile {
@@ -114,6 +114,8 @@ export const VbCaseStudyDashboard: React.FC = () => {
   const [availableCredits, setAvailableCredits] = useState<number>(0)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 5
+  const editFileInputRef = useRef<HTMLInputElement>(null)
+  const [editingCaseId, setEditingCaseId] = useState<string | null>(null)
 
   // Track video view
   const handleVideoView = useCallback(async (caseStudyId: string) => {
@@ -467,6 +469,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
     const hasPdf = !!caseStudy.written_correction_url
     const videoViewed = !!caseStudy.video_viewed_at
     const pdfDownloaded = !!caseStudy.pdf_downloaded_at
+    const isRated = ratings.has(caseStudy.id)
     
     // Check if it's a new correction (completed recently and not accessed)
     const isNew = !videoViewed && !pdfDownloaded
@@ -477,18 +480,19 @@ export const VbCaseStudyDashboard: React.FC = () => {
     // Check if partially accessed
     const partiallyAccessed = (videoViewed || pdfDownloaded) && !fullyAccessed
     
-    if (fullyAccessed) {
+    // Don't use green highlighting if rated
+    if (fullyAccessed && !isRated) {
       return {
         containerClass: "border border-green-200 rounded-lg p-4 bg-green-50",
         badgeClass: "px-2 py-1 bg-primary text-white text-xs rounded-full font-medium",
-        badgeText: "✓ Vollständig angesehen",
+        badgeText: "✓ Abgeschlossen",
         showNewBadge: false
       }
-    } else if (partiallyAccessed) {
+    } else if (partiallyAccessed || (fullyAccessed && isRated)) {
       return {
         containerClass: "border border-gray-200 rounded-lg p-4 bg-gray-50",
         badgeClass: "px-2 py-1 bg-gray-600 text-white text-xs rounded-full font-medium",
-        badgeText: "◐ Teilweise angesehen",
+        badgeText: "✓ Abgeschlossen",
         showNewBadge: false
       }
     } else {
@@ -612,7 +616,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
         .from('vb_case_study_requests')
         .select('*')
         .eq('profile_id', user?.id)
-        .order('created_at', { ascending: true })
+        .order('updated_at', { ascending: false })
 
       if (caseStudyError) throw caseStudyError
       setCaseStudies(caseStudyData || [])
@@ -675,8 +679,8 @@ export const VbCaseStudyDashboard: React.FC = () => {
     }
   }
 
-  const handleFileUpload = async (caseStudyId: string) => {
-    const uploadFile = uploadFiles.get(caseStudyId)
+  const handleFileUpload = async (caseStudyId: string, file?: File) => {
+    const uploadFile = file || uploadFiles.get(caseStudyId)
     if (!uploadFile) return
 
     setUploadingCaseId(caseStudyId)
@@ -684,14 +688,13 @@ export const VbCaseStudyDashboard: React.FC = () => {
       console.log('Starting upload for case study:', caseStudyId)
       console.log('File details:', { name: uploadFile.name, size: uploadFile.size, type: uploadFile.type })
       
-      const fileExt = uploadFile.name.split('.').pop()
-      const fileName = `${caseStudyId}_submission_${Date.now()}.${fileExt}`
+      const fileName = uploadFile.name
       
       console.log('Uploading to storage with filename:', fileName)
       
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('case-studies')
-        .upload(fileName, uploadFile)
+        .upload(fileName, uploadFile, { upsert: true })
 
       if (uploadError) {
         console.error('Storage upload error:', uploadError)
@@ -723,15 +726,35 @@ export const VbCaseStudyDashboard: React.FC = () => {
       
       // Find the case study to get details for notifications
       const caseStudy = caseStudies.find(cs => cs.id === caseStudyId)
-      if (caseStudy && user && profile) {
-        // TODO: Implement notification service
-        // await NotificationService.createCaseStudyStatusNotification(
-        //   user.id,
-        //   'submitted',
-        //   caseStudy.legal_area,
-        //   caseStudy.sub_area,
-        //   caseStudyId
-        // )
+      console.log('Case study for notification:', caseStudy)
+      console.log('Assigned dozent ID:', caseStudy?.assigned_dozent_id)
+      console.log('Submission downloaded at:', caseStudy?.submission_downloaded_at)
+      // Only notify dozent if they haven't downloaded the submission yet
+      if (caseStudy && user && profile && caseStudy.assigned_dozent_id && !caseStudy.submission_downloaded_at) {
+        console.log('Sending dozent notification...')
+        // Fetch dozent information
+        const { data: dozent } = await supabase
+          .from('profiles')
+          .select('email, first_name, last_name')
+          .eq('id', caseStudy.assigned_dozent_id)
+          .single()
+
+        if (dozent) {
+          // Call vb-notify-dozent edge function
+          await supabase.functions.invoke('vb-notify-dozent', {
+            body: {
+              dozentEmail: dozent.email,
+              dozentName: `${dozent.first_name} ${dozent.last_name}`,
+              studentName: `${profile.first_name} ${profile.last_name}`,
+              legalArea: caseStudy.legal_area,
+              subArea: caseStudy.sub_area,
+              caseStudyId: caseStudyId
+            }
+          })
+          console.log('Dozent notification sent successfully')
+        }
+      } else {
+        console.log('Dozent notification skipped - conditions not met')
       }
       
       setUploadFiles(prev => { const next = new Map(prev); next.delete(caseStudyId); return next })
@@ -806,6 +829,139 @@ export const VbCaseStudyDashboard: React.FC = () => {
           </h1>
           <p className="text-gray-600 text-sm sm:text-base">Hier ist dein persönliches Dashboard für Klausurbearbeitungen.</p>
         </div>
+
+        {/* 0. Neueste verfügbare Korrektur */}
+        {newCorrections.length > 0 && (
+          <div className="bg-green-50 border-2 border-green-200 rounded-lg shadow p-4 sm:p-6 mb-6 sm:mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg sm:text-xl font-semibold text-green-900">🎉 Neue Korrektur verfügbar!</h2>
+              <div className="flex items-center space-x-2">
+                <CheckCircle className="w-5 h-5 text-green-600" />
+                <span className="font-bold text-green-600">{newCorrections.length}</span>
+              </div>
+            </div>
+            {newCorrections.slice(0, 1).map(caseStudy => {
+              const style = getCompletedCaseStyle(caseStudy)
+              return (
+                <div key={caseStudy.id} className={`${style.containerClass} rounded-lg p-4 border border-green-200`}>
+                  <div className="cursor-pointer">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="bg-green-100 text-green-600 text-xs font-semibold px-2 py-1 rounded">#{caseStudy.case_study_number}</span>
+                        <h3 className="font-medium text-gray-900 text-sm sm:text-base">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
+                        <ChevronDown className="w-4 h-4 text-gray-500" />
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className={style.badgeClass}>{style.badgeText}</span>
+                        <span className="text-xs text-gray-500 whitespace-nowrap">{formatDate(caseStudy.updated_at)}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <p className="text-xs sm:text-sm text-gray-600">Schwerpunkt: {caseStudy.focus_area}</p>
+                    </div>
+                  </div>
+                  {caseStudy.video_correction_url && (
+                    <div className="mt-3">
+                      <button
+                        onClick={() => openVideoModal(caseStudy.video_correction_url!, caseStudy.id)}
+                        className="flex items-center justify-center gap-1 px-3 py-2 sm:py-1 bg-primary text-white text-xs rounded-lg hover:bg-primary/90 transition-colors w-full sm:w-auto"
+                      >
+                        <Video className="w-3 h-3" />
+                        Video ansehen
+                      </button>
+                    </div>
+                  )}
+                  <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <button
+                      onClick={() => openRatingModal(caseStudy.id)}
+                      className="flex items-center justify-center gap-1 px-3 py-2 sm:py-1 bg-transparent border border-blue-400 text-blue-500 text-xs rounded-lg hover:bg-blue-50 transition-colors w-full sm:w-auto"
+                    >
+                      <Star className="w-3 h-3" />
+                      Jetzt bewerten
+                    </button>
+                  </div>
+                  <div className="mt-4 space-y-3 animate-in slide-in-from-top-2 duration-300">
+                    <div className="bg-gray-50 p-3 rounded border border-gray-200">
+                      <p className="text-sm text-gray-800 font-medium mb-2">📚 Deine Unterlagen:</p>
+                      <div className="flex flex-col gap-2 max-w-xs">
+                        {caseStudy.pdf_url && (
+                          <a href={caseStudy.pdf_url} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2" style={{ backgroundColor: 'rgb(46, 131, 194)' }}>
+                            <FileText className="w-4 h-4" />
+                            <span>Sachverhalt</span>
+                          </a>
+                        )}
+                        {caseStudy.case_study_material_url && (
+                          <a href={caseStudy.case_study_material_url} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2" style={{ backgroundColor: 'rgb(46, 131, 194)' }}>
+                            <FileText className="w-4 h-4" />
+                            <span>Zusatzmaterial</span>
+                          </a>
+                        )}
+                        {caseStudy.submission_url && (
+                          <a href={caseStudy.submission_url} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2" style={{ backgroundColor: 'rgb(46, 131, 194)' }}>
+                            <Upload className="w-4 h-4" />
+                            <span>Meine Bearbeitung</span>
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    <div className="bg-white p-3 rounded border border-green-200">
+                      <p className="text-sm text-green-800 font-medium mb-2">🎓 Deine Korrekturen:</p>
+                      {submissions.has(caseStudy.id) && submissions.get(caseStudy.id)?.grade !== null && (
+                        <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-primary">📊 Deine Note:</span>
+                            <div className="text-right">
+                              <span className="text-lg font-bold text-primary">{submissions.get(caseStudy.id)?.grade} Punkte</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex flex-col gap-2 max-w-xs">
+                        {caseStudy.solution_pdf_url && (
+                          <a href={caseStudy.solution_pdf_url} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white" style={{ backgroundColor: 'rgb(46, 131, 194)' }}>
+                            <FileText className="w-4 h-4" />
+                            <span>Klausur-Lösung</span>
+                          </a>
+                        )}
+                        {caseStudy.written_correction_url && (
+                          <a href={caseStudy.written_correction_url} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white" style={{ backgroundColor: 'rgb(46, 131, 194)' }}>
+                            <FileText className="w-4 h-4" />
+                            <span>Schriftliche Korrektur</span>
+                          </a>
+                        )}
+                        <button
+                          onClick={() => openFeedbackModal(caseStudy.id)}
+                          className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white"
+                          style={{ backgroundColor: 'rgb(10, 31, 68)' }}
+                        >
+                          <Edit3 className="w-4 h-4" />
+                          <span>Feedbackpapier erstellen</span>
+                        </button>
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">💡 Schaue Dir sowohl die Video-Korrektur, als auch die schriftliche Bewertung Deines Dozenten an, um einen maximalen Mehrwert in der Nachbereitung zu erhalten!</div>
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                          <Star className="w-4 h-4 text-yellow-500" />
+                          Bewerte Deine Klausurenkorrektur
+                        </h4>
+                      </div>
+                      <p className="text-xs text-gray-600 mb-3">Wie bewertest Du Deine Klausurenkorrektur? Gibt es Kritik/Verbesserungswünsche?</p>
+                      <button
+                        onClick={() => openRatingModal(caseStudy.id)}
+                        className="w-full bg-yellow-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-yellow-700 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                        Jetzt bewerten
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {/* 1. Verfügbare Klausuren */}
         <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 sm:mb-8">
@@ -1110,9 +1266,59 @@ export const VbCaseStudyDashboard: React.FC = () => {
                     </div>
                     {caseStudy.submission_url && (
                       <div className="mt-3 pt-3 border-t border-green-200">
-                        <p className="text-xs text-gray-600">
+                        <p className="text-xs text-gray-600 mb-2">
                           Eingereicht: {formatDate(caseStudy.created_at)}
                         </p>
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={caseStudy.submission_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+                            >
+                              <Download className="w-4 h-4" />
+                              Datei herunterladen
+                            </a>
+                            {!caseStudy.submission_downloaded_at && (
+                              <>
+                                {uploadingCaseId === caseStudy.id ? (
+                                  <div className="flex items-center gap-1 text-xs text-gray-500">
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500" />
+                                    Verarbeite...
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      setEditingCaseId(caseStudy.id)
+                                      editFileInputRef.current?.click()
+                                    }}
+                                    className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-800"
+                                  >
+                                    <Edit3 className="w-4 h-4" />
+                                    Bearbeitung ändern
+                                  </button>
+                                )}
+                                <input
+                                  ref={editFileInputRef}
+                                  type="file"
+                                  accept=".pdf,.doc,.docx"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0]
+                                    if (file && editingCaseId) {
+                                      handleFileUpload(editingCaseId, file)
+                                      setEditingCaseId(null)
+                                    }
+                                  }}
+                                />
+                              </>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500 break-all">
+                            {caseStudy.submission_url?.split('/').pop()}
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>

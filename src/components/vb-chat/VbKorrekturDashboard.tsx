@@ -87,10 +87,12 @@ interface VbCase {
   submission_url: string | null
   video_correction_url: string | null
   written_correction_url: string | null
+  correction_duration_hours: number | null
   solution_pdf_url: string | null
   scoring_sheet_url: string | null
   scoring_schema_url: string | null
   assigned_dozent_id: string | null
+  case_study_material_url: string | null
   created_at: string
   updated_at: string
   student?: VbStudent | null
@@ -119,7 +121,7 @@ export const VbKorrekturDashboard: React.FC = () => {
   const vbLegalAreas = useAuthStore(state => state.vbLegalAreas)
   const [cases, setCases] = useState<VbCase[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'requests' | 'materials_sent' | 'submissions' | 'pending_videos' | 'completed'>('requests')
+  const [activeTab, setActiveTab] = useState<'requests' | 'materials_sent' | 'submissions' | 'completed'>('requests')
   const [selected, setSelected] = useState<VbCase | null>(null)
   const [selectedCaseForMaterial, setSelectedCaseForMaterial] = useState<VbCase | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -137,6 +139,124 @@ export const VbKorrekturDashboard: React.FC = () => {
   const [selectedMaterials, setSelectedMaterials] = useState<Set<string>>(new Set())
   const [refreshKey, setRefreshKey] = useState(0)
   const [allCases, setAllCases] = useState<VbCase[]>([])
+  const [isAssigningMaterial, setIsAssigningMaterial] = useState(false)
+  const [editingCorrectionField, setEditingCorrectionField] = useState<'solution' | 'schema' | null>(null)
+  const [selectedCorrectionMaterialUrls, setSelectedCorrectionMaterialUrls] = useState<{ solution?: string; schema?: string }>({})
+  const [selectedCorrectionMaterialFileNames, setSelectedCorrectionMaterialFileNames] = useState<{ solution?: string; schema?: string }>({})
+  const [modalRefreshKey, setModalRefreshKey] = useState(0)
+  const [completedPage, setCompletedPage] = useState(1)
+  const [completedTotal, setCompletedTotal] = useState(0)
+
+  const handleOpenCorrectionMaterialSelector = async (field: 'solution' | 'schema') => {
+    setEditingCorrectionField(field)
+    setSelectedCaseForMaterial(null) // Not assigning to a case, just selecting materials
+    setSelectedMaterials(new Set())
+    
+    // Only fetch if materials are not already loaded
+    if (teachingMaterials.length === 0) {
+      await fetchTeachingMaterials()
+    }
+    if (folderStructure.length === 0) {
+      await fetchFolderStructure()
+    }
+    
+    // Find the current case study's assigned material and expand its parent folder
+    const expandedSet = new Set<string>()
+    if (selected?.case_study_material_url) {
+      const currentMaterial = teachingMaterials.find(m => m.file_url === selected.case_study_material_url)
+      if (currentMaterial && currentMaterial.folder_id) {
+        expandedSet.add(currentMaterial.folder_id)
+        
+        // Recursively expand parent folders
+        let currentFolderId = currentMaterial.folder_id
+        while (currentFolderId) {
+          const parentFolder = folderStructure.find(f => f.id === currentFolderId)
+          if (parentFolder && parentFolder.parent_id) {
+            expandedSet.add(parentFolder.parent_id)
+            currentFolderId = parentFolder.parent_id
+          } else {
+            break
+          }
+        }
+      }
+    }
+    
+    setExpandedFolders(expandedSet)
+    setShowMaterialSelector(true)
+  }
+
+  // Reset material selection when opening modal for a new case
+  useEffect(() => {
+    if (selected) {
+      setSelectedCorrectionMaterialUrls({})
+      setSelectedCorrectionMaterialFileNames({})
+    }
+  }, [selected?.id])
+
+  const handleClearFile = async (field: 'pdf' | 'excel' | 'solution' | 'schema') => {
+    if (!selected) return
+
+    const updateData: Record<string, null> = {}
+    switch (field) {
+      case 'pdf':
+        updateData.written_correction_url = null
+        break
+      case 'excel':
+        updateData.scoring_sheet_url = null
+        break
+      case 'solution':
+        updateData.solution_pdf_url = null
+        setSelectedCorrectionMaterialUrls(prev => ({ ...prev, solution: undefined }))
+        setSelectedCorrectionMaterialFileNames(prev => ({ ...prev, solution: undefined }))
+        break
+      case 'schema':
+        updateData.scoring_schema_url = null
+        setSelectedCorrectionMaterialUrls(prev => ({ ...prev, schema: undefined }))
+        setSelectedCorrectionMaterialFileNames(prev => ({ ...prev, schema: undefined }))
+        break
+    }
+
+    try {
+      const { error } = await supabase
+        .from('vb_case_study_requests')
+        .update(updateData)
+        .eq('id', selected.id)
+
+      if (error) throw error
+
+      // Update the selected state immediately to reflect the change
+      setSelected(prev => prev ? { ...prev, ...updateData } : null)
+      // Force modal re-render
+      setModalRefreshKey(prev => prev + 1)
+    } catch (err) {
+      console.error('Error clearing file:', err)
+      alert('Fehler beim Löschen der Datei')
+    }
+  }
+
+  const handleAssignCorrectionMaterial = () => {
+    if (!editingCorrectionField) return
+
+    const materials = Array.from(selectedMaterials).map(id =>
+      teachingMaterials.find(m => m.id === id)
+    ).filter(Boolean) as TeachingMaterial[]
+
+    if (materials.length > 0) {
+      const material = materials[0]
+      setSelectedCorrectionMaterialUrls(prev => ({
+        ...prev,
+        [editingCorrectionField]: material.file_url,
+      }))
+      setSelectedCorrectionMaterialFileNames(prev => ({
+        ...prev,
+        [editingCorrectionField]: material.file_name,
+      }))
+    }
+
+    setShowMaterialSelector(false)
+    setEditingCorrectionField(null)
+    setSelectedMaterials(new Set())
+  }
 
   const fetchCases = useCallback(async () => {
     setLoading(true)
@@ -196,13 +316,18 @@ export const VbKorrekturDashboard: React.FC = () => {
             query = query.eq('status', 'materials_ready')
             break
           case 'submissions':
-            query = query.in('status', ['submitted', 'under_review'])
-            break
-          case 'pending_videos':
-            query = query.in('status', ['under_review', 'corrected']).is('video_correction_url', null)
+            query = query.in('status', ['submitted', 'under_review', 'corrected'])
             break
           case 'completed':
-            query = query.in('status', ['corrected', 'completed'])
+            // First get the total count
+            const { count } = await supabase
+              .from('vb_case_study_requests')
+              .select('*', { count: 'exact', head: true })
+              .or('status.eq.completed,and(video_correction_url.not.is.null,status.eq.corrected)')
+            setCompletedTotal(count || 0)
+            // Then get the paginated data
+            query = query.or('status.eq.completed,and(video_correction_url.not.is.null,status.eq.corrected)')
+              .range((completedPage - 1) * 5, completedPage * 5 - 1)
             break
         }
 
@@ -228,13 +353,20 @@ export const VbKorrekturDashboard: React.FC = () => {
           .from('vb_submissions')
           .select('case_study_request_id, grade, grade_text')
           .in('case_study_request_id', ids)
+        console.log('💾 Fetched submissions:', subs)
+        console.log('💾 Case IDs to match:', ids)
         const gradeMap = new Map<string, { grade: number | null; grade_text: string | null }>()
-        subs?.forEach(s => gradeMap.set(s.case_study_request_id, { grade: s.grade, grade_text: s.grade_text }))
+        subs?.forEach(s => {
+          console.log('💾 Mapping submission:', s.case_study_request_id, '->', { grade: s.grade, grade_text: s.grade_text })
+          gradeMap.set(s.case_study_request_id, { grade: s.grade, grade_text: s.grade_text })
+        })
         rows.forEach(r => {
           const g = gradeMap.get(r.id)
+          console.log('💾 Looking up grade for case:', r.id, 'found:', g)
           r.grade = g?.grade ?? null
           r.grade_text = g?.grade_text ?? null
         })
+        console.log('💾 Cases with grades:', rows.map(r => ({ id: r.id, grade: r.grade, grade_text: r.grade_text })))
       }
 
       setCases(rows)
@@ -258,7 +390,7 @@ export const VbKorrekturDashboard: React.FC = () => {
     } catch (err) {
       console.error('Error fetching all cases for tabs:', err)
     }
-  }, [user?.id])
+  }, [user?.id, refreshKey])
 
   const fetchMaterialFolders = useCallback(async () => {
     try {
@@ -276,22 +408,39 @@ export const VbKorrekturDashboard: React.FC = () => {
 
   const fetchTeachingMaterials = useCallback(async () => {
     try {
-      console.log('🔍 fetchTeachingMaterials called - loading ALL materials without limit')
+      console.log('🔍 fetchTeachingMaterials called - loading ALL materials with batching')
       
-      // Load all materials without pagination limit
-      const { data, error } = await supabase
-        .from('teaching_materials')
-        .select('*')
-        .eq('is_active', true)
-        .order('position')
+      // Load all materials using batching to handle large datasets
+      const allMaterials: TeachingMaterial[] = []
+      const batchSize = 1000
+      let hasMore = true
+      let offset = 0
 
-      if (error) {
-        console.error('❌ Error fetching materials:', error)
-        return
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('teaching_materials')
+          .select('*')
+          .eq('is_active', true)
+          .order('position')
+          .range(offset, offset + batchSize - 1)
+
+        if (error) {
+          console.error('❌ Error fetching materials batch:', error)
+          break
+        }
+
+        if (data && data.length > 0) {
+          allMaterials.push(...data)
+          console.log(`📦 Fetched batch ${offset}-${offset + data.length - 1}, total: ${allMaterials.length}`)
+          offset += batchSize
+          hasMore = data.length === batchSize
+        } else {
+          hasMore = false
+        }
       }
 
-      console.log('✅ Total materials loaded:', data?.length || 0);
-      setTeachingMaterials(data || []);
+      console.log('✅ Total materials loaded:', allMaterials.length);
+      setTeachingMaterials(allMaterials);
     } catch (err) {
       console.error('❌ Error fetching teaching materials:', err)
     }
@@ -299,17 +448,35 @@ export const VbKorrekturDashboard: React.FC = () => {
 
   const fetchFolderStructure = useCallback(async () => {
     try {
-      console.log('📂 Fetching ALL folders without limit')
-      
-      // Load all folders without pagination limit
-      const { data } = await supabase
-        .from('material_folders')
-        .select('*')
-        .eq('is_active', true)
-        .order('position')
-      
-      console.log('📂 All folders loaded:', data?.length || 0)
-      setFolderStructure(data || [])
+      // Load all folders using batching to handle large datasets
+      const allFolders: MaterialFolder[] = []
+      const batchSize = 1000
+      let hasMore = true
+      let offset = 0
+
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('material_folders')
+          .select('*')
+          .eq('is_active', true)
+          .order('position')
+          .range(offset, offset + batchSize - 1)
+
+        if (error) {
+          console.error('❌ Error fetching folders batch:', error)
+          break
+        }
+
+        if (data && data.length > 0) {
+          allFolders.push(...data)
+          offset += batchSize
+          hasMore = data.length === batchSize
+        } else {
+          hasMore = false
+        }
+      }
+
+      setFolderStructure(allFolders)
     } catch (err) {
       console.error('❌ Error fetching folder structure:', err)
     }
@@ -416,6 +583,8 @@ export const VbKorrekturDashboard: React.FC = () => {
   const handleAssignMaterials = async (material?: TeachingMaterial) => {
     if (!selectedCaseForMaterial || !user) return
     
+    setIsAssigningMaterial(true)
+    
     // If a single material is passed, use it; otherwise use selected materials
     const materialsToAssign = material 
       ? [material] 
@@ -441,10 +610,12 @@ export const VbKorrekturDashboard: React.FC = () => {
         setSelectedCaseForMaterial(null)
         setSelectedTeachingMaterial(null)
         setSelectedMaterials(new Set())
-        fetchCases()
+        setRefreshKey(prev => prev + 1)
       } catch (err) {
         console.error('Error reverting material assignment:', err)
         alert('Fehler beim Zurücksetzen der Materialien')
+      } finally {
+        setIsAssigningMaterial(false)
       }
       return
     }
@@ -507,6 +678,8 @@ export const VbKorrekturDashboard: React.FC = () => {
     } catch (err) {
       console.error('Error assigning materials:', err)
       alert('Fehler beim Zuweisen der Materialien')
+    } finally {
+      setIsAssigningMaterial(false)
     }
   }
 
@@ -534,32 +707,17 @@ export const VbKorrekturDashboard: React.FC = () => {
     return acc
   }, {} as Record<string, TeachingMaterial[]>)
 
-  console.log('📂 Total materials loaded:', teachingMaterials.length)
-  console.log('📂 Sample material folder_ids:', teachingMaterials.slice(0, 5).map(m => ({ id: m.id, title: m.title, folder_id: m.folder_id })))
-  console.log('📂 Folder IDs:', folderStructure.map(f => ({ id: f.id, name: f.name })))
-  console.log('📂 Materials by folder:', Object.keys(materialsByFolder).map(id => ({
-    folderId: id,
-    count: materialsByFolder[id].length,
-    sample: materialsByFolder[id][0]?.title,
-    folderName: folderStructure.find(f => f.id === id)?.name || 'Unknown'
-  })))
-  console.log('📂 Folder structure:', folderStructure.map(f => ({ id: f.id, name: f.name, parent_id: f.parent_id })))
-
   // Show only top-level folders (parent_id is null)
   const filteredFolders = folderStructure.filter(f => f.parent_id === null)
 
   const toggleFolder = (folderId: string) => {
-    console.log('🔄 toggleFolder called with:', folderId, 'current expanded:', Array.from(expandedFolders))
     setExpandedFolders(prev => {
       const newSet = new Set(prev)
       if (newSet.has(folderId)) {
         newSet.delete(folderId)
-        console.log('📂 Collapsing folder:', folderId)
       } else {
         newSet.add(folderId)
-        console.log('📂 Expanding folder:', folderId)
       }
-      console.log('🔄 New expanded folders:', Array.from(newSet))
       return newSet
     })
   }
@@ -568,17 +726,13 @@ export const VbKorrekturDashboard: React.FC = () => {
   const renderFolder = (folder: MaterialFolder, level: number = 0) => {
     const folderMaterials = materialsByFolder[folder.id] || []
     const isExpanded = expandedFolders.has(folder.id)
-    const hasMaterials = folderMaterials.length > 0
-    
+
     // Get subfolders of this folder
     const subFolders = folderStructure.filter(f => f.parent_id === folder.id)
-    const hasSubFolders = subFolders.length > 0
-    
+
     // Check if all materials in this folder are selected
     const folderSelected = isFolderSelected(folder.id)
-    
-    console.log('📂 Rendering folder:', folder.name, 'materials:', folderMaterials.length, 'subFolders:', subFolders.length, 'hasMaterials:', hasMaterials, 'hasSubFolders:', hasSubFolders)
-    
+
     return (
       <React.Fragment key={folder.id}>
         <DraggableFolder
@@ -636,6 +790,8 @@ export const VbKorrekturDashboard: React.FC = () => {
     if (!selected || !user) return
     setIsSaving(true)
     try {
+      console.log('💾 Saving correction - score:', payload.score, 'feedback:', payload.feedback)
+
       const writtenUrl = payload.pdfFile
         ? await uploadCorrectionFile(payload.pdfFile, selected.id, 'korrektur')
         : selected.written_correction_url || null
@@ -644,38 +800,83 @@ export const VbKorrekturDashboard: React.FC = () => {
         : selected.scoring_sheet_url || null
       const solutionUrl = payload.solutionFile
         ? await uploadCorrectionFile(payload.solutionFile, selected.id, 'loesung')
-        : selected.solution_pdf_url || null
+        : selectedCorrectionMaterialUrls.solution || selected.solution_pdf_url || null
       const schemaUrl = payload.schemaFile
         ? await uploadCorrectionFile(payload.schemaFile, selected.id, 'schema')
-        : selected.scoring_schema_url || null
+        : selectedCorrectionMaterialUrls.schema || selected.scoring_schema_url || null
 
       const videoUrl = payload.videoUrl?.trim() || selected.video_correction_url || null
+
+      // Check if all required fields are filled (score, PDF, Excel)
+      const hasScore = !!payload.score
+      const hasPdf = !!writtenUrl
+      const hasExcel = !!scoringSheetUrl
+      const isComplete = hasScore && hasPdf && hasExcel
+
+      console.log('💾 Completion check:', { hasScore, hasPdf, hasExcel, isComplete })
 
       // 1) Update the case study request with correction artifacts + status
       const { error: reqError } = await supabase
         .from('vb_case_study_requests')
         .update({
-          status: 'corrected',
+          status: isComplete ? 'completed' : 'corrected',
           assigned_dozent_id: user.id,
           video_correction_url: videoUrl,
           written_correction_url: writtenUrl,
           solution_pdf_url: solutionUrl,
           scoring_sheet_url: scoringSheetUrl,
           scoring_schema_url: schemaUrl,
+          correction_duration_hours: payload.durationHours ? parseFloat(payload.durationHours) : null,
         })
         .eq('id', selected.id)
       if (reqError) throw reqError
 
       // 2) Upsert the grade into vb_submissions
       const grade = payload.score ? parseFloat(payload.score) : null
+      console.log('💾 Parsed grade:', grade)
+
+      // 3) Notify student if correction is completed
+      if (isComplete && selected.status !== 'completed') {
+        console.log('📧 Sending completion notification to student')
+        const { error: notificationError } = await supabase.functions.invoke('vb-notify-student', {
+          body: {
+            profile_id: selected.profile_id,
+            case_study_id: selected.id,
+            case_study_number: selected.case_study_number,
+            is_correction_complete: true,
+          }
+        })
+
+        if (notificationError) {
+          console.error('Error creating notification:', notificationError)
+        }
+
+        // Also create notification in database for in-app display
+        const { error: dbError } = await supabase
+          .from('vb_notifications')
+          .insert({
+            profile_id: selected.profile_id,
+            title: 'Korrektur abgeschlossen',
+            message: `Die Korrektur für Klausur #${selected.case_study_number} ist abgeschlossen. Eine neue Video-Klausurenkorrektur ist verfügbar.`,
+            type: 'success',
+            related_case_study_id: selected.id,
+          })
+
+        if (dbError) {
+          console.error('Error creating notification in database:', dbError)
+        }
+      }
+
       const { data: existing } = await supabase
         .from('vb_submissions')
         .select('id')
         .eq('case_study_request_id', selected.id)
         .maybeSingle()
 
+      console.log('💾 Existing submission:', existing)
+
       if (existing) {
-        await supabase
+        const { error: updateError } = await supabase
           .from('vb_submissions')
           .update({
             grade,
@@ -685,8 +886,13 @@ export const VbKorrekturDashboard: React.FC = () => {
             corrected_at: new Date().toISOString(),
           })
           .eq('id', existing.id)
+        if (updateError) {
+          console.error('❌ Update error:', updateError)
+          throw updateError
+        }
+        console.log('✅ Updated submission successfully')
       } else {
-        await supabase.from('vb_submissions').insert({
+        const { error: insertError } = await supabase.from('vb_submissions').insert({
           case_study_request_id: selected.id,
           file_url: selected.submission_url || 'https://placeholder.invalid/submission.pdf',
           file_type: selected.submission_url?.toLowerCase().endsWith('.docx') ? 'docx' : 'pdf',
@@ -697,6 +903,11 @@ export const VbKorrekturDashboard: React.FC = () => {
           submitted_at: selected.updated_at,
           corrected_at: new Date().toISOString(),
         })
+        if (insertError) {
+          console.error('❌ Insert error:', insertError)
+          throw insertError
+        }
+        console.log('✅ Inserted submission successfully')
       }
 
       // 3) Log correction time to the Tätigkeitsbericht (dozent_hours)
@@ -727,7 +938,16 @@ export const VbKorrekturDashboard: React.FC = () => {
       }
 
       setSelected(null)
-      fetchCases()
+      await fetchCases()
+      
+      // Reset material selection state
+      setSelectedCorrectionMaterialUrls({})
+      setSelectedCorrectionMaterialFileNames({})
+      
+      // If no video was provided and status is corrected, stay on submissions tab
+      if (!videoUrl) {
+        setActiveTab('submissions')
+      }
     } catch (err) {
       console.error('Error saving VB correction:', err)
       alert('Fehler beim Speichern der Korrektur')
@@ -736,18 +956,22 @@ export const VbKorrekturDashboard: React.FC = () => {
     }
   }
 
-  const toItem = (c: VbCase): KorrekturItem => ({
-    id: c.id,
-    title: `Klausur #${c.case_study_number} - ${c.legal_area}`,
-    subtitle: `${studentName(c)} - ${c.sub_area}${c.focus_area ? ` (${c.focus_area})` : ''}`,
-    score: c.grade,
-    feedback: c.grade_text,
-    correctedFileUrl: c.written_correction_url,
-    correctedExcelUrl: c.scoring_sheet_url,
-    videoCorrectionUrl: c.video_correction_url,
-    solutionPdfUrl: c.solution_pdf_url,
-    scoringSchemaUrl: c.scoring_schema_url,
-  })
+  const toItem = (c: VbCase): KorrekturItem => {
+    console.log('🔄 toItem called with:', { id: c.id, grade: c.grade, grade_text: c.grade_text, video_correction_url: c.video_correction_url, correction_duration_hours: c.correction_duration_hours })
+    return {
+      id: c.id,
+      title: c.sub_area,
+      subtitle: `${studentName(c)} - ${c.legal_area}${c.focus_area ? ` (${c.focus_area})` : ''}`,
+      score: c.grade,
+      feedback: c.grade_text,
+      correctedFileUrl: c.written_correction_url,
+      correctedExcelUrl: c.scoring_sheet_url,
+      videoCorrectionUrl: c.video_correction_url,
+      solutionPdfUrl: c.solution_pdf_url,
+      scoringSchemaUrl: c.scoring_schema_url,
+      correctionDurationHours: c.correction_duration_hours?.toString() || '',
+    }
+  }
 
   const filtered = cases // Tab filtering is now done in fetchCases
 
@@ -788,9 +1012,8 @@ export const VbKorrekturDashboard: React.FC = () => {
               {[
                 { id: 'requests', label: 'Neue Anfragen', count: allCases.filter(c => c.status === 'requested').length },
                 { id: 'materials_sent', label: 'Materialien versendet', count: allCases.filter(c => c.status === 'materials_ready').length },
-                { id: 'submissions', label: 'Eingereichte Arbeiten', count: allCases.filter(c => c.status === 'submitted' || c.status === 'under_review').length },
-                { id: 'pending_videos', label: 'Ausstehende Videos', count: allCases.filter(c => (c.status === 'under_review' || c.status === 'corrected') && !c.video_correction_url).length },
-                { id: 'completed', label: 'Abgeschlossen', count: allCases.filter(c => c.status === 'corrected' || c.status === 'completed').length },
+                { id: 'submissions', label: 'Eingereichte Arbeiten', count: allCases.filter(c => c.status === 'submitted' || c.status === 'under_review' || c.status === 'corrected').length },
+                { id: 'completed', label: 'Abgeschlossen', count: allCases.filter(c => c.status === 'completed' || (c.status === 'corrected' && c.video_correction_url)).length },
               ].map(tab => (
                 <button
                   key={tab.id}
@@ -834,7 +1057,6 @@ export const VbKorrekturDashboard: React.FC = () => {
               {activeTab === 'requests' && 'Neue Anfragen'}
               {activeTab === 'materials_sent' && 'Materialien versendet'}
               {activeTab === 'submissions' && 'Eingereichte Arbeiten'}
-              {activeTab === 'pending_videos' && 'Ausstehende Videos'}
               {activeTab === 'completed' && 'Abgeschlossene Klausuren'}
               <span className="ml-2 text-gray-400">({filtered.length})</span>
             </h2>
@@ -843,11 +1065,12 @@ export const VbKorrekturDashboard: React.FC = () => {
           {filtered.length === 0 ? (
             <p className="text-gray-500 text-sm py-8 text-center">Keine Klausuren in dieser Ansicht.</p>
           ) : (
-            <div className="space-y-3">
-              {filtered.map(c => {
-                const st = STATUS_LABELS[c.status] || { label: c.status, cls: 'bg-gray-100 text-gray-700' }
-                return (
-                  <div key={c.id} className="border border-gray-200 rounded-lg p-4">
+            <>
+              <div className="space-y-3">
+                {filtered.map(c => {
+                  const st = STATUS_LABELS[c.status] || { label: c.status, cls: 'bg-gray-100 text-gray-700' }
+                  return (
+                    <div key={c.id} className="border border-gray-200 rounded-lg p-4">
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2 mb-1">
@@ -878,7 +1101,7 @@ export const VbKorrekturDashboard: React.FC = () => {
                             className="flex items-center gap-1 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
                           >
                             <Download className="w-4 h-4" />
-                            Abgabe
+                            Herunterladen
                           </button>
                         )}
                         {(c.status === 'submitted') && (
@@ -890,12 +1113,27 @@ export const VbKorrekturDashboard: React.FC = () => {
                             Übernehmen
                           </button>
                         )}
+                        {(c.status === 'corrected' && !c.video_correction_url) && (
+                          <button
+                            onClick={() => setSelected(c)}
+                            className="flex items-center gap-1 px-3 py-2 text-sm border border-blue-400 text-blue-600 rounded-lg hover:bg-blue-50"
+                          >
+                            <Clock className="w-4 h-4" />
+                            Video hinzufügen
+                          </button>
+                        )}
                         {(c.status === 'materials_ready') && (
                           <button
-                            onClick={() => {
-                              console.log('📂 Opening material selector to change material')
-                              setShowMaterialSelector(true)
+                            onClick={async () => {
                               setSelectedCaseForMaterial(c)
+                              
+                              // Only fetch if not already loaded
+                              if (teachingMaterials.length === 0) {
+                                await fetchTeachingMaterials()
+                              }
+                              if (folderStructure.length === 0) {
+                                await fetchFolderStructure()
+                              }
                               
                               // Find and select the current material
                               const currentMaterial = teachingMaterials.find(m => m.file_url === c.case_study_material_url)
@@ -925,8 +1163,7 @@ export const VbKorrekturDashboard: React.FC = () => {
                               
                               setSelectedMaterials(selectedSet)
                               setExpandedFolders(expandedSet)
-                              fetchFolderStructure()
-                              fetchTeachingMaterials()
+                              setShowMaterialSelector(true)
                             }}
                             className="flex items-center gap-1 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
                           >
@@ -935,20 +1172,21 @@ export const VbKorrekturDashboard: React.FC = () => {
                           </button>
                         )}
                         <button
-                          onClick={() => {
-                            console.log('🔘 Button clicked, status:', c.status)
+                          onClick={async () => {
                             if (c.status === 'requested') {
-                              console.log('📂 Opening material selector')
-                              setShowMaterialSelector(true)
                               setSelectedCaseForMaterial(c)
                               setSelectedMaterials(new Set()) // Reset selected materials
                               setExpandedFolders(new Set()) // Reset expanded folders
-                              fetchFolderStructure()
-                              fetchTeachingMaterials().then(() => {
-                                console.log('✅ Materials fetched')
-                              }).catch(err => {
-                                console.error('❌ Error fetching materials:', err)
-                              })
+                              
+                              // Only fetch if not already loaded
+                              if (teachingMaterials.length === 0) {
+                                await fetchTeachingMaterials()
+                              }
+                              if (folderStructure.length === 0) {
+                                await fetchFolderStructure()
+                              }
+                              
+                              setShowMaterialSelector(true)
                             } else {
                               setSelected(c)
                             }
@@ -960,7 +1198,7 @@ export const VbKorrekturDashboard: React.FC = () => {
                           ) : c.status === 'corrected' || c.status === 'completed' ? (
                             <><Edit3 className="w-4 h-4" />Bearbeiten</>
                           ) : (
-                            <><CheckCircle className="w-4 h-4" />Korrigieren</>
+                            <><CheckCircle className="w-4 h-4" />Korrektur hochladen</>
                           )}
                         </button>
                       </div>
@@ -969,12 +1207,35 @@ export const VbKorrekturDashboard: React.FC = () => {
                 )
               })}
             </div>
+            {activeTab === 'completed' && completedTotal > 5 && (
+              <div className="flex items-center justify-center gap-2 mt-4 pt-4 border-t border-gray-200">
+                <button
+                  onClick={() => setCompletedPage(p => Math.max(1, p - 1))}
+                  disabled={completedPage === 1}
+                  className="px-3 py-1 border border-gray-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Zurück
+                </button>
+                <span className="text-sm text-gray-600">
+                  Seite {completedPage} von {Math.ceil(completedTotal / 5)}
+                </span>
+                <button
+                  onClick={() => setCompletedPage(p => Math.min(Math.ceil(completedTotal / 5), p + 1))}
+                  disabled={completedPage >= Math.ceil(completedTotal / 5)}
+                  className="px-3 py-1 border border-gray-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Weiter
+                </button>
+              </div>
+            )}
+            </>
           )}
         </div>
       </div>
 
       {selected && (
         <KorrekturModal
+          key={modalRefreshKey}
           item={toItem(selected)}
           config={VB_FIELD_CONFIG}
           isSaving={isSaving}
@@ -982,6 +1243,10 @@ export const VbKorrekturDashboard: React.FC = () => {
           onSave={handleSave}
           onDownloadFile={downloadFile}
           defaultDurationHours="0.5"
+          onOpenMaterialSelector={handleOpenCorrectionMaterialSelector}
+          selectedMaterialUrls={selectedCorrectionMaterialUrls}
+          selectedMaterialFileNames={selectedCorrectionMaterialFileNames}
+          onClearFile={handleClearFile}
         />
       )}
 
@@ -1005,20 +1270,40 @@ export const VbKorrekturDashboard: React.FC = () => {
             <div className="sticky top-0 bg-white border-b border-gray-200 p-6 z-10 rounded-t-lg">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">
-                  {selectedCaseForMaterial?.status === 'materials_ready' ? 'Material ändern' : 'Sachverhalt auswählen'}
+                  {editingCorrectionField ? `${editingCorrectionField === 'solution' ? 'Lösungsskizze' : 'Bewertungsschema'} aus Materialien auswählen` : (selectedCaseForMaterial?.status === 'materials_ready' ? 'Material ändern' : 'Sachverhalt auswählen')}
                 </h3>
                 <div className="flex items-center gap-2">
-                  {(selectedMaterials.size > 0 || selectedCaseForMaterial?.status === 'materials_ready') && (
+                  {editingCorrectionField ? (
                     <button
-                      onClick={() => handleAssignMaterials()}
-                      className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors font-medium flex items-center gap-2"
+                      onClick={handleAssignCorrectionMaterial}
+                      disabled={selectedMaterials.size === 0}
+                      className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <CheckCircle className="w-4 h-4" />
-                      {selectedCaseForMaterial?.status === 'materials_ready' 
-                        ? (selectedMaterials.size > 0 ? `Speichern (${selectedMaterials.size})` : 'Material entfernen')
-                        : `Zuweisen (${selectedMaterials.size})`
-                      }
+                      Auswählen
                     </button>
+                  ) : (
+                    (selectedMaterials.size > 0 || selectedCaseForMaterial?.status === 'materials_ready') && (
+                      <button
+                        onClick={() => handleAssignMaterials()}
+                        disabled={isAssigningMaterial}
+                        className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isAssigningMaterial ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                            Verarbeite...
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="w-4 h-4" />
+                            {selectedCaseForMaterial?.status === 'materials_ready'
+                              ? (selectedMaterials.size > 0 ? `Speichern (${selectedMaterials.size})` : 'Material entfernen')
+                              : `Zuweisen (${selectedMaterials.size})`
+                            }
+                          </>
+                        )}
+                      </button>
+                    )
                   )}
                   <button
                     onClick={() => {
@@ -1026,6 +1311,7 @@ export const VbKorrekturDashboard: React.FC = () => {
                       setShowMaterialSelector(false)
                       setSelectedCaseForMaterial(null)
                       setSelectedMaterials(new Set())
+                      setEditingCorrectionField(null)
                     }}
                     className="text-gray-500 hover:text-gray-700"
                   >

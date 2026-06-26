@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { X, FileText, Upload, Download, Save } from 'lucide-react'
+import { X, FileText, Upload, Download, Save, Edit3 } from 'lucide-react'
 import type { KorrekturFieldConfig, KorrekturItem, KorrekturSavePayload } from './types'
 
 interface FileFieldProps {
@@ -11,6 +11,24 @@ interface FileFieldProps {
   downloadName: string
   onSelect: (file: File | null) => void
   onDownload?: (url: string, filename: string) => void
+  useMaterialSelector?: boolean
+  onOpenMaterialSelector?: () => void
+  selectedMaterialUrl?: string | null
+  selectedMaterialFileName?: string | null
+  onDelete?: () => void
+}
+
+// Helper to extract filename from URL
+const getFileNameFromUrl = (url: string): string => {
+  if (!url) return 'Unbekannte Datei'
+  try {
+    const urlObj = new URL(url)
+    const pathname = urlObj.pathname
+    const filename = pathname.split('/').pop()
+    return filename || 'Unbekannte Datei'
+  } catch {
+    return url.split('/').pop() || 'Unbekannte Datei'
+  }
 }
 
 // Reusable upload/preview block: shows selected file, or an existing uploaded
@@ -24,12 +42,19 @@ const FileField: React.FC<FileFieldProps> = ({
   downloadName,
   onSelect,
   onDownload,
+  useMaterialSelector = false,
+  onOpenMaterialSelector,
+  selectedMaterialUrl,
+  selectedMaterialFileName,
+  onDelete,
 }) => {
   const dashed =
     accentColor === 'green'
       ? 'border-green-300 hover:border-green-500/50 bg-green-50/30'
       : 'border-gray-300 hover:border-primary/50'
   const iconColor = accentColor === 'green' ? 'text-green-500' : 'text-gray-400'
+
+  const displayName = selectedMaterialFileName || (selectedMaterialUrl ? getFileNameFromUrl(selectedMaterialUrl) : null)
 
   return (
     <div>
@@ -47,11 +72,43 @@ const FileField: React.FC<FileFieldProps> = ({
             <X className="h-4 w-4" />
           </button>
         </div>
+      ) : selectedMaterialUrl ? (
+        <div className="flex items-center p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <FileText className="h-5 w-5 text-blue-600 flex-shrink-0" />
+          <span className="ml-2 text-sm text-gray-700 truncate flex-1" title={displayName || 'Aus Materialien ausgewählt'}>
+            {displayName || 'Aus Materialien ausgewählt'}
+          </span>
+          {onDownload && (
+            <button
+              onClick={() => onDownload(selectedMaterialUrl, downloadName)}
+              className="ml-2 p-1 text-primary hover:bg-primary/10 rounded flex-shrink-0"
+              title="Datei herunterladen"
+            >
+              <Download className="h-4 w-4" />
+            </button>
+          )}
+          <button
+            onClick={onOpenMaterialSelector}
+            className="ml-2 p-1 text-gray-500 hover:bg-gray-100 rounded flex-shrink-0"
+            title="Andere Datei auswählen"
+          >
+            <Edit3 className="h-4 w-4" />
+          </button>
+          <button
+            onClick={onDelete}
+            className="ml-2 p-1 text-red-500 hover:bg-red-50 rounded flex-shrink-0"
+            title="Datei entfernen"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       ) : existingUrl ? (
         <div className="space-y-2">
           <div className="flex items-center p-3 bg-green-50 border border-green-200 rounded-lg">
             <FileText className="h-5 w-5 text-green-600 flex-shrink-0" />
-            <span className="ml-2 text-sm text-gray-700 flex-1">Bereits hochgeladen</span>
+            <span className="ml-2 text-sm text-gray-700 truncate flex-1" title={getFileNameFromUrl(existingUrl)}>
+              {getFileNameFromUrl(existingUrl)}
+            </span>
             {onDownload && (
               <button
                 onClick={() => onDownload(existingUrl, downloadName)}
@@ -61,11 +118,51 @@ const FileField: React.FC<FileFieldProps> = ({
                 <Download className="h-4 w-4" />
               </button>
             )}
+            <button
+              onClick={onDelete}
+              className="ml-2 p-1 text-red-500 hover:bg-red-50 rounded flex-shrink-0"
+              title="Datei entfernen"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <label className="cursor-pointer block">
-            <div className={`flex items-center justify-center px-3 py-2 border-2 border-dashed rounded-lg transition-colors ${dashed}`}>
+          {useMaterialSelector ? (
+            <button
+              onClick={onOpenMaterialSelector}
+              className={`flex items-center justify-center px-3 py-2 border-2 border-dashed rounded-lg transition-colors ${dashed}`}
+            >
               <Upload className={`h-4 w-4 mr-2 ${iconColor}`} />
-              <span className="text-sm text-gray-500">Neue Datei hochladen</span>
+              <span className="text-sm text-gray-500">Aus Materialien auswählen</span>
+            </button>
+          ) : (
+            <label className="cursor-pointer block">
+              <div className={`flex items-center justify-center px-3 py-2 border-2 border-dashed rounded-lg transition-colors ${dashed}`}>
+                <Upload className={`h-4 w-4 mr-2 ${iconColor}`} />
+                <span className="text-sm text-gray-500">Neue Datei hochladen</span>
+              </div>
+              <input
+                type="file"
+                accept={accept}
+                className="hidden"
+                onChange={e => onSelect(e.target.files?.[0] || null)}
+              />
+            </label>
+          )}
+        </div>
+      ) : (
+        useMaterialSelector ? (
+          <button
+            onClick={onOpenMaterialSelector}
+            className={`flex items-center justify-center px-3 py-3 border-2 border-dashed rounded-lg transition-colors ${dashed}`}
+          >
+            <Upload className={`h-4 w-4 mr-2 ${iconColor}`} />
+            <span className="text-sm text-gray-500">Aus Materialien auswählen</span>
+          </button>
+        ) : (
+          <label className="cursor-pointer block">
+            <div className={`flex items-center justify-center px-3 py-3 border-2 border-dashed rounded-lg transition-colors ${dashed}`}>
+              <Upload className={`h-4 w-4 mr-2 ${iconColor}`} />
+              <span className="text-sm text-gray-500">Datei auswählen</span>
             </div>
             <input
               type="file"
@@ -74,20 +171,7 @@ const FileField: React.FC<FileFieldProps> = ({
               onChange={e => onSelect(e.target.files?.[0] || null)}
             />
           </label>
-        </div>
-      ) : (
-        <label className="cursor-pointer block">
-          <div className={`flex items-center justify-center px-3 py-3 border-2 border-dashed rounded-lg transition-colors ${dashed}`}>
-            <Upload className={`h-4 w-4 mr-2 ${iconColor}`} />
-            <span className="text-sm text-gray-500">Datei auswählen</span>
-          </div>
-          <input
-            type="file"
-            accept={accept}
-            className="hidden"
-            onChange={e => onSelect(e.target.files?.[0] || null)}
-          />
-        </label>
+        )
       )}
     </div>
   )
@@ -102,6 +186,12 @@ interface KorrekturModalProps {
   onDownloadFile?: (url: string, filename: string) => void
   /** Prefilled correction time (e.g. Elite defaults to '0.5'). */
   defaultDurationHours?: string
+  /** Material selector props for folder/file selection */
+  onOpenMaterialSelector?: (field: 'solution' | 'schema') => void
+  selectedMaterialUrls?: { solution?: string; schema?: string }
+  selectedMaterialFileNames?: { solution?: string; schema?: string }
+  /** Callback to clear a file URL immediately (for delete functionality) */
+  onClearFile?: (field: 'pdf' | 'excel' | 'solution' | 'schema') => void
 }
 
 export const KorrekturModal: React.FC<KorrekturModalProps> = ({
@@ -112,6 +202,10 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
   onSave,
   onDownloadFile,
   defaultDurationHours = '',
+  onOpenMaterialSelector,
+  selectedMaterialUrls,
+  selectedMaterialFileNames,
+  onClearFile,
 }) => {
   const [score, setScore] = useState('')
   const [durationHours, setDurationHours] = useState('')
@@ -127,12 +221,13 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
     setScore(item.score !== null && item.score !== undefined ? String(item.score) : '')
     setFeedback(item.feedback || '')
     setVideoUrl(item.videoCorrectionUrl || '')
-    setDurationHours(defaultDurationHours)
+    setDurationHours(item.correctionDurationHours || defaultDurationHours)
+    // Reset file states
     setPdfFile(null)
     setExcelFile(null)
     setSolutionFile(null)
     setSchemaFile(null)
-  }, [item.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [item.id, item.correctedFileUrl, item.correctedExcelUrl, item.solutionPdfUrl, item.scoringSchemaUrl, item.correctionDurationHours, defaultDurationHours]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = () => {
     onSave({
@@ -229,6 +324,7 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
                     downloadName={`${item.title}_Korrektur.pdf`}
                     onSelect={setPdfFile}
                     onDownload={onDownloadFile}
+                    onDelete={() => onClearFile?.('pdf')}
                   />
                 )}
                 {config.showExcel && (
@@ -237,10 +333,10 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
                     file={excelFile}
                     existingUrl={item.correctedExcelUrl}
                     accept=".xlsx,.xls,.csv"
-                    accentColor="green"
                     downloadName={`${item.title}_Bewertung.xlsx`}
                     onSelect={setExcelFile}
                     onDownload={onDownloadFile}
+                    onDelete={() => onClearFile?.('excel')}
                   />
                 )}
               </div>
@@ -257,6 +353,11 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
                     downloadName={`${item.title}_Loesungsskizze.pdf`}
                     onSelect={setSolutionFile}
                     onDownload={onDownloadFile}
+                    useMaterialSelector={true}
+                    onOpenMaterialSelector={() => onOpenMaterialSelector?.('solution')}
+                    selectedMaterialUrl={selectedMaterialUrls?.solution}
+                    selectedMaterialFileName={selectedMaterialFileNames?.solution}
+                    onDelete={() => onClearFile?.('solution')}
                   />
                 )}
                 {config.showSchema && (
@@ -268,6 +369,11 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
                     downloadName={`${item.title}_Schema.pdf`}
                     onSelect={setSchemaFile}
                     onDownload={onDownloadFile}
+                    useMaterialSelector={true}
+                    onOpenMaterialSelector={() => onOpenMaterialSelector?.('schema')}
+                    selectedMaterialUrl={selectedMaterialUrls?.schema}
+                    selectedMaterialFileName={selectedMaterialFileNames?.schema}
+                    onDelete={() => onClearFile?.('schema')}
                   />
                 )}
               </div>
