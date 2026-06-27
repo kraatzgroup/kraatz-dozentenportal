@@ -13,9 +13,9 @@ export const VbLandingRedirect: React.FC = () => {
     if (isTeilnehmer && additionalRoles?.includes('videobesprechung')) {
       return <Navigate to="/klausurenbesprechung/dashboard" replace />;
     }
-    // Dozenten with videobesprechung_dozent role go to correction dashboard
+    // Dozenten with videobesprechung_dozent role go to main dashboard (not correction dashboard)
     if (additionalRoles?.includes('videobesprechung_dozent')) {
-      return <Navigate to="/klausurenbesprechung/korrektur" replace />;
+      return <Navigate to="/dashboard" replace />;
     }
     // Other users go to main dashboard
     return <Navigate to="/dashboard" replace />;

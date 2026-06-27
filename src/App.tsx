@@ -48,13 +48,10 @@ import { ToastContainer } from './components/Toast';
 import { useState } from 'react';
 
 function App() {
-  const { setUser, user, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isTeilnehmer, isMaterial, userRole, isSettingUser, additionalRoles } = useAuthStore();
+  const { setUser, user, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isTeilnehmer, isMaterial, userRole, additionalRoles } = useAuthStore();
   const { isPreviewMode, previewedRole, togglePreview, setPreviewedRole } = usePreviewStore();
   const [appLoading, setAppLoading] = useState(true);
   const [appReady, setAppReady] = useState(false);
-
-  // Check if user is a videobesprechung user
-  const isVideobesprechung = additionalRoles?.includes('videobesprechung');
 
   useEffect(() => {
     // Global loading: Check session and profile before routing
@@ -121,12 +118,24 @@ function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       console.log('🔄 App: Auth state changed:', _event, session?.user?.email);
       
-      if (user && session?.user && user.id === session.user.id && _event !== 'SIGNED_OUT') {
+      // Check if user actually changed (switching users)
+      const currentUser = useAuthStore.getState().user;
+      if (currentUser && session?.user && currentUser.id === session.user.id && _event !== 'SIGNED_OUT') {
         console.log('⏭️ App: User already set, ignoring duplicate auth event');
         return;
       }
       
+      // User changed or signed out - re-initialize
+      console.log('🔄 App: User changed or signed out, re-initializing');
       setUser(session?.user ?? null);
+      
+      // Only re-initialize if user actually changed (not just auth state refresh)
+      if (_event === 'SIGNED_IN' || _event === 'SIGNED_OUT') {
+        // Reset app state and re-initialize
+        setAppLoading(true);
+        setAppReady(false);
+        initializeApp();
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -185,7 +194,7 @@ function App() {
         }>
         <Routes>
           {/* Root redirect: Auth check first */}
-          <Route path="/" element={!user ? <Navigate to="/login" replace /> : <Navigate to={isVideobesprechung ? "/klausurenbesprechung/dashboard" : "/dashboard"} replace />} />
+          <Route path="/" element={!user ? <Navigate to="/login" replace /> : <Navigate to="/dashboard" replace />} />
 
           {/* Legacy route redirects */}
           <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
@@ -231,8 +240,6 @@ function App() {
                 <Navigate to="/login" replace />
               ) : isMaterial ?
                 <DozentenDashboard /> :
-              isVideobesprechung ?
-                <VbLayout><VbCaseStudyDashboard /></VbLayout> :
               showTeilnehmerView ?
                 <EliteKleingruppeDashboard /> :
               showVertriebView ?
