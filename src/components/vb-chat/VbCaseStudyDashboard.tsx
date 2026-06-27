@@ -729,33 +729,8 @@ export const VbCaseStudyDashboard: React.FC = () => {
       console.log('Case study for notification:', caseStudy)
       console.log('Assigned dozent ID:', caseStudy?.assigned_dozent_id)
       console.log('Submission downloaded at:', caseStudy?.submission_downloaded_at)
-      // Only notify dozent if they haven't downloaded the submission yet
-      if (caseStudy && user && profile && caseStudy.assigned_dozent_id && !caseStudy.submission_downloaded_at) {
-        console.log('Sending dozent notification...')
-        // Fetch dozent information
-        const { data: dozent } = await supabase
-          .from('profiles')
-          .select('email, first_name, last_name')
-          .eq('id', caseStudy.assigned_dozent_id)
-          .single()
-
-        if (dozent) {
-          // Call vb-notify-dozent edge function
-          await supabase.functions.invoke('vb-notify-dozent', {
-            body: {
-              dozentEmail: dozent.email,
-              dozentName: `${dozent.first_name} ${dozent.last_name}`,
-              studentName: `${profile.first_name} ${profile.last_name}`,
-              legalArea: caseStudy.legal_area,
-              subArea: caseStudy.sub_area,
-              caseStudyId: caseStudyId
-            }
-          })
-          console.log('Dozent notification sent successfully')
-        }
-      } else {
-        console.log('Dozent notification skipped - conditions not met')
-      }
+      // Note: Database trigger automatically creates notification and sends email
+      // when status changes to 'submitted'. No manual notification needed.
       
       setUploadFiles(prev => { const next = new Map(prev); next.delete(caseStudyId); return next })
       fetchUserData()

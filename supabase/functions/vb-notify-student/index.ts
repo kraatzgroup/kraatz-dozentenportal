@@ -237,6 +237,87 @@ serve(async (req) => {
 
     const notification = payload.record
 
+    // Get profile information to determine if it's a dozent or student
+    const { data: profile, error: profileError } = await supabaseClient
+      .from('profiles')
+      .select('email, first_name, last_name, role, additional_roles')
+      .eq('id', notification.profile_id)
+      .single()
+
+    if (profileError || !profile) {
+      console.log('User not found:', profileError)
+      return new Response('OK - User not found', { 
+        status: 200, 
+        headers: corsHeaders 
+      })
+    }
+
+    // Check if user has videobesprechung role
+    if (!profile.additional_roles?.includes('videobesprechung')) {
+      console.log('User does not have videobesprechung role')
+      return new Response('OK - User not a videobesprechung user', { 
+        status: 200, 
+        headers: corsHeaders 
+      })
+    }
+
+    // Determine if this is a dozent notification (based on role or message content)
+    const isDozentNotification = profile.role === 'dozent' || 
+                                  notification.title.includes('eingereicht') ||
+                                  notification.message.includes('eingereicht')
+
+    // If this is a dozent notification, delegate to vb-notify-dozent
+    if (isDozentNotification) {
+      console.log('Delegating to vb-notify-dozent for dozent notification')
+      
+      // Get case study details
+      const { data: caseStudy } = await supabaseClient
+        .from('vb_case_study_requests')
+        .select('legal_area, sub_area, case_study_number, profile_id')
+        .eq('id', notification.related_case_study_id)
+        .single()
+
+      if (!caseStudy) {
+        console.log('Case study not found, skipping dozent notification')
+        return new Response('OK - Case study not found', { 
+          status: 200, 
+          headers: corsHeaders 
+        })
+      }
+
+      // Get student name
+      const { data: student } = await supabaseClient
+        .from('profiles')
+        .select('first_name, last_name')
+        .eq('id', caseStudy.profile_id)
+        .single()
+
+      const studentName = student ? `${student.first_name} ${student.last_name}` : 'Unbekannt'
+
+      // Call vb-notify-dozent edge function
+      const { error: notifyError } = await supabaseClient.functions.invoke('vb-notify-dozent', {
+        body: {
+          dozentEmail: profile.email,
+          dozentName: `${profile.first_name} ${profile.last_name}`,
+          studentName: studentName,
+          legalArea: caseStudy.legal_area,
+          subArea: caseStudy.sub_area,
+          caseStudyId: caseStudy.id
+        }
+      })
+
+      if (notifyError) {
+        console.error('Error calling vb-notify-dozent:', notifyError)
+      } else {
+        console.log('Dozent notification sent successfully')
+      }
+
+      return new Response('OK - Dozent notification delegated', { 
+        status: 200, 
+        headers: corsHeaders 
+      })
+    }
+
     // Check if this is a student notification by checking the message content
     const isStudentNotification = 
       notification.message.includes('verfügbar') || 

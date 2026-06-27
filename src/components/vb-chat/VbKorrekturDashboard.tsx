@@ -635,39 +635,8 @@ export const VbKorrekturDashboard: React.FC = () => {
       
       if (error) throw error
       
-      // Check if this is a material change (status was already materials_ready)
-      const isMaterialChange = selectedCaseForMaterial.status === 'materials_ready'
-      
-      // Call edge function directly to send email
-      const { error: notificationError } = await supabase.functions.invoke('vb-notify-student', {
-        body: {
-          profile_id: selectedCaseForMaterial.profile_id,
-          case_study_id: selectedCaseForMaterial.id,
-          case_study_number: selectedCaseForMaterial.case_study_number,
-          is_material_change: isMaterialChange,
-        }
-      })
-      
-      if (notificationError) {
-        console.error('Error creating notification:', notificationError)
-      }
-      
-      // Also create notification in database for in-app display
-      const { error: dbError } = await supabase
-        .from('vb_notifications')
-        .insert({
-          profile_id: selectedCaseForMaterial.profile_id,
-          title: isMaterialChange ? 'Material geändert' : 'Sachverhalt verfügbar',
-          message: isMaterialChange 
-            ? `Das Ihnen für den Sachverhalt Klausur #${selectedCaseForMaterial.case_study_number} zugewiesene Material hat sich geändert.`
-            : `Dein Sachverhalt für die Klausur #${selectedCaseForMaterial.case_study_number} ist jetzt verfügbar. Du kannst mit der Bearbeitung beginnen.`,
-          type: 'success',
-          related_case_study_id: selectedCaseForMaterial.id,
-        })
-      
-      if (dbError) {
-        console.error('Error creating notification in database:', dbError)
-      }
+      // Note: Database trigger automatically creates notification and sends email
+      // when status changes to 'materials_ready'. No manual notification needed.
       
       setShowMaterialSelector(false)
       setSelectedCaseForMaterial(null)
