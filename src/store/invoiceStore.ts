@@ -439,13 +439,15 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => ({
       // Get flat rate items (sonstige Posten)
       const { data: flatRateItems, error: flatRateError } = await supabase
         .from('dozent_flat_rate_items')
-        .select('date, name, category, description, quantity, amount_euro, total_euro')
+        .select('date, name, category, description, quantity, amount_euro, total_euro, participant_name')
         .eq('dozent_id', invoice.dozent_id)
         .gte('date', startDate)
         .lte('date', endDate)
         .order('date', { ascending: true });
 
       if (flatRateError) throw flatRateError;
+
+      console.log('🔍 Debug: flatRateItems loaded:', flatRateItems);
 
       // Generate PDF - normalize Supabase join arrays to objects
       const normalizedParticipantHours = (participantHours || []).map((h: any) => ({

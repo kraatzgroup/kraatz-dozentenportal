@@ -68,6 +68,7 @@ interface FlatRateItem {
   total_euro: number;
   date: string;
   category?: string;
+  participant_name?: string;
   created_at: string;
 }
 
@@ -110,9 +111,8 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
 
   const FLAT_RATE_CATEGORIES = [
     'Auslagen',
-    'Reisekosten',
-    'Pauschalvereinbarungen',
-    'Kraatz Club Videos'
+    'Kraatz Club Videos',
+    'Probestunden'
   ];
 
   const [editFlatRateFormData, setEditFlatRateFormData] = useState({
@@ -120,7 +120,8 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
     description: '',
     quantity: '',
     amount_euro: '',
-    date: ''
+    date: '',
+    participant_name: ''
   });
   const [showAllHours, setShowAllHours] = useState(false);
   const [showAllTeilnehmer, setShowAllTeilnehmer] = useState(false);
@@ -621,7 +622,8 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
       description: item.description || '',
       quantity: item.quantity.toString(),
       amount_euro: item.amount_euro.toString(),
-      date: item.date
+      date: item.date,
+      participant_name: item.participant_name || ''
     });
     setShowEditFlatRateDialog(true);
   };
@@ -637,7 +639,8 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
           description: editFlatRateFormData.description,
           quantity: parseFloat(editFlatRateFormData.quantity),
           amount_euro: parseFloat(editFlatRateFormData.amount_euro),
-          date: editFlatRateFormData.date
+          date: editFlatRateFormData.date,
+          participant_name: editFlatRateFormData.category === 'Probestunden' ? editFlatRateFormData.participant_name : null
         })
         .eq('id', editingFlatRateItem.id);
 
@@ -1333,6 +1336,23 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
                     placeholder="z.B. Druckkosten für Unterrichtsmaterialien"
                   />
                 </div>
+
+                {editFlatRateFormData.category === 'Probestunden' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Name des Teilnehmers
+                    </label>
+                    <input
+                      type="text"
+                      value={editFlatRateFormData.participant_name}
+                      onChange={(e) => setEditFlatRateFormData({ ...editFlatRateFormData, participant_name: e.target.value })}
+                      className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                      placeholder="Name des Teilnehmers für die Probestunde"
+                      required
+                    />
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Menge</label>
@@ -1392,7 +1412,7 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
                 onClick={() => {
                   setShowEditFlatRateDialog(false);
                   setEditingFlatRateItem(null);
-                  setEditFlatRateFormData({ category: '', description: '', quantity: '', amount_euro: '', date: '' });
+                  setEditFlatRateFormData({ category: '', description: '', quantity: '', amount_euro: '', date: '', participant_name: '' });
                 }}
                 className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
               >

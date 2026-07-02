@@ -47,7 +47,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showCreateTypeDialog, setShowCreateTypeDialog] = useState(false);
   const [showPeriodSelectionDialog, setShowPeriodSelectionDialog] = useState(false);
-  const [availableMonths, setAvailableMonths] = useState<{ month: number; year: number }[]>([]);
+  const [availableMonths, setAvailableMonths] = useState<{ month: number; year: number; hasInvoice?: boolean; invoiceStatus?: string }[]>([]);
   const [availableQuarters, setAvailableQuarters] = useState<{ quarter: number; year: number; monthsWithInvoices: number[] }[]>([]);
   const [showInvoiceDetailsDialog, setShowInvoiceDetailsDialog] = useState(false);
   const [showExamTypeDialog, setShowExamTypeDialog] = useState(false);
@@ -58,6 +58,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
   const [invoiceNumberError, setInvoiceNumberError] = useState('');
   const [isQuarterlyInvoice, setIsQuarterlyInvoice] = useState(false);
   const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
+  const [showRecentMonthsOnly, setShowRecentMonthsOnly] = useState(true);
   const [previewHours, setPreviewHours] = useState<HourEntry[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [archiveFilterMonth, setArchiveFilterMonth] = useState<number | 'alle'>('alle');
@@ -446,40 +447,26 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
     setShowCreateTypeDialog(false);
     setIsQuarterlyInvoice(false);
     
-    // Fetch available months with hours but no invoices
+    // Fetch available months (all months from 2023 to current month)
     try {
       const currentMonth = new Date().getMonth() + 1;
       const currentYear = new Date().getFullYear();
       
-      // Fetch months with hours
-      const { data: participantMonths } = await supabase
-        .from('participant_hours')
-        .select('date')
-        .eq('dozent_id', dozentId)
-        .not('date', 'is', null);
-      
-      const { data: dozentMonths } = await supabase
-        .from('dozent_hours')
-        .select('date')
-        .eq('dozent_id', dozentId)
-        .not('date', 'is', null);
-      
-      // Get unique month/year combinations
+      // Generate all months from January 2020 to current month
       const monthYearSet = new Set<string>();
-      [...(participantMonths || []), ...(dozentMonths || [])].forEach((h: any) => {
-        const date = new Date(h.date);
-        const month = date.getMonth() + 1;
-        const year = date.getFullYear();
-        // Exclude current month
-        if (month !== currentMonth || year !== currentYear) {
+      const startYear = 2020;
+      
+      for (let year = startYear; year <= currentYear; year++) {
+        const endMonth = year === currentYear ? currentMonth : 12;
+        for (let month = 1; month <= endMonth; month++) {
           monthYearSet.add(`${year}-${month}`);
         }
-      });
+      }
       
       // Fetch existing invoices
       const { data: existingInvoices } = await supabase
         .from('invoices')
-        .select('month, year, period_start, period_end')
+        .select('month, year, period_start, period_end, status')
         .eq('dozent_id', dozentId);
       
       const existingMonthYearSet = new Set((existingInvoices || []).map((inv: any) => `${inv.year}-${inv.month}`));
@@ -500,12 +487,13 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         }
       });
       
-      // Filter out months with existing invoices or covered by quarterly invoices
+      // Include all months, but mark which ones have invoices
       const availableMonths = Array.from(monthYearSet)
-        .filter(my => !existingMonthYearSet.has(my) && !coveredMonths.has(my))
         .map(my => {
           const [year, month] = my.split('-').map(Number);
-          return { month, year };
+          const hasInvoice = existingMonthYearSet.has(my) || coveredMonths.has(my);
+          const invoiceStatus = (existingInvoices || []).find((inv: any) => `${inv.year}-${inv.month}` === my)?.status;
+          return { month, year, hasInvoice, invoiceStatus };
         })
         .sort((a, b) => {
           if (a.year !== b.year) return b.year - a.year;
@@ -524,35 +512,21 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
     setShowCreateTypeDialog(false);
     setIsQuarterlyInvoice(true);
     
-    // Fetch available quarters with months that have hours but no invoices
+    // Fetch available quarters (all months from 2023 to current month)
     try {
       const currentMonth = new Date().getMonth() + 1;
       const currentYear = new Date().getFullYear();
       
-      // Fetch months with hours
-      const { data: participantMonths } = await supabase
-        .from('participant_hours')
-        .select('date')
-        .eq('dozent_id', dozentId)
-        .not('date', 'is', null);
-      
-      const { data: dozentMonths } = await supabase
-        .from('dozent_hours')
-        .select('date')
-        .eq('dozent_id', dozentId)
-        .not('date', 'is', null);
-      
-      // Get unique month/year combinations
+      // Generate all months from January 2020 to current month
       const monthYearSet = new Set<string>();
-      [...(participantMonths || []), ...(dozentMonths || [])].forEach((h: any) => {
-        const date = new Date(h.date);
-        const month = date.getMonth() + 1;
-        const year = date.getFullYear();
-        // Exclude current month
-        if (month !== currentMonth || year !== currentYear) {
+      const startYear = 2020;
+      
+      for (let year = startYear; year <= currentYear; year++) {
+        const endMonth = year === currentYear ? currentMonth : 12;
+        for (let month = 1; month <= endMonth; month++) {
           monthYearSet.add(`${year}-${month}`);
         }
-      });
+      }
       
       // Fetch existing invoices (include draft status)
       const { data: existingInvoices } = await supabase
@@ -757,7 +731,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
 
       const { data: flatRateItems } = await supabase
         .from('dozent_flat_rate_items')
-        .select('id, date, name, category, description, quantity, amount_euro, total_euro')
+        .select('id, date, name, category, description, quantity, amount_euro, total_euro, participant_name')
         .eq('dozent_id', dozentId)
         .gte('date', `${createFormData.year}-${String(createFormData.month).padStart(2, '0')}-01`)
         .lte('date', `${createFormData.year}-${String(createFormData.month).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`);
@@ -861,7 +835,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       // Fetch flat rate items (sonstige Posten)
       const { data: flatRateItems } = await supabase
         .from('dozent_flat_rate_items')
-        .select('date, name, category, description, quantity, amount_euro, total_euro')
+        .select('date, name, category, description, quantity, amount_euro, total_euro, participant_name')
         .eq('dozent_id', invoiceData.dozent_id)
         .gte('date', invoiceData.period_start)
         .lte('date', invoiceData.period_end)
@@ -1204,7 +1178,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       // Fetch flat rate items (sonstige Posten)
       const { data: flatRateItems } = await supabase
         .from('dozent_flat_rate_items')
-        .select('date, name, category, description, quantity, amount_euro, total_euro')
+        .select('date, name, category, description, quantity, amount_euro, total_euro, participant_name')
         .eq('dozent_id', invoiceData.dozent_id)
         .gte('date', invoiceData.period_start)
         .lte('date', invoiceData.period_end)
@@ -1327,7 +1301,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       // Fetch flat rate items (sonstige Posten)
       const { data: flatRateItems, error: frError } = await supabase
         .from('dozent_flat_rate_items')
-        .select('date, name, category, description, quantity, amount_euro, total_euro')
+        .select('date, name, category, description, quantity, amount_euro, total_euro, participant_name')
         .eq('dozent_id', invoice.dozent_id)
         .gte('date', invoice.period_start)
         .lte('date', invoice.period_end)
@@ -1828,6 +1802,19 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
                     : 'Wählen Sie den Monat für die Rechnung:'}
                 </p>
 
+                {!isQuarterlyInvoice && (
+                  <div className="mb-4">
+                    <select
+                      value={showRecentMonthsOnly ? 'recent' : 'all'}
+                      onChange={(e) => setShowRecentMonthsOnly(e.target.value === 'recent')}
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20 text-sm"
+                    >
+                      <option value="recent">Letzte 3 Monate</option>
+                      <option value="all">Alle Monate</option>
+                    </select>
+                  </div>
+                )}
+
                 <div className="space-y-3 max-h-96 overflow-y-auto">
                   {isQuarterlyInvoice ? (
                     availableQuarters.length === 0 ? (
@@ -1865,24 +1852,46 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
                         Keine verfügbaren Monate gefunden
                       </p>
                     ) : (
-                      availableMonths.map(({ month, year }) => (
-                        <label key={`${year}-${month}`} className="flex flex-col p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                          <div className="flex items-center">
-                            <input
-                              type="radio"
-                              name="month"
-                              className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
-                              onChange={() => handleSelectMonth(month, year)}
-                            />
-                            <span className="ml-3 text-sm text-gray-700">
-                              {getMonthName(month)} {year}
+                      availableMonths
+                        .filter(({ month, year }) => {
+                          if (!showRecentMonthsOnly) return true;
+                          // Show only last 3 calendar months
+                          const currentMonth = new Date().getMonth() + 1;
+                          const currentYear = new Date().getFullYear();
+                          const monthDiff = (currentYear - year) * 12 + (currentMonth - month);
+                          return monthDiff >= 0 && monthDiff < 3;
+                        })
+                        .sort((a, b) => {
+                          if (a.year !== b.year) return b.year - a.year;
+                          return b.month - a.month;
+                        })
+                        .map(({ month, year, hasInvoice, invoiceStatus }) => (
+                          <label 
+                            key={`${year}-${month}`} 
+                            className={`flex flex-col p-3 border rounded-lg cursor-pointer hover:bg-gray-50 ${hasInvoice ? 'opacity-50 cursor-not-allowed bg-gray-100' : ''}`}
+                          >
+                            <div className="flex items-center">
+                              <input
+                                type="radio"
+                                name="month"
+                                className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
+                                onChange={() => handleSelectMonth(month, year)}
+                                disabled={hasInvoice}
+                              />
+                              <span className="ml-3 text-sm text-gray-700">
+                                {getMonthName(month)} {year}
+                              </span>
+                            </div>
+                            <span className="ml-7 text-xs text-gray-500 mt-1">
+                              {getMonthDateRange(month, year)}
                             </span>
-                          </div>
-                          <span className="ml-7 text-xs text-gray-500 mt-1">
-                            {getMonthDateRange(month, year)}
-                          </span>
-                        </label>
-                      ))
+                            {hasInvoice && (
+                              <span className="ml-7 text-xs text-orange-600 mt-1">
+                                {invoiceStatus === 'draft' ? 'Entwurf' : invoiceStatus === 'submitted' ? 'Eingereicht' : invoiceStatus === 'sent' ? 'Gesendet' : invoiceStatus === 'paid' ? 'Bezahlt' : 'Fakturiert'}
+                              </span>
+                            )}
+                          </label>
+                        ))
                     )
                   )}
                 </div>

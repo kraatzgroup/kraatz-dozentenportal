@@ -23,6 +23,8 @@ interface FlatRateItem {
   quantity: number;
   amount_euro: number;
   total_euro: number;
+  category?: string;
+  participant_name?: string;
 }
 
 interface Invoice {
@@ -290,12 +292,27 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
   const eliteUnterrichtHours = data.dozentHours.filter(h => h.category && h.category.toLowerCase().includes('elite') && !h.category.toLowerCase().includes('korrektur'));
   const eliteKorrekturHours = data.dozentHours.filter(h => h.category && h.category.toLowerCase().includes('elite') && h.category.toLowerCase().includes('korrektur'));
   const sonstigeHours = data.dozentHours.filter(h => !h.category || !h.category.toLowerCase().includes('elite'));
+  
+  // Extract Probestunden from flat rate items and treat them as hours
+  const probestundenItems = (data.flatRateItems || []).filter((item: any) => item.category === 'Probestunden');
+  const probestundenHours = probestundenItems.map((item: any) => ({
+    date: item.date,
+    hours: 1, // Each Probestunde counts as 1 hour
+    description: item.description || '',
+    participant_name: item.participant_name || 'Unbekannt',
+    category: 'Probestunden',
+    amount_euro: item.total_euro
+  }));
+  
+  // Remove Probestunden from flat rate items for the flat rate summary
+  const otherFlatRateItems = (data.flatRateItems || []).filter((item: any) => item.category !== 'Probestunden');
 
   const totalRegular = regularHours.reduce((sum, h) => sum + h.hours, 0);
   const totalElite = eliteParticipantHours.reduce((sum, h) => sum + h.hours, 0) + eliteUnterrichtHours.reduce((sum, h) => sum + h.hours, 0);
   const totalEliteKorrektur = eliteKorrekturHours.reduce((sum, h) => sum + h.hours, 0);
   const totalSonstige = sonstigeHours.reduce((sum, h) => sum + h.hours, 0);
-  const totalHours = totalRegular + totalElite + totalEliteKorrektur + totalSonstige;
+  const totalProbestunden = probestundenHours.reduce((sum, h) => sum + h.hours, 0);
+  const totalHours = totalRegular + totalElite + totalEliteKorrektur + totalSonstige + totalProbestunden;
 
   const rateUnterricht = data.invoice.dozent.hourly_rate_unterricht || 0;
   const rateElite = data.invoice.dozent.hourly_rate_elite || 0;
@@ -306,11 +323,12 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
   const amountElite = totalElite * rateElite;
   const amountEliteKorrektur = totalEliteKorrektur * rateEliteKorrektur;
   const amountSonstige = totalSonstige * rateSonstige;
+  const amountProbestunden = probestundenHours.reduce((sum, h) => sum + (h.amount_euro || 0), 0);
 
-  // Calculate flat rate items total
-  const flatRateTotal = (data.flatRateItems || []).reduce((sum, item) => sum + item.total_euro, 0);
+  // Calculate flat rate items total (excluding Probestunden)
+  const flatRateTotal = otherFlatRateItems.reduce((sum, item) => sum + item.total_euro, 0);
 
-  const totalAmount = amountRegular + amountElite + amountEliteKorrektur + amountSonstige + flatRateTotal;
+  const totalAmount = amountRegular + amountElite + amountEliteKorrektur + amountSonstige + amountProbestunden + flatRateTotal;
 
   // Summary table
   doc.setFontSize(10);
@@ -322,7 +340,7 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   addText('Leistung', margin + 2, yPosition + 1);
-  addText('Stunden', margin + 90, yPosition + 1);
+  addText('Stunden/Anzahl', margin + 90, yPosition + 1);
   addText('Satz', margin + 120, yPosition + 1);
   addText('Betrag', pageWidth - margin - 2, yPosition + 1, { align: 'right' });
   yPosition += 8;
@@ -373,22 +391,45 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
     });
   }
 
-  // Breakdown flat rate items by category
+  // Breakdown flat rate items by category (excluding Probestunden)
   if (flatRateTotal > 0) {
-    const flatRateByCategory: { [key: string]: number } = {};
-    (data.flatRateItems || []).forEach((item: any) => {
+    const flatRateByCategory: { [key: string]: { total: number; count: number; unitPrice: number } } = {};
+    otherFlatRateItems.forEach((item: any) => {
       const category = item.category || item.name || 'Sonstige';
-      flatRateByCategory[category] = (flatRateByCategory[category] || 0) + item.total_euro;
+      if (!flatRateByCategory[category]) {
+        flatRateByCategory[category] = { total: 0, count: 0, unitPrice: item.amount_euro || 0 };
+      }
+      flatRateByCategory[category].total += item.total_euro;
+      flatRateByCategory[category].count += item.quantity || 1;
+      flatRateByCategory[category].unitPrice = item.amount_euro || 0;
     });
 
     // Display each category
-    Object.entries(flatRateByCategory).forEach(([category, total]) => {
+    Object.entries(flatRateByCategory).forEach(([category, data]) => {
       addText(category, margin + 2, yPosition);
-      addText('-', margin + 90, yPosition);
-      addText('-', margin + 120, yPosition);
-      addText(`${formatNumber(total)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
+      
+      // For Kraatz Club Videos, show count instead of hours
+      if (category === 'Kraatz Club Videos') {
+        addText(`${data.count} Stk.`, margin + 90, yPosition);
+        addText(`${formatNumber(data.unitPrice)} \u20ac`, margin + 120, yPosition);
+      } else {
+        addText('-', margin + 90, yPosition);
+        addText('-', margin + 120, yPosition);
+      }
+      
+      addText(`${formatNumber(data.total)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
       yPosition += 5;
     });
+  }
+
+  // Probestunden - display as hours with participant name
+  if (totalProbestunden > 0) {
+    const rateProbestunde = totalProbestunden > 0 ? amountProbestunden / totalProbestunden : 0;
+    addText('Probestunden', margin + 2, yPosition);
+    addText(`${formatNumber(totalProbestunden)} Std.`, margin + 90, yPosition);
+    addText(rateProbestunde > 0 ? `${formatNumber(rateProbestunde)} \u20ac` : '-', margin + 120, yPosition);
+    addText(`${formatNumber(amountProbestunden)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
+    yPosition += 5;
   }
 
   // Total line
@@ -470,7 +511,7 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
   let totalDozentHours = 0;
 
   // Combine all hours and sort chronologically
-  const allHours: Array<{ type: 'participant' | 'dozent' | 'flatrate'; date: string; hours: number; entry: any }> = [];
+  const allHours: Array<{ type: 'participant' | 'dozent' | 'flatrate' | 'probestunde'; date: string; hours: number; entry: any }> = [];
   
   if (data.participantHours && data.participantHours.length > 0) {
     data.participantHours.forEach(entry => {
@@ -484,9 +525,16 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
     });
   }
 
-  // Add flat rate items (sonstige Posten)
-  if (data.flatRateItems && data.flatRateItems.length > 0) {
-    data.flatRateItems.forEach(entry => {
+  // Add Probestunden as hours (extracted from flat rate items)
+  if (probestundenHours && probestundenHours.length > 0) {
+    probestundenHours.forEach(entry => {
+      allHours.push({ type: 'probestunde', date: entry.date, hours: entry.hours, entry });
+    });
+  }
+
+  // Add other flat rate items (sonstige Posten excluding Probestunden)
+  if (otherFlatRateItems && otherFlatRateItems.length > 0) {
+    otherFlatRateItems.forEach(entry => {
       allHours.push({ type: 'flatrate', date: entry.date, hours: 0, entry });
     });
   }
@@ -494,15 +542,17 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
   // Sort all hours by category, then by student, then by date
   const categoryOrder: { [key: string]: number } = {
     'participant': 1,
-    'elite_unterricht': 2,
-    'elite_korrektur': 3,
-    'sonstige': 4,
-    'flatrate': 5
+    'probestunde': 2,
+    'elite_unterricht': 3,
+    'elite_korrektur': 4,
+    'sonstige': 5,
+    'flatrate': 6
   };
 
   const sortedAllHours = allHours.sort((a, b) => {
     const getCategory = (item: any) => {
       if (item.type === 'participant') return 'participant';
+      if (item.type === 'probestunde') return 'probestunde';
       if (item.type === 'flatrate') return 'flatrate';
       if (item.type === 'dozent') {
         if (item.entry.category === 'Elite-Kleingruppe Korrektur') return 'elite_korrektur';
@@ -516,6 +566,9 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
     const getStudentName = (item: any) => {
       if (item.type === 'participant') {
         return item.entry.teilnehmer?.name || '';
+      }
+      if (item.type === 'probestunde') {
+        return item.entry.description || '';
       }
       return '';
     };
@@ -548,6 +601,7 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
     // Get current category
     const getCategory = (item: any) => {
       if (item.type === 'participant') return 'participant';
+      if (item.type === 'probestunde') return 'probestunde';
       if (item.type === 'flatrate') return 'flatrate';
       if (item.type === 'dozent') {
         if (item.entry.category === 'Elite-Kleingruppe Korrektur') return 'elite_korrektur';
@@ -636,6 +690,20 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       
       addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
       totalParticipantHours += item.hours;
+    } else if (item.type === 'probestunde') {
+      addText('Probestunde', margin + 25, yPosition);
+      const descYPosition = yPosition;
+      const participantName = item.entry.participant_name || item.entry.description || '-';
+      
+      // Render participant name in bold
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      addText(participantName, margin + 70, descYPosition);
+      
+      yPosition += 5;
+      
+      addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
+      totalParticipantHours += item.hours;
     } else if (item.type === 'dozent') {
       const type = item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.category?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : item.entry.category || 'Sonstige Tätigkeit';
       let extraLines = 0;
@@ -715,7 +783,13 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
     } else if (item.type === 'flatrate') {
       addText(item.entry.category || item.entry.name || 'Sonstiger Posten', margin + 25, yPosition);
       const descYPosition = yPosition;
-      const desc = item.entry.description || '';
+      let desc = item.entry.description || '';
+      
+      // Add participant name for Probestunden
+      if (item.entry.category === 'Probestunden' && item.entry.participant_name) {
+        desc = `Teilnehmer: ${item.entry.participant_name}${desc ? ' - ' + desc : ''}`;
+      }
+      
       const maxWidth = pageWidth - margin - 20 - (margin + 70);
       if (desc.length > 50) {
         const lines = doc.splitTextToSize(desc, maxWidth);
@@ -946,12 +1020,27 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   const eliteUnterrichtHours = data.dozentHours.filter(h => h.category && h.category.toLowerCase().includes('elite') && !h.category.toLowerCase().includes('korrektur'));
   const eliteKorrekturHours = data.dozentHours.filter(h => h.category && h.category.toLowerCase().includes('elite') && h.category.toLowerCase().includes('korrektur'));
   const sonstigeHours = data.dozentHours.filter(h => !h.category || !h.category.toLowerCase().includes('elite'));
+  
+  // Extract Probestunden from flat rate items and treat them as hours
+  const probestundenItems = (data.flatRateItems || []).filter((item: any) => item.category === 'Probestunden');
+  const probestundenHours = probestundenItems.map((item: any) => ({
+    date: item.date,
+    hours: 1, // Each Probestunde counts as 1 hour
+    description: item.description || '',
+    participant_name: item.participant_name || 'Unbekannt',
+    category: 'Probestunden',
+    amount_euro: item.total_euro
+  }));
+  
+  // Remove Probestunden from flat rate items for the flat rate summary
+  const otherFlatRateItems = (data.flatRateItems || []).filter((item: any) => item.category !== 'Probestunden');
 
   const totalRegular = regularHours.reduce((sum, h) => sum + h.hours, 0);
   const totalElite = eliteParticipantHours.reduce((sum, h) => sum + h.hours, 0) + eliteUnterrichtHours.reduce((sum, h) => sum + h.hours, 0);
   const totalEliteKorrektur = eliteKorrekturHours.reduce((sum, h) => sum + h.hours, 0);
   const totalSonstige = sonstigeHours.reduce((sum, h) => sum + h.hours, 0);
-  const totalHours = totalRegular + totalElite + totalEliteKorrektur + totalSonstige;
+  const totalProbestunden = probestundenHours.reduce((sum, h) => sum + h.hours, 0);
+  const totalHours = totalRegular + totalElite + totalEliteKorrektur + totalSonstige + totalProbestunden;
 
   const rateUnterricht = data.invoice.dozent.hourly_rate_unterricht || 0;
   const rateElite = data.invoice.dozent.hourly_rate_elite || 0;
@@ -962,11 +1051,12 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   const amountElite = totalElite * rateElite;
   const amountEliteKorrektur = totalEliteKorrektur * rateEliteKorrektur;
   const amountSonstige = totalSonstige * rateSonstige;
+  const amountProbestunden = probestundenHours.reduce((sum, h) => sum + (h.amount_euro || 0), 0);
 
-  // Calculate flat rate items total
-  const flatRateTotal = (data.flatRateItems || []).reduce((sum, item) => sum + item.total_euro, 0);
+  // Calculate flat rate items total (excluding Probestunden)
+  const flatRateTotal = otherFlatRateItems.reduce((sum, item) => sum + item.total_euro, 0);
 
-  const totalAmount = amountRegular + amountElite + amountEliteKorrektur + amountSonstige + flatRateTotal;
+  const totalAmount = amountRegular + amountElite + amountEliteKorrektur + amountSonstige + amountProbestunden + flatRateTotal;
 
   // Summary table
   doc.setFontSize(10);
@@ -978,7 +1068,7 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   addText('Leistung', margin + 2, yPosition + 1);
-  addText('Stunden', margin + 90, yPosition + 1);
+  addText('Stunden/Anzahl', margin + 90, yPosition + 1);
   addText('Satz', margin + 120, yPosition + 1);
   addText('Betrag', pageWidth - margin - 2, yPosition + 1, { align: 'right' });
   yPosition += 8;
@@ -1029,22 +1119,45 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     });
   }
 
-  // Breakdown flat rate items by category
+  // Breakdown flat rate items by category (excluding Probestunden)
   if (flatRateTotal > 0) {
-    const flatRateByCategory: { [key: string]: number } = {};
-    (data.flatRateItems || []).forEach((item: any) => {
+    const flatRateByCategory: { [key: string]: { total: number; count: number; unitPrice: number } } = {};
+    otherFlatRateItems.forEach((item: any) => {
       const category = item.category || item.name || 'Sonstige';
-      flatRateByCategory[category] = (flatRateByCategory[category] || 0) + item.total_euro;
+      if (!flatRateByCategory[category]) {
+        flatRateByCategory[category] = { total: 0, count: 0, unitPrice: item.amount_euro || 0 };
+      }
+      flatRateByCategory[category].total += item.total_euro;
+      flatRateByCategory[category].count += item.quantity || 1;
+      flatRateByCategory[category].unitPrice = item.amount_euro || 0;
     });
 
     // Display each category
-    Object.entries(flatRateByCategory).forEach(([category, total]) => {
+    Object.entries(flatRateByCategory).forEach(([category, data]) => {
       addText(category, margin + 2, yPosition);
-      addText('-', margin + 90, yPosition);
-      addText('-', margin + 120, yPosition);
-      addText(`${formatNumber(total)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
+      
+      // For Kraatz Club Videos, show count instead of hours
+      if (category === 'Kraatz Club Videos') {
+        addText(`${data.count} Stk.`, margin + 90, yPosition);
+        addText(`${formatNumber(data.unitPrice)} \u20ac`, margin + 120, yPosition);
+      } else {
+        addText('-', margin + 90, yPosition);
+        addText('-', margin + 120, yPosition);
+      }
+      
+      addText(`${formatNumber(data.total)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
       yPosition += 5;
     });
+  }
+
+  // Probestunden - display as hours with participant name
+  if (totalProbestunden > 0) {
+    const rateProbestunde = totalProbestunden > 0 ? amountProbestunden / totalProbestunden : 0;
+    addText('Probestunden', margin + 2, yPosition);
+    addText(`${formatNumber(totalProbestunden)} Std.`, margin + 90, yPosition);
+    addText(rateProbestunde > 0 ? `${formatNumber(rateProbestunde)} \u20ac` : '-', margin + 120, yPosition);
+    addText(`${formatNumber(amountProbestunden)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
+    yPosition += 5;
   }
 
   // Total line
@@ -1126,7 +1239,7 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   let totalDozentHours = 0;
 
   // Combine all hours and sort chronologically
-  const allHours: Array<{ type: 'participant' | 'dozent' | 'flatrate'; date: string; hours: number; entry: any }> = [];
+  const allHours: Array<{ type: 'participant' | 'dozent' | 'flatrate' | 'probestunde'; date: string; hours: number; entry: any }> = [];
   
   if (data.participantHours && data.participantHours.length > 0) {
     data.participantHours.forEach(entry => {
@@ -1140,9 +1253,16 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     });
   }
 
-  // Add flat rate items (sonstige Posten)
-  if (data.flatRateItems && data.flatRateItems.length > 0) {
-    data.flatRateItems.forEach(entry => {
+  // Add Probestunden as hours (extracted from flat rate items)
+  if (probestundenHours && probestundenHours.length > 0) {
+    probestundenHours.forEach(entry => {
+      allHours.push({ type: 'probestunde', date: entry.date, hours: entry.hours, entry });
+    });
+  }
+
+  // Add other flat rate items (sonstige Posten excluding Probestunden)
+  if (otherFlatRateItems && otherFlatRateItems.length > 0) {
+    otherFlatRateItems.forEach(entry => {
       allHours.push({ type: 'flatrate', date: entry.date, hours: 0, entry });
     });
   }
@@ -1150,15 +1270,17 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
   // Sort all hours by category, then by student, then by date
   const categoryOrder: { [key: string]: number } = {
     'participant': 1,
-    'elite_unterricht': 2,
-    'elite_korrektur': 3,
-    'sonstige': 4,
-    'flatrate': 5
+    'probestunde': 2,
+    'elite_unterricht': 3,
+    'elite_korrektur': 4,
+    'sonstige': 5,
+    'flatrate': 6
   };
 
   const sortedAllHours = allHours.sort((a, b) => {
     const getCategory = (item: any) => {
       if (item.type === 'participant') return 'participant';
+      if (item.type === 'probestunde') return 'probestunde';
       if (item.type === 'flatrate') return 'flatrate';
       if (item.type === 'dozent') {
         if (item.entry.category === 'Elite-Kleingruppe Korrektur') return 'elite_korrektur';
@@ -1172,6 +1294,9 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     const getStudentName = (item: any) => {
       if (item.type === 'participant') {
         return item.entry.teilnehmer?.name || '';
+      }
+      if (item.type === 'probestunde') {
+        return item.entry.description || '';
       }
       return '';
     };
@@ -1204,6 +1329,7 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     // Get current category
     const getCategory = (item: any) => {
       if (item.type === 'participant') return 'participant';
+      if (item.type === 'probestunde') return 'probestunde';
       if (item.type === 'flatrate') return 'flatrate';
       if (item.type === 'dozent') {
         if (item.entry.category === 'Elite-Kleingruppe Korrektur') return 'elite_korrektur';
@@ -1292,6 +1418,20 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
       
       addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
       totalParticipantHours += item.hours;
+    } else if (item.type === 'probestunde') {
+      addText('Probestunde', margin + 25, yPosition);
+      const descYPosition = yPosition;
+      const participantName = item.entry.participant_name || item.entry.description || '-';
+      
+      // Render participant name in bold
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      addText(participantName, margin + 70, descYPosition);
+      
+      yPosition += 5;
+      
+      addText(item.hours.toString(), pageWidth - margin - 2, descYPosition, { align: 'right' });
+      totalParticipantHours += item.hours;
     } else if (item.type === 'dozent') {
       const type = item.entry.category === 'Elite-Kleingruppe Korrektur' || item.entry.category?.includes('Elite-Kleingruppe') ? 'Elite-Kleingruppe' : item.entry.category || 'Sonstige Tätigkeit';
       let extraLines = 0;
@@ -1371,7 +1511,13 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     } else if (item.type === 'flatrate') {
       addText(item.entry.category || item.entry.name || 'Sonstiger Posten', margin + 25, yPosition);
       const descYPosition = yPosition;
-      const desc = item.entry.description || '';
+      let desc = item.entry.description || '';
+      
+      // Add participant name for Probestunden
+      if (item.entry.category === 'Probestunden' && item.entry.participant_name) {
+        desc = `Teilnehmer: ${item.entry.participant_name}${desc ? ' - ' + desc : ''}`;
+      }
+      
       const maxWidth = pageWidth - margin - 20 - (margin + 70);
       if (desc.length > 50) {
         const lines = doc.splitTextToSize(desc, maxWidth);
@@ -1400,101 +1546,6 @@ export const generateInvoicePDFBlob = async (data: InvoicePDFData): Promise<Blob
     addText(`${formatNumber(totalAmount)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
   }
   yPosition += 15;
-
-  // Check if we need a new page for the remaining content
-  checkPageBreak(80);
-
-  // Summary table
-  doc.setFillColor(240, 240, 240);
-  doc.rect(margin, yPosition - 3, contentWidth, 7, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  addText('Leistung', margin + 2, yPosition + 1);
-  addText('Stunden', margin + 90, yPosition + 1);
-  addText('Satz', margin + 120, yPosition + 1);
-  addText('Betrag', pageWidth - margin - 2, yPosition + 1, { align: 'right' });
-  yPosition += 8;
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-
-  if (totalRegular > 0) {
-    addText('Unterrichtsstunden', margin + 2, yPosition);
-    addText(`${formatNumber(totalRegular)} Std.`, margin + 90, yPosition);
-    addText(rateUnterricht > 0 ? `${formatNumber(rateUnterricht)} \u20ac` : '-', margin + 120, yPosition);
-    addText(rateUnterricht > 0 ? `${formatNumber(amountRegular)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
-    yPosition += 5;
-  }
-
-  if (totalElite > 0) {
-    addText('Elite-Kleingruppe Unterricht', margin + 2, yPosition);
-    addText(`${formatNumber(totalElite)} Std.`, margin + 90, yPosition);
-    addText(rateElite > 0 ? `${formatNumber(rateElite)} \u20ac` : '-', margin + 120, yPosition);
-    addText(rateElite > 0 ? `${formatNumber(amountElite)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
-    yPosition += 5;
-  }
-
-  if (totalEliteKorrektur > 0) {
-    addText('Elite-Kleingruppe Korrektur', margin + 2, yPosition);
-    addText(`${formatNumber(totalEliteKorrektur)} Std.`, margin + 90, yPosition);
-    addText(rateEliteKorrektur > 0 ? `${formatNumber(rateEliteKorrektur)} \u20ac` : '-', margin + 120, yPosition);
-    addText(rateEliteKorrektur > 0 ? `${formatNumber(amountEliteKorrektur)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
-    yPosition += 5;
-  }
-
-  // Breakdown sonstige hours by category
-  if (totalSonstige > 0) {
-    const sonstigeByCategory: { [key: string]: number } = {};
-    sonstigeHours.forEach((h: any) => {
-      const category = h.category || 'Sonstige Tätigkeiten';
-      sonstigeByCategory[category] = (sonstigeByCategory[category] || 0) + h.hours;
-    });
-
-    // Display each category
-    Object.entries(sonstigeByCategory).forEach(([category, hours]) => {
-      const amount = hours * rateSonstige;
-      addText(category, margin + 2, yPosition);
-      addText(`${formatNumber(hours)} Std.`, margin + 90, yPosition);
-      addText(rateSonstige > 0 ? `${formatNumber(rateSonstige)} \u20ac` : '-', margin + 120, yPosition);
-      addText(rateSonstige > 0 ? `${formatNumber(amount)} \u20ac` : '-', pageWidth - margin - 2, yPosition, { align: 'right' });
-      yPosition += 5;
-    });
-  }
-
-  // Breakdown flat rate items by category
-  if (flatRateTotal > 0) {
-    const flatRateByCategory: { [key: string]: number } = {};
-    (data.flatRateItems || []).forEach((item: any) => {
-      const category = item.category || item.name || 'Sonstige';
-      flatRateByCategory[category] = (flatRateByCategory[category] || 0) + item.total_euro;
-    });
-
-    // Display each category
-    Object.entries(flatRateByCategory).forEach(([category, total]) => {
-      addText(category, margin + 2, yPosition);
-      addText('-', margin + 90, yPosition);
-      addText('-', margin + 120, yPosition);
-      addText(`${formatNumber(total)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
-      yPosition += 5;
-    });
-  }
-
-  // Total line
-  yPosition += 2;
-  doc.setDrawColor(0);
-  doc.line(margin, yPosition, pageWidth - margin, yPosition);
-  yPosition += 6;
-
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
-  addText(`Gesamt: ${formatNumber(totalHours)} Stunden`, margin, yPosition);
-  if (totalAmount > 0) {
-    addText(`${formatNumber(totalAmount)} \u20ac`, pageWidth - margin - 2, yPosition, { align: 'right' });
-  }
-  yPosition += 15;
-
-  // Check if we need a new page for the remaining content
-  checkPageBreak(80);
 
   // Footer
   const addFooter = (pageNum: number, totalPages: number) => {
@@ -1787,7 +1838,7 @@ export const generateQuarterlyInvoicePDF = async (data: QuarterlyInvoiceData) =>
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   addText('Leistung', margin + 2, yPosition + 1);
-  addText('Stunden', margin + 90, yPosition + 1);
+  addText('Stunden/Anzahl', margin + 90, yPosition + 1);
   addText('Satz', margin + 120, yPosition + 1);
   addText('Betrag', pageWidth - margin - 2, yPosition + 1, { align: 'right' });
   yPosition += 8;
@@ -2428,7 +2479,7 @@ export const generateQuarterlyInvoicePDFBlob = async (data: QuarterlyInvoiceData
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   addText('Leistung', margin + 2, yPosition + 1);
-  addText('Stunden', margin + 90, yPosition + 1);
+  addText('Stunden/Anzahl', margin + 90, yPosition + 1);
   addText('Satz', margin + 120, yPosition + 1);
   addText('Betrag', pageWidth - margin - 2, yPosition + 1, { align: 'right' });
   yPosition += 8;
