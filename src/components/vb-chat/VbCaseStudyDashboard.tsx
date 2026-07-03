@@ -167,6 +167,46 @@ export const VbCaseStudyDashboard: React.FC = () => {
     }
   }
 
+  // Download file as PDF (workaround for incorrect content-type in storage)
+  const downloadFileAsPDF = async (url: string, filename: string, caseStudyId: string) => {
+    console.log('🔄 downloadFileAsPDF called:', { url, filename, caseStudyId })
+    try {
+      // Track the download
+      await handlePdfDownload(caseStudyId)
+      
+      // Fetch the file
+      console.log('📥 Fetching file from:', url)
+      const response = await fetch(url)
+      console.log('📥 Response status:', response.status, response.statusText)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const blob = await response.blob()
+      console.log('📥 Blob created, size:', blob.size, 'type:', blob.type)
+      
+      // Create download link
+      const downloadUrl = window.URL.createObjectURL(blob)
+      console.log('📥 Download URL created:', downloadUrl)
+      
+      const link = document.createElement('a')
+      link.href = downloadUrl
+      link.download = filename.endsWith('.pdf') ? filename : `${filename}.pdf`
+      document.body.appendChild(link)
+      console.log('📥 Clicking download link...')
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(downloadUrl)
+      console.log('✅ Download completed')
+    } catch (error) {
+      console.error('❌ Error downloading file:', error)
+      // Fallback to direct link if download fails
+      console.log('🔄 Fallback: opening in new tab')
+      window.open(url, '_blank')
+    }
+  }
+
   // Mark correction as viewed
   const markCorrectionAsViewed = useCallback(async (caseStudyId: string) => {
     try {
@@ -860,16 +900,16 @@ export const VbCaseStudyDashboard: React.FC = () => {
                       <p className="text-sm text-gray-800 font-medium mb-2">📚 Deine Unterlagen:</p>
                       <div className="flex flex-col gap-2 max-w-xs">
                         {caseStudy.pdf_url && (
-                          <a href={caseStudy.pdf_url} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2" style={{ backgroundColor: 'rgb(46, 131, 194)' }}>
+                          <button onClick={() => downloadFileAsPDF(caseStudy.pdf_url!, `Sachverhalt_${caseStudy.case_study_number}.pdf`, caseStudy.id)} className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2" style={{ backgroundColor: 'rgb(46, 131, 194)' }}>
                             <FileText className="w-4 h-4" />
                             <span>Sachverhalt</span>
-                          </a>
+                          </button>
                         )}
                         {caseStudy.case_study_material_url && (
-                          <a href={caseStudy.case_study_material_url} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2" style={{ backgroundColor: 'rgb(46, 131, 194)' }}>
+                          <button onClick={() => downloadFileAsPDF(caseStudy.case_study_material_url!, `Zusatzmaterial_${caseStudy.case_study_number}.pdf`, caseStudy.id)} className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2" style={{ backgroundColor: 'rgb(46, 131, 194)' }}>
                             <FileText className="w-4 h-4" />
                             <span>Zusatzmaterial</span>
-                          </a>
+                          </button>
                         )}
                         {caseStudy.submission_url && (
                           <a href={caseStudy.submission_url} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2" style={{ backgroundColor: 'rgb(46, 131, 194)' }}>
@@ -893,16 +933,16 @@ export const VbCaseStudyDashboard: React.FC = () => {
                       )}
                       <div className="flex flex-col gap-2 max-w-xs">
                         {caseStudy.solution_pdf_url && (
-                          <a href={caseStudy.solution_pdf_url} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white" style={{ backgroundColor: 'rgb(46, 131, 194)' }}>
+                          <button onClick={() => downloadFileAsPDF(caseStudy.solution_pdf_url!, `Loesung_${caseStudy.case_study_number}.pdf`, caseStudy.id)} className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white" style={{ backgroundColor: 'rgb(46, 131, 194)' }}>
                             <FileText className="w-4 h-4" />
                             <span>Klausur-Lösung</span>
-                          </a>
+                          </button>
                         )}
                         {caseStudy.written_correction_url && (
-                          <a href={caseStudy.written_correction_url} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white" style={{ backgroundColor: 'rgb(46, 131, 194)' }}>
+                          <button onClick={() => downloadFileAsPDF(caseStudy.written_correction_url!, `Korrektur_${caseStudy.case_study_number}.pdf`, caseStudy.id)} className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white" style={{ backgroundColor: 'rgb(46, 131, 194)' }}>
                             <FileText className="w-4 h-4" />
                             <span>Schriftliche Korrektur</span>
-                          </a>
+                          </button>
                         )}
                         <button
                           onClick={() => openFeedbackModal(caseStudy.id)}
@@ -1049,10 +1089,8 @@ export const VbCaseStudyDashboard: React.FC = () => {
                   </div>
                   <div className="flex flex-col sm:flex-row flex-wrap gap-2">
                     {caseStudy.case_study_material_url && (
-                      <a
-                        href={caseStudy.case_study_material_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => downloadFileAsPDF(caseStudy.case_study_material_url!, `Sachverhalt_${caseStudy.case_study_number}.pdf`, caseStudy.id)}
                         className="text-white px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors flex items-center justify-center space-x-2 whitespace-nowrap"
                         style={{ backgroundColor: '#2e83c2' }}
                         onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0a1f44'}
@@ -1060,7 +1098,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                       >
                         <Download className="w-4 h-4" />
                         <span>Sachverhalt</span>
-                      </a>
+                      </button>
                     )}
                     {/* Show additional materials - support both old URL format and new array format */}
                     {caseStudy.additional_materials && caseStudy.additional_materials.length > 0 ? (
