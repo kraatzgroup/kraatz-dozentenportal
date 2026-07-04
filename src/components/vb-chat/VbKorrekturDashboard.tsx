@@ -146,11 +146,14 @@ export const VbKorrekturDashboard: React.FC = () => {
   const [modalRefreshKey, setModalRefreshKey] = useState(0)
   const [completedPage, setCompletedPage] = useState(1)
   const [completedTotal, setCompletedTotal] = useState(0)
+  const [materialSelectorLegalArea, setMaterialSelectorLegalArea] = useState<string | null>(null)
+  const [assignedMaterialUrls, setAssignedMaterialUrls] = useState<Set<string>>(new Set())
 
   const handleOpenCorrectionMaterialSelector = async (field: 'solution' | 'schema') => {
     setEditingCorrectionField(field)
     setSelectedCaseForMaterial(null) // Not assigning to a case, just selecting materials
     setSelectedMaterials(new Set())
+    setMaterialSelectorLegalArea(selected?.legal_area || null)
     
     // Only fetch if materials are not already loaded
     if (teachingMaterials.length === 0) {
@@ -183,6 +186,21 @@ export const VbKorrekturDashboard: React.FC = () => {
     
     setExpandedFolders(expandedSet)
     setShowMaterialSelector(true)
+  }
+
+  const fetchAssignedMaterialsForUser = async (profileId: string) => {
+    try {
+      const { data } = await supabase
+        .from('vb_case_study_requests')
+        .select('case_study_material_url')
+        .eq('profile_id', profileId)
+        .not('case_study_material_url', 'is', null)
+      
+      const urls = new Set(data?.map(c => c.case_study_material_url).filter(Boolean) || [])
+      setAssignedMaterialUrls(urls)
+    } catch (err) {
+      console.error('Error fetching assigned materials:', err)
+    }
   }
 
   // Reset material selection when opening modal for a new case
@@ -303,22 +321,31 @@ export const VbKorrekturDashboard: React.FC = () => {
 
       // Filter based on active tab and vacation status
       if (isCurrentlyOnVacation) {
-        // On vacation: only show completed cases
+        // On vacation: only show completed cases (no legal area filter for old assignments)
         query = query.in('status', ['corrected', 'completed'])
       } else {
         // Active: filter based on tab
         switch (activeTab) {
           case 'requests':
-            // Show only requested cases (not materials_ready)
+            // Show only requested cases (not materials_ready) - filter by legal areas
             query = query.eq('status', 'requested')
+            if (areas.length > 0 && legalAreaFilter !== 'all') {
+              query = query.eq('legal_area', legalAreaFilter)
+            }
             break
           case 'materials_sent':
+            // Show materials_ready cases - filter by legal areas
             query = query.eq('status', 'materials_ready')
+            if (areas.length > 0 && legalAreaFilter !== 'all') {
+              query = query.eq('legal_area', legalAreaFilter)
+            }
             break
           case 'submissions':
+            // Show assigned cases (submitted, under_review, corrected) - NO legal area filter for old assignments
             query = query.in('status', ['submitted', 'under_review', 'corrected'])
             break
           case 'completed':
+            // Show completed cases - NO legal area filter for old assignments
             // First get the total count
             const { count } = await supabase
               .from('vb_case_study_requests')
@@ -329,11 +356,6 @@ export const VbKorrekturDashboard: React.FC = () => {
             query = query.or('status.eq.completed,and(video_correction_url.not.is.null,status.eq.corrected)')
               .range((completedPage - 1) * 5, completedPage * 5 - 1)
             break
-        }
-
-        // Apply legal area filter if dozent has legal areas and filter is not 'all'
-        if (areas.length > 0 && legalAreaFilter !== 'all') {
-          query = query.eq('legal_area', legalAreaFilter)
         }
       }
 
@@ -439,8 +461,17 @@ export const VbKorrekturDashboard: React.FC = () => {
         }
       }
 
-      console.log('✅ Total materials loaded:', allMaterials.length);
-      setTeachingMaterials(allMaterials);
+      // Deduplicate materials by ID
+      const uniqueMaterials = Array.from(
+        new Map(allMaterials.map(m => [m.id, m])).values()
+      )
+      
+      if (uniqueMaterials.length !== allMaterials.length) {
+        console.warn(`⚠️ Deduplicated materials: ${allMaterials.length} -> ${uniqueMaterials.length}`)
+      }
+
+      console.log('✅ Total materials loaded:', uniqueMaterials.length);
+      setTeachingMaterials(uniqueMaterials);
     } catch (err) {
       console.error('❌ Error fetching teaching materials:', err)
     }
@@ -476,7 +507,16 @@ export const VbKorrekturDashboard: React.FC = () => {
         }
       }
 
-      setFolderStructure(allFolders)
+      // Deduplicate folders by ID
+      const uniqueFolders = Array.from(
+        new Map(allFolders.map(f => [f.id, f])).values()
+      )
+      
+      if (uniqueFolders.length !== allFolders.length) {
+        console.warn(`⚠️ Deduplicated folders: ${allFolders.length} -> ${uniqueFolders.length}`)
+      }
+
+      setFolderStructure(uniqueFolders)
     } catch (err) {
       console.error('❌ Error fetching folder structure:', err)
     }
@@ -676,8 +716,11 @@ export const VbKorrekturDashboard: React.FC = () => {
     return acc
   }, {} as Record<string, TeachingMaterial[]>)
 
-  // Show only top-level folders (parent_id is null)
-  const filteredFolders = folderStructure.filter(f => f.parent_id === null)
+  // Show only top-level folders (parent_id is null), and filter by legal area if set
+  const filteredFolders = folderStructure.filter(f => 
+    f.parent_id === null && 
+    (!materialSelectorLegalArea || f.name === materialSelectorLegalArea)
+  )
 
   const toggleFolder = (folderId: string) => {
     setExpandedFolders(prev => {
@@ -719,36 +762,49 @@ export const VbKorrekturDashboard: React.FC = () => {
             {subFolders.map(subFolder => renderFolder(subFolder, level + 1))}
             
             {/* Render materials */}
-            {folderMaterials.length > 0 && folderMaterials.map(material => (
-              <button
-                key={material.id}
-                onClick={() => toggleMaterialSelection(material.id)}
-                className={`w-full text-left p-3 border rounded-lg transition-colors flex items-center justify-between group ${
-                  selectedMaterials.has(material.id) 
-                    ? 'border-primary bg-primary/5' 
-                    : 'border-gray-200 hover:bg-gray-50'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedMaterials.has(material.id)}
-                    onChange={() => toggleMaterialSelection(material.id)}
-                    className={`w-4 h-4 text-primary rounded transition-opacity ${
-                      selectedMaterials.has(material.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                    }`}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                  <div>
-                    <p className="font-medium text-gray-900 text-sm">{material.title}</p>
-                    <p className="text-xs text-gray-500">{material.file_name}</p>
+            {folderMaterials.length > 0 && folderMaterials.map(material => {
+              const isAssigned = assignedMaterialUrls.has(material.file_url)
+              return (
+                <button
+                  key={material.id}
+                  onClick={() => !isAssigned && toggleMaterialSelection(material.id)}
+                  disabled={isAssigned}
+                  className={`w-full text-left p-3 border rounded-lg transition-colors flex items-center justify-between group ${
+                    selectedMaterials.has(material.id) 
+                      ? 'border-primary bg-primary/5' 
+                      : isAssigned
+                      ? 'border-gray-200 bg-gray-100 opacity-50 cursor-not-allowed'
+                      : 'border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedMaterials.has(material.id)}
+                      onChange={() => !isAssigned && toggleMaterialSelection(material.id)}
+                      disabled={isAssigned}
+                      className={`w-4 h-4 text-primary rounded transition-opacity ${
+                        selectedMaterials.has(material.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                      }`}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <div>
+                      <p className="font-medium text-gray-900 text-sm">{material.title}</p>
+                      <p className="text-xs text-gray-500">{material.file_name}</p>
+                      {isAssigned && (
+                        <p className="text-xs text-orange-600 font-medium mt-1">Bereits zugewiesen</p>
+                      )}
+                    </div>
                   </div>
-                </div>
-                {selectedMaterials.has(material.id) && (
-                  <CheckCircle className="w-4 h-4 text-primary" />
-                )}
-              </button>
-            ))}
+                  {selectedMaterials.has(material.id) && !isAssigned && (
+                    <CheckCircle className="w-4 h-4 text-primary" />
+                  )}
+                  {isAssigned && (
+                    <AlertTriangle className="w-4 h-4 text-orange-500" />
+                  )}
+                </button>
+              )
+            })}
           </div>
         )}
       </React.Fragment>
@@ -1095,6 +1151,10 @@ export const VbKorrekturDashboard: React.FC = () => {
                           <button
                             onClick={async () => {
                               setSelectedCaseForMaterial(c)
+                              setMaterialSelectorLegalArea(c.legal_area)
+                              
+                              // Fetch materials already assigned to this user
+                              await fetchAssignedMaterialsForUser(c.profile_id)
                               
                               // Only fetch if not already loaded
                               if (teachingMaterials.length === 0) {
@@ -1144,8 +1204,12 @@ export const VbKorrekturDashboard: React.FC = () => {
                           onClick={async () => {
                             if (c.status === 'requested') {
                               setSelectedCaseForMaterial(c)
+                              setMaterialSelectorLegalArea(c.legal_area)
                               setSelectedMaterials(new Set()) // Reset selected materials
                               setExpandedFolders(new Set()) // Reset expanded folders
+                              
+                              // Fetch materials already assigned to this user
+                              await fetchAssignedMaterialsForUser(c.profile_id)
                               
                               // Only fetch if not already loaded
                               if (teachingMaterials.length === 0) {
@@ -1228,6 +1292,7 @@ export const VbKorrekturDashboard: React.FC = () => {
               setShowMaterialSelector(false)
               setSelectedCaseForMaterial(null)
               setSelectedMaterials(new Set())
+              setMaterialSelectorLegalArea(null)
             }
           }}
         >
@@ -1281,6 +1346,7 @@ export const VbKorrekturDashboard: React.FC = () => {
                       setSelectedCaseForMaterial(null)
                       setSelectedMaterials(new Set())
                       setEditingCorrectionField(null)
+                      setMaterialSelectorLegalArea(null)
                     }}
                     className="text-gray-500 hover:text-gray-700"
                   >
@@ -1327,36 +1393,49 @@ export const VbKorrekturDashboard: React.FC = () => {
                     
                     {expandedFolders.has('no-folder') && (
                       <div className="ml-8 mt-2 space-y-2">
-                        {materialsByFolder['no-folder'].map(material => (
-                          <button
-                            key={material.id}
-                            onClick={() => toggleMaterialSelection(material.id)}
-                            className={`w-full text-left p-3 border rounded-lg transition-colors flex items-center justify-between group ${
-                              selectedMaterials.has(material.id) 
-                                ? 'border-primary bg-primary/5' 
-                                : 'border-gray-200 hover:bg-gray-50'
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <input
-                                type="checkbox"
-                                checked={selectedMaterials.has(material.id)}
-                                onChange={() => toggleMaterialSelection(material.id)}
-                                className={`w-4 h-4 text-primary rounded transition-opacity ${
-                                  selectedMaterials.has(material.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                                }`}
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                              <div>
-                                <p className="font-medium text-gray-900 text-sm">{material.title}</p>
-                                <p className="text-xs text-gray-500">{material.file_name}</p>
+                        {materialsByFolder['no-folder'].map(material => {
+                          const isAssigned = assignedMaterialUrls.has(material.file_url)
+                          return (
+                            <button
+                              key={material.id}
+                              onClick={() => !isAssigned && toggleMaterialSelection(material.id)}
+                              disabled={isAssigned}
+                              className={`w-full text-left p-3 border rounded-lg transition-colors flex items-center justify-between group ${
+                                selectedMaterials.has(material.id) 
+                                  ? 'border-primary bg-primary/5' 
+                                  : isAssigned
+                                  ? 'border-gray-200 bg-gray-100 opacity-50 cursor-not-allowed'
+                                  : 'border-gray-200 hover:bg-gray-50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedMaterials.has(material.id)}
+                                  onChange={() => !isAssigned && toggleMaterialSelection(material.id)}
+                                  disabled={isAssigned}
+                                  className={`w-4 h-4 text-primary rounded transition-opacity ${
+                                    selectedMaterials.has(material.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                                  }`}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                                <div>
+                                  <p className="font-medium text-gray-900 text-sm">{material.title}</p>
+                                  <p className="text-xs text-gray-500">{material.file_name}</p>
+                                  {isAssigned && (
+                                    <p className="text-xs text-orange-600 font-medium mt-1">Bereits zugewiesen</p>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                            {selectedMaterials.has(material.id) && (
-                              <CheckCircle className="w-4 h-4 text-primary" />
-                            )}
-                          </button>
-                        ))}
+                              {selectedMaterials.has(material.id) && !isAssigned && (
+                                <CheckCircle className="w-4 h-4 text-primary" />
+                              )}
+                              {isAssigned && (
+                                <AlertTriangle className="w-4 h-4 text-orange-500" />
+                              )}
+                            </button>
+                          )
+                        })}
                       </div>
                     )}
                   </div>

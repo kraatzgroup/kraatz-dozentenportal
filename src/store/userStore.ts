@@ -18,7 +18,7 @@ interface UserState {
   error: string | null;
   fetchUsers: () => Promise<void>;
   createUser: (userData: { email: string; password: string; fullName: string; role?: string }) => Promise<void>;
-  updateUser: (id: string, data: { fullName: string; role?: string; additional_roles?: string[] }) => Promise<void>;
+  updateUser: (id: string, data: { fullName: string; role?: string; additional_roles?: string[]; vb_legal_areas?: string[] }) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
 }
@@ -34,7 +34,7 @@ export const useUserStore = create<UserState>((set, get) => ({
       console.log('UserStore: Fetching users with all fields');
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, email, full_name, role, additional_roles, profile_picture_url, last_login, created_at, title, first_name, last_name, phone, legal_areas, street, house_number, postal_code, city, iban, bic, bank_name, tax_id, hourly_rate_unterricht, hourly_rate_elite, hourly_rate_elite_korrektur, hourly_rate_sonstige')
+        .select('id, email, full_name, role, additional_roles, profile_picture_url, last_login, created_at, title, first_name, last_name, phone, legal_areas, vb_legal_areas, street, house_number, postal_code, city, iban, bic, bank_name, tax_id, hourly_rate_unterricht, hourly_rate_elite, hourly_rate_elite_korrektur, hourly_rate_sonstige')
         .eq('is_archived', false)
         .order('role', { ascending: false })
         .order('full_name', { ascending: true });
@@ -109,7 +109,7 @@ export const useUserStore = create<UserState>((set, get) => ({
     }
   },
 
-  updateUser: async (id: string, data: { fullName: string; role?: string; additional_roles?: string[] }) => {
+  updateUser: async (id: string, data: { fullName: string; role?: string; additional_roles?: string[]; vb_legal_areas?: string[] }) => {
     set({ isLoading: true, error: null });
     try {
       const updateData: any = { full_name: data.fullName };
@@ -119,7 +119,10 @@ export const useUserStore = create<UserState>((set, get) => ({
       if (data.additional_roles !== undefined) {
         updateData.additional_roles = data.additional_roles;
       }
-      
+      if (data.vb_legal_areas !== undefined) {
+        updateData.vb_legal_areas = data.vb_legal_areas;
+      }
+
       const { error } = await supabase
         .from('profiles')
         .update(updateData)

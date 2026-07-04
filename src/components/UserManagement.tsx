@@ -20,6 +20,7 @@ interface DialogState {
     role?: string;
     additional_roles?: string[];
     eliteKleingruppe?: string;
+    vb_legal_areas?: string[];
   };
 }
 
@@ -52,7 +53,7 @@ export function UserManagement() {
   const [localLoading, setLocalLoading] = useState(false);
   const [dialog, setDialog] = useState<DialogState>({
     type: null,
-    userData: { email: '', fullName: '', password: '' }
+    userData: { email: '', fullName: '', password: '', vb_legal_areas: [] }
   });
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
@@ -89,24 +90,26 @@ export function UserManagement() {
   const [magicLinkEnv, setMagicLinkEnv] = useState<'localhost' | 'production'>(
     window.location.hostname.includes('localhost') ? 'localhost' : 'production'
   );
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
 
   useEffect(() => {
     fetchUsers();
     fetchUnreadCount();
-    
+
     // Fetch elite teilnehmer IDs to filter out regular teilnehmer
     const fetchEliteTeilnehmer = async () => {
       const { data } = await supabase
         .from('teilnehmer')
         .select('profile_id')
         .eq('is_elite_kleingruppe', true);
-      
+
       if (data) {
         setEliteTeilnehmerIds(new Set(data.map(t => t.profile_id)));
       }
     };
     fetchEliteTeilnehmer();
-    
+
     // Fetch dozenten for TeilnehmerForm
     const fetchDozenten = async () => {
       const { data } = await supabase
@@ -117,7 +120,7 @@ export function UserManagement() {
       if (data) setDozenten(data);
     };
     fetchDozenten();
-    
+
     // Fetch elite kleingruppen for teilnehmer creation
     const fetchEliteKleingruppen = async () => {
       const { data } = await supabase
@@ -128,7 +131,7 @@ export function UserManagement() {
       if (data) setEliteKleingruppen(data);
     };
     fetchEliteKleingruppen();
-    
+
     // Debug: Log environment variables
     console.log('Environment check:', {
       supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
@@ -136,6 +139,11 @@ export function UserManagement() {
       edgeFunctionUrl: `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`
     });
   }, [fetchUsers]);
+
+  // Reset to page 1 when search query changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -277,7 +285,7 @@ export function UserManagement() {
   const handleUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setDialogError(null);
-    
+
     if (!dialog.userData.id || !dialog.userData.fullName) {
       setDialogError('Name ist erforderlich');
       return;
@@ -285,10 +293,11 @@ export function UserManagement() {
 
     try {
       setLocalLoading(true);
-      await updateUser(dialog.userData.id, { 
+      await updateUser(dialog.userData.id, {
         fullName: dialog.userData.fullName,
         role: dialog.userData.role,
-        additional_roles: dialog.userData.additional_roles || []
+        additional_roles: dialog.userData.additional_roles || [],
+        vb_legal_areas: dialog.userData.vb_legal_areas || []
       });
       setSuccessMessage('Benutzer wurde erfolgreich aktualisiert.');
       closeDialog();
@@ -790,32 +799,40 @@ export function UserManagement() {
           ) : (
             <div className="bg-white shadow overflow-hidden sm:rounded-md">
               <ul className="divide-y divide-gray-200">
-                {users.filter(user => {
-                  // Filter out regular teilnehmer (non-elite) - they don't have login access
-                  // Keep: admin, buchhaltung, verwaltung, vertrieb, dozent, elite-kleingruppe teilnehmer, and videobesprechung users
-                  if (user.role === 'teilnehmer' && !eliteTeilnehmerIds.has(user.id) && !(user.additional_roles || []).includes('videobesprechung')) {
-                    return false; // Exclude regular teilnehmer
-                  }
-                  
-                  // Apply search filter
-                  if (!searchQuery) return true;
-                  const query = searchQuery.toLowerCase();
-                  const roleText = user.role === 'admin' ? 'administrator' : 
-                                   user.role === 'buchhaltung' ? 'buchhaltung' :
-                                   user.role === 'verwaltung' ? 'verwaltung' :
-                                   user.role === 'vertrieb' ? 'vertrieb' :
-                                   user.role === 'teilnehmer' ? 'teilnehmer' : 'dozent';
-                  const additionalRolesText = (user.additional_roles || []).join(' ').toLowerCase();
-                  return (user.full_name?.toLowerCase().includes(query) ?? false) ||
-                         (user.email?.toLowerCase().includes(query) ?? false) ||
-                         roleText.includes(query) ||
-                         additionalRolesText.includes(query);
-                }).sort((a, b) => {
-                  // Sort by created_at descending (newest first)
-                  const dateA = new Date(a.created_at || 0).getTime();
-                  const dateB = new Date(b.created_at || 0).getTime();
-                  return dateB - dateA;
-                }).map((user) => (
+                {(() => {
+                  const filteredUsers = users.filter(user => {
+                    // Filter out regular teilnehmer (non-elite) - they don't have login access
+                    // Keep: admin, buchhaltung, verwaltung, vertrieb, dozent, elite-kleingruppe teilnehmer, and videobesprechung users
+                    if (user.role === 'teilnehmer' && !eliteTeilnehmerIds.has(user.id) && !(user.additional_roles || []).includes('videobesprechung')) {
+                      return false; // Exclude regular teilnehmer
+                    }
+
+                    // Apply search filter
+                    if (!searchQuery) return true;
+                    const query = searchQuery.toLowerCase();
+                    const roleText = user.role === 'admin' ? 'administrator' :
+                                     user.role === 'buchhaltung' ? 'buchhaltung' :
+                                     user.role === 'verwaltung' ? 'verwaltung' :
+                                     user.role === 'vertrieb' ? 'vertrieb' :
+                                     user.role === 'teilnehmer' ? 'teilnehmer' : 'dozent';
+                    const additionalRolesText = (user.additional_roles || []).join(' ').toLowerCase();
+                    return (user.full_name?.toLowerCase().includes(query) ?? false) ||
+                           (user.email?.toLowerCase().includes(query) ?? false) ||
+                           roleText.includes(query) ||
+                           additionalRolesText.includes(query);
+                  }).sort((a, b) => {
+                    // Sort by created_at descending (newest first)
+                    const dateA = new Date(a.created_at || 0).getTime();
+                    const dateB = new Date(b.created_at || 0).getTime();
+                    return dateB - dateA;
+                  });
+
+                  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+                  const startIndex = (currentPage - 1) * itemsPerPage;
+                  const endIndex = startIndex + itemsPerPage;
+                  const paginatedUsers = filteredUsers.slice(startIndex, endIndex);
+
+                  return paginatedUsers.map((user) => (
                   <li key={user.id}>
                     <div className="px-3 sm:px-4 py-4 sm:px-6">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -875,7 +892,7 @@ export function UserManagement() {
                                       r === 'vertrieb' ? 'Vertrieb' :
                                       r === 'teilnehmer' ? 'Teilnehmer' :
                                       r === 'videobesprechung' ? 'Videobesprechung' :
-                                      r === 'videobesprechung_dozent' ? 'VB Dozent' :
+                                      r === 'videobesprechung_dozent' ? 'Videobesprechung' :
                                       r === 'dozent' ? 'Dozent' : r}
                                   </span>
                                 ))}
@@ -898,7 +915,8 @@ export function UserManagement() {
                                     email: user.email,
                                     fullName: user.full_name,
                                     role: user.role,
-                                    additional_roles: user.additional_roles || []
+                                    additional_roles: user.additional_roles || [],
+                                    vb_legal_areas: (user as any).vb_legal_areas || []
                                   }
                                 });
                               }
@@ -945,8 +963,109 @@ export function UserManagement() {
                       </div>
                     </div>
                   </li>
-                ))}
+                  ));
+                })()}
               </ul>
+
+              {/* Pagination */}
+              {(() => {
+                const filteredUsers = users.filter(user => {
+                  if (user.role === 'teilnehmer' && !eliteTeilnehmerIds.has(user.id) && !(user.additional_roles || []).includes('videobesprechung')) {
+                    return false;
+                  }
+                  if (!searchQuery) return true;
+                  const query = searchQuery.toLowerCase();
+                  const roleText = user.role === 'admin' ? 'administrator' :
+                                   user.role === 'buchhaltung' ? 'buchhaltung' :
+                                   user.role === 'verwaltung' ? 'verwaltung' :
+                                   user.role === 'vertrieb' ? 'vertrieb' :
+                                   user.role === 'teilnehmer' ? 'teilnehmer' : 'dozent';
+                  const additionalRolesText = (user.additional_roles || []).join(' ').toLowerCase();
+                  return (user.full_name?.toLowerCase().includes(query) ?? false) ||
+                         (user.email?.toLowerCase().includes(query) ?? false) ||
+                         roleText.includes(query) ||
+                         additionalRolesText.includes(query);
+                });
+                const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+
+                if (totalPages <= 1) return null;
+
+                return (
+                  <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+                    <div className="flex-1 flex justify-between sm:hidden">
+                      <button
+                        onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                        disabled={currentPage === 1}
+                        className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Zurück
+                      </button>
+                      <button
+                        onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                        disabled={currentPage === totalPages}
+                        className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Weiter
+                      </button>
+                    </div>
+                    <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm text-gray-700">
+                          Zeige <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> bis{' '}
+                          <span className="font-medium">{Math.min(currentPage * itemsPerPage, filteredUsers.length)}</span> von{' '}
+                          <span className="font-medium">{filteredUsers.length}</span> Ergebnissen
+                        </p>
+                      </div>
+                      <div>
+                        <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                          <button
+                            onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                            disabled={currentPage === 1}
+                            className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <span className="sr-only">Vorherige</span>
+                            &larr;
+                          </button>
+                          {[...Array(totalPages)].map((_, i) => {
+                            const pageNum = i + 1;
+                            const isCurrentPage = pageNum === currentPage;
+                            const showPage = pageNum === 1 || pageNum === totalPages || (pageNum >= currentPage - 1 && pageNum <= currentPage + 1);
+
+                            if (!showPage) {
+                              if (pageNum === currentPage - 2 || pageNum === currentPage + 2) {
+                                return <span key={pageNum} className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">...</span>;
+                              }
+                              return null;
+                            }
+
+                            return (
+                              <button
+                                key={pageNum}
+                                onClick={() => setCurrentPage(pageNum)}
+                                className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                                  isCurrentPage
+                                    ? 'z-10 bg-primary border-primary text-white'
+                                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                                }`}
+                              >
+                                {pageNum}
+                              </button>
+                            );
+                          })}
+                          <button
+                            onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                            disabled={currentPage === totalPages}
+                            className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <span className="sr-only">Nächste</span>
+                            &rarr;
+                          </button>
+                        </nav>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -1069,6 +1188,38 @@ export function UserManagement() {
                               </div>
                               <p className="mt-2 text-xs text-gray-500">
                                 Zusätzliche Rollen ermöglichen Zugriff auf weitere Bereiche.
+                              </p>
+                            </div>
+                          )}
+                          {(dialog.type === 'edit' || dialog.type === 'new') && (dialog.userData.additional_roles || []).includes('videobesprechung_dozent') && (
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Videobesprechung Rechtsgebiete
+                              </label>
+                              <div className="space-y-2">
+                                {['Zivilrecht', 'Strafrecht', 'Öffentliches Recht'].map((area) => (
+                                  <label key={area} className="flex items-center space-x-2 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={(dialog.userData.vb_legal_areas || []).includes(area)}
+                                      onChange={(e) => {
+                                        const current = dialog.userData.vb_legal_areas || [];
+                                        const updated = e.target.checked
+                                          ? [...current, area]
+                                          : current.filter(x => x !== area);
+                                        setDialog({
+                                          ...dialog,
+                                          userData: { ...dialog.userData, vb_legal_areas: updated }
+                                        });
+                                      }}
+                                      className="rounded border-gray-300 text-primary focus:ring-primary/20"
+                                    />
+                                    <span className="text-sm text-gray-700">{area}</span>
+                                  </label>
+                                ))}
+                              </div>
+                              <p className="mt-2 text-xs text-gray-500">
+                                Wählen Sie die Rechtsgebiete aus, für die dieser Dozent Videobesprechungen durchführen darf.
                               </p>
                             </div>
                           )}

@@ -172,9 +172,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   });
   const FLAT_RATE_CATEGORIES = [
     'Auslagen',
-    'Reisekosten',
-    'Pauschalvereinbarungen',
-    'Kraatz Club Videos'
+    'Kraatz Club Videos',
+    'Probestunden'
   ];
 
   const [flatRateFormData, setFlatRateFormData] = useState({
@@ -182,7 +181,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     description: '',
     quantity: '1',
     amount_euro: '',
-    date: new Date().toISOString().split('T')[0]
+    date: new Date().toISOString().split('T')[0],
+    participant_name: ''
   });
   const [activityRefreshKey, setActivityRefreshKey] = useState(0);
   const [contractRefreshKey, setContractRefreshKey] = useState(0);
@@ -2545,7 +2545,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                     quantity: quantity,
                     amount_euro: amountEuro,
                     category: flatRateFormData.category,
-                    date: flatRateFormData.date
+                    date: flatRateFormData.date,
+                    participant_name: flatRateFormData.category === 'Probestunden' ? flatRateFormData.participant_name : null
                   });
 
                   if (error) throw error;
@@ -2557,7 +2558,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                     description: '',
                     quantity: '1',
                     amount_euro: '',
-                    date: new Date().toISOString().split('T')[0]
+                    date: new Date().toISOString().split('T')[0],
+                    participant_name: ''
                   });
                   await fetchMonthlySummary();
                   setActivityRefreshKey(prev => prev + 1);
@@ -2588,6 +2590,22 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                         ))}
                       </select>
                     </div>
+
+                    {flatRateFormData.category === 'Probestunden' && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Name des Teilnehmers
+                        </label>
+                        <input
+                          type="text"
+                          value={flatRateFormData.participant_name}
+                          onChange={(e) => setFlatRateFormData({ ...flatRateFormData, participant_name: e.target.value })}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                          placeholder="Name des Teilnehmers für die Probestunde"
+                          required
+                        />
+                      </div>
+                    )}
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -2676,7 +2694,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                         description: '',
                         quantity: '1',
                         amount_euro: '',
-                        date: new Date().toISOString().split('T')[0]
+                        date: new Date().toISOString().split('T')[0],
+                        participant_name: ''
                       });
                     }}
                     className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"

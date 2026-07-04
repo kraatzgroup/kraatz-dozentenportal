@@ -89,6 +89,8 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
   const [eliteKleingruppen, setEliteKleingruppen] = useState<EliteKleingruppe[]>([]);
   const [isEliteKleingruppeEnabled, setIsEliteKleingruppeEnabled] = useState(false);
   const [eliteAssignments, setEliteAssignments] = useState<Record<string, string[]>>({});
+  const [isVbDozentEnabled, setIsVbDozentEnabled] = useState(false);
+  const [vbLegalAreas, setVbLegalAreas] = useState<string[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const organigrammInputRef = useRef<HTMLInputElement>(null);
@@ -114,11 +116,11 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
           .from('elite_kleingruppe_dozenten')
           .select('elite_kleingruppe_id, legal_area')
           .eq('dozent_id', dozent.id);
-        
+
         if (data && data.length > 0) {
           setIsEliteKleingruppeEnabled(true);
           const assignments: Record<string, string[]> = {};
-          
+
           // Group by elite_kleingruppe_id and collect legal_areas
           data.forEach(a => {
             if (!assignments[a.elite_kleingruppe_id]) {
@@ -128,8 +130,15 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
               assignments[a.elite_kleingruppe_id].push(a.legal_area);
             }
           });
-          
+
           setEliteAssignments(assignments);
+        }
+
+        // Load vb_legal_areas from profile
+        const additionalRoles = (dozent as any).additional_roles || [];
+        if (additionalRoles.includes('videobesprechung_dozent')) {
+          setIsVbDozentEnabled(true);
+          setVbLegalAreas((dozent as any).vb_legal_areas || []);
         }
       };
       fetchAssignments();
@@ -515,6 +524,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         email: formData.email.trim() || null,
         phone: formData.phone.trim() || null,
         legal_areas: formData.legal_areas.length > 0 ? formData.legal_areas : null,
+        vb_legal_areas: isVbDozentEnabled ? vbLegalAreas : null,
         exam_types: formData.exam_types,
         street: formData.street.trim() || null,
         house_number: formData.house_number.trim() || null,
@@ -531,6 +541,20 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         hourly_rate_sonstige: formData.hourly_rate_sonstige,
         role: 'dozent'
       };
+
+      // Handle additional_roles for videobesprechung_dozent
+      const currentAdditionalRoles = (dozent as any)?.additional_roles || [];
+      let newAdditionalRoles = [...currentAdditionalRoles];
+
+      if (isVbDozentEnabled) {
+        if (!newAdditionalRoles.includes('videobesprechung_dozent')) {
+          newAdditionalRoles.push('videobesprechung_dozent');
+        }
+      } else {
+        newAdditionalRoles = newAdditionalRoles.filter(r => r !== 'videobesprechung_dozent');
+      }
+
+      dataToSave.additional_roles = newAdditionalRoles.length > 0 ? newAdditionalRoles : null;
 
       console.log('📦 DataToSave Stundensätze:', {
         hourly_rate_unterricht: dataToSave.hourly_rate_unterricht,
@@ -1237,7 +1261,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
                 <p className="text-sm text-gray-600">
                   Weisen Sie dem Dozenten Elite-Kleingruppen zu und definieren Sie die Rechtsgebiete pro Gruppe:
                 </p>
-                
+
                 <div className="space-y-3">
                   {eliteKleingruppen.map((group) => (
                     <div key={group.id} className="bg-white rounded-lg p-3 border border-gray-200">
@@ -1279,6 +1303,46 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
                     Keine Elite-Kleingruppen verfügbar. Bitte erstellen Sie zuerst eine Gruppe.
                   </p>
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* Videobesprechung Dozent Section */}
+          <div className="border-t pt-4">
+            <label className="flex items-center cursor-pointer mb-4">
+              <input
+                type="checkbox"
+                checked={isVbDozentEnabled}
+                onChange={(e) => setIsVbDozentEnabled(e.target.checked)}
+                className="h-4 w-4 text-primary border-gray-300 rounded focus:ring-primary"
+              />
+              <span className="ml-2 text-sm font-medium text-gray-900">Videobesprechung (Dozent)</span>
+            </label>
+
+            {/* VB Legal Areas Panel */}
+            {isVbDozentEnabled && (
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-sm text-gray-600 mb-3">
+                  Wählen Sie die Rechtsgebiete aus, für die dieser Dozent Videobesprechungen durchführen darf:
+                </p>
+                <div className="space-y-2">
+                  {['Zivilrecht', 'Strafrecht', 'Öffentliches Recht'].map((area) => (
+                    <label key={area} className="flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={vbLegalAreas.includes(area)}
+                        onChange={(e) => {
+                          const updated = e.target.checked
+                            ? [...vbLegalAreas, area]
+                            : vbLegalAreas.filter(a => a !== area);
+                          setVbLegalAreas(updated);
+                        }}
+                        className="h-4 w-4 text-primary border-gray-300 rounded focus:ring-primary"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">{area}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
             )}
           </div>
