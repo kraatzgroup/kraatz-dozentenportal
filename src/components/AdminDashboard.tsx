@@ -4326,6 +4326,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
 
       {showTeilnehmerForm && (
         <TeilnehmerForm
+          key={selectedTeilnehmerForEdit?.id || 'new'}
           teilnehmer={selectedTeilnehmerForEdit}
           onClose={() => {
             setShowTeilnehmerForm(false);
@@ -4335,11 +4336,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
             console.log('AdminDashboard onSaved received:', updatedTeilnehmer);
             if (updatedTeilnehmer) {
               console.log('Setting selectedTeilnehmerForEdit to updated data');
-              // Force a re-render by clearing and setting the state
-              setSelectedTeilnehmerForEdit(null);
-              setTimeout(() => {
-                setSelectedTeilnehmerForEdit(updatedTeilnehmer);
-              }, 0);
+              setSelectedTeilnehmerForEdit(updatedTeilnehmer);
             }
             fetchTeilnehmer();
           }}
