@@ -1239,24 +1239,34 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
           if (response.ok && result.success) {
             console.log('User account created successfully');
 
-            // Update teilnehmer entry with full data
-            const { error: updateError } = await supabase
-              .from('teilnehmer')
-              .update(dataToSave)
-              .eq('email', formData.email);
+            // Get the created profile to link to teilnehmer
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('id')
+              .eq('email', formData.email)
+              .single();
 
-            if (updateError) {
-              console.error('Error updating teilnehmer data:', updateError);
-              addToast('Benutzer erstellt, aber einige Daten konnten nicht gespeichert werden', 'error');
-            } else {
-              // Get the created teilnehmer ID
-              const { data: createdTn } = await supabase
+            if (profile) {
+              // Insert teilnehmer record with profile_id
+              const newId = crypto.randomUUID();
+              const { error: insertError } = await supabase
                 .from('teilnehmer')
-                .select('id')
-                .eq('email', formData.email)
-                .maybeSingle();
-              savedTeilnehmerId = createdTn?.id || null;
-              addToast('Teilnehmer wurde erfolgreich erstellt und Einladungs-E-Mail wurde gesendet', 'success');
+                .insert({
+                  ...dataToSave,
+                  id: newId,
+                  profile_id: profile.id,
+                  created_at: new Date().toISOString()
+                });
+
+              if (insertError) {
+                console.error('Error inserting teilnehmer data:', insertError);
+                addToast('Benutzer erstellt, aber einige Daten konnten nicht gespeichert werden', 'error');
+              } else {
+                savedTeilnehmerId = newId;
+                addToast('Teilnehmer wurde erfolgreich erstellt und Einladungs-E-Mail wurde gesendet', 'success');
+              }
+            } else {
+              throw new Error('Profile not found after creation');
             }
           } else {
             throw new Error(result.error || 'Fehler beim Erstellen des User-Accounts');
