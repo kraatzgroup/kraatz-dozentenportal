@@ -180,7 +180,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
       const pathParts = pathname.split('/')
       // Get the folder name (second-to-last part of the path)
       const folderName = pathParts.length > 2 ? pathParts[pathParts.length - 2] : 'download'
-      const realFilename = `${folderName}.pdf`
+      const realFilename = `Sachverhalt_${folderName}.pdf`
       console.log('📥 Using folder name:', realFilename)
 
       // Fetch the file
