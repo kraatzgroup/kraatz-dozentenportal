@@ -2549,7 +2549,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                               <div className="flex items-center justify-between">
                                 <span className="text-gray-500">Credits:</span>
                                 <span className="text-gray-900">
-                                  {t.vb_credits?.remaining || 0} / {t.vb_credits?.total || 0}
+                                  {t.vb_credits?.remaining || 0}
                                 </span>
                               </div>
                             </div>
