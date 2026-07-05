@@ -17,7 +17,7 @@ interface UserState {
   isLoading: boolean;
   error: string | null;
   fetchUsers: () => Promise<void>;
-  createUser: (userData: { email: string; password: string; fullName: string; role?: string }) => Promise<void>;
+  createUser: (userData: { email: string; password: string; fullName: string; role?: string; additional_roles?: string[] }) => Promise<void>;
   updateUser: (id: string, data: { fullName: string; role?: string; additional_roles?: string[]; vb_legal_areas?: string[] }) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -54,16 +54,16 @@ export const useUserStore = create<UserState>((set, get) => ({
     }
   },
 
-  createUser: async ({ email, password, fullName, role = 'dozent' }) => {
+  createUser: async ({ email, password, fullName, role = 'dozent', additional_roles }) => {
     set({ isLoading: true, error: null });
     try {
-      console.log('Creating user with:', { email, fullName, role, passwordProvided: !!password });
-      
+      console.log('Creating user with:', { email, fullName, role, additional_roles, passwordProvided: !!password });
+
       // Try edge function first for user creation with random password
       try {
         console.log('Attempting to call create-user edge function...');
         const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`;
-        
+
         const response = await fetch(edgeFunctionUrl, {
           method: 'POST',
           headers: {
@@ -73,12 +73,13 @@ export const useUserStore = create<UserState>((set, get) => ({
           body: JSON.stringify({
             email: email,
             fullName: fullName,
-            role: role
+            role: role,
+            additionalRoles: additional_roles
           }),
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok && result.success) {
           console.log('User created successfully via edge function:', result);
           await get().fetchUsers();
@@ -89,7 +90,7 @@ export const useUserStore = create<UserState>((set, get) => ({
         }
       } catch (edgeError) {
         console.warn('Edge function failed, using fallback method:', edgeError);
-        
+
         // Edge function is required for user creation - no fallback available without service key
         throw new Error('Benutzererstellung erfordert Edge Function. Bitte kontaktieren Sie den Administrator.');
       }
@@ -97,7 +98,7 @@ export const useUserStore = create<UserState>((set, get) => ({
       await get().fetchUsers();
     } catch (error: any) {
       console.error('User invitation error:', error);
-      
+
       if (error.message?.includes('User already registered') || error.code === '23505') {
         set({ error: 'Ein Benutzer mit dieser E-Mail-Adresse existiert bereits' });
       } else {

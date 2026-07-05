@@ -21,6 +21,7 @@ interface DialogState {
     additional_roles?: string[];
     eliteKleingruppe?: string;
     vb_legal_areas?: string[];
+    isVideobesprechung?: boolean;
   };
 }
 
@@ -160,12 +161,18 @@ export function UserManagement() {
       setSuccessMessage(null);
       setLocalError(null);
       setLocalLoading(true);
-      
+
+      // Build additional roles array
+      const additionalRoles: string[] = [];
+      if (dialog.userData.isVideobesprechung) {
+        additionalRoles.push('videobesprechung');
+      }
+
       // Try edge function first, fallback to direct creation
       console.log(`[${requestId}] Attempting to call create-user edge function...`);
       const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`;
       console.log(`[${requestId}] Edge function URL:`, edgeFunctionUrl);
-      
+
       const response = await fetch(edgeFunctionUrl, {
         method: 'POST',
         headers: {
@@ -176,35 +183,37 @@ export function UserManagement() {
           email: dialog.userData.email,
           fullName: dialog.userData.fullName,
           role: dialog.userData.role || 'dozent',
-          eliteKleingruppe: dialog.userData.eliteKleingruppe || undefined
+          eliteKleingruppe: dialog.userData.eliteKleingruppe || undefined,
+          additionalRoles: additionalRoles.length > 0 ? additionalRoles : undefined
         }),
       });
-      
+
       console.log(`[${requestId}] Edge function response status:`, response.status);
       const result: CreateUserResponse = await response.json();
       console.log(`[${requestId}] Edge function response:`, result);
-      
+
       if (!response.ok || !result.success) {
         console.warn(`[${requestId}] Edge function failed, falling back to direct creation`);
-        
+
         // Fallback to direct user creation using the store
         await createUser({
           email: dialog.userData.email,
           password: '', // Will trigger password reset email
           fullName: dialog.userData.fullName,
-          role: dialog.userData.role || 'dozent'
+          role: dialog.userData.role || 'dozent',
+          additional_roles: additionalRoles.length > 0 ? additionalRoles : undefined
         });
-        
+
         setSuccessMessage(`Benutzer wurde erfolgreich erstellt. Eine E-Mail zum Setzen des Passworts wurde an ${dialog.userData.email} gesendet.`);
       } else {
         setSuccessMessage(`Einladungs-E-Mail wurde erfolgreich an ${dialog.userData.email} gesendet. (Edge Function)`);
       }
-      
+
       closeDialog();
-      
+
       // Refresh the users list and elite teilnehmer IDs
       await fetchUsers();
-      
+
       // Re-fetch elite teilnehmer IDs to include the newly created one
       const { data: eliteData } = await supabase
         .from('teilnehmer')
@@ -215,17 +224,23 @@ export function UserManagement() {
       }
     } catch (error) {
       console.error(`[${requestId}] Error in handleCreateUser:`, error);
-      
+
       // Try fallback method if edge function completely fails
       try {
         console.log(`[${requestId}] Trying fallback user creation method...`);
+        const additionalRoles: string[] = [];
+        if (dialog.userData.isVideobesprechung) {
+          additionalRoles.push('videobesprechung');
+        }
+
         await createUser({
           email: dialog.userData.email,
           password: '', // Will trigger password reset email
           fullName: dialog.userData.fullName,
-          role: dialog.userData.role || 'dozent'
+          role: dialog.userData.role || 'dozent',
+          additional_roles: additionalRoles.length > 0 ? additionalRoles : undefined
         });
-        
+
         setSuccessMessage(`Benutzer wurde erfolgreich erstellt. Eine E-Mail zum Setzen des Passworts wurde an ${dialog.userData.email} gesendet.`);
         closeDialog();
         await fetchUsers();
@@ -1252,29 +1267,70 @@ export function UserManagement() {
                             )}
                           </div>
                           {dialog.type === 'new' && dialog.userData.role === 'teilnehmer' && (
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Elite-Kleingruppe *
+                            <div className="space-y-3 p-4 bg-purple-50 rounded-lg border border-purple-200">
+                              <label className="flex items-center cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={dialog.userData.eliteKleingruppe !== undefined && dialog.userData.eliteKleingruppe !== ''}
+                                  onChange={(e) => {
+                                    const isChecked = e.target.checked;
+                                    setDialog({
+                                      ...dialog,
+                                      userData: {
+                                        ...dialog.userData,
+                                        eliteKleingruppe: isChecked ? eliteKleingruppen[0]?.name || '' : ''
+                                      }
+                                    });
+                                  }}
+                                  className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                />
+                                <span className="ml-2 text-sm font-medium text-gray-700">Elite-Kleingruppe Teilnehmer</span>
                               </label>
-                              <select
-                                value={dialog.userData.eliteKleingruppe || ''}
-                                onChange={(e) => setDialog({
-                                  ...dialog,
-                                  userData: { ...dialog.userData, eliteKleingruppe: e.target.value }
-                                })}
-                                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
-                                required
-                              >
-                                <option value="">Bitte wählen...</option>
-                                {eliteKleingruppen.map((gruppe) => (
-                                  <option key={gruppe.id} value={gruppe.name}>
-                                    {gruppe.name}
-                                  </option>
-                                ))}
-                              </select>
-                              <p className="mt-2 text-sm text-gray-500">
-                                Teilnehmer müssen einer Elite-Kleingruppe zugeordnet werden.
-                              </p>
+                              {dialog.userData.eliteKleingruppe && (
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Elite-Kleingruppe zuordnen
+                                  </label>
+                                  <select
+                                    value={dialog.userData.eliteKleingruppe || ''}
+                                    onChange={(e) => setDialog({
+                                      ...dialog,
+                                      userData: { ...dialog.userData, eliteKleingruppe: e.target.value }
+                                    })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                                    required
+                                  >
+                                    <option value="">Bitte wählen...</option>
+                                    {eliteKleingruppen.map((gruppe) => (
+                                      <option key={gruppe.id} value={gruppe.name}>
+                                        {gruppe.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {dialog.type === 'new' && dialog.userData.role === 'teilnehmer' && (
+                            <div className="space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                              <label className="flex items-center cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={dialog.userData.isVideobesprechung || false}
+                                  onChange={(e) => {
+                                    setDialog({
+                                      ...dialog,
+                                      userData: {
+                                        ...dialog.userData,
+                                        isVideobesprechung: e.target.checked
+                                      }
+                                    });
+                                  }}
+                                  className="rounded border-gray-300 text-primary focus:ring-primary/20"
+                                />
+                                <span className="text-sm text-gray-700">Videobesprechung (Teilnehmer)</span>
+                              </label>
                             </div>
                           )}
                         </div>
