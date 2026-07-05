@@ -979,8 +979,22 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
         vb_credits: vbCreditsByProfile[p.id] || { total: 0, used: 0, remaining: 0 }
       }));
 
-      // Combine both lists
-      const allTeilnehmer = [...teilnehmerWithHours, ...vbTeilnehmerFormatted];
+      // Combine both lists and deduplicate by ID (prefer teilnehmer table data over profiles)
+      const allTeilnehmerMap = new Map();
+
+      // Add teilnehmer table data first
+      teilnehmerWithHours.forEach(t => {
+        allTeilnehmerMap.set(t.id, t);
+      });
+
+      // Add VB participants from profiles only if not already in the map
+      vbTeilnehmerFormatted.forEach(t => {
+        if (!allTeilnehmerMap.has(t.id)) {
+          allTeilnehmerMap.set(t.id, t);
+        }
+      });
+
+      const allTeilnehmer = Array.from(allTeilnehmerMap.values());
 
       setTeilnehmer(allTeilnehmer);
     } catch (error) {
