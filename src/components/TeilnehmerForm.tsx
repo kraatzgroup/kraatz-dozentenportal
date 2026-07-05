@@ -636,6 +636,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
   useEffect(() => {
     if (teilnehmer) {
       const isVb = (teilnehmer as any).is_vb || false;
+      console.log('TeilnehmerForm: Loading teilnehmer data', { teilnehmerId: teilnehmer.id, is_vb: isVb, raw_is_vb: (teilnehmer as any).is_vb });
       setFormData({
         tn_nummer: (teilnehmer as any).tn_nummer || '',
         first_name: teilnehmer.first_name || '',
