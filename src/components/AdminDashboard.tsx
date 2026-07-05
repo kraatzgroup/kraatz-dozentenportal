@@ -686,8 +686,6 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
         }
       });
 
-      console.log('VB Credits by profile:', vbCreditsByProfile);
-
       // Calculate remaining credits
       Object.keys(vbCreditsByProfile).forEach(profileId => {
         vbCreditsByProfile[profileId].remaining = vbCreditsByProfile[profileId].total - vbCreditsByProfile[profileId].used;
