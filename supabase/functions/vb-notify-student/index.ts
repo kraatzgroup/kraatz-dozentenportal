@@ -97,12 +97,15 @@ serve(async (req) => {
         .single()
 
       const isMaterialChange = body.is_material_change
+      const isCorrectionComplete = body.is_correction_complete
       const caseStudyNumber = body.case_study_number || 'deinem Sachverhalt'
       const notification = {
-        title: isMaterialChange ? 'Material geändert' : 'Sachverhalt verfügbar',
-        message: isMaterialChange 
-          ? `Das Ihnen für ${caseStudyNumber} zugewiesene Material hat sich geändert.`
-          : `Dein Sachverhalt ist jetzt verfügbar. Du kannst mit der Bearbeitung beginnen.`,
+        title: isCorrectionComplete ? 'Korrektur verfügbar' : (isMaterialChange ? 'Material geändert' : 'Sachverhalt verfügbar'),
+        message: isCorrectionComplete
+          ? `Deine Korrektur für ${caseStudyNumber} ist jetzt verfügbar.`
+          : (isMaterialChange
+            ? `Das Ihnen für ${caseStudyNumber} zugewiesene Material hat sich geändert.`
+            : `Dein Sachverhalt ist jetzt verfügbar. Du kannst mit der Bearbeitung beginnen.`),
         related_case_study_id: body.case_study_id,
       }
 
@@ -110,16 +113,23 @@ serve(async (req) => {
       let emailSubject = notification.title
       let actionButton = ''
 
-      if (notification.message.includes('geändert')) {
+      if (isCorrectionComplete) {
         actionButton = `
-          <a href="${magicLink}" 
+          <a href="${magicLink}"
+             style="display: inline-block; background-color: #2e83c2; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold;">
+            Korrektur ansehen
+          </a>
+        `
+      } else if (notification.message.includes('geändert')) {
+        actionButton = `
+          <a href="${magicLink}"
              style="display: inline-block; background-color: #2e83c2; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold;">
             Neues Material ansehen
           </a>
         `
       } else {
         actionButton = `
-          <a href="${magicLink}" 
+          <a href="${magicLink}"
              style="display: inline-block; background-color: #2e83c2; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold;">
             Sachverhalt ansehen
           </a>
