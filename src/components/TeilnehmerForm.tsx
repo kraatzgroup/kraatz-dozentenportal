@@ -77,6 +77,7 @@ const GERMAN_STATES = [
 
 interface TeilnehmerFormProps {
   teilnehmer?: Teilnehmer | null;
+  participantType?: 'regular' | 'elite' | 'vb' | null;
   onClose: () => void;
   onSaved: (updatedTeilnehmer?: any) => void;
   onDelete?: (teilnehmer: Teilnehmer) => void;
@@ -88,7 +89,7 @@ interface EliteKleingruppe {
   name: string;
 }
 
-export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozenten }: TeilnehmerFormProps) {
+export function TeilnehmerForm({ teilnehmer, participantType, onClose, onSaved, onDelete, dozenten }: TeilnehmerFormProps) {
   const { addToast } = useToastStore();
   const [isLoading, setIsLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -611,7 +612,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
     const fetchNextTnNummer = async () => {
       // Skip auto-fetch if data was imported from Excel
       if (hasImportedData.current) return;
-      
+
       if (!isEditing && !teilnehmer) {
         try {
           const { data, error } = await supabase.rpc('get_next_tn_nummer');
@@ -629,9 +630,20 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
         }
       }
     };
-    
+
     fetchNextTnNummer();
   }, [isEditing, teilnehmer]);
+
+  // Pre-set checkboxes based on participantType for new participants
+  useEffect(() => {
+    if (!isEditing && !teilnehmer && participantType) {
+      if (participantType === 'elite') {
+        setFormData(prev => ({ ...prev, is_elite_kleingruppe: true }));
+      } else if (participantType === 'vb') {
+        setFormData(prev => ({ ...prev, is_vb: true }));
+      }
+    }
+  }, [isEditing, teilnehmer, participantType]);
 
   useEffect(() => {
     if (teilnehmer) {

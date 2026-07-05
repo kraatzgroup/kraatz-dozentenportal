@@ -236,6 +236,8 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   const [editContractEnd, setEditContractEnd] = useState<string>('');
   const [showTeilnehmerForm, setShowTeilnehmerForm] = useState(false);
   const [selectedTeilnehmerForEdit, setSelectedTeilnehmerForEdit] = useState<any>(null);
+  const [showTeilnehmerRoleSelection, setShowTeilnehmerRoleSelection] = useState(false);
+  const [participantType, setParticipantType] = useState<'regular' | 'elite' | 'vb' | null>(null);
   const [expandedTeilnehmer, setExpandedTeilnehmer] = useState<string | null>(null);
   const [showStundenzettel, setShowStundenzettel] = useState(false);
   const [selectedTeilnehmerForStundenzettel, setSelectedTeilnehmerForStundenzettel] = useState<any>(null);
@@ -2319,7 +2321,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 <button
                   onClick={() => {
                     setSelectedTeilnehmerForEdit(null);
-                    setShowTeilnehmerForm(true);
+                    setShowTeilnehmerRoleSelection(true);
                   }}
                   className="flex items-center px-3 py-1.5 sm:px-4 sm:py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors text-sm"
                 >
@@ -4301,14 +4303,17 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
       {showTeilnehmerForm && (
         <TeilnehmerForm
           teilnehmer={selectedTeilnehmerForEdit}
+          participantType={participantType}
           onClose={() => {
             setShowTeilnehmerForm(false);
             setSelectedTeilnehmerForEdit(null);
+            setParticipantType(null);
           }}
           onSaved={() => {
             fetchTeilnehmer();
             setShowTeilnehmerForm(false);
             setSelectedTeilnehmerForEdit(null);
+            setParticipantType(null);
           }}
           onDelete={async (teilnehmer) => {
             try {
@@ -4322,6 +4327,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
               addToast('Teilnehmer erfolgreich gelöscht', 'success');
               setShowTeilnehmerForm(false);
               setSelectedTeilnehmerForEdit(null);
+              setParticipantType(null);
               fetchTeilnehmer();
             } catch (error: any) {
               console.error('Error deleting teilnehmer:', error);
@@ -4330,6 +4336,55 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
           }}
           dozenten={dozenten}
         />
+      )}
+
+      {showTeilnehmerRoleSelection && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Welche Art von Teilnehmer soll erstellt werden?</h3>
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  setParticipantType('regular');
+                  setShowTeilnehmerRoleSelection(false);
+                  setShowTeilnehmerForm(true);
+                }}
+                className="w-full p-4 text-left border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors"
+              >
+                <div className="font-medium text-gray-900">Teilnehmer (ohne Login)</div>
+                <div className="text-sm text-gray-500 mt-1">Teilnehmer ohne Benutzerkonto für Dateneingabe</div>
+              </button>
+              <button
+                onClick={() => {
+                  setParticipantType('elite');
+                  setShowTeilnehmerRoleSelection(false);
+                  setShowTeilnehmerForm(true);
+                }}
+                className="w-full p-4 text-left border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors"
+              >
+                <div className="font-medium text-gray-900">Teilnehmer (Elite-Kleingruppe)</div>
+                <div className="text-sm text-gray-500 mt-1">Elite-Kleingruppe Teilnehmer mit Login-Zugang</div>
+              </button>
+              <button
+                onClick={() => {
+                  setParticipantType('vb');
+                  setShowTeilnehmerRoleSelection(false);
+                  setShowTeilnehmerForm(true);
+                }}
+                className="w-full p-4 text-left border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors"
+              >
+                <div className="font-medium text-gray-900">Teilnehmer (Videobesprechung)</div>
+                <div className="text-sm text-gray-500 mt-1">Videobesprechung Teilnehmer mit Login-Zugang</div>
+              </button>
+            </div>
+            <button
+              onClick={() => setShowTeilnehmerRoleSelection(false)}
+              className="w-full mt-4 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
       )}
 
       {showStundenzettel && selectedTeilnehmerForStundenzettel && (
