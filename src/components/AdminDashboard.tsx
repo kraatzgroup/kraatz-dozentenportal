@@ -632,20 +632,12 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
 
       if (teilnehmerError) throw teilnehmerError;
 
-      // Fetch VB participants (profiles with role='teilnehmer' and additional_roles='videobesprechung')
-      const { data: vbTeilnehmerData, error: vbError } = await supabase
-        .from('profiles')
-        .select('id, email, full_name, created_at, additional_roles')
-        .eq('role', 'teilnehmer')
-        .contains('additional_roles', ['videobesprechung'])
-        .order('full_name', { ascending: true });
+      // Fetch vb_orders for VB participants to get credits (using profile_id from teilnehmer)
+      const vbProfileIds = (teilnehmerData || [])
+        .filter(t => t.is_vb)
+        .map(t => t.profile_id)
+        .filter(Boolean);
 
-      if (vbError) {
-        console.error('Error fetching VB participants:', vbError);
-      }
-
-      // Fetch vb_orders for VB participants to get credits
-      const vbProfileIds = (vbTeilnehmerData || []).map(p => p.id);
       const { data: vbOrdersData, error: vbOrdersError } = await supabase
         .from('vb_orders')
         .select('id, profile_id, package_id, status, case_study_count, created_at')
@@ -953,48 +945,18 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
         };
       });
 
-      // Add VB participants with minimal data structure
-      const vbTeilnehmerFormatted = (vbTeilnehmerData || []).map(p => ({
-        id: p.id,
-        name: p.full_name,
-        email: p.email,
-        created_at: p.created_at,
-        additional_roles: p.additional_roles,
-        completed_hours: 0,
-        booked_hours: 0,
-        contract_start: null,
-        contract_end: null,
-        elite_kleingruppe: null,
-        elite_progress: null,
-        elite_last_unit_date: null,
-        legal_areas_hours: {
-          zivilrecht: { used: 0, total: 0 },
-          strafrecht: { used: 0, total: 0 },
-          oeffentliches_recht: { used: 0, total: 0 },
-          sonstiges: { used: 0, total: 0 }
-        },
-        is_vb: true,
-        vb_credits: vbCreditsByProfile[p.id] || { total: 0, used: 0, remaining: 0 }
-      }));
-
-      // Combine both lists and deduplicate by ID (prefer teilnehmer table data over profiles)
-      const allTeilnehmerMap = new Map();
-
-      // Add teilnehmer table data first
-      teilnehmerWithHours.forEach(t => {
-        allTeilnehmerMap.set(t.id, t);
-      });
-
-      // Add VB participants from profiles only if not already in the map
-      vbTeilnehmerFormatted.forEach(t => {
-        if (!allTeilnehmerMap.has(t.id)) {
-          allTeilnehmerMap.set(t.id, t);
+      // Add VB credits to teilnehmer that have is_vb flag
+      const teilnehmerWithVBCredits = teilnehmerWithHours.map(t => {
+        if (t.is_vb && t.profile_id) {
+          return {
+            ...t,
+            vb_credits: vbCreditsByProfile[t.profile_id] || { total: 0, used: 0, remaining: 0 }
+          };
         }
+        return t;
       });
 
-      const allTeilnehmer = Array.from(allTeilnehmerMap.values());
-
-      setTeilnehmer(allTeilnehmer);
+      setTeilnehmer(teilnehmerWithVBCredits);
     } catch (error) {
       console.error('Error fetching teilnehmer:', error);
     }
