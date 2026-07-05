@@ -667,9 +667,9 @@ export const VbCaseStudyDashboard: React.FC = () => {
       if (caseStudyError) throw caseStudyError
       setCaseStudies(caseStudyData || [])
 
-      // Calculate used credits (submitted/in_review/completed/graded case studies)
+      // Calculate used credits (submitted/in_review/completed/graded/corrected case studies)
       const usedCredits = caseStudyData?.filter(cs =>
-        ['submitted', 'in_review', 'completed', 'graded'].includes(cs.status)
+        ['submitted', 'in_review', 'completed', 'graded', 'corrected'].includes(cs.status)
       ).length || 0
 
       // Set available credits to remaining (total - used)
