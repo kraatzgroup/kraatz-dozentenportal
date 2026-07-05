@@ -130,13 +130,8 @@ export const useVbCaseStudies = () => {
 
       if (error) throw error;
 
-      // Decrement account credits
-      await supabase
-        .from('profiles')
-        .update({ account_credits: accountCredits - 1 })
-        .eq('id', user.id);
-
-      setAccountCredits(prev => prev - 1);
+      // Credits are calculated from vb_orders in the frontend, not decremented here
+      // The credit is automatically "used" when the case study status changes to submitted/completed
       await fetchCaseStudies();
 
       // Notify designated VB dozenten for this legal area via email.
