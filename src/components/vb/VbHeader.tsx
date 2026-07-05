@@ -33,7 +33,7 @@ export const VbHeader: React.FC = () => {
             .from('vb_case_study_requests')
             .select('id, status')
             .eq('profile_id', user.id)
-            .in('status', ['submitted', 'in_review', 'completed', 'graded']);
+            .in('status', ['submitted', 'in_review', 'completed', 'graded', 'corrected']);
 
           const usedCredits = (requestsData || []).length;
 
