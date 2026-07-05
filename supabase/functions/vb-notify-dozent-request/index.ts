@@ -160,14 +160,6 @@ Deno.serve(async (req) => {
             </div>
           </div>
           
-          <div style="background-color: #fff3cd; padding: 15px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #ffc107;">
-            <p style="margin: 0; color: #856404; font-size: 14px;">
-              <strong>Hinweis:</strong><br>
-              Dieser Link ist nur für Sie bestimmt und läuft nach <strong>1 Stunde</strong> ab. 
-              Sie werden automatisch zum Klausurenbesprechung Dashboard weitergeleitet.
-            </p>
-          </div>
-          
           <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
             Mit freundlichen Grüßen<br>
             <strong>Ihr Kraatz Group Team</strong>
