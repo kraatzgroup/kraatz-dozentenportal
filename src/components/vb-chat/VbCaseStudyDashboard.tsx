@@ -174,12 +174,11 @@ export const VbCaseStudyDashboard: React.FC = () => {
       // Track the download
       await handlePdfDownload(caseStudyId)
 
-      // Use Sachverhalt_${legal_area}_${sub_area}_${focus_area} format
+      // Use Klausur_{case_study_number}_{focus_area} format
       const caseStudy = caseStudies.find(cs => cs.id === caseStudyId)
-      const legalArea = caseStudy?.legal_area || 'Klausur'
-      const subArea = caseStudy?.sub_area || ''
+      const caseNumber = caseStudy?.case_study_number
       const focusArea = caseStudy?.focus_area || ''
-      const filenameParts = ['Sachverhalt', legalArea, subArea]
+      const filenameParts = ['Klausur', String(caseNumber)]
       if (focusArea) filenameParts.push(focusArea)
       const realFilename = `${filenameParts.join('_')}.pdf`.replace(/\s+/g, '_')
       console.log('📥 Using filename:', realFilename)

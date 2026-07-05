@@ -105,10 +105,20 @@ export const useVbCaseStudies = () => {
         throw new Error('Nicht genügend Credits verfügbar');
       }
 
+      // Generate next case_study_number
+      const { data: maxNumber } = await supabase
+        .from('vb_case_study_requests')
+        .select('case_study_number')
+        .order('case_study_number', { ascending: false, nullsFirst: false })
+        .limit(1)
+        .single();
+      const nextNumber = (maxNumber?.case_study_number || 0) + 1;
+
       const { data, error } = await supabase
         .from('vb_case_study_requests')
         .insert({
           profile_id: user.id,
+          case_study_number: nextNumber,
           study_phase: requestData.study_phase,
           legal_area: requestData.legal_area,
           sub_area: requestData.sub_area,
