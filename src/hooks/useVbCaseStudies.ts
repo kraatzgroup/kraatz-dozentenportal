@@ -33,6 +33,7 @@ export interface VbCaseStudyRequest {
 
 export const useVbCaseStudies = () => {
   const user = useAuthStore(state => state.user);
+  const fullName = useAuthStore(state => state.fullName);
   const [caseStudies, setCaseStudies] = useState<VbCaseStudyRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -128,36 +129,58 @@ export const useVbCaseStudies = () => {
       setAccountCredits(prev => prev - 1);
       await fetchCaseStudies();
 
-      // Notify dozent about new case study request via direct email
+      // Notify designated VB dozenten for this legal area via email.
+      // In-app notifications (vb_notifications) are created server-side by the
+      // trigger_notify_dozenten_on_new_vb_request trigger; here we send the emails.
       try {
-        // Find available dozent for this legal area
-        const { data: dozent } = await supabase
+        // Find designated VB dozenten whose vb_legal_areas cover this legal area
+        const { data: dozenten } = await supabase
           .from('profiles')
-          .select('id, email, first_name, last_name')
+          .select('id, email, first_name, last_name, email_notifications_enabled, vacation_start_date, vacation_end_date')
           .eq('role', 'dozent')
-          .contains('additional_roles', ['videobesprechung_dozent'])
-          .order('created_at', { ascending: true })
-          .limit(1)
-          .single();
+          .contains('vb_legal_areas', [requestData.legal_area]);
 
-        if (dozent) {
-          console.log('📧 Sending notification to dozent:', dozent.email);
-          
-          // Create notification in database
-          await supabase
-            .from('vb_notifications')
-            .insert({
-              profile_id: dozent.id,
-              title: '📝 Neuer Sachverhalt zur Korrektur',
-              message: `Ein neuer Sachverhalt wurde angefordert: ${requestData.legal_area} - ${requestData.sub_area}`,
-              type: 'info',
-              related_case_study_id: data.id
+        const today = new Date();
+        const studentName = fullName || user.email || 'Teilnehmer';
+
+        const recipients = (dozenten || []).filter(d => {
+          // skip dozenten who disabled email notifications
+          if (d.email_notifications_enabled === false) return false;
+          // skip dozenten currently on vacation
+          if (d.vacation_start_date && d.vacation_end_date) {
+            const start = new Date(d.vacation_start_date);
+            const end = new Date(d.vacation_end_date);
+            if (today >= start && today <= end) return false;
+          }
+          return !!d.email;
+        });
+
+        console.log(`📧 Sending new-Sachverhalt email to ${recipients.length} VB dozent(en)`);
+
+        await Promise.all(recipients.map(async (dozent) => {
+          const dozentName = [dozent.first_name, dozent.last_name].filter(Boolean).join(' ') || dozent.email;
+          try {
+            const { error: notifyError } = await supabase.functions.invoke('vb-notify-dozent-request', {
+              body: {
+                dozentEmail: dozent.email,
+                dozentName,
+                studentName,
+                legalArea: requestData.legal_area,
+                subArea: requestData.sub_area,
+                caseStudyId: data.id,
+              },
             });
-          
-          console.log('✅ Dozent notification created in database');
-        }
+            if (notifyError) {
+              console.error(`❌ Error emailing dozent ${dozent.email}:`, notifyError);
+            } else {
+              console.log(`✅ Email sent to dozent ${dozent.email}`);
+            }
+          } catch (e) {
+            console.error(`❌ Failed to invoke vb-notify-dozent-request for ${dozent.email}:`, e);
+          }
+        }));
       } catch (notifyError) {
-        console.error('Error notifying dozent:', notifyError);
+        console.error('Error notifying VB dozenten:', notifyError);
         // Don't throw error, continue with case study creation
       }
 
@@ -166,7 +189,7 @@ export const useVbCaseStudies = () => {
       console.error('Error creating case study request:', err);
       throw err;
     }
-  }, [user, accountCredits, fetchCaseStudies]);
+  }, [user, fullName, accountCredits, fetchCaseStudies]);
 
   useEffect(() => {
     fetchCaseStudies();
