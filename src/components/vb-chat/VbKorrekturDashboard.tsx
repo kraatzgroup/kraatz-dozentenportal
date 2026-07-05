@@ -674,10 +674,28 @@ export const VbKorrekturDashboard: React.FC = () => {
         .eq('id', selectedCaseForMaterial.id)
       
       if (error) throw error
-      
-      // Note: Database trigger automatically creates notification and sends email
-      // when status changes to 'materials_ready'. No manual notification needed.
-      
+
+      // Send email notification to student about available material
+      if (selectedCaseForMaterial.profile_id) {
+        try {
+          const { error: notifyError } = await supabase.functions.invoke('vb-notify-student', {
+            body: {
+              profile_id: selectedCaseForMaterial.profile_id,
+              case_study_id: selectedCaseForMaterial.id,
+              case_study_number: selectedCaseForMaterial.case_study_number,
+              is_material_change: selectedCaseForMaterial.status === 'materials_ready',
+            },
+          });
+          if (notifyError) {
+            console.error('Error notifying student about material:', notifyError);
+          } else {
+            console.log('Student notified about material assignment');
+          }
+        } catch (notifyErr) {
+          console.error('Failed to notify student:', notifyErr);
+        }
+      }
+
       setShowMaterialSelector(false)
       setSelectedCaseForMaterial(null)
       setSelectedTeachingMaterial(null)
