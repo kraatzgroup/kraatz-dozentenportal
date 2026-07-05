@@ -1512,6 +1512,17 @@ export function UserManagement() {
                   <button
                     onClick={() => {
                       setShowRoleSelection(false);
+                      setShowTeilnehmerForm(true);
+                      setSelectedTeilnehmerForEdit(null);
+                    }}
+                    className="w-full p-4 text-left border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors"
+                  >
+                    <div className="font-medium text-gray-900">Teilnehmer (Videobesprechung)</div>
+                    <div className="text-sm text-gray-500 mt-1">Videobesprechung Teilnehmer mit Login-Zugang</div>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowRoleSelection(false);
                       setDialog({
                         type: 'new',
                         userData: { email: '', fullName: '', password: '', role: 'verwaltung' }
