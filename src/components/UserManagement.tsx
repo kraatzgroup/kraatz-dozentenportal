@@ -1141,8 +1141,9 @@ export function UserManagement() {
                   }>
                     <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                       <h3 className="text-lg font-medium text-gray-900 mb-4">
-                        {dialog.type === 'new' ? 
-                          (dialog.userData.role === 'teilnehmer' ? 'Teilnehmer (Elite-Kleingruppe) einladen' : 
+                        {dialog.type === 'new' ?
+                          (dialog.userData.role === 'teilnehmer' ?
+                            (dialog.userData.isVideobesprechung ? 'Teilnehmer (Videobesprechung) einladen' : 'Teilnehmer (Elite-Kleingruppe) einladen') :
                            dialog.userData.role === 'verwaltung' ? 'Verwaltung / Buchhaltung / Vertrieb einladen' :
                            'Dozent einladen') :
                          dialog.type === 'edit' ? 'User bearbeiten' :
@@ -1205,7 +1206,7 @@ export function UserManagement() {
                               </select>
                             </div>
                           )}
-                          {(dialog.type === 'edit' || dialog.type === 'new') && (
+                          {dialog.type === 'edit' && (
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-2">
                                 Zusätzliche Rollen
@@ -1307,7 +1308,7 @@ export function UserManagement() {
                               </p>
                             )}
                           </div>
-                          {dialog.type === 'new' && dialog.userData.role === 'teilnehmer' && (
+                          {dialog.type === 'new' && dialog.userData.eliteKleingruppe && (
                             <div className="space-y-3 p-4 bg-purple-50 rounded-lg border border-purple-200">
                               <label className="flex items-center cursor-pointer">
                                 <input
@@ -1352,13 +1353,12 @@ export function UserManagement() {
                               )}
                             </div>
                           )}
-
-                          {dialog.type === 'new' && dialog.userData.role === 'teilnehmer' && (
+                          {dialog.type === 'new' && dialog.userData.isVideobesprechung && (
                             <div className="space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
                               <label className="flex items-center cursor-pointer">
                                 <input
                                   type="checkbox"
-                                  checked={dialog.userData.isVideobesprechung || false}
+                                  checked={dialog.userData.isVideobesprechung}
                                   onChange={(e) => {
                                     setDialog({
                                       ...dialog,
@@ -1368,9 +1368,9 @@ export function UserManagement() {
                                       }
                                     });
                                   }}
-                                  className="rounded border-gray-300 text-primary focus:ring-primary/20"
+                                  className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                                 />
-                                <span className="text-sm text-gray-700">Videobesprechung (Teilnehmer)</span>
+                                <span className="ml-2 text-sm font-medium text-gray-700">Videobesprechung (Teilnehmer)</span>
                               </label>
                             </div>
                           )}
@@ -1544,7 +1544,7 @@ export function UserManagement() {
                       setShowRoleSelection(false);
                       setDialog({
                         type: 'new',
-                        userData: { email: '', fullName: '', password: '', role: 'teilnehmer', isVideobesprechung: false }
+                        userData: { email: '', fullName: '', password: '', role: 'teilnehmer', isVideobesprechung: false, eliteKleingruppe: eliteKleingruppen[0]?.name || '' }
                       });
                       setDialogError(null);
                     }}

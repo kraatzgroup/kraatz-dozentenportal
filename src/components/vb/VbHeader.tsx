@@ -10,6 +10,7 @@ export const VbHeader: React.FC = () => {
   const navigate = useNavigate();
   const [userCredits, setUserCredits] = useState<number>(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+  const [eliteKleingruppe, setEliteKleingruppe] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -38,6 +39,15 @@ export const VbHeader: React.FC = () => {
 
           // Set available credits to remaining (total - used)
           setUserCredits(totalPurchasedCredits - usedCredits);
+
+          // Fetch elite kleingruppe membership
+          const { data: teilnehmerData } = await supabase
+            .from('teilnehmer')
+            .select('elite_kleingruppe')
+            .eq('profile_id', user.id)
+            .maybeSingle();
+
+          setEliteKleingruppe(teilnehmerData?.elite_kleingruppe || null);
         } catch (error) {
           console.error('Error fetching user data:', error);
         }
@@ -79,7 +89,40 @@ export const VbHeader: React.FC = () => {
 
           <div className="flex items-center space-x-2 sm:space-x-4 lg:space-x-8">
             <nav className="hidden md:flex items-center space-x-4 lg:space-x-8">
-              {user && additionalRoles?.includes('videobesprechung') && (
+              {user && eliteKleingruppe && (
+                <>
+                  <Link
+                    to="/klausurenbesprechung/dashboard"
+                    className="text-gray-600 hover:text-primary transition-colors text-sm sm:text-base font-medium"
+                  >
+                    Dashboard
+                  </Link>
+                  <Link
+                    to="/klausurenbesprechung/ergebnisse"
+                    className="text-gray-600 hover:text-primary transition-colors text-sm sm:text-base font-medium"
+                  >
+                    Ergebnisse
+                  </Link>
+                  {additionalRoles?.includes('videobesprechung') && (
+                    <>
+                      <Link
+                        to="/klausurenbesprechung/chat"
+                        className="text-gray-600 hover:text-primary transition-colors flex items-center gap-1 text-sm sm:text-base font-medium"
+                      >
+                        <MessageCircle className="w-4 h-4 text-primary" />
+                        <span className="hidden sm:inline">Chat</span>
+                      </Link>
+                      <Link
+                        to="/klausurenbesprechung/klausuren-masterclass"
+                        className="text-gray-600 hover:text-primary transition-colors text-sm sm:text-base font-medium"
+                      >
+                        Klausuren-Masterclass
+                      </Link>
+                    </>
+                  )}
+                </>
+              )}
+              {user && !eliteKleingruppe && additionalRoles?.includes('videobesprechung') && (
                 <>
                   <Link
                     to="/klausurenbesprechung/dashboard"
@@ -188,30 +231,82 @@ export const VbHeader: React.FC = () => {
         {user && mobileMenuOpen && (
           <div className="md:hidden border-t border-gray-200 py-3 sm:py-4">
             <nav className="flex flex-col space-y-2 sm:space-y-4">
-              <Link
-                to="/klausurenbesprechung/dashboard"
-                className="text-gray-600 hover:text-primary transition-colors flex items-center gap-2 px-2 py-2 text-sm sm:text-base font-medium"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <LayoutDashboard className="w-4 h-4 text-primary" />
-                Dashboard
-              </Link>
-              <Link
-                to="/klausurenbesprechung/ergebnisse"
-                className="text-gray-600 hover:text-primary transition-colors flex items-center gap-2 px-2 py-2 text-sm sm:text-base font-medium"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <Award className="w-4 h-4 text-primary" />
-                Ergebnisse
-              </Link>
-              <Link
-                to="/klausurenbesprechung/klausuren-masterclass"
-                className="text-gray-600 hover:text-primary transition-colors flex items-center gap-2 px-2 py-2 text-sm sm:text-base font-medium"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <GraduationCap className="w-4 h-4 text-primary" />
-                Klausuren-Masterclass
-              </Link>
+              {eliteKleingruppe && (
+                <>
+                  <Link
+                    to="/klausurenbesprechung/dashboard"
+                    className="text-gray-600 hover:text-primary transition-colors flex items-center gap-2 px-2 py-2 text-sm sm:text-base font-medium"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <LayoutDashboard className="w-4 h-4 text-primary" />
+                    Dashboard
+                  </Link>
+                  <Link
+                    to="/klausurenbesprechung/ergebnisse"
+                    className="text-gray-600 hover:text-primary transition-colors flex items-center gap-2 px-2 py-2 text-sm sm:text-base font-medium"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <Award className="w-4 h-4 text-primary" />
+                    Ergebnisse
+                  </Link>
+                  {additionalRoles?.includes('videobesprechung') && (
+                    <>
+                      <Link
+                        to="/klausurenbesprechung/chat"
+                        className="text-gray-600 hover:text-primary transition-colors flex items-center gap-2 px-2 py-2 text-sm sm:text-base font-medium"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <MessageCircle className="w-4 h-4 text-primary" />
+                        Chat
+                      </Link>
+                      <Link
+                        to="/klausurenbesprechung/klausuren-masterclass"
+                        className="text-gray-600 hover:text-primary transition-colors flex items-center gap-2 px-2 py-2 text-sm sm:text-base font-medium"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <GraduationCap className="w-4 h-4 text-primary" />
+                        Klausuren-Masterclass
+                      </Link>
+                    </>
+                  )}
+                </>
+              )}
+              {!eliteKleingruppe && additionalRoles?.includes('videobesprechung') && (
+                <>
+                  <Link
+                    to="/klausurenbesprechung/dashboard"
+                    className="text-gray-600 hover:text-primary transition-colors flex items-center gap-2 px-2 py-2 text-sm sm:text-base font-medium"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <LayoutDashboard className="w-4 h-4 text-primary" />
+                    Dashboard
+                  </Link>
+                  <Link
+                    to="/klausurenbesprechung/ergebnisse"
+                    className="text-gray-600 hover:text-primary transition-colors flex items-center gap-2 px-2 py-2 text-sm sm:text-base font-medium"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <Award className="w-4 h-4 text-primary" />
+                    Ergebnisse
+                  </Link>
+                  <Link
+                    to="/klausurenbesprechung/klausuren-masterclass"
+                    className="text-gray-600 hover:text-primary transition-colors flex items-center gap-2 px-2 py-2 text-sm sm:text-base font-medium"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <GraduationCap className="w-4 h-4 text-primary" />
+                    Klausuren-Masterclass
+                  </Link>
+                  <Link
+                    to="/klausurenbesprechung/chat"
+                    className="text-gray-600 hover:text-primary transition-colors flex items-center gap-2 px-2 py-2 text-sm sm:text-base font-medium"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <MessageCircle className="w-4 h-4 text-primary" />
+                    Chat
+                  </Link>
+                </>
+              )}
               <Link
                 to="/klausurenbesprechung/einstellungen"
                 className="text-gray-600 hover:text-primary transition-colors flex items-center gap-2 px-2 py-2 text-sm sm:text-base font-medium"
@@ -227,14 +322,6 @@ export const VbHeader: React.FC = () => {
               >
                 <User className="w-4 h-4 text-primary" />
                 Profil
-              </Link>
-              <Link
-                to="/klausurenbesprechung/chat"
-                className="text-gray-600 hover:text-primary transition-colors flex items-center gap-2 px-2 py-2 text-sm sm:text-base font-medium"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <MessageCircle className="w-4 h-4 text-primary" />
-                Chat
               </Link>
 
               <div className="border-t border-gray-200 pt-3 sm:pt-4 mt-3 sm:mt-4 space-y-2 sm:space-y-4">

@@ -86,18 +86,39 @@ function App() {
           if (!isSettingUser && userRole !== null) {
             clearInterval(checkProfile);
             console.log('✅ App: Profile loaded, performing role check');
-            
-            // Role-based routing
-            if (userRole === 'teilnehmer' && additionalRoles?.includes('videobesprechung')) {
-              console.log('🎯 App: Redirecting videobesprechung participant to /klausurenbesprechung/dashboard');
-              window.history.replaceState({}, '', '/klausurenbesprechung/dashboard');
-            } else if (userRole === 'teilnehmer' && window.location.pathname === '/dashboard' && !window.location.search.includes('tab=')) {
-              console.log('🎯 App: Redirecting regular participant to /dashboard?tab=dashboard');
-              window.history.replaceState({}, '', '/dashboard?tab=dashboard');
-            }
-            
-            setAppLoading(false);
-            setAppReady(true);
+
+            // Check for elite kleingruppe membership for teilnehmer users
+            const checkEliteKleingruppe = async () => {
+              if (userRole === 'teilnehmer' && user) {
+                console.log('🔍 App: Checking elite kleingruppe for user:', user.id);
+                const { data: teilnehmerData, error: teilnehmerError } = await supabase
+                  .from('teilnehmer')
+                  .select('elite_kleingruppe')
+                  .eq('profile_id', user.id)
+                  .maybeSingle();
+
+                console.log('🔍 App: Teilnehmer data:', { teilnehmerData, teilnehmerError, additionalRoles });
+
+                if (teilnehmerData?.elite_kleingruppe && teilnehmerData.elite_kleingruppe !== 'f' && teilnehmerData.elite_kleingruppe !== 'false' && teilnehmerData.elite_kleingruppe !== null) {
+                  console.log('🎯 App: User has elite kleingruppe membership:', teilnehmerData.elite_kleingruppe, ', redirecting to /dashboard?tab=elite-kleingruppe');
+                  window.history.replaceState({}, '', '/dashboard?tab=elite-kleingruppe');
+                } else if (additionalRoles?.includes('videobesprechung')) {
+                  console.log('🎯 App: Redirecting videobesprechung participant to /klausurenbesprechung/dashboard');
+                  window.history.replaceState({}, '', '/klausurenbesprechung/dashboard');
+                } else if (window.location.pathname === '/dashboard' && !window.location.search.includes('tab=')) {
+                  console.log('🎯 App: Redirecting regular participant to /dashboard?tab=dashboard');
+                  window.history.replaceState({}, '', '/dashboard?tab=dashboard');
+                }
+              } else if (userRole === 'teilnehmer' && window.location.pathname === '/dashboard' && !window.location.search.includes('tab=')) {
+                console.log('🎯 App: Redirecting regular participant to /dashboard?tab=dashboard');
+                window.history.replaceState({}, '', '/dashboard?tab=dashboard');
+              }
+
+              setAppLoading(false);
+              setAppReady(true);
+            };
+
+            checkEliteKleingruppe();
           } else if (attempts >= maxAttempts) {
             clearInterval(checkProfile);
             console.error('❌ App: Profile load timeout');

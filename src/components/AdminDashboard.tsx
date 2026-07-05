@@ -634,9 +634,37 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
 
       if (teilnehmerError) throw teilnehmerError;
 
-      // Fetch vb_orders for VB participants to get credits (using profile_id from teilnehmer)
-      const vbProfileIds = (teilnehmerData || [])
-        .filter(t => t.is_vb)
+      // Fetch profiles separately for additional_roles
+      const profileIds = (teilnehmerData || [])
+        .map(t => t.profile_id)
+        .filter(Boolean);
+
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, additional_roles')
+        .in('id', profileIds);
+
+      if (profilesError) {
+        console.error('Error fetching profiles:', profilesError);
+      }
+
+      // Create a map of profile_id to additional_roles
+      const profileMap = new Map(
+        (profilesData || []).map(p => [p.id, p.additional_roles])
+      );
+
+      // Add profile data to teilnehmer
+      const teilnehmerWithProfiles = (teilnehmerData || []).map(t => ({
+        ...t,
+        profile: {
+          id: t.profile_id,
+          additional_roles: profileMap.get(t.profile_id) || []
+        }
+      }));
+
+      // Fetch vb_orders for VB participants - identify VB users by additional_roles
+      const vbProfileIds = (teilnehmerWithProfiles || [])
+        .filter(t => t.profile?.additional_roles?.includes('videobesprechung'))
         .map(t => t.profile_id)
         .filter(Boolean);
 
@@ -693,7 +721,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
       if (hoursError) throw hoursError;
 
       // Fetch contracts for each teilnehmer to get aggregated data
-      const teilnehmerIds = (teilnehmerData || []).map(t => t.id);
+      const teilnehmerIds = (teilnehmerWithProfiles || []).map(t => t.id);
       const { data: contractsData, error: contractsError } = await supabase
         .from('contracts')
         .select('id, teilnehmer_id, start_date, end_date, total_hours, calculated_hours')
@@ -910,7 +938,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
       });
 
       // Merge completed hours, elite progress, contract data, and legal area hours into teilnehmer data
-      const teilnehmerWithHours = (teilnehmerData || []).map(t => {
+      const teilnehmerWithHours = (teilnehmerWithProfiles || []).map(t => {
         const contractData = contractsByTeilnehmer[t.id];
         const packageHours = packageHoursByTeilnehmer[t.id];
         const legalAreas = legalAreasByTeilnehmer[t.id] || {
@@ -943,7 +971,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
           booked_hours: totalHours,
           // Add legal area hours
           legal_areas_hours: legalAreas,
-          is_vb: false
+          is_vb: t.profile?.additional_roles?.includes('videobesprechung') || false
         };
       });
 
