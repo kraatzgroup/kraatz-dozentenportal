@@ -777,14 +777,43 @@ export const VbCaseStudyDashboard: React.FC = () => {
       }
 
       console.log('Case study status updated successfully')
-      
+
       // Find the case study to get details for notifications
       const caseStudy = caseStudies.find(cs => cs.id === caseStudyId)
       console.log('Case study for notification:', caseStudy)
       console.log('Assigned dozent ID:', caseStudy?.assigned_dozent_id)
-      console.log('Submission downloaded at:', caseStudy?.submission_downloaded_at)
-      // Note: Database trigger automatically creates notification and sends email
-      // when status changes to 'submitted'. No manual notification needed.
+
+      // Send email notification to dozent about new submission
+      if (caseStudy?.assigned_dozent_id) {
+        try {
+          const { data: dozent } = await supabase
+            .from('profiles')
+            .select('email, first_name, last_name')
+            .eq('id', caseStudy.assigned_dozent_id)
+            .single();
+
+          if (dozent) {
+            const dozentName = [dozent.first_name, dozent.last_name].filter(Boolean).join(' ') || dozent.email;
+            const { error: notifyError } = await supabase.functions.invoke('vb-notify-dozent', {
+              body: {
+                dozentEmail: dozent.email,
+                dozentName,
+                studentName: profile?.first_name || 'Teilnehmer',
+                legalArea: caseStudy.legal_area,
+                subArea: caseStudy.sub_area,
+                caseStudyId: caseStudy.id,
+              },
+            });
+            if (notifyError) {
+              console.error('Error notifying dozent about submission:', notifyError);
+            } else {
+              console.log('Dozent notified about new submission');
+            }
+          }
+        } catch (notifyErr) {
+          console.error('Failed to notify dozent:', notifyErr);
+        }
+      }
       
       setUploadFiles(prev => { const next = new Map(prev); next.delete(caseStudyId); return next })
       fetchUserData()
