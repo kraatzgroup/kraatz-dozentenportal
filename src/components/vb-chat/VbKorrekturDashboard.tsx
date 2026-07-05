@@ -878,15 +878,17 @@ export const VbKorrekturDashboard: React.FC = () => {
       const grade = payload.score ? parseFloat(payload.score) : null
       console.log('💾 Parsed grade:', grade)
 
-      // 3) Notify student if correction is completed
-      if (isComplete && selected.status !== 'completed') {
-        console.log('📧 Sending completion notification to student')
+      // 3) Notify student if correction is completed (status -> corrected or completed)
+      const previousStatus = selected.status
+      const newStatus = isComplete ? 'completed' : 'corrected'
+      if (previousStatus !== 'corrected' && previousStatus !== 'completed') {
+        console.log('📧 Sending correction notification to student')
         const { error: notificationError } = await supabase.functions.invoke('vb-notify-student', {
           body: {
             profile_id: selected.profile_id,
             case_study_id: selected.id,
             case_study_number: selected.case_study_number,
-            is_correction_complete: true,
+            is_correction_complete: isComplete,
           }
         })
 
