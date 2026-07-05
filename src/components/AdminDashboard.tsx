@@ -4331,16 +4331,11 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
             setShowTeilnehmerForm(false);
             setSelectedTeilnehmerForEdit(null);
           }}
-          onSaved={() => {
-            fetchTeilnehmer().then(() => {
-              // Find the updated participant in the refreshed list
-              if (selectedTeilnehmerForEdit?.id) {
-                const updatedTeilnehmer = teilnehmer.find(t => t.id === selectedTeilnehmerForEdit.id);
-                if (updatedTeilnehmer) {
-                  setSelectedTeilnehmerForEdit(updatedTeilnehmer);
-                }
-              }
-            });
+          onSaved={(updatedTeilnehmer) => {
+            if (updatedTeilnehmer) {
+              setSelectedTeilnehmerForEdit(updatedTeilnehmer);
+            }
+            fetchTeilnehmer();
           }}
           onDelete={async (teilnehmer) => {
             try {

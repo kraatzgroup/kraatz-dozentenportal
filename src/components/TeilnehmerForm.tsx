@@ -78,9 +78,9 @@ const GERMAN_STATES = [
 interface TeilnehmerFormProps {
   teilnehmer?: Teilnehmer | null;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (updatedTeilnehmer?: any) => void;
   onDelete?: (teilnehmer: Teilnehmer) => void;
-  dozenten: { id: string; full_name: string; legal_areas?: string[] | null }[];
+  dozenten: { id: string; full_name; legal_areas?: string[] | null }[];
 }
 
 interface EliteKleingruppe {
@@ -1193,6 +1193,9 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
           .single();
 
         console.log('Re-fetched teilnehmer:', updatedTeilnehmer);
+
+        // Pass the updated data to onSaved callback
+        onSaved(updatedTeilnehmer);
 
         addToast('Teilnehmer wurde aktualisiert', 'success');
       } else {
