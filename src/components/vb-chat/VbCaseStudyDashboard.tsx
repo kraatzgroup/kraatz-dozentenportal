@@ -174,15 +174,12 @@ export const VbCaseStudyDashboard: React.FC = () => {
       // Track the download
       await handlePdfDownload(caseStudyId)
 
-      // Extract folder name from URL (last directory before the file)
+      // Extract real filename from URL
       const urlObj = new URL(url)
       const pathname = urlObj.pathname
-      const pathParts = pathname.split('/')
-      const folderName = pathParts.length > 2 ? pathParts[pathParts.length - 2] : null
-
-      // Use folder name as filename if available
-      const realFilename = folderName ? `${folderName}.pdf` : 'download.pdf'
-      console.log('📥 Using folder name as filename:', realFilename)
+      const filename = pathname.split('/').pop() || 'download.pdf'
+      const realFilename = filename.endsWith('.pdf') ? filename : `${filename}.pdf`
+      console.log('📥 Using real filename:', realFilename)
 
       // Fetch the file
       console.log('📥 Fetching file from:', url)
