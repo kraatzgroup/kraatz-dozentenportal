@@ -4326,19 +4326,15 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
 
       {showTeilnehmerForm && (
         <TeilnehmerForm
-          key={selectedTeilnehmerForEdit?.id || 'new'}
           teilnehmer={selectedTeilnehmerForEdit}
           onClose={() => {
             setShowTeilnehmerForm(false);
             setSelectedTeilnehmerForEdit(null);
           }}
-          onSaved={(updatedTeilnehmer) => {
-            console.log('AdminDashboard onSaved received:', updatedTeilnehmer);
-            if (updatedTeilnehmer) {
-              console.log('Setting selectedTeilnehmerForEdit to updated data');
-              setSelectedTeilnehmerForEdit(updatedTeilnehmer);
-            }
+          onSaved={() => {
             fetchTeilnehmer();
+            setShowTeilnehmerForm(false);
+            setSelectedTeilnehmerForEdit(null);
           }}
           onDelete={async (teilnehmer) => {
             try {
