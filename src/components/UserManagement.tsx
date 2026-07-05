@@ -1542,8 +1542,11 @@ export function UserManagement() {
                   <button
                     onClick={() => {
                       setShowRoleSelection(false);
-                      setShowTeilnehmerForm(true);
-                      setSelectedTeilnehmerForEdit(null);
+                      setDialog({
+                        type: 'new',
+                        userData: { email: '', fullName: '', password: '', role: 'teilnehmer', isVideobesprechung: false }
+                      });
+                      setDialogError(null);
                     }}
                     className="w-full p-4 text-left border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors"
                   >
@@ -1553,8 +1556,11 @@ export function UserManagement() {
                   <button
                     onClick={() => {
                       setShowRoleSelection(false);
-                      setShowTeilnehmerForm(true);
-                      setSelectedTeilnehmerForEdit(null);
+                      setDialog({
+                        type: 'new',
+                        userData: { email: '', fullName: '', password: '', role: 'teilnehmer', isVideobesprechung: true }
+                      });
+                      setDialogError(null);
                     }}
                     className="w-full p-4 text-left border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors"
                   >
