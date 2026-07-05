@@ -4333,6 +4333,8 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
           }}
           onSaved={() => {
             fetchTeilnehmer();
+            setShowTeilnehmerForm(false);
+            setSelectedTeilnehmerForEdit(null);
           }}
           onDelete={async (teilnehmer) => {
             try {

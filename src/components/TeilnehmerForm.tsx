@@ -635,6 +635,8 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
 
   useEffect(() => {
     if (teilnehmer) {
+      const isVb = (teilnehmer as any).is_vb || false;
+      console.log('Loading teilnehmer data:', { is_vb: isVb, teilnehmer });
       setFormData({
         tn_nummer: (teilnehmer as any).tn_nummer || '',
         first_name: teilnehmer.first_name || '',
@@ -662,7 +664,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
         elite_kleingruppe: typeof (teilnehmer as any).elite_kleingruppe === 'boolean' ? (teilnehmer as any).elite_kleingruppe : ((teilnehmer as any).is_elite_kleingruppe || false),
         is_elite_kleingruppe: (teilnehmer as any).is_elite_kleingruppe || false,
         elite_kleingruppe_id: (teilnehmer as any).elite_kleingruppe_id || null,
-        is_vb: (teilnehmer as any).is_vb || false,
+        is_vb: isVb,
         hours_zivilrecht: (teilnehmer as any).hours_zivilrecht || null,
         hours_strafrecht: (teilnehmer as any).hours_strafrecht || null,
         hours_oeffentliches_recht: (teilnehmer as any).hours_oeffentliches_recht || null,
@@ -1069,7 +1071,9 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
+    console.log('handleSubmit called', { is_vb: formData.is_vb, formData });
+
     if (!formData.first_name.trim() || !formData.last_name.trim()) {
       addToast('Bitte Vor- und Nachname eingeben', 'error');
       return;
@@ -1083,7 +1087,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
 
     // Validate per-subject hours don't exceed total
     if (formData.booked_hours && formData.legal_areas.length > 0) {
-      const sumHours = 
+      const sumHours =
         (formData.legal_areas.includes('Zivilrecht') ? (formData.hours_zivilrecht || 0) : 0) +
         (formData.legal_areas.includes('Strafrecht') ? (formData.hours_strafrecht || 0) : 0) +
         (formData.legal_areas.includes('Öffentliches Recht') ? (formData.hours_oeffentliches_recht || 0) : 0);
@@ -1116,17 +1120,17 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
 
       // Use selected dozent from dropdown, or any of the legal area dozents as fallback
       // Elite-Kleingruppe participants don't need a dozent assigned here
-      const dozentId = formData.dozent_id || 
-                       formData.dozent_zivilrecht_id || 
-                       formData.dozent_strafrecht_id || 
+      const dozentId = formData.dozent_id ||
+                       formData.dozent_zivilrecht_id ||
+                       formData.dozent_strafrecht_id ||
                        formData.dozent_oeffentliches_recht_id;
-      
+
       if (!dozentId && !formData.elite_kleingruppe) {
         addToast('Bitte mindestens einen Dozenten zuweisen', 'error');
         setIsLoading(false);
         return;
       }
-      
+
       const dataToSave = {
         tn_nummer: formData.tn_nummer?.trim() || null,
         first_name: formData.first_name.trim(),
@@ -1166,16 +1170,30 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
         updated_at: new Date().toISOString()
       };
 
+      console.log('dataToSave:', dataToSave);
+
       let savedTeilnehmerId: string | null = null;
 
       if (isEditing && teilnehmer?.id) {
+        console.log('Updating teilnehmer with id:', teilnehmer.id);
         const { error } = await supabase
           .from('teilnehmer')
           .update(dataToSave)
           .eq('id', teilnehmer.id);
 
+        console.log('Update result:', { error });
         if (error) throw error;
         savedTeilnehmerId = teilnehmer.id;
+
+        // Re-fetch the participant data to get updated values
+        const { data: updatedTeilnehmer } = await supabase
+          .from('teilnehmer')
+          .select('*')
+          .eq('id', teilnehmer.id)
+          .single();
+
+        console.log('Re-fetched teilnehmer:', updatedTeilnehmer);
+
         addToast('Teilnehmer wurde aktualisiert', 'success');
       } else {
         // For Elite-Kleingruppe participants, create user account first
@@ -1723,7 +1741,10 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                       <input
                         type="checkbox"
                         checked={formData.is_vb || false}
-                        onChange={(e) => setFormData({ ...formData, is_vb: e.target.checked })}
+                        onChange={(e) => {
+                          console.log('Checkbox changed:', { checked: e.target.checked, current_is_vb: formData.is_vb });
+                          setFormData({ ...formData, is_vb: e.target.checked });
+                        }}
                         className="rounded border-gray-300 text-primary focus:ring-primary/20"
                       />
                       <span className="text-sm text-gray-700">Videobesprechung (Teilnehmer)</span>
