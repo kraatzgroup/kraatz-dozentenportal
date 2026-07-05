@@ -1191,61 +1191,75 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
 
         addToast('Teilnehmer wurde aktualisiert', 'success');
       } else {
-        // For Elite-Kleingruppe participants, create user account first
-        if (formData.is_elite_kleingruppe && formData.email && formData.elite_kleingruppe_id) {
-          console.log('Creating Elite-Kleingruppe user account...');
-          
-          // Get elite kleingruppe name
-          const { data: kleingruppe } = await supabase
-            .from('elite_kleingruppen')
-            .select('name')
-            .eq('id', formData.elite_kleingruppe_id)
-            .single();
-          
-          if (kleingruppe) {
-            // Call create-user edge function
-            const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`;
-            const response = await fetch(edgeFunctionUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-              },
-              body: JSON.stringify({
-                email: formData.email,
-                fullName: fullName,
-                role: 'teilnehmer',
-                eliteKleingruppe: kleingruppe.name
-              }),
-            });
-            
-            const result = await response.json();
-            
-            if (response.ok && result.success) {
-              console.log('User account created successfully');
-              
-              // Update teilnehmer entry with full data
-              const { error: updateError } = await supabase
-                .from('teilnehmer')
-                .update(dataToSave)
-                .eq('email', formData.email);
-              
-              if (updateError) {
-                console.error('Error updating teilnehmer data:', updateError);
-                addToast('Benutzer erstellt, aber einige Daten konnten nicht gespeichert werden', 'error');
-              } else {
-                // Get the created teilnehmer ID
-                const { data: createdTn } = await supabase
-                  .from('teilnehmer')
-                  .select('id')
-                  .eq('email', formData.email)
-                  .maybeSingle();
-                savedTeilnehmerId = createdTn?.id || null;
-                addToast('Elite-Teilnehmer wurde erfolgreich erstellt und Einladungs-E-Mail wurde gesendet', 'success');
-              }
-            } else {
-              throw new Error(result.error || 'Fehler beim Erstellen des User-Accounts');
+        // For Elite-Kleingruppe or VB participants, create user account first
+        const needsAccount = (formData.is_elite_kleingruppe && formData.email && formData.elite_kleingruppe_id) ||
+                            (formData.is_vb && formData.email);
+
+        if (needsAccount) {
+          console.log('Creating user account for participant...');
+
+          let additionalRoles: string[] = [];
+          if (formData.is_vb) {
+            additionalRoles.push('videobesprechung');
+          }
+
+          let bodyData: any = {
+            email: formData.email,
+            fullName: fullName,
+            role: 'teilnehmer',
+            additionalRoles: additionalRoles.length > 0 ? additionalRoles : undefined
+          };
+
+          // Add Elite-Kleingruppe data if applicable
+          if (formData.is_elite_kleingruppe && formData.elite_kleingruppe_id) {
+            const { data: kleingruppe } = await supabase
+              .from('elite_kleingruppen')
+              .select('name')
+              .eq('id', formData.elite_kleingruppe_id)
+              .single();
+
+            if (kleingruppe) {
+              bodyData.eliteKleingruppe = kleingruppe.name;
             }
+          }
+
+          // Call create-user edge function
+          const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`;
+          const response = await fetch(edgeFunctionUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify(bodyData),
+          });
+
+          const result = await response.json();
+
+          if (response.ok && result.success) {
+            console.log('User account created successfully');
+
+            // Update teilnehmer entry with full data
+            const { error: updateError } = await supabase
+              .from('teilnehmer')
+              .update(dataToSave)
+              .eq('email', formData.email);
+
+            if (updateError) {
+              console.error('Error updating teilnehmer data:', updateError);
+              addToast('Benutzer erstellt, aber einige Daten konnten nicht gespeichert werden', 'error');
+            } else {
+              // Get the created teilnehmer ID
+              const { data: createdTn } = await supabase
+                .from('teilnehmer')
+                .select('id')
+                .eq('email', formData.email)
+                .maybeSingle();
+              savedTeilnehmerId = createdTn?.id || null;
+              addToast('Teilnehmer wurde erfolgreich erstellt und Einladungs-E-Mail wurde gesendet', 'success');
+            }
+          } else {
+            throw new Error(result.error || 'Fehler beim Erstellen des User-Accounts');
           }
         } else {
           // Regular teilnehmer without user account
