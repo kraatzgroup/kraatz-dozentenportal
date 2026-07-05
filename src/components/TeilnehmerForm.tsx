@@ -183,6 +183,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
     elite_kleingruppe: false,
     is_elite_kleingruppe: false,
     elite_kleingruppe_id: null,
+    is_vb: false,
     hours_zivilrecht: null,
     hours_strafrecht: null,
     hours_oeffentliches_recht: null,
@@ -1153,6 +1154,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
         elite_kleingruppe: typeof formData.elite_kleingruppe === 'boolean' ? formData.elite_kleingruppe : (formData.is_elite_kleingruppe || false),
         is_elite_kleingruppe: formData.is_elite_kleingruppe || false,
         elite_kleingruppe_id: formData.is_elite_kleingruppe ? (formData.elite_kleingruppe_id || null) : null,
+        is_vb: formData.is_vb || false,
         hours_zivilrecht: formData.legal_areas.includes('Zivilrecht') ? (formData.hours_zivilrecht || null) : null,
         hours_strafrecht: formData.legal_areas.includes('Strafrecht') ? (formData.hours_strafrecht || null) : null,
         hours_oeffentliches_recht: formData.legal_areas.includes('Öffentliches Recht') ? (formData.hours_oeffentliches_recht || null) : null,
@@ -1713,6 +1715,19 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                         </select>
                       </div>
                     )}
+                  </div>
+
+                  {/* Videobesprechung Section */}
+                  <div className="space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <label className="flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.is_vb || false}
+                        onChange={(e) => setFormData({ ...formData, is_vb: e.target.checked })}
+                        className="rounded border-gray-300 text-primary focus:ring-primary/20"
+                      />
+                      <span className="text-sm text-gray-700">Videobesprechung (Teilnehmer)</span>
+                    </label>
                   </div>
 
                   {/* Current Contract Section */}
