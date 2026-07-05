@@ -362,7 +362,7 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
                 )}
                 {config.showSchema && (
                   <FileField
-                    label={config.schemaLabel || 'Bewertungsschema (PDF)'}
+                    label={config.schemaLabel || 'Zusatzmaterial'}
                     file={schemaFile}
                     existingUrl={item.scoringSchemaUrl}
                     accept=".pdf"

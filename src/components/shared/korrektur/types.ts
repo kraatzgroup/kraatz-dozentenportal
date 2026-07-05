@@ -103,5 +103,5 @@ export const VB_FIELD_CONFIG: KorrekturFieldConfig = {
   showSolution: true,
   solutionLabel: 'Lösungsskizze (PDF)',
   showSchema: true,
-  schemaLabel: 'Bewertungsschema (PDF)',
+  schemaLabel: 'Zusatzmaterial',
 }
