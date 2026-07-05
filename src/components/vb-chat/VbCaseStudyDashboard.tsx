@@ -167,18 +167,6 @@ export const VbCaseStudyDashboard: React.FC = () => {
     }
   }
 
-  // Extract real filename from URL
-  const getFilenameFromUrl = (url: string): string => {
-    try {
-      const urlObj = new URL(url)
-      const pathname = urlObj.pathname
-      const filename = pathname.split('/').pop()
-      return filename || 'download.pdf'
-    } catch {
-      return 'download.pdf'
-    }
-  }
-
   // Download file as PDF (workaround for incorrect content-type in storage)
   const downloadFileAsPDF = async (url: string, filename: string, caseStudyId: string) => {
     console.log('🔄 downloadFileAsPDF called:', { url, filename, caseStudyId })
@@ -186,9 +174,12 @@ export const VbCaseStudyDashboard: React.FC = () => {
       // Track the download
       await handlePdfDownload(caseStudyId)
 
-      // Use real filename from URL instead of hardcoded one
-      const realFilename = getFilenameFromUrl(url)
-      console.log('📥 Using real filename:', realFilename)
+      // Use Sachverhalt_${legal_area}_${sub_area} format
+      const caseStudy = caseStudies.find(cs => cs.id === caseStudyId)
+      const legalArea = caseStudy?.legal_area || 'Klausur'
+      const subArea = caseStudy?.sub_area || ''
+      const realFilename = `Sachverhalt_${legalArea}_${subArea}.pdf`.replace(/\s+/g, '_')
+      console.log('📥 Using filename:', realFilename)
 
       // Fetch the file
       console.log('📥 Fetching file from:', url)
