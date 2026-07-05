@@ -27,8 +27,17 @@ export const VbHeader: React.FC = () => {
             return sum + (order.case_study_count || 0);
           }, 0) || 0;
 
-          // Set available credits to total purchased (showing purchased credits)
-          setUserCredits(totalPurchasedCredits);
+          // Fetch case study requests to calculate used credits
+          const { data: requestsData } = await supabase
+            .from('vb_case_study_requests')
+            .select('id, status')
+            .eq('profile_id', user.id)
+            .in('status', ['submitted', 'in_review', 'completed', 'graded']);
+
+          const usedCredits = (requestsData || []).length;
+
+          // Set available credits to remaining (total - used)
+          setUserCredits(totalPurchasedCredits - usedCredits);
         } catch (error) {
           console.error('Error fetching user data:', error);
         }

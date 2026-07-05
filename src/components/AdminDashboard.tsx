@@ -212,8 +212,25 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   const [rechnungenSearch, setRechnungenSearch] = useState<string>('');
   const [invoiceFilterMonth, setInvoiceFilterMonth] = useState<number | 'alle'>('alle');
   const [invoiceFilterYear, setInvoiceFilterYear] = useState<number>(new Date().getFullYear());
-  const [teilnehmerFilter, setTeilnehmerFilter] = useState<'alle' | 'aktiv' | 'abgeschlossen' | '25' | '75' | 'elite' | '2staatsexamen'>('alle');
-  const [teilnehmerSearch, setTeilnehmerSearch] = useState<string>('');
+  const [teilnehmerFilter, setTeilnehmerFilter] = useState<'alle' | 'aktiv' | 'abgeschlossen' | '25' | '75' | 'elite' | '2staatsexamen' | 'vb'>(() => {
+    const saved = localStorage.getItem('adminDashboardTeilnehmerFilter');
+    return (saved as any) || 'alle';
+  });
+  const [teilnehmerSearch, setTeilnehmerSearch] = useState<string>(() => {
+    const saved = localStorage.getItem('adminDashboardTeilnehmerSearch');
+    return saved || '';
+  });
+
+  // Save filter and search to localStorage when they change
+  const handleSetTeilnehmerFilter = (filter: 'alle' | 'aktiv' | 'abgeschlossen' | '25' | '75' | 'elite' | '2staatsexamen' | 'vb') => {
+    setTeilnehmerFilter(filter);
+    localStorage.setItem('adminDashboardTeilnehmerFilter', filter);
+  };
+
+  const handleSetTeilnehmerSearch = (search: string) => {
+    setTeilnehmerSearch(search);
+    localStorage.setItem('adminDashboardTeilnehmerSearch', search);
+  };
   const [editingTeilnehmer, setEditingTeilnehmer] = useState<string | null>(null);
   const [editContractStart, setEditContractStart] = useState<string>('');
   const [editContractEnd, setEditContractEnd] = useState<string>('');
@@ -612,8 +629,69 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
         `)
         .order('name')
         .limit(500);
-      
+
       if (teilnehmerError) throw teilnehmerError;
+
+      // Fetch VB participants (profiles with role='teilnehmer' and additional_roles='videobesprechung')
+      const { data: vbTeilnehmerData, error: vbError } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, created_at, additional_roles')
+        .eq('role', 'teilnehmer')
+        .contains('additional_roles', ['videobesprechung'])
+        .order('full_name', { ascending: true });
+
+      if (vbError) {
+        console.error('Error fetching VB participants:', vbError);
+      }
+
+      // Fetch vb_orders for VB participants to get credits
+      const vbProfileIds = (vbTeilnehmerData || []).map(p => p.id);
+      const { data: vbOrdersData, error: vbOrdersError } = await supabase
+        .from('vb_orders')
+        .select('id, profile_id, package_id, status, case_study_count, created_at')
+        .in('profile_id', vbProfileIds);
+
+      if (vbOrdersError) {
+        console.error('Error fetching VB orders:', vbOrdersError);
+      }
+
+      // Aggregate credits per VB participant
+      const vbCreditsByProfile: { [key: string]: { total: number; used: number; remaining: number } } = {};
+      (vbOrdersData || []).forEach(order => {
+        if (!vbCreditsByProfile[order.profile_id]) {
+          vbCreditsByProfile[order.profile_id] = { total: 0, used: 0, remaining: 0 };
+        }
+        // Count credits from completed or paid orders
+        if (order.status === 'completed' || order.status === 'paid') {
+          vbCreditsByProfile[order.profile_id].total += order.case_study_count || 0;
+        }
+      });
+
+      // Fetch used credits from vb_case_study_requests
+      const { data: vbRequestsData, error: vbRequestsError } = await supabase
+        .from('vb_case_study_requests')
+        .select('profile_id, status')
+        .in('profile_id', vbProfileIds);
+
+      if (vbRequestsError) {
+        console.error('Error fetching VB requests:', vbRequestsError);
+      }
+
+      (vbRequestsData || []).forEach(request => {
+        if (vbCreditsByProfile[request.profile_id]) {
+          // Only count requests that have been submitted/completed as used credits
+          if (request.status === 'submitted' || request.status === 'in_review' || request.status === 'completed' || request.status === 'graded') {
+            vbCreditsByProfile[request.profile_id].used += 1;
+          }
+        }
+      });
+
+      console.log('VB Credits by profile:', vbCreditsByProfile);
+
+      // Calculate remaining credits
+      Object.keys(vbCreditsByProfile).forEach(profileId => {
+        vbCreditsByProfile[profileId].remaining = vbCreditsByProfile[profileId].total - vbCreditsByProfile[profileId].used;
+      });
 
       // Fetch completed hours from participant_hours table - only sum, not all records
       const { data: hoursData, error: hoursError } = await supabase
@@ -861,7 +939,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
         return {
           ...t,
           completed_hours: completedHours,
-          elite_progress: t.elite_kleingruppe_id && progressByGroup[t.elite_kleingruppe_id] 
+          elite_progress: t.elite_kleingruppe_id && progressByGroup[t.elite_kleingruppe_id]
             ? progressByGroup[t.elite_kleingruppe_id]
             : null,
           elite_last_unit_date: t.elite_kleingruppe_id && lastUnitDateByGroup[t.elite_kleingruppe_id]
@@ -872,11 +950,39 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
           contract_end: contractData?.latestEnd || t.contract_end,
           booked_hours: totalHours,
           // Add legal area hours
-          legal_areas_hours: legalAreas
+          legal_areas_hours: legalAreas,
+          is_vb: false
         };
       });
 
-      setTeilnehmer(teilnehmerWithHours);
+      // Add VB participants with minimal data structure
+      const vbTeilnehmerFormatted = (vbTeilnehmerData || []).map(p => ({
+        id: p.id,
+        name: p.full_name,
+        email: p.email,
+        created_at: p.created_at,
+        additional_roles: p.additional_roles,
+        completed_hours: 0,
+        booked_hours: 0,
+        contract_start: null,
+        contract_end: null,
+        elite_kleingruppe: null,
+        elite_progress: null,
+        elite_last_unit_date: null,
+        legal_areas_hours: {
+          zivilrecht: { used: 0, total: 0 },
+          strafrecht: { used: 0, total: 0 },
+          oeffentliches_recht: { used: 0, total: 0 },
+          sonstiges: { used: 0, total: 0 }
+        },
+        is_vb: true,
+        vb_credits: vbCreditsByProfile[p.id] || { total: 0, used: 0, remaining: 0 }
+      }));
+
+      // Combine both lists
+      const allTeilnehmer = [...teilnehmerWithHours, ...vbTeilnehmerFormatted];
+
+      setTeilnehmer(allTeilnehmer);
     } catch (error) {
       console.error('Error fetching teilnehmer:', error);
     }
@@ -2256,12 +2362,12 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                   type="text"
                   placeholder="Studenten suchen (Name, Email, TN-Nummer)..."
                   value={teilnehmerSearch}
-                  onChange={(e) => setTeilnehmerSearch(e.target.value)}
+                  onChange={(e) => handleSetTeilnehmerSearch(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
                 />
                 {teilnehmerSearch && (
                   <button
-                    onClick={() => setTeilnehmerSearch('')}
+                    onClick={() => handleSetTeilnehmerSearch('')}
                     className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
                     <X className="h-4 w-4" />
@@ -2272,7 +2378,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
               {/* Filter Buttons - scrollable on mobile */}
               <div className="flex items-center space-x-2 overflow-x-auto pb-1">
                 <button
-                  onClick={() => setTeilnehmerFilter('alle')}
+                  onClick={() => handleSetTeilnehmerFilter('alle')}
                   className={`px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                     teilnehmerFilter === 'alle'
                       ? 'text-white'
@@ -2283,7 +2389,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                   Alle ({teilnehmer.length})
                 </button>
                 <button
-                  onClick={() => setTeilnehmerFilter('aktiv')}
+                  onClick={() => handleSetTeilnehmerFilter('aktiv')}
                   className={`px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                     teilnehmerFilter === 'aktiv'
                       ? 'text-white'
@@ -2294,7 +2400,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                   Aktiv ({teilnehmer.filter(t => isContractActive(t)).length})
                 </button>
                 <button
-                  onClick={() => setTeilnehmerFilter('abgeschlossen')}
+                  onClick={() => handleSetTeilnehmerFilter('abgeschlossen')}
                   className={`px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                     teilnehmerFilter === 'abgeschlossen'
                       ? 'text-white'
@@ -2306,7 +2412,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 </button>
                 <div className="h-4 w-px bg-gray-300 mx-1"></div>
                 <button
-                  onClick={() => setTeilnehmerFilter('25')}
+                  onClick={() => handleSetTeilnehmerFilter('25')}
                   className={`px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                     teilnehmerFilter === '25'
                       ? 'text-white'
@@ -2320,7 +2426,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                   }).length})
                 </button>
                 <button
-                  onClick={() => setTeilnehmerFilter('75')}
+                  onClick={() => handleSetTeilnehmerFilter('75')}
                   className={`px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                     teilnehmerFilter === '75'
                       ? 'text-white'
@@ -2335,7 +2441,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 </button>
                 <div className="h-4 w-px bg-gray-300 mx-1"></div>
                 <button
-                  onClick={() => setTeilnehmerFilter('elite')}
+                  onClick={() => handleSetTeilnehmerFilter('elite')}
                   className={`px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                     teilnehmerFilter === 'elite'
                       ? 'text-white'
@@ -2346,7 +2452,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                   Elite ({teilnehmer.filter(t => t.is_elite_kleingruppe).length})
                 </button>
                 <button
-                  onClick={() => setTeilnehmerFilter('2staatsexamen')}
+                  onClick={() => handleSetTeilnehmerFilter('2staatsexamen')}
                   className={`px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                     teilnehmerFilter === '2staatsexamen'
                       ? 'text-white'
@@ -2355,6 +2461,18 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                   style={teilnehmerFilter === '2staatsexamen' ? { backgroundColor: '#2d84c1' } : undefined}
                 >
                   2. Staatsexamen ({teilnehmer.filter(t => t.study_goal?.includes('2. Staatsexamen')).length})
+                </button>
+                <div className="h-4 w-px bg-gray-300 mx-1"></div>
+                <button
+                  onClick={() => handleSetTeilnehmerFilter('vb')}
+                  className={`px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
+                    teilnehmerFilter === 'vb'
+                      ? 'text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                  style={teilnehmerFilter === 'vb' ? { backgroundColor: '#2d84c1' } : undefined}
+                >
+                  VB ({teilnehmer.filter(t => t.is_vb).length})
                 </button>
               </div>
             </div>
@@ -2392,6 +2510,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                       }
                       if (teilnehmerFilter === 'elite') return t.is_elite_kleingruppe === true;
                       if (teilnehmerFilter === '2staatsexamen') return t.study_goal?.includes('2. Staatsexamen');
+                      if (teilnehmerFilter === 'vb') return t.is_vb === true;
                       return true;
                     })
                     .map((t) => (
@@ -2407,6 +2526,13 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                           <div className="ml-3">
                             <div className="text-sm font-medium text-gray-900">{t.name}</div>
                             <div className="text-xs text-gray-500">{t.email}</div>
+                            {t.is_vb && (
+                              <div className="mt-1">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                  Videobesprechung
+                                </span>
+                              </div>
+                            )}
                             {t.is_elite_kleingruppe && t.elite_kleingruppe && (
                               <div className="mt-1">
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-blue-100 text-blue-800">
@@ -2416,184 +2542,200 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                             )}
                           </div>
                         </div>
-                        {t.elite_kleingruppe || t.is_elite_kleingruppe ? (
-                          (() => {
-                            // Use individual progress if available, otherwise fall back to global
-                            const progress = t.elite_progress || eliteReleases;
-                            const progressPercent = progress.total > 0 
-                              ? Math.round((progress.released / progress.total) * 100) 
-                              : 0;
-                            const isComplete = progressPercent >= 100;
-                            return (
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                isComplete ? 'bg-green-100 text-green-800' : 'bg-purple-100 text-purple-800'
-                              }`}>
-                                {isComplete ? 'Abgeschl.' : `${progressPercent}%`}
-                              </span>
-                            );
-                          })()
-                        ) : (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            isContractActive(t) ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {isContractActive(t) ? 'Aktiv' : 'Abgeschl.'}
-                          </span>
-                        )}
-                      </div>
-                      
-                      {/* Always visible: Vertrag & Dozenten */}
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-500">Vertrag:</span>
-                          <span className="text-gray-900">
-                            {t.contract_start && t.contract_end ? (
-                              <>
-                                {new Date(t.contract_start).toLocaleDateString('de-DE')} - {new Date(t.contract_end).toLocaleDateString('de-DE')}
-                              </>
-                            ) : (
-                              <span className="text-gray-400">Nicht festgelegt</span>
-                            )}
-                          </span>
-                        </div>
-
-                        {/* Contract Progress Bar */}
-                        {t.contract_start && t.contract_end && (() => {
-                          const progress = getContractProgress(t);
-                          const hoursProgress = getHoursConsumption(t);
-                          return (
-                            <div className="pt-1">
-                              <div className="flex items-center justify-between text-xs mb-1">
-                                <span className="text-gray-500">Stunden-Fortschritt</span>
-                                <span className={`font-medium ${hoursProgress >= 100 ? 'text-green-600' : hoursProgress >= 75 ? 'text-orange-600' : 'text-primary'}`}>
-                                  {hoursProgress}%
-                                  {t.booked_hours > 0 && (
-                                    <span className="text-gray-400 font-normal ml-1">({t.completed_hours || 0} / {t.booked_hours}h)</span>
-                                  )}
+                        <div>
+                          {t.is_vb ? (
+                            // VB participant: Show credits instead of contract, no status badge
+                            <div className="space-y-2 text-sm">
+                              <div className="flex items-center justify-between">
+                                <span className="text-gray-500">Credits:</span>
+                                <span className="text-gray-900">
+                                  {t.vb_credits?.remaining || 0} / {t.vb_credits?.total || 0}
                                 </span>
                               </div>
-                              <div className="w-full bg-gray-200 rounded-full h-2">
-                                <div 
-                                  className={`h-2 rounded-full transition-all ${
-                                    hoursProgress >= 100 ? 'bg-green-500' : 
-                                    hoursProgress >= 75 ? 'bg-orange-500' : 
-                                    'bg-primary'
-                                  }`}
-                                  style={{ width: `${Math.min(hoursProgress, 100)}%` }}
-                                />
-                              </div>
                             </div>
-                          );
-                        })()}
+                          ) : t.elite_kleingruppe || t.is_elite_kleingruppe ? (
+                            (() => {
+                              // Use individual progress if available, otherwise fall back to global
+                              const progress = t.elite_progress || eliteReleases;
+                              const progressPercent = progress.total > 0
+                                ? Math.round((progress.released / progress.total) * 100)
+                                : 0;
+                              const isComplete = progressPercent >= 100;
+                              return (
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  isComplete ? 'bg-green-100 text-green-800' : 'bg-purple-100 text-purple-800'
+                                }`}>
+                                  {isComplete ? 'Abgeschl.' : `${progressPercent}%`}
+                                </span>
+                              );
+                            })()
+                          ) : !t.is_vb ? (
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                              isContractActive(t) ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {isContractActive(t) ? 'Aktiv' : 'Abgeschl.'}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
 
-                        {/* Dozenten - always visible */}
-                        {t.dozent_zivilrecht_id && (
-                          <div className="flex items-center justify-between">
-                            <span className="text-gray-500">Dozent ZR:</span>
-                            <span className="text-gray-900">{dozenten.find(d => d.id === t.dozent_zivilrecht_id)?.full_name || '-'}</span>
-                          </div>
-                        )}
-                        {t.dozent_strafrecht_id && (
-                          <div className="flex items-center justify-between">
-                            <span className="text-gray-500">Dozent SR:</span>
-                            <span className="text-gray-900">{dozenten.find(d => d.id === t.dozent_strafrecht_id)?.full_name || '-'}</span>
-                          </div>
-                        )}
-                        {t.dozent_oeffentliches_recht_id && (
-                          <div className="flex items-center justify-between">
-                            <span className="text-gray-500">Dozent ÖR:</span>
-                            <span className="text-gray-900">{dozenten.find(d => d.id === t.dozent_oeffentliches_recht_id)?.full_name || '-'}</span>
+                      <div className="space-y-3">
+                        {/* Always visible: Vertrag & Dozenten */}
+                        {!t.is_vb && (
+                          <div className="space-y-2 text-sm">
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500">Vertrag:</span>
+                              <span className="text-gray-900">
+                                {t.contract_start && t.contract_end ? (
+                                  <>
+                                    {new Date(t.contract_start).toLocaleDateString('de-DE')} - {new Date(t.contract_end).toLocaleDateString('de-DE')}
+                                  </>
+                                ) : (
+                                  <span className="text-gray-400">Nicht festgelegt</span>
+                                )}
+                              </span>
+                            </div>
+
+                          {/* Contract Progress Bar */}
+                          {t.contract_start && t.contract_end && (() => {
+                            const progress = getContractProgress(t);
+                            const hoursProgress = getHoursConsumption(t);
+                            return (
+                              <div className="pt-1">
+                                <div className="flex items-center justify-between text-xs mb-1">
+                                  <span className="text-gray-500">Stunden-Fortschritt</span>
+                                  <span className={`font-medium ${hoursProgress >= 100 ? 'text-green-600' : hoursProgress >= 75 ? 'text-orange-600' : 'text-primary'}`}>
+                                    {hoursProgress}%
+                                    {t.booked_hours > 0 && (
+                                      <span className="text-gray-400 font-normal ml-1">({t.completed_hours || 0} / {t.booked_hours}h)</span>
+                                    )}
+                                  </span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                  <div
+                                    className={`h-2 rounded-full transition-all ${
+                                      hoursProgress >= 100 ? 'bg-green-500' :
+                                      hoursProgress >= 75 ? 'bg-orange-500' :
+                                      'bg-primary'
+                                    }`}
+                                    style={{ width: `${Math.min(hoursProgress, 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* Dozenten - always visible */}
+                          {t.dozent_zivilrecht_id && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500">Dozent ZR:</span>
+                              <span className="text-gray-900">{dozenten.find(d => d.id === t.dozent_zivilrecht_id)?.full_name || '-'}</span>
+                            </div>
+                          )}
+                          {t.dozent_strafrecht_id && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500">Dozent SR:</span>
+                              <span className="text-gray-900">{dozenten.find(d => d.id === t.dozent_strafrecht_id)?.full_name || '-'}</span>
+                            </div>
+                          )}
+                          {t.dozent_oeffentliches_recht_id && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500">Dozent ÖR:</span>
+                              <span className="text-gray-900">{dozenten.find(d => d.id === t.dozent_oeffentliches_recht_id)?.full_name || '-'}</span>
+                            </div>
+                          )}
                           </div>
                         )}
 
                         {/* Expandable section */}
-                        {(t.study_goal || (t.legal_areas && t.legal_areas.length > 0) || t.booked_hours) && (
-                          <>
-                            <button
-                              onClick={() => setExpandedTeilnehmer(expandedTeilnehmer === t.id ? null : t.id)}
-                              className="w-full flex items-center justify-center py-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
-                            >
-                              {expandedTeilnehmer === t.id ? (
-                                <>
-                                  <ChevronUp className="h-4 w-4 mr-1" />
-                                  Weniger anzeigen
-                                </>
-                              ) : (
-                                <>
-                                  <ChevronDown className="h-4 w-4 mr-1" />
-                                  Mehr anzeigen
-                                </>
+                        {!t.is_vb && (t.study_goal || (t.legal_areas && t.legal_areas.length > 0) || t.booked_hours) && (
+                            <>
+                              <button
+                                onClick={() => setExpandedTeilnehmer(expandedTeilnehmer === t.id ? null : t.id)}
+                                className="w-full flex items-center justify-center py-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                              >
+                                {expandedTeilnehmer === t.id ? (
+                                  <>
+                                    <ChevronUp className="h-4 w-4 mr-1" />
+                                    Weniger anzeigen
+                                  </>
+                                ) : (
+                                  <>
+                                    <ChevronDown className="h-4 w-4 mr-1" />
+                                    Mehr anzeigen
+                                  </>
+                                )}
+                              </button>
+
+                              {expandedTeilnehmer === t.id && (
+                                <div className="space-y-2 pt-2 border-t">
+                                  {/* Studienziel */}
+                                  {t.study_goal && (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-gray-500">Studienziel:</span>
+                                      <span className="text-gray-900 text-right">{t.study_goal}</span>
+                                    </div>
+                                  )}
+
+                                  {/* Rechtsgebiete */}
+                                  {t.legal_areas && t.legal_areas.length > 0 && (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-gray-500">Rechtsgebiete:</span>
+                                      <span className="text-gray-900 text-right">{t.legal_areas.join(', ')}</span>
+                                    </div>
+                                  )}
+
+                                  {/* Stundenpaket with progress */}
+                                  {t.booked_hours && (
+                                    <div className="space-y-1">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-gray-500">Stunden:</span>
+                                        <span className="text-gray-900">
+                                          <span className="text-green-600 font-medium">{t.completed_hours || 0}</span>
+                                          <span className="text-gray-400"> / </span>
+                                          <span>{t.booked_hours}</span>
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-gray-500">Abgehalten:</span>
+                                        <span className="text-green-600">{t.completed_hours || 0} Std.</span>
+                                      </div>
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-gray-500">Ausstehend:</span>
+                                        <span className={`${(t.booked_hours - (t.completed_hours || 0)) > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                                          {t.booked_hours - (t.completed_hours || 0)} Std.
+                                        </span>
+                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          setSelectedTeilnehmerForStundenzettel(t);
+                                          setShowStundenzettel(true);
+                                        }}
+                                        className="w-full mt-2 px-2 py-1 text-xs text-primary bg-primary/10 rounded hover:bg-primary/20 transition-colors"
+                                      >
+                                        Stundenzettel anzeigen →
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
                               )}
+                            </>
+                          )}
+
+                          {/* Edit Button */}
+                          <div className="pt-2 border-t mt-2">
+                            <button
+                              onClick={() => {
+                                setSelectedTeilnehmerForEdit(t);
+                                setShowTeilnehmerForm(true);
+                              }}
+                              className="w-full flex items-center justify-center px-3 py-1.5 text-sm text-primary bg-primary/10 rounded-md hover:bg-primary/20 transition-colors"
+                            >
+                              <Edit2 className="h-3 w-3 mr-1.5" />
+                              Bearbeiten
                             </button>
-
-                            {expandedTeilnehmer === t.id && (
-                              <div className="space-y-2 pt-2 border-t">
-                                {/* Studienziel */}
-                                {t.study_goal && (
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-gray-500">Studienziel:</span>
-                                    <span className="text-gray-900 text-right">{t.study_goal}</span>
-                                  </div>
-                                )}
-
-                                {/* Rechtsgebiete */}
-                                {t.legal_areas && t.legal_areas.length > 0 && (
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-gray-500">Rechtsgebiete:</span>
-                                    <span className="text-gray-900 text-right">{t.legal_areas.join(', ')}</span>
-                                  </div>
-                                )}
-
-                                {/* Stundenpaket with progress */}
-                                {t.booked_hours && (
-                                  <div className="space-y-1">
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-gray-500">Stunden:</span>
-                                      <span className="text-gray-900">
-                                        <span className="text-green-600 font-medium">{t.completed_hours || 0}</span>
-                                        <span className="text-gray-400"> / </span>
-                                        <span>{t.booked_hours}</span>
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-gray-500">Abgehalten:</span>
-                                      <span className="text-green-600">{t.completed_hours || 0} Std.</span>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-gray-500">Ausstehend:</span>
-                                      <span className={`${(t.booked_hours - (t.completed_hours || 0)) > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                                        {t.booked_hours - (t.completed_hours || 0)} Std.
-                                      </span>
-                                    </div>
-                                    <button
-                                      onClick={() => {
-                                        setSelectedTeilnehmerForStundenzettel(t);
-                                        setShowStundenzettel(true);
-                                      }}
-                                      className="w-full mt-2 px-2 py-1 text-xs text-primary bg-primary/10 rounded hover:bg-primary/20 transition-colors"
-                                    >
-                                      Stundenzettel anzeigen →
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </>
-                        )}
-
-                        {/* Edit Button */}
-                        <div className="pt-2 border-t mt-2">
-                          <button
-                            onClick={() => {
-                              setSelectedTeilnehmerForEdit(t);
-                              setShowTeilnehmerForm(true);
-                            }}
-                            className="w-full flex items-center justify-center px-3 py-1.5 text-sm text-primary bg-primary/10 rounded-md hover:bg-primary/20 transition-colors"
-                          >
-                            <Edit2 className="h-3 w-3 mr-1.5" />
-                            Bearbeiten
-                          </button>
+                          </div>
                         </div>
-                      </div>
                     </div>
                   ))}
                 </div>
@@ -2656,6 +2798,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                             }
                             if (teilnehmerFilter === 'elite') return t.is_elite_kleingruppe === true;
                             if (teilnehmerFilter === '2staatsexamen') return t.study_goal?.includes('2. Staatsexamen');
+                            if (teilnehmerFilter === 'vb') return t.is_vb === true;
                             return true;
                           })
                           .map((t) => (
@@ -2676,6 +2819,13 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                                 <div className="ml-3">
                                   <div className="text-sm font-medium text-gray-900 hover:text-primary">{t.name}</div>
                                   <div className="text-xs text-gray-500">{t.email}</div>
+                                  {t.is_vb && (
+                                    <div className="mt-1">
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                        Videobesprechung
+                                      </span>
+                                    </div>
+                                  )}
                                   {t.is_elite_kleingruppe && t.elite_kleingruppe && (
                                     <div className="mt-1">
                                       <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-blue-100 text-blue-800">

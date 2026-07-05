@@ -17,6 +17,8 @@ export function TeilnehmerManagement({ onBack, isAdmin = false }: TeilnehmerMana
   const [searchResults, setSearchResults] = useState<Teilnehmer[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showAdoptSuggestion, setShowAdoptSuggestion] = useState(false);
+  const [vbTeilnehmer, setVbTeilnehmer] = useState<any[]>([]);
+  const [isLoadingVb, setIsLoadingVb] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -25,15 +27,40 @@ export function TeilnehmerManagement({ onBack, isAdmin = false }: TeilnehmerMana
 
   useEffect(() => {
     fetchTeilnehmer();
-    
+
     // Setup real-time subscription for teilnehmer
     const { setupRealtimeSubscription, cleanupSubscription } = useTeilnehmerStore.getState();
     setupRealtimeSubscription();
-    
+
+    // Fetch VB participants (profiles with role='teilnehmer' and additional_roles='videobesprechung')
+    const fetchVbTeilnehmer = async () => {
+      if (!isAdmin) return;
+      setIsLoadingVb(true);
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, email, full_name, created_at, additional_roles')
+          .eq('role', 'teilnehmer')
+          .contains('additional_roles', ['videobesprechung'])
+          .order('full_name', { ascending: true });
+
+        if (error) throw error;
+        setVbTeilnehmer(data || []);
+      } catch (error) {
+        console.error('Error fetching VB participants:', error);
+      } finally {
+        setIsLoadingVb(false);
+      }
+    };
+
+    if (isAdmin) {
+      fetchVbTeilnehmer();
+    }
+
     return () => {
       cleanupSubscription();
     };
-  }, [fetchTeilnehmer]);
+  }, [fetchTeilnehmer, isAdmin]);
 
   // Real-time search for existing Teilnehmer
   useEffect(() => {
@@ -189,71 +216,141 @@ export function TeilnehmerManagement({ onBack, isAdmin = false }: TeilnehmerMana
         <div className="flex justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
-      ) : teilnehmer.length === 0 ? (
-        <div className="text-center py-8">
-          <User className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">Keine Teilnehmer</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            Fügen Sie Ihren ersten aktiven Teilnehmer hinzu.
-          </p>
-          <div className="mt-6">
-            <button
-              onClick={() => setShowDialog(true)}
-              className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary hover:bg-primary/90"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Teilnehmer hinzufügen
-            </button>
-          </div>
-        </div>
       ) : (
-        /* Teilnehmer List */
-        <div className="bg-white shadow overflow-hidden sm:rounded-md">
-          <ul className="divide-y divide-gray-200">
-            {teilnehmer.map((person) => (
-              <li key={person.id}>
-                <div className="px-4 py-4 flex items-center justify-between sm:px-6">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0">
-                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <User className="h-5 w-5 text-primary" />
-                      </div>
-                    </div>
-                    <div className="ml-4">
-                      <div className="flex items-center">
-                        <h4 className="text-sm font-medium text-gray-900">{person.name}</h4>
-                      </div>
-                      <div className="flex items-center mt-1 text-sm text-gray-500">
-                        <Mail className="h-4 w-4 mr-1" />
-                        <span>{person.email}</span>
-                      </div>
-                      <div className="flex items-center mt-1 text-sm text-gray-500">
-                        <Calendar className="h-4 w-4 mr-1" />
-                        <span>Aktiv seit: {formatDate(person.active_since)}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => handleEdit(person)}
-                      className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                    >
-                      <Edit className="h-4 w-4 mr-2" />
-                      Bearbeiten
-                    </button>
-                    <button
-                      onClick={() => handleDelete(person.id, person.name)}
-                      className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Entfernen
-                    </button>
-                  </div>
+        <>
+          {/* Elite-Kleingruppe Participants */}
+          <div className="mb-8">
+            <h4 className="text-sm font-medium text-gray-900 mb-3">Elite-Kleingruppe Teilnehmer</h4>
+            {teilnehmer.length === 0 ? (
+              <div className="text-center py-8 bg-gray-50 rounded-md">
+                <User className="mx-auto h-12 w-12 text-gray-400" />
+                <h3 className="mt-2 text-sm font-medium text-gray-900">Keine Elite-Kleingruppe Teilnehmer</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Fügen Sie Ihren ersten aktiven Teilnehmer hinzu.
+                </p>
+                <div className="mt-6">
+                  <button
+                    onClick={() => setShowDialog(true)}
+                    className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary hover:bg-primary/90"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Teilnehmer hinzufügen
+                  </button>
                 </div>
-              </li>
-            ))}
-          </ul>
-        </div>
+              </div>
+            ) : (
+              <div className="bg-white shadow overflow-hidden sm:rounded-md">
+                <ul className="divide-y divide-gray-200">
+                  {teilnehmer.map((person) => (
+                    <li key={person.id}>
+                      <div className="px-4 py-4 flex items-center justify-between sm:px-6">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0">
+                            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                              <User className="h-5 w-5 text-primary" />
+                            </div>
+                          </div>
+                          <div className="ml-4">
+                            <div className="flex items-center">
+                              <h4 className="text-sm font-medium text-gray-900">{person.name}</h4>
+                            </div>
+                            <div className="flex items-center mt-1 text-sm text-gray-500">
+                              <Mail className="h-4 w-4 mr-1" />
+                              <span>{person.email}</span>
+                            </div>
+                            <div className="flex items-center mt-1 text-sm text-gray-500">
+                              <Calendar className="h-4 w-4 mr-1" />
+                              <span>Aktiv seit: {formatDate(person.active_since)}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => handleEdit(person)}
+                            className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                          >
+                            <Edit className="h-4 w-4 mr-2" />
+                            Bearbeiten
+                          </button>
+                          <button
+                            onClick={() => handleDelete(person.id, person.name)}
+                            className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Entfernen
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          {/* Videobesprechung Participants (Admin only) */}
+          {isAdmin && (
+            <div>
+              <h4 className="text-sm font-medium text-gray-900 mb-3">Videobesprechung Teilnehmer</h4>
+              {isLoadingVb ? (
+                <div className="flex justify-center py-8 bg-gray-50 rounded-md">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+              ) : vbTeilnehmer.length === 0 ? (
+                <div className="text-center py-8 bg-gray-50 rounded-md">
+                  <User className="mx-auto h-12 w-12 text-gray-400" />
+                  <h3 className="mt-2 text-sm font-medium text-gray-900">Keine Videobesprechung Teilnehmer</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Videobesprechung Teilnehmer werden über die Benutzerverwaltung verwaltet.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-white shadow overflow-hidden sm:rounded-md">
+                  <ul className="divide-y divide-gray-200">
+                    {vbTeilnehmer.map((person) => (
+                      <li key={person.id}>
+                        <div className="px-4 py-4 flex items-center justify-between sm:px-6">
+                          <div className="flex items-center">
+                            <div className="flex-shrink-0">
+                              <div className="h-10 w-10 rounded-full bg-blue-50 flex items-center justify-center">
+                                <User className="h-5 w-5 text-blue-600" />
+                              </div>
+                            </div>
+                            <div className="ml-4">
+                              <div className="flex items-center">
+                                <h4 className="text-sm font-medium text-gray-900">{person.full_name}</h4>
+                                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                  Videobesprechung
+                                </span>
+                              </div>
+                              <div className="flex items-center mt-1 text-sm text-gray-500">
+                                <Mail className="h-4 w-4 mr-1" />
+                                <span>{person.email}</span>
+                              </div>
+                              <div className="flex items-center mt-1 text-sm text-gray-500">
+                                <Calendar className="h-4 w-4 mr-1" />
+                                <span>Erstellt: {formatDate(person.created_at)}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => window.open(`/users`, '_blank')}
+                              className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                            >
+                              <Edit className="h-4 w-4 mr-2" />
+                              In Benutzerverwaltung bearbeiten
+                            </button>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       {/* Add/Edit Dialog */}

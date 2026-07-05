@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Save, UserPlus, User, MapPin, Trash2, AlertTriangle, Upload, Calendar, Clock, BookOpen, ChevronDown, ChevronUp, FileText, FileText as FileContract, Edit2, Gift, Plus, Info, ArrowLeft } from 'lucide-react';
+import { X, Save, UserPlus, User, MapPin, Trash2, AlertTriangle, Upload, Calendar, Clock, BookOpen, ChevronDown, ChevronUp, FileText, FileText as FileContract, Edit2, Gift, Plus, Info, ArrowLeft, Coins } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { useToastStore } from '../store/toastStore';
@@ -18,6 +18,7 @@ interface ImportedLesson {
 interface Teilnehmer {
   id?: string;
   user_id?: string | null;
+  profile_id?: string | null;
   tn_nummer?: string;
   first_name: string;
   middle_name?: string;
@@ -44,6 +45,7 @@ interface Teilnehmer {
   elite_kleingruppe?: boolean;
   is_elite_kleingruppe?: boolean;
   elite_kleingruppe_id?: string | null;
+  is_vb?: boolean;
   hours_zivilrecht?: number | null;
   hours_strafrecht?: number | null;
   hours_oeffentliches_recht?: number | null;
@@ -96,7 +98,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
   const hasImportedData = useRef(false);
   const [importedLessons, setImportedLessons] = useState<ImportedLesson[]>([]);
   const [showImportedLessons, setShowImportedLessons] = useState(true);
-  const [activeTab, setActiveTab] = useState<'stammdaten' | 'dozenten' | 'vertraege' | 'notizen'>('stammdaten');
+  const [activeTab, setActiveTab] = useState<'stammdaten' | 'dozenten' | 'vertraege' | 'credits' | 'notizen'>('stammdaten');
   const [contracts, setContracts] = useState<any[]>([]);
   const [showContractDialog, setShowContractDialog] = useState(false);
   const [editingContract, setEditingContract] = useState<any>(null);
@@ -127,6 +129,13 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
   const [showHoursOverview, setShowHoursOverview] = useState(false);
   const [participantHours, setParticipantHours] = useState<any[]>([]);
   const [hoursFilter, setHoursFilter] = useState<string>('alle');
+  const [vbCredits, setVbCredits] = useState<{ total: number; used: number; remaining: number }>({ total: 0, used: 0, remaining: 0 });
+  const [vbOrders, setVbOrders] = useState<any[]>([]);
+  const [vbPackages, setVbPackages] = useState<any[]>([]);
+  const [showAddCreditsDialog, setShowAddCreditsDialog] = useState(false);
+  const [selectedVbPackage, setSelectedVbPackage] = useState<any>(null);
+  const [ordersPage, setOrdersPage] = useState(1);
+  const ordersPerPage = 3;
   const [newContractForm, setNewContractForm] = useState<{
     start_date: string;
     end_date: string;
@@ -141,19 +150,12 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
     frequency_hours: { zivilrecht: null, strafrecht: null, oeffentliches_recht: null },
   });
 
-  const tabs = [
-    { id: 'stammdaten' as const, label: 'Stammdaten', icon: UserPlus },
-    { id: 'dozenten' as const, label: 'Dozenten', icon: User },
-    { id: 'vertraege' as const, label: 'Verträge', icon: FileContract },
-    { id: 'notizen' as const, label: 'Notizen', icon: FileText },
-  ];
-  
   // Get today's date in YYYY-MM-DD format
   const getTodayDate = () => {
     const today = new Date();
     return today.toISOString().split('T')[0];
   };
-  
+
   const [formData, setFormData] = useState<Teilnehmer>({
     tn_nummer: '',
     first_name: '',
@@ -190,6 +192,14 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
     frequency_hours_oeffentliches_recht: null,
     notes: ''
   });
+
+  const tabs = [
+    { id: 'stammdaten' as const, label: 'Stammdaten', icon: UserPlus },
+    { id: 'dozenten' as const, label: 'Dozenten', icon: User },
+    { id: 'vertraege' as const, label: 'Verträge', icon: FileContract },
+    ...(vbOrders.length > 0 ? [{ id: 'credits' as const, label: 'Credits', icon: Coins }] : []),
+    { id: 'notizen' as const, label: 'Notizen', icon: FileText },
+  ];
 
   const isEditing = !!teilnehmer?.id;
 
@@ -651,6 +661,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
         elite_kleingruppe: typeof (teilnehmer as any).elite_kleingruppe === 'boolean' ? (teilnehmer as any).elite_kleingruppe : ((teilnehmer as any).is_elite_kleingruppe || false),
         is_elite_kleingruppe: (teilnehmer as any).is_elite_kleingruppe || false,
         elite_kleingruppe_id: (teilnehmer as any).elite_kleingruppe_id || null,
+        is_vb: (teilnehmer as any).is_vb || false,
         hours_zivilrecht: (teilnehmer as any).hours_zivilrecht || null,
         hours_strafrecht: (teilnehmer as any).hours_strafrecht || null,
         hours_oeffentliches_recht: (teilnehmer as any).hours_oeffentliches_recht || null,
@@ -752,6 +763,61 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
     fetchContracts();
   }, [teilnehmer?.id]);
 
+  useEffect(() => {
+    const fetchVbData = async () => {
+      const profileId = teilnehmer?.profile_id || teilnehmer?.id;
+
+      // Always fetch VB packages (needed for add credits dialog)
+      const { data: packagesData, error: packagesError } = await supabase
+        .from('vb_packages')
+        .select('*')
+        .eq('active', true)
+        .order('case_study_count');
+
+      if (!packagesError && packagesData) {
+        setVbPackages(packagesData);
+      }
+
+      if (profileId) {
+        // Check if this is a VB participant by checking for vb_orders
+        const { data: ordersData, error: ordersError } = await supabase
+          .from('vb_orders')
+          .select('*, vb_packages(*)')
+          .eq('profile_id', profileId)
+          .order('created_at', { ascending: false });
+
+        if (!ordersError && ordersData) {
+          setVbOrders(ordersData);
+        }
+
+        // Only fetch credits if there are VB orders
+        if (ordersData && ordersData.length > 0) {
+          // Fetch used credits from vb_case_study_requests
+          const { data: requestsData } = await supabase
+            .from('vb_case_study_requests')
+            .select('id, status')
+            .eq('profile_id', profileId)
+            .in('status', ['submitted', 'in_review', 'completed', 'graded']);
+
+          const usedCount = (requestsData || []).length;
+
+          // Calculate total credits from completed/paid orders
+          const totalCredits = (ordersData || [])
+            .filter(order => order.status === 'completed' || order.status === 'paid')
+            .reduce((sum, order) => sum + (order.case_study_count || 0), 0);
+
+          setVbCredits({
+            total: totalCredits,
+            used: usedCount,
+            remaining: totalCredits - usedCount
+          });
+        }
+      }
+    };
+
+    fetchVbData();
+  }, [teilnehmer?.id, teilnehmer?.profile_id, showAddCreditsDialog]);
+
   const fetchParticipantHours = async () => {
     if (teilnehmer?.id) {
       const { data, error } = await supabase
@@ -762,6 +828,102 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
       if (!error && data) {
         setParticipantHours(data);
       }
+    }
+  };
+
+  const handleDeleteVbOrder = async (orderId: string) => {
+    if (!confirm('Möchten Sie diese Credit Order wirklich löschen?')) return;
+    const profileId = teilnehmer?.profile_id || teilnehmer?.id;
+    if (!profileId) return;
+
+    try {
+      const { error } = await supabase
+        .from('vb_orders')
+        .delete()
+        .eq('id', orderId);
+
+      if (error) throw error;
+
+      addToast('Credit Order erfolgreich gelöscht', 'success');
+
+      // Refresh VB data
+      const { data: ordersData } = await supabase
+        .from('vb_orders')
+        .select('*, vb_packages(*)')
+        .eq('profile_id', profileId)
+        .order('created_at', { ascending: false });
+
+      if (ordersData) {
+        setVbOrders(ordersData);
+      }
+
+      // Recalculate credits
+      const totalCredits = (ordersData || [])
+        .filter(order => order.status === 'completed' || order.status === 'paid')
+        .reduce((sum, order) => sum + (order.case_study_count || 0), 0);
+
+      setVbCredits(prev => ({
+        ...prev,
+        total: totalCredits,
+        remaining: totalCredits - prev.used
+      }));
+    } catch (error) {
+      console.error('Error deleting VB order:', error);
+      addToast('Fehler beim Löschen der Credit Order', 'error');
+    }
+  };
+
+  const handleAddCredits = async () => {
+    const profileId = teilnehmer?.profile_id || teilnehmer?.id;
+
+    if (!selectedVbPackage) {
+      addToast('Bitte wählen Sie ein Package aus', 'error');
+      return;
+    }
+    if (!profileId) return;
+
+    try {
+      const { error } = await supabase
+        .from('vb_orders')
+        .insert({
+          profile_id: profileId,
+          package_id: selectedVbPackage.id,
+          status: 'completed',
+          case_study_count: selectedVbPackage.case_study_count,
+          total_cents: selectedVbPackage.price_cents
+        });
+
+      if (error) throw error;
+
+      addToast('Credits erfolgreich hinzugefügt', 'success');
+      setShowAddCreditsDialog(false);
+      setSelectedVbPackage(null);
+      setOrdersPage(1);
+
+      // Refresh VB data
+      const { data: ordersData } = await supabase
+        .from('vb_orders')
+        .select('*, vb_packages(*)')
+        .eq('profile_id', profileId)
+        .order('created_at', { ascending: false });
+
+      if (ordersData) {
+        setVbOrders(ordersData);
+      }
+
+      // Recalculate credits
+      const totalCredits = (ordersData || [])
+        .filter(order => order.status === 'completed' || order.status === 'paid')
+        .reduce((sum, order) => sum + (order.case_study_count || 0), 0);
+
+      setVbCredits(prev => ({
+        ...prev,
+        total: totalCredits,
+        remaining: totalCredits - prev.used
+      }));
+    } catch (error) {
+      console.error('Error adding credits:', error);
+      addToast('Fehler beim Hinzufügen der Credits', 'error');
     }
   };
 
@@ -1182,7 +1344,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b bg-gray-50">
+        <div className="flex border-b bg-gray-50 overflow-x-auto h-1/2 py-[10px]">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -1190,7 +1352,7 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                   activeTab === tab.id
                     ? 'border-primary text-primary bg-white'
                     : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-100'
@@ -2203,6 +2365,97 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
             )}
 
             {/* Notizen Tab */}
+            {activeTab === 'credits' && (
+              <div className="p-6 space-y-6">
+                {/* Credit Balance Card */}
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">Credit Balance</h3>
+                    <Coins className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="bg-white rounded-lg p-4 border border-blue-100">
+                      <p className="text-sm text-gray-500 mb-1">Total</p>
+                      <p className="text-2xl font-bold text-gray-900">{vbCredits.total}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-4 border border-blue-100">
+                      <p className="text-sm text-gray-500 mb-1">Used</p>
+                      <p className="text-2xl font-bold text-orange-600">{vbCredits.used}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-4 border border-blue-100">
+                      <p className="text-sm text-gray-500 mb-1">Remaining</p>
+                      <p className="text-2xl font-bold text-green-600">{vbCredits.remaining}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Add Credits Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowAddCreditsDialog(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors"
+                >
+                  <Plus className="h-4 w-4" />
+                  Credits hinzufügen
+                </button>
+
+                {/* Credit Orders List */}
+                {vbOrders.length > 0 && (
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-medium text-gray-700">Credit Orders</h4>
+                    {vbOrders
+                      .slice((ordersPage - 1) * ordersPerPage, ordersPage * ordersPerPage)
+                      .map((order) => (
+                      <div key={order.id} className="bg-white border border-gray-200 rounded-lg p-4 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm text-gray-900">
+                            {order.case_study_count} Credits • {new Date(order.created_at).toLocaleDateString('de-DE')}
+                          </span>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                            order.status === 'completed' || order.status === 'paid' ? 'bg-green-100 text-green-800' :
+                            order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {order.status}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteVbOrder(order.id)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                    {vbOrders.length > ordersPerPage && (
+                      <div className="flex items-center justify-between pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setOrdersPage(p => Math.max(1, p - 1))}
+                          disabled={ordersPage === 1}
+                          className="px-3 py-1 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Zurück
+                        </button>
+                        <span className="text-sm text-gray-600">
+                          Seite {ordersPage} von {Math.ceil(vbOrders.length / ordersPerPage)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setOrdersPage(p => Math.min(Math.ceil(vbOrders.length / ordersPerPage), p + 1))}
+                          disabled={ordersPage === Math.ceil(vbOrders.length / ordersPerPage)}
+                          className="px-3 py-1 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Weiter
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {activeTab === 'notizen' && (
               <div className="text-center py-12 text-gray-500">
                 <FileText className="h-12 w-12 mx-auto mb-4 text-gray-400" />
@@ -2391,6 +2644,69 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
                       </button>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Add Credits Dialog */}
+          {showAddCreditsDialog && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-lg shadow-xl max-w-sm w-full">
+                <div className="flex items-center justify-between p-4 border-b">
+                  <h3 className="text-lg font-semibold text-gray-900">Credits hinzufügen</h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddCreditsDialog(false);
+                      setSelectedVbPackage(null);
+                    }}
+                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="p-4 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Package auswählen
+                    </label>
+                    <select
+                      value={selectedVbPackage?.id || ''}
+                      onChange={(e) => {
+                        const pkg = vbPackages.find(p => p.id === e.target.value);
+                        setSelectedVbPackage(pkg || null);
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    >
+                      <option value="">Package wählen...</option>
+                      {vbPackages.map((pkg) => (
+                        <option key={pkg.id} value={pkg.id}>
+                          {pkg.name} - {pkg.case_study_count} Credits
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 p-4 border-t">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddCreditsDialog(false);
+                      setSelectedVbPackage(null);
+                    }}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddCredits}
+                    disabled={!selectedVbPackage}
+                    className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Hinzufügen
+                  </button>
                 </div>
               </div>
             </div>
