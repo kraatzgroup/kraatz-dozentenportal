@@ -1317,7 +1317,6 @@ export function TeilnehmerForm({ teilnehmer, onClose, onSaved, onDelete, dozente
         }
       }
 
-      onSaved();
       onClose();
     } catch (error) {
       console.error('Error saving teilnehmer:', error);
