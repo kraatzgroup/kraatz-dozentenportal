@@ -181,6 +181,7 @@ Deno.serve(async (req) => {
     formData.append('to', dozentEmail);
     formData.append('subject', `Neuer Sachverhalt zur Korrektur: ${legalArea} - ${subArea}`);
     formData.append('html', emailHtml);
+    formData.append('charset', 'utf-8');
 
     if (mailgunApiKey) {
       try {

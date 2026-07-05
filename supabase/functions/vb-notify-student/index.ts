@@ -185,7 +185,7 @@ serve(async (req) => {
       // Send email via Mailgun (non-blocking)
       const mailgunApiKey = Deno.env.get('MAILGUN_API_KEY')
       const mailgunDomain = 'kraatz-group.de'
-      
+
       if (mailgunApiKey) {
         try {
           const formData = new FormData()
@@ -193,6 +193,7 @@ serve(async (req) => {
           formData.append('to', student.email)
           formData.append('subject', `[Klausurenbesprechung] ${emailSubject}`)
           formData.append('html', emailContent)
+          formData.append('charset', 'utf-8')
 
           console.log('Attempting to send email to:', student.email)
           const response = await fetch(`https://api.eu.mailgun.net/v3/${mailgunDomain}/messages`, {
