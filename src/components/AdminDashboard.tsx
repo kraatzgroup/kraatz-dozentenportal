@@ -4332,8 +4332,14 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
             setSelectedTeilnehmerForEdit(null);
           }}
           onSaved={(updatedTeilnehmer) => {
+            console.log('AdminDashboard onSaved received:', updatedTeilnehmer);
             if (updatedTeilnehmer) {
-              setSelectedTeilnehmerForEdit(updatedTeilnehmer);
+              console.log('Setting selectedTeilnehmerForEdit to updated data');
+              // Force a re-render by clearing and setting the state
+              setSelectedTeilnehmerForEdit(null);
+              setTimeout(() => {
+                setSelectedTeilnehmerForEdit(updatedTeilnehmer);
+              }, 0);
             }
             fetchTeilnehmer();
           }}
