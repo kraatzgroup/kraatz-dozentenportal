@@ -199,9 +199,15 @@ export function TeilnehmerForm({ teilnehmer, participantType, onClose, onSaved, 
     { id: 'stammdaten' as const, label: 'Stammdaten', icon: UserPlus },
     { id: 'dozenten' as const, label: 'Dozenten', icon: User },
     { id: 'vertraege' as const, label: 'Verträge', icon: FileContract },
-    ...(vbOrders.length > 0 ? [{ id: 'credits' as const, label: 'Credits', icon: Coins }] : []),
+    ...(formData.is_vb ? [{ id: 'credits' as const, label: 'Credits', icon: Coins }] : []),
     { id: 'notizen' as const, label: 'Notizen', icon: FileText },
   ];
+
+  console.log('📊 TeilnehmerForm: Tabs configuration', {
+    is_vb: formData.is_vb,
+    vbOrders: vbOrders.length,
+    activeTab
+  });
 
   const isEditing = !!teilnehmer?.id;
 

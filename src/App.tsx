@@ -86,9 +86,16 @@ function App() {
           if (!isSettingUser && userRole !== null) {
             clearInterval(checkProfile);
             console.log('✅ App: Profile loaded, performing role check');
+            console.log('📋 App: Account status:', {
+              userRole,
+              additionalRoles,
+              currentPath: window.location.pathname,
+              currentSearch: window.location.search
+            });
 
             // Check for elite kleingruppe membership for teilnehmer users
             const checkEliteKleingruppe = async () => {
+              const user = useAuthStore.getState().user;
               if (userRole === 'teilnehmer' && user) {
                 console.log('🔍 App: Checking elite kleingruppe for user:', user.id);
                 const { data: teilnehmerData, error: teilnehmerError } = await supabase
@@ -99,19 +106,24 @@ function App() {
 
                 console.log('🔍 App: Teilnehmer data:', { teilnehmerData, teilnehmerError, additionalRoles });
 
+                // Redirect decision tree
                 if (teilnehmerData?.elite_kleingruppe && teilnehmerData.elite_kleingruppe !== 'f' && teilnehmerData.elite_kleingruppe !== 'false' && teilnehmerData.elite_kleingruppe !== null) {
-                  console.log('🎯 App: User has elite kleingruppe membership:', teilnehmerData.elite_kleingruppe, ', redirecting to /dashboard?tab=elite-kleingruppe');
+                  console.log('✅ App: REDIRECT DECISION: User has elite kleingruppe membership:', teilnehmerData.elite_kleingruppe, '→ redirecting to /dashboard?tab=elite-kleingruppe');
                   window.history.replaceState({}, '', '/dashboard?tab=elite-kleingruppe');
                 } else if (additionalRoles?.includes('videobesprechung')) {
-                  console.log('🎯 App: Redirecting videobesprechung participant to /klausurenbesprechung/dashboard');
+                  console.log('✅ App: REDIRECT DECISION: User has videobesprechung role but no elite kleingruppe → redirecting to /klausurenbesprechung/dashboard');
                   window.history.replaceState({}, '', '/klausurenbesprechung/dashboard');
                 } else if (window.location.pathname === '/dashboard' && !window.location.search.includes('tab=')) {
-                  console.log('🎯 App: Redirecting regular participant to /dashboard?tab=dashboard');
+                  console.log('✅ App: REDIRECT DECISION: Regular participant on /dashboard → redirecting to /dashboard?tab=dashboard');
                   window.history.replaceState({}, '', '/dashboard?tab=dashboard');
+                } else {
+                  console.log('✅ App: REDIRECT DECISION: No redirect needed, staying on current page');
                 }
               } else if (userRole === 'teilnehmer' && window.location.pathname === '/dashboard' && !window.location.search.includes('tab=')) {
-                console.log('🎯 App: Redirecting regular participant to /dashboard?tab=dashboard');
+                console.log('✅ App: REDIRECT DECISION: Regular participant on /dashboard → redirecting to /dashboard?tab=dashboard');
                 window.history.replaceState({}, '', '/dashboard?tab=dashboard');
+              } else {
+                console.log('✅ App: REDIRECT DECISION: No redirect needed for userRole:', userRole);
               }
 
               setAppLoading(false);
