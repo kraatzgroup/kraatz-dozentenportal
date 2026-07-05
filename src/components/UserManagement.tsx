@@ -209,6 +209,47 @@ export function UserManagement() {
         setSuccessMessage(`Einladungs-E-Mail wurde erfolgreich an ${dialog.userData.email} gesendet. (Edge Function)`);
       }
 
+      // Create teilnehmer record for participants
+      if (dialog.userData.role === 'teilnehmer') {
+        try {
+          // Get the created profile
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('email', dialog.userData.email)
+            .single();
+
+          if (profile) {
+            // Generate TN number
+            const { data: tnNummer } = await supabase.rpc('get_next_tn_nummer');
+
+            // Create teilnehmer record
+            const newId = crypto.randomUUID();
+            const { error: tnError } = await supabase
+              .from('teilnehmer')
+              .insert({
+                id: newId,
+                profile_id: profile.id,
+                tn_nummer: tnNummer || 'TN0001',
+                first_name: dialog.userData.fullName.split(' ')[0] || '',
+                last_name: dialog.userData.fullName.split(' ').slice(1).join(' ') || '',
+                name: dialog.userData.fullName,
+                email: dialog.userData.email,
+                is_vb: dialog.userData.isVideobesprechung || false,
+                is_elite_kleingruppe: !!dialog.userData.eliteKleingruppe,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              });
+
+            if (tnError) {
+              console.error('Error creating teilnehmer record:', tnError);
+            }
+          }
+        } catch (error) {
+          console.error('Error creating teilnehmer record:', error);
+        }
+      }
+
       closeDialog();
 
       // Refresh the users list and elite teilnehmer IDs
