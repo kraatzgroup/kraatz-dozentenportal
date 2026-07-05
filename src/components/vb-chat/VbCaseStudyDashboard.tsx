@@ -174,14 +174,15 @@ export const VbCaseStudyDashboard: React.FC = () => {
       // Track the download
       await handlePdfDownload(caseStudyId)
 
-      // Use Klausur_{case_study_number}_{focus_area} format
-      const caseStudy = caseStudies.find(cs => cs.id === caseStudyId)
-      const caseNumber = caseStudy?.case_study_number
-      const focusArea = caseStudy?.focus_area || ''
-      const filenameParts = ['Klausur', String(caseNumber)]
-      if (focusArea) filenameParts.push(focusArea)
-      const realFilename = `${filenameParts.join('_')}.pdf`.replace(/\s+/g, '_')
-      console.log('📥 Using filename:', realFilename)
+      // Extract folder name from URL (last directory before the file)
+      const urlObj = new URL(url)
+      const pathname = urlObj.pathname
+      const pathParts = pathname.split('/')
+      const folderName = pathParts.length > 2 ? pathParts[pathParts.length - 2] : null
+
+      // Use folder name as filename if available
+      const realFilename = folderName ? `${folderName}.pdf` : 'download.pdf'
+      console.log('📥 Using folder name as filename:', realFilename)
 
       // Fetch the file
       console.log('📥 Fetching file from:', url)
