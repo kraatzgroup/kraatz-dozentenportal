@@ -794,7 +794,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
 
           if (dozent) {
             const dozentName = [dozent.first_name, dozent.last_name].filter(Boolean).join(' ') || dozent.email;
-            const { error: notifyError } = await supabase.functions.invoke('vb-notify-dozent', {
+            const { error: notifyError } = await supabase.functions.invoke('vb-notify-dozent-submission', {
               body: {
                 dozentEmail: dozent.email,
                 dozentName,
