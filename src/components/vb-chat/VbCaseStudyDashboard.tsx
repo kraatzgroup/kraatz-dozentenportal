@@ -30,6 +30,7 @@ interface CaseStudyRequest {
   status: 'requested' | 'materials_ready' | 'submitted' | 'under_review' | 'corrected' | 'completed';
   pdf_url?: string;
   case_study_material_url?: string;
+  case_study_material_file_name?: string;
   additional_materials_url?: string;
   additional_materials?: AdditionalMaterial[];
   submission_url?: string;
@@ -167,53 +168,84 @@ export const VbCaseStudyDashboard: React.FC = () => {
     }
   }
 
-  // Download file as PDF (workaround for incorrect content-type in storage)
-  const downloadFileAsPDF = async (url: string, filename: string, caseStudyId: string) => {
-    console.log('🔄 downloadFileAsPDF called:', { url, filename, caseStudyId })
-    try {
-      // Track the download
+  // Helper to extract actual filename from URL
+const getFileNameFromUrl = (url: string): string => {
+  if (!url) return 'download'
+  try {
+    const urlObj = new URL(url)
+    const pathname = urlObj.pathname
+    const filename = pathname.split('/').pop()
+    return decodeURIComponent(filename || 'download')
+  } catch {
+    const filename = url.split('/').pop() || 'download'
+    return decodeURIComponent(filename)
+  }
+}
+
+// Generic download function that handles all file types and buckets
+const downloadFile = async (url: string, filename: string, caseStudyId?: string) => {
+  console.log('🔄 downloadFile called:', { url, filename, caseStudyId })
+  try {
+    // Track the download if caseStudyId is provided
+    if (caseStudyId) {
       await handlePdfDownload(caseStudyId)
-
-      // Extract folder name from URL (the folder structure where the case study comes from)
-      const urlObj = new URL(url)
-      const pathname = urlObj.pathname
-      const pathParts = pathname.split('/')
-      // Get the folder name (second-to-last part of the path)
-      const folderName = pathParts.length > 2 ? pathParts[pathParts.length - 2] : 'download'
-      const realFilename = `Sachverhalt_${folderName}.pdf`
-      console.log('📥 Using folder name:', realFilename)
-
-      // Fetch the file
-      console.log('📥 Fetching file from:', url)
-      const response = await fetch(url)
-      console.log('📥 Response status:', response.status, response.statusText)
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-      
-      const blob = await response.blob()
-      console.log('📥 Blob created, size:', blob.size, 'type:', blob.type)
-      
-      // Create download link
-      const downloadUrl = window.URL.createObjectURL(blob)
-      console.log('📥 Download URL created:', downloadUrl)
-      
-      const link = document.createElement('a')
-      link.href = downloadUrl
-      link.download = realFilename.endsWith('.pdf') ? realFilename : `${realFilename}.pdf`
-      document.body.appendChild(link)
-      console.log('📥 Clicking download link...')
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(downloadUrl)
-      console.log('✅ Download completed')
-    } catch (error) {
-      console.error('❌ Error downloading file:', error)
-      // Fallback to direct link if download fails
-      console.log('🔄 Fallback: opening in new tab')
-      window.open(url, '_blank')
     }
+
+    // Use the provided filename (prioritize it over URL extraction)
+    const actualFilename = filename || getFileNameFromUrl(url)
+    console.log('📥 Using filename:', actualFilename, '(provided:', !!filename, ')')
+
+    // Detect bucket from URL
+    let bucket = 'case-studies'
+    if (url.includes('/masterclass/')) {
+      bucket = 'masterclass'
+    }
+    console.log('📥 Detected bucket:', bucket)
+
+    // Extract storage path from URL
+    const marker = `/object/public/${bucket}/`
+    const idx = url.indexOf(marker)
+    const path = idx >= 0 ? url.slice(idx + marker.length) : null
+
+    if (path) {
+      console.log('📥 Downloading from Supabase storage:', bucket, path)
+      const { data, error } = await supabase.storage.from(bucket).download(path)
+      if (error) throw error
+      console.log('✅ Storage download successful')
+      triggerDownload(data, actualFilename)
+    } else {
+      console.log('📥 No storage path found, using fetch fallback')
+      const response = await fetch(url)
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+      const blob = await response.blob()
+      triggerDownload(blob, actualFilename)
+    }
+  } catch (error) {
+    console.error('❌ Error downloading file:', error)
+    // Fallback to direct link if download fails
+    console.log('🔄 Fallback: opening in new tab')
+    window.open(url, '_blank')
+  }
+}
+
+  // Download file as PDF (legacy function for backward compatibility)
+  const downloadFileAsPDF = async (url: string, filename: string, caseStudyId: string) => {
+    return downloadFile(url, filename, caseStudyId)
+  }
+
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const objectUrl = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = objectUrl
+    a.download = filename
+    a.style.display = 'none'
+    document.body.appendChild(a)
+    a.click()
+    setTimeout(() => {
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(objectUrl)
+    }, 1000)
+    console.log('✅ Download triggered')
   }
 
   // Mark correction as viewed
@@ -1578,19 +1610,23 @@ export const VbCaseStudyDashboard: React.FC = () => {
                                 <p className="text-sm text-gray-800 font-medium mb-2">📚 Deine Unterlagen:</p>
                                 <div className="flex flex-col gap-2 max-w-xs">
                                   {caseStudy.case_study_material_url && (
-                                    <a
-                                      href={caseStudy.case_study_material_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2"
-                                      style={{ backgroundColor: '#2e83c2' }}
-                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0a1f44'}
-                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#2e83c2'}
-                                      onClick={(e) => { e.stopPropagation(); if (!caseStudy.solution_pdf_url) e.preventDefault(); }}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (caseStudy.case_study_material_url) {
+                                          handlePdfDownload(caseStudy.id)
+                                          downloadFile(caseStudy.case_study_material_url, caseStudy.case_study_material_file_name || '', caseStudy.id)
+                                        }
+                                      }}
+                                      className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white"
+                                      style={{ backgroundColor: caseStudy.pdf_downloaded_at ? '#10b981' : '#2e83c2' }}
+                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = caseStudy.pdf_downloaded_at ? '#059669' : '#0a1f44'}
+                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = caseStudy.pdf_downloaded_at ? '#10b981' : '#2e83c2'}
                                     >
                                       <FileText className="w-4 h-4" />
                                       <span>Sachverhalt</span>
-                                    </a>
+                                      {caseStudy.pdf_downloaded_at && <span className="text-xs">✓</span>}
+                                    </button>
                                   )}
                                   {/* Show additional materials - support both old URL format and new array format */}
                                   {caseStudy.additional_materials && caseStudy.additional_materials.length > 0 ? (
@@ -1686,11 +1722,13 @@ export const VbCaseStudyDashboard: React.FC = () => {
                                     </button>
                                   )}
                                   { (
-                                    <a
-                                      href={caseStudy.solution_pdf_url || "#"}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={(e) => { e.stopPropagation(); if (!caseStudy.solution_pdf_url) e.preventDefault(); }}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (caseStudy.solution_pdf_url) {
+                                          downloadFileAsPDF(caseStudy.solution_pdf_url, `Loesung_${caseStudy.case_study_number}.pdf`, caseStudy.id)
+                                        }
+                                      }}
                                       className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 ${ caseStudy.solution_pdf_url ? "text-white" : "bg-gray-300 text-gray-500 cursor-not-allowed" }`}
                                       style={caseStudy.solution_pdf_url ? { backgroundColor: '#2e83c2' } : {}}
                                       onMouseEnter={(e) => { if (caseStudy.solution_pdf_url) e.currentTarget.style.backgroundColor = '#0a1f44' }}
@@ -1698,14 +1736,16 @@ export const VbCaseStudyDashboard: React.FC = () => {
                                     >
                                       <FileText className="w-4 h-4" />
                                       <span>Klausur-Lösung</span>
-                                    </a>
+                                    </button>
                                   )}
                                   {caseStudy.scoring_sheet_url && (
-                                    <a
-                                      href={caseStudy.scoring_sheet_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={(e) => { e.stopPropagation(); if (!caseStudy.solution_pdf_url) e.preventDefault(); }}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (caseStudy.scoring_sheet_url) {
+                                          downloadFileAsPDF(caseStudy.scoring_sheet_url, `Korrekturbogen_${caseStudy.case_study_number}.xlsx`, caseStudy.id)
+                                        }
+                                      }}
                                       className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2"
                                       style={{ backgroundColor: '#2e83c2' }}
                                       onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0a1f44'}
@@ -1713,16 +1753,14 @@ export const VbCaseStudyDashboard: React.FC = () => {
                                     >
                                       <Table className="w-4 h-4" />
                                       <span>Korrekturbogen</span>
-                                    </a>
+                                    </button>
                                   )}
                                   {caseStudy.written_correction_url && (
-                                    <a
-                                      href={caseStudy.written_correction_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
+                                    <button
                                       onClick={(e) => {
                                         e.stopPropagation()
                                         handlePdfDownload(caseStudy.id)
+                                        downloadFileAsPDF(caseStudy.written_correction_url!, `Korrektur_${caseStudy.case_study_number}.pdf`, caseStudy.id)
                                       }}
                                       className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white"
                                       style={{ backgroundColor: caseStudy.pdf_downloaded_at ? '#10b981' : '#2e83c2' }}
@@ -1732,7 +1770,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                                       <FileText className="w-4 h-4" />
                                       <span>Schriftliche Korrektur</span>
                                       {caseStudy.pdf_downloaded_at && <span className="text-xs">✓</span>}
-                                    </a>
+                                    </button>
                                   )}
                                   <button
                                     onClick={(e) => {
@@ -1927,19 +1965,23 @@ export const VbCaseStudyDashboard: React.FC = () => {
                                 <p className="text-sm text-gray-800 font-medium mb-2">📚 Deine Unterlagen:</p>
                                 <div className="flex flex-col gap-2 max-w-xs">
                                   {caseStudy.case_study_material_url && (
-                                    <a
-                                      href={caseStudy.case_study_material_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2"
-                                      style={{ backgroundColor: '#2e83c2' }}
-                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0a1f44'}
-                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#2e83c2'}
-                                      onClick={(e) => { e.stopPropagation(); if (!caseStudy.solution_pdf_url) e.preventDefault(); }}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (caseStudy.case_study_material_url) {
+                                          handlePdfDownload(caseStudy.id)
+                                          downloadFile(caseStudy.case_study_material_url, caseStudy.case_study_material_file_name || '', caseStudy.id)
+                                        }
+                                      }}
+                                      className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white"
+                                      style={{ backgroundColor: caseStudy.pdf_downloaded_at ? '#10b981' : '#2e83c2' }}
+                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = caseStudy.pdf_downloaded_at ? '#059669' : '#0a1f44'}
+                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = caseStudy.pdf_downloaded_at ? '#10b981' : '#2e83c2'}
                                     >
                                       <FileText className="w-4 h-4" />
                                       <span>Sachverhalt</span>
-                                    </a>
+                                      {caseStudy.pdf_downloaded_at && <span className="text-xs">✓</span>}
+                                    </button>
                                   )}
                                   {/* Show additional materials - support both old URL format and new array format */}
                                   {caseStudy.additional_materials && caseStudy.additional_materials.length > 0 ? (
@@ -2035,11 +2077,13 @@ export const VbCaseStudyDashboard: React.FC = () => {
                                     </button>
                                   )}
                                   { (
-                                    <a
-                                      href={caseStudy.solution_pdf_url || "#"}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={(e) => { e.stopPropagation(); if (!caseStudy.solution_pdf_url) e.preventDefault(); }}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (caseStudy.solution_pdf_url) {
+                                          downloadFileAsPDF(caseStudy.solution_pdf_url, `Loesung_${caseStudy.case_study_number}.pdf`, caseStudy.id)
+                                        }
+                                      }}
                                       className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 ${ caseStudy.solution_pdf_url ? "text-white" : "bg-gray-300 text-gray-500 cursor-not-allowed" }`}
                                       style={caseStudy.solution_pdf_url ? { backgroundColor: '#2e83c2' } : {}}
                                       onMouseEnter={(e) => { if (caseStudy.solution_pdf_url) e.currentTarget.style.backgroundColor = '#0a1f44' }}
@@ -2047,14 +2091,16 @@ export const VbCaseStudyDashboard: React.FC = () => {
                                     >
                                       <FileText className="w-4 h-4" />
                                       <span>Klausur-Lösung</span>
-                                    </a>
+                                    </button>
                                   )}
                                   {caseStudy.scoring_sheet_url && (
-                                    <a
-                                      href={caseStudy.scoring_sheet_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={(e) => { e.stopPropagation(); if (!caseStudy.solution_pdf_url) e.preventDefault(); }}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (caseStudy.scoring_sheet_url) {
+                                          downloadFileAsPDF(caseStudy.scoring_sheet_url, `Korrekturbogen_${caseStudy.case_study_number}.xlsx`, caseStudy.id)
+                                        }
+                                      }}
                                       className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2"
                                       style={{ backgroundColor: '#2e83c2' }}
                                       onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0a1f44'}
@@ -2062,16 +2108,14 @@ export const VbCaseStudyDashboard: React.FC = () => {
                                     >
                                       <Table className="w-4 h-4" />
                                       <span>Korrekturbogen</span>
-                                    </a>
+                                    </button>
                                   )}
                                   {caseStudy.written_correction_url && (
-                                    <a
-                                      href={caseStudy.written_correction_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
+                                    <button
                                       onClick={(e) => {
                                         e.stopPropagation()
                                         handlePdfDownload(caseStudy.id)
+                                        downloadFileAsPDF(caseStudy.written_correction_url!, `Korrektur_${caseStudy.case_study_number}.pdf`, caseStudy.id)
                                       }}
                                       className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white"
                                       style={{ backgroundColor: caseStudy.pdf_downloaded_at ? '#10b981' : '#2e83c2' }}
@@ -2081,7 +2125,7 @@ export const VbCaseStudyDashboard: React.FC = () => {
                                       <FileText className="w-4 h-4" />
                                       <span>Schriftliche Korrektur</span>
                                       {caseStudy.pdf_downloaded_at && <span className="text-xs">✓</span>}
-                                    </a>
+                                    </button>
                                   )}
                                   <button
                                     onClick={(e) => {

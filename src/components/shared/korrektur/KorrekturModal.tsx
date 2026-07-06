@@ -25,9 +25,11 @@ const getFileNameFromUrl = (url: string): string => {
     const urlObj = new URL(url)
     const pathname = urlObj.pathname
     const filename = pathname.split('/').pop()
-    return filename || 'Unbekannte Datei'
+    // Decode URL-encoded characters (e.g., %20 -> space)
+    return decodeURIComponent(filename || 'Unbekannte Datei')
   } catch {
-    return url.split('/').pop() || 'Unbekannte Datei'
+    const filename = url.split('/').pop() || 'Unbekannte Datei'
+    return decodeURIComponent(filename)
   }
 }
 
@@ -56,12 +58,16 @@ const FileField: React.FC<FileFieldProps> = ({
 
   const displayName = selectedMaterialFileName || (selectedMaterialUrl ? getFileNameFromUrl(selectedMaterialUrl) : null)
 
+  const fileBgColor = accentColor === 'green' ? 'bg-green-50' : 'bg-primary/5'
+  const fileBorderColor = accentColor === 'green' ? 'border-green-200' : 'border-primary/20'
+  const fileIconColor = accentColor === 'green' ? 'text-green-600' : 'text-primary'
+
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
       {file ? (
-        <div className="flex items-center p-3 bg-primary/5 border border-primary/20 rounded-lg">
-          <FileText className="h-5 w-5 text-primary flex-shrink-0" />
+        <div className={`flex items-center p-3 ${fileBgColor} border ${fileBorderColor} rounded-lg`}>
+          <FileText className={`h-5 w-5 ${fileIconColor} flex-shrink-0`} />
           <span className="ml-2 text-sm text-gray-700 truncate flex-1" title={file.name}>
             {file.name}
           </span>
@@ -111,7 +117,10 @@ const FileField: React.FC<FileFieldProps> = ({
             </span>
             {onDownload && (
               <button
-                onClick={() => onDownload(existingUrl, downloadName)}
+                onClick={() => {
+                  console.log('📥 Download button clicked:', { existingUrl, downloadName })
+                  onDownload(existingUrl, downloadName)
+                }}
                 className="ml-2 p-1 text-primary hover:bg-primary/10 rounded flex-shrink-0"
                 title="Datei herunterladen"
               >
@@ -144,7 +153,11 @@ const FileField: React.FC<FileFieldProps> = ({
                 type="file"
                 accept={accept}
                 className="hidden"
-                onChange={e => onSelect(e.target.files?.[0] || null)}
+                onChange={e => {
+                  const selectedFile = e.target.files?.[0] || null
+                  console.log('📁 FileField - File selected:', selectedFile?.name, 'for label:', label)
+                  onSelect(selectedFile)
+                }}
               />
             </label>
           )}
@@ -168,7 +181,11 @@ const FileField: React.FC<FileFieldProps> = ({
               type="file"
               accept={accept}
               className="hidden"
-              onChange={e => onSelect(e.target.files?.[0] || null)}
+              onChange={e => {
+                const selectedFile = e.target.files?.[0] || null
+                console.log('📁 FileField - File selected (no existing):', selectedFile?.name, 'for label:', label)
+                onSelect(selectedFile)
+              }}
             />
           </label>
         )
@@ -230,6 +247,12 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
   }, [item.id, item.correctedFileUrl, item.correctedExcelUrl, item.solutionPdfUrl, item.scoringSchemaUrl, item.correctionDurationHours, defaultDurationHours]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = () => {
+    console.log('💾 KorrekturModal handleSave - File states:', {
+      pdfFile: pdfFile?.name,
+      excelFile: excelFile?.name,
+      solutionFile: solutionFile?.name,
+      schemaFile: schemaFile?.name,
+    })
     onSave({
       score,
       durationHours,
@@ -337,6 +360,7 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
                     onSelect={setExcelFile}
                     onDownload={onDownloadFile}
                     onDelete={() => onClearFile?.('excel')}
+                    accentColor="green"
                   />
                 )}
               </div>

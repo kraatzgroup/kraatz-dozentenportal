@@ -111,9 +111,17 @@ const BUCKET = 'case-studies'
 
 // Convert a public storage URL back into the object path for download.
 const storagePathFromUrl = (url: string): string | null => {
-  const marker = `/object/public/${BUCKET}/`
-  const idx = url.indexOf(marker)
-  return idx >= 0 ? url.slice(idx + marker.length) : null
+  // Try case-studies bucket first
+  let marker = `/object/public/case-studies/`
+  let idx = url.indexOf(marker)
+  if (idx >= 0) return url.slice(idx + marker.length)
+
+  // Try masterclass bucket
+  marker = `/object/public/masterclass/`
+  idx = url.indexOf(marker)
+  if (idx >= 0) return url.slice(idx + marker.length)
+
+  return null
 }
 
 export const VbKorrekturDashboard: React.FC = () => {
@@ -551,35 +559,74 @@ export const VbKorrekturDashboard: React.FC = () => {
   }
 
   const downloadFile = async (url: string, filename: string) => {
+    console.log('📥 downloadFile called:', { url, filename })
     try {
+      // Detect bucket from URL
+      let bucket = BUCKET
+      if (url.includes('/masterclass/')) {
+        bucket = 'masterclass'
+      }
+      console.log('📥 Detected bucket:', bucket)
+
       const path = storagePathFromUrl(url)
+      console.log('📥 Extracted storage path:', path)
+
       if (!path) {
-        window.open(url, '_blank')
+        console.log('📥 No path found, using fetch as fallback')
+        const response = await fetch(url)
+        if (!response.ok) throw new Error('Failed to fetch file')
+        const blob = await response.blob()
+        triggerDownload(blob, filename)
         return
       }
-      const { data, error } = await supabase.storage.from(BUCKET).download(path)
-      if (error) throw error
-      const objectUrl = window.URL.createObjectURL(data)
-      const a = document.createElement('a')
-      a.href = objectUrl
-      a.download = filename
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(objectUrl)
-      document.body.removeChild(a)
+
+      console.log('📥 Downloading from Supabase storage bucket:', bucket)
+      const { data, error } = await supabase.storage.from(bucket).download(path)
+      if (error) {
+        console.error('❌ Storage download error:', error)
+        throw error
+      }
+      console.log('✅ Storage download successful, triggering download')
+      triggerDownload(data, filename)
     } catch (err) {
-      console.error('Error downloading file:', err)
-      alert('Fehler beim Herunterladen der Datei')
+      console.error('❌ Error downloading file:', err)
+      // Final fallback to opening in new tab
+      console.log('📥 Final fallback: opening in new tab')
+      window.open(url, '_blank')
     }
   }
 
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const objectUrl = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = objectUrl
+    a.download = filename
+    a.style.display = 'none'
+    document.body.appendChild(a)
+    a.click()
+
+    // Keep the object URL alive longer
+    setTimeout(() => {
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(objectUrl)
+      console.log('✅ Download cleanup complete')
+    }, 1000)
+    console.log('✅ Download triggered')
+  }
+
   const uploadCorrectionFile = async (file: File, caseId: string, kind: string): Promise<string> => {
-    const ext = file.name.split('.').pop()
-    const fileName = `${caseId}_${kind}_${Date.now()}.${ext}`
+    console.log('📤 uploadCorrectionFile called:', { fileName: file.name, caseId, kind })
+    // Keep original filename exactly as uploaded
+    const fileName = file.name
     const filePath = `korrekturen/${caseId}/${fileName}`
+    console.log('📤 Uploading to path:', filePath)
     const { error } = await supabase.storage.from(BUCKET).upload(filePath, file)
-    if (error) throw error
+    if (error) {
+      console.error('❌ Upload error:', error)
+      throw error
+    }
     const { data } = supabase.storage.from(BUCKET).getPublicUrl(filePath)
+    console.log('✅ Upload successful, URL:', data.publicUrl)
     return data.publicUrl
   }
 
@@ -670,6 +717,7 @@ export const VbKorrekturDashboard: React.FC = () => {
           assigned_dozent_id: user.id,
           case_study_material_url: firstMaterial.file_url,
           pdf_url: firstMaterial.file_url,
+          case_study_material_file_name: firstMaterial.file_name,
         })
         .eq('id', selectedCaseForMaterial.id)
       
@@ -834,6 +882,18 @@ export const VbKorrekturDashboard: React.FC = () => {
     setIsSaving(true)
     try {
       console.log('💾 Saving correction - score:', payload.score, 'feedback:', payload.feedback)
+      console.log('📁 File payload:', {
+        pdfFile: payload.pdfFile?.name,
+        excelFile: payload.excelFile?.name,
+        solutionFile: payload.solutionFile?.name,
+        schemaFile: payload.schemaFile?.name,
+      })
+      console.log('📁 Existing URLs:', {
+        written_correction_url: selected.written_correction_url,
+        scoring_sheet_url: selected.scoring_sheet_url,
+        solution_pdf_url: selected.solution_pdf_url,
+        scoring_schema_url: selected.scoring_schema_url,
+      })
 
       const writtenUrl = payload.pdfFile
         ? await uploadCorrectionFile(payload.pdfFile, selected.id, 'korrektur')
@@ -859,20 +919,23 @@ export const VbKorrekturDashboard: React.FC = () => {
       console.log('💾 Completion check:', { hasScore, hasPdf, hasExcel, isComplete })
 
       // 1) Update the case study request with correction artifacts + status
+      const updateData = {
+        status: isComplete ? 'completed' : 'corrected',
+        assigned_dozent_id: user.id,
+        video_correction_url: videoUrl,
+        written_correction_url: writtenUrl,
+        solution_pdf_url: solutionUrl,
+        scoring_sheet_url: scoringSheetUrl,
+        scoring_schema_url: schemaUrl,
+        correction_duration_hours: payload.durationHours ? parseFloat(payload.durationHours) : null,
+      }
+      console.log('💾 Updating database with:', updateData)
       const { error: reqError } = await supabase
         .from('vb_case_study_requests')
-        .update({
-          status: isComplete ? 'completed' : 'corrected',
-          assigned_dozent_id: user.id,
-          video_correction_url: videoUrl,
-          written_correction_url: writtenUrl,
-          solution_pdf_url: solutionUrl,
-          scoring_sheet_url: scoringSheetUrl,
-          scoring_schema_url: schemaUrl,
-          correction_duration_hours: payload.durationHours ? parseFloat(payload.durationHours) : null,
-        })
+        .update(updateData)
         .eq('id', selected.id)
       if (reqError) throw reqError
+      console.log('✅ Database update successful')
 
       // 2) Upsert the grade into vb_submissions
       const grade = payload.score ? parseFloat(payload.score) : null
