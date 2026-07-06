@@ -176,6 +176,7 @@ serve(async (req) => {
       formData.append('to', user.email)
       formData.append('subject', `[Dozentenportal] ${emailSubject}`)
       formData.append('html', emailContent)
+      formData.append('charset', 'utf-8')
 
       // Send email via Mailgun
       const mailgunResponse = await fetch(

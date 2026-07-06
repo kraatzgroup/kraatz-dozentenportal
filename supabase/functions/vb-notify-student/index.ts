@@ -501,6 +501,7 @@ serve(async (req) => {
         formData.append('to', student.email)
         formData.append('subject', `[Dozentenportal] ${emailSubject}`)
         formData.append('html', emailContent)
+        formData.append('charset', 'utf-8')
 
         const mailgunResponse = await fetch(
           `https://api.eu.mailgun.net/v3/${mailgunDomain}/messages`,

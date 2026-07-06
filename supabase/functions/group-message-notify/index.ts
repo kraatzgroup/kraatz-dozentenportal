@@ -241,6 +241,7 @@ Deno.serve(async (req) => {
         formData.append('to', recipientEmail);
         formData.append('subject', `Neue Nachricht in ${groupName} - Kraatz Group Portal`);
         formData.append('html', emailHtml);
+        formData.append('charset', 'utf-8');
 
         const mailgunResponse = await fetch(mailgunUrl, {
           method: 'POST',

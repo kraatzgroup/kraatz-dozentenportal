@@ -180,6 +180,7 @@ serve(async (req) => {
                 formData.append('to', admin.email)
                 formData.append('subject', `[Dozentenportal] ${emailSubject}`)
                 formData.append('html', emailContent)
+                formData.append('charset', 'utf-8')
 
                 const mailgunResponse = await fetch(
                   `https://api.eu.mailgun.net/v3/${mailgunDomain}/messages`,
@@ -252,6 +253,7 @@ serve(async (req) => {
               studentFormData.append('to', creator.email)
               studentFormData.append('subject', `[Dozentenportal] ${studentEmailSubject}`)
               studentFormData.append('html', studentEmailContent)
+              studentFormData.append('charset', 'utf-8')
 
               const studentMailgunResponse = await fetch(
                 `https://api.eu.mailgun.net/v3/${mailgunDomain}/messages`,

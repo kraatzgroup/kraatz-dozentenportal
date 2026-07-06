@@ -173,6 +173,7 @@ Deno.serve(async (req) => {
     formData.append('to', teilnehmerEmail);
     formData.append('subject', `Ihre Klausur wurde korrigiert: ${klausurTitle}`);
     formData.append('html', emailHtml);
+    formData.append('charset', 'utf-8');
 
     const mailgunResponse = await fetch(mailgunUrl, {
       method: 'POST',

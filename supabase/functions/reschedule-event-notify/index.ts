@@ -198,6 +198,7 @@ Deno.serve(async (req) => {
     formData.append('to', teilnehmerEmail);
     formData.append('subject', `Terminänderung: ${eventTitle} - Neuer Termin: ${newDate}`);
     formData.append('html', emailHtml);
+    formData.append('charset', 'utf-8');
 
     const mailgunResponse = await fetch(mailgunUrl, {
       method: 'POST',

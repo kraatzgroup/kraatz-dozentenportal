@@ -249,6 +249,7 @@ Deno.serve(async (req) => {
         formData.append('to', email);
         formData.append('subject', emailSubject);
         formData.append('html', emailHtml);
+        formData.append('charset', 'utf-8');
 
         const mailgunResponse = await fetch(mailgunUrl, {
           method: 'POST',
