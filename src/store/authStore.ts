@@ -17,7 +17,7 @@ interface AuthState {
   vbLegalAreas: string[];
   isSigningOut: boolean;
   isSettingUser: boolean;
-  setUser: (user: User | null) => void;
+  setUser: (user: User | null, force?: boolean) => void;
   setFullName: (fullName: string | null) => void;
   signOut: () => Promise<void>;
 }
@@ -38,7 +38,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isSigningOut: false,
   isSettingUser: false,
   setFullName: (fullName) => set({ fullName }),
-  setUser: (user) => {
+  setUser: (user, force = false) => {
     // Don't set user if we're in the middle of signing out
     const { isSigningOut, isSettingUser, user: currentUser } = get();
     if (isSigningOut && user) {
@@ -46,14 +46,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return;
     }
 
-    // Prevent duplicate user setting for the same user
-    if (user && currentUser && user.id === currentUser.id && !isSigningOut) {
+    // Prevent duplicate user setting for the same user.
+    // On re-login (force=true) we always re-fetch the profile so that any
+    // server-side changes to roles/permissions are picked up fresh.
+    if (!force && user && currentUser && user.id === currentUser.id && !isSigningOut) {
       console.log('AuthStore: User already set, skipping duplicate set');
       return;
     }
 
     // Prevent multiple simultaneous user setting operations
-    if (isSettingUser && user) {
+    if (!force && isSettingUser && user) {
       console.log('AuthStore: User setting already in progress, skipping');
       return;
     }

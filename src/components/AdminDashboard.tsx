@@ -108,7 +108,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   const isRestrictedMode = isAccountingMode || isVerwaltungMode;
   const navigate = useNavigate();
   const { signOut, user, fullName } = useAuthStore();
-  const { userRole, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb } = useAuthStore();
+  const { userRole, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isDozent } = useAuthStore();
   const { unreadCount, fetchUnreadCount } = useChatStore();
   const { undownloadedCount, fetchUndownloadedCount } = useFileStore();
   const { addToast } = useToastStore();
@@ -1895,7 +1895,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 <Users className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">Elite-Kleingruppe</span>
               </button>
-              {(isAdmin || isVerwaltungMode) && (
+              {(isAdmin || isVerwaltungMode) && !isDozent && (
               <button
                 onClick={() => { setActiveTab('vertraege'); }}
                 className={`${
@@ -4331,7 +4331,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
           <EliteKleingruppe />
         )}
 
-        {activeTab === 'vertraege' && (
+        {activeTab === 'vertraege' && !isDozent && (
           <VertraegeManager />
         )}
       </main>

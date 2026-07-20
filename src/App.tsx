@@ -150,25 +150,37 @@ function App() {
     // Auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       console.log('🔄 App: Auth state changed:', _event, session?.user?.email);
-      
-      // Check if user actually changed (switching users)
+
       const currentUser = useAuthStore.getState().user;
-      if (currentUser && session?.user && currentUser.id === session.user.id && _event !== 'SIGNED_OUT') {
-        console.log('⏭️ App: User already set, ignoring duplicate auth event');
-        return;
-      }
-      
-      // User changed or signed out - re-initialize
-      console.log('🔄 App: User changed or signed out, re-initializing');
-      setUser(session?.user ?? null);
-      
-      // Only re-initialize if user actually changed (not just auth state refresh)
-      if (_event === 'SIGNED_IN' || _event === 'SIGNED_OUT') {
-        // Reset app state and re-initialize
+
+      // On (re-)login always re-validate the session and re-fetch the profile,
+      // even for the same user id, so stale cached roles/permissions are refreshed.
+      if (_event === 'SIGNED_IN') {
+        console.log('🔄 App: SIGNED_IN, forcing fresh session/auth check');
+        setUser(session?.user ?? null, true);
         setAppLoading(true);
         setAppReady(false);
         initializeApp();
+        return;
       }
+
+      if (_event === 'SIGNED_OUT') {
+        console.log('🔄 App: SIGNED_OUT, clearing user and re-initializing');
+        setUser(null);
+        setAppLoading(true);
+        setAppReady(false);
+        initializeApp();
+        return;
+      }
+
+      // Other events (e.g. TOKEN_REFRESHED, USER_UPDATED): only act if the user changed
+      if (currentUser && session?.user && currentUser.id === session.user.id) {
+        console.log('⏭️ App: User unchanged, ignoring auth event');
+        return;
+      }
+
+      console.log('🔄 App: User changed, updating');
+      setUser(session?.user ?? null);
     });
 
     return () => subscription.unsubscribe();
