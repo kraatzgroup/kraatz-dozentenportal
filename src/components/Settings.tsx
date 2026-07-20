@@ -8,7 +8,7 @@ import { Logo } from './Logo';
 
 export function Settings({ hideChrome = false }: { hideChrome?: boolean } = {}) {
   const navigate = useNavigate();
-  const { user, isDozent } = useAuthStore();
+  const { user, isDozent, setFullName } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +33,7 @@ export function Settings({ hideChrome = false }: { hideChrome?: boolean } = {}) 
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [pwFieldsEditable, setPwFieldsEditable] = useState(false);
 
   useEffect(() => {
     fetchProfile();
@@ -143,6 +144,9 @@ export function Settings({ hideChrome = false }: { hideChrome?: boolean } = {}) 
           throw new Error('Passwort konnte nicht aktualisiert werden');
         }
       }
+
+      // Keep the global auth store in sync so the greeting updates immediately
+      setFullName(profile.full_name || null);
 
       setSuccess('Profil erfolgreich aktualisiert');
       
@@ -484,6 +488,13 @@ export function Settings({ hideChrome = false }: { hideChrome?: boolean } = {}) 
                           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20 pr-10"
                           placeholder="Mindestens 6 Zeichen"
                           minLength={6}
+                          readOnly={!pwFieldsEditable}
+                          onFocus={() => setPwFieldsEditable(true)}
+                          autoComplete="new-password"
+                          data-1p-ignore
+                          data-lpignore="true"
+                          data-enpassignore="true"
+                          data-form-type="other"
                         />
                         <button
                           type="button"
@@ -513,6 +524,13 @@ export function Settings({ hideChrome = false }: { hideChrome?: boolean } = {}) 
                           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20 pr-10"
                           placeholder="Passwort wiederholen"
                           minLength={6}
+                          readOnly={!pwFieldsEditable}
+                          onFocus={() => setPwFieldsEditable(true)}
+                          autoComplete="new-password"
+                          data-1p-ignore
+                          data-lpignore="true"
+                          data-enpassignore="true"
+                          data-form-type="other"
                         />
                         <button
                           type="button"

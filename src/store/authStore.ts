@@ -18,6 +18,7 @@ interface AuthState {
   isSigningOut: boolean;
   isSettingUser: boolean;
   setUser: (user: User | null) => void;
+  setFullName: (fullName: string | null) => void;
   signOut: () => Promise<void>;
 }
 
@@ -36,6 +37,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   vbLegalAreas: [],
   isSigningOut: false,
   isSettingUser: false,
+  setFullName: (fullName) => set({ fullName }),
   setUser: (user) => {
     // Don't set user if we're in the middle of signing out
     const { isSigningOut, isSettingUser, user: currentUser } = get();

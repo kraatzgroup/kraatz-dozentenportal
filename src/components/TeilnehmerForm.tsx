@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Save, UserPlus, User, MapPin, Trash2, AlertTriangle, Upload, Calendar, Clock, BookOpen, ChevronDown, ChevronUp, FileText, FileText as FileContract, Edit2, Gift, Plus, Info, ArrowLeft, Coins } from 'lucide-react';
+import { X, Save, UserPlus, User, MapPin, Trash2, AlertTriangle, Upload, Calendar, Clock, BookOpen, ChevronDown, ChevronUp, FileText, FileText as FileContract, Edit2, Gift, Plus, Info, ArrowLeft, Coins, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { useToastStore } from '../store/toastStore';
@@ -101,6 +101,7 @@ export function TeilnehmerForm({ teilnehmer, participantType, onClose, onSaved, 
   const [showImportedLessons, setShowImportedLessons] = useState(true);
   const [activeTab, setActiveTab] = useState<'stammdaten' | 'dozenten' | 'vertraege' | 'credits' | 'notizen'>('stammdaten');
   const [contracts, setContracts] = useState<any[]>([]);
+  const [contractDocuments, setContractDocuments] = useState<Record<string, any[]>>({});
   const [showContractDialog, setShowContractDialog] = useState(false);
   const [editingContract, setEditingContract] = useState<any>(null);
   const [contractPackages, setContractPackages] = useState<any[]>([]);
@@ -721,6 +722,21 @@ export function TeilnehmerForm({ teilnehmer, participantType, onClose, onSaved, 
           // Fetch aggregated legal area hours for all contracts
           if (sorted.length > 0) {
             const contractIds = sorted.map(c => c.id);
+
+            // Fetch assigned (signed) contract documents grouped by contract
+            const { data: docs } = await supabase
+              .from('signed_documents')
+              .select('id, title, signed_file_path, contract_id')
+              .in('contract_id', contractIds)
+              .not('signed_file_path', 'is', null)
+              .order('created_at', { ascending: false });
+            const docsByContract: Record<string, any[]> = {};
+            (docs || []).forEach((d: any) => {
+              if (!d.contract_id) return;
+              (docsByContract[d.contract_id] ||= []).push(d);
+            });
+            setContractDocuments(docsByContract);
+
             const { data: packages, error: packagesError } = await supabase
               .from('contract_packages')
               .select('id, contract_package_legal_areas (legal_area, hours)')
@@ -783,6 +799,26 @@ export function TeilnehmerForm({ teilnehmer, participantType, onClose, onSaved, 
 
     fetchContracts();
   }, [teilnehmer?.id]);
+
+  const downloadContractDocument = async (doc: { title: string; signed_file_path: string }) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('signed-documents')
+        .download(doc.signed_file_path);
+      if (error || !data) throw error || new Error('Download fehlgeschlagen');
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${doc.title}_signiert.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      addToast('Fehler beim Herunterladen des Dokuments', 'error');
+    }
+  };
 
   useEffect(() => {
     const fetchVbData = async () => {
@@ -2372,6 +2408,30 @@ export function TeilnehmerForm({ teilnehmer, participantType, onClose, onSaved, 
                                   <span className="text-gray-500">Gesamtstunden:</span> {totalHours} Std.
                                 </div>
                               </div>
+
+                              {/* Zugeordnete Vertragsdokumente (PDFs) */}
+                              {contractDocuments[contract.id]?.length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-gray-100">
+                                  <p className="text-xs font-medium text-gray-500 mb-2">
+                                    Dokumente ({contractDocuments[contract.id].length})
+                                  </p>
+                                  <div className="space-y-1.5">
+                                    {contractDocuments[contract.id].map((doc: any) => (
+                                      <button
+                                        key={doc.id}
+                                        type="button"
+                                        onClick={() => downloadContractDocument(doc)}
+                                        className="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-md border border-gray-200 hover:border-primary hover:bg-primary/5 transition-colors text-left"
+                                        title="Signiertes Dokument herunterladen"
+                                      >
+                                        <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                        <span className="flex-1 min-w-0 truncate text-gray-700">{doc.title}</span>
+                                        <Download className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                             <button
                               type="button"
