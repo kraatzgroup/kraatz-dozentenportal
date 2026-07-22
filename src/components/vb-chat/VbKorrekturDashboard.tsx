@@ -162,6 +162,67 @@ export const VbKorrekturDashboard: React.FC = () => {
   const [returnCase, setReturnCase] = useState<VbCase | null>(null)
   const [returnTarget, setReturnTarget] = useState<{ id: string; name: string; available: boolean } | null>(null)
   const [isReturning, setIsReturning] = useState(false)
+  const [punkteschemaCase, setPunkteschemaCase] = useState<VbCase | null>(null)
+  const [punkteschemaScrollTarget, setPunkteschemaScrollTarget] = useState<string | null>(null)
+
+  // Open the Punkteschema download modal: expand the folder of the assigned
+  // Sachverhalt material (incl. ancestors) plus its "Punkteschema" subfolder.
+  const handleOpenPunkteschemaModal = async (c: VbCase) => {
+    if (teachingMaterials.length === 0) {
+      await fetchTeachingMaterials()
+    }
+    if (folderStructure.length === 0) {
+      await fetchFolderStructure()
+    }
+
+    const expandedSet = new Set<string>()
+    let scrollTarget: string | null = null
+    if (c.case_study_material_url) {
+      const currentMaterial = teachingMaterials.find(m => m.file_url === c.case_study_material_url)
+      if (currentMaterial?.folder_id) {
+        expandedSet.add(currentMaterial.folder_id)
+
+        // Expand all ancestor folders
+        let currentFolderId: string | null = currentMaterial.folder_id
+        while (currentFolderId) {
+          const parentFolder = folderStructure.find(f => f.id === currentFolderId)
+          if (parentFolder?.parent_id) {
+            expandedSet.add(parentFolder.parent_id)
+            currentFolderId = parentFolder.parent_id
+          } else {
+            break
+          }
+        }
+
+        // Additionally expand the "Punkteschema" subfolder of the material's folder
+        const punkteschemaFolder = folderStructure.find(f =>
+          f.parent_id === currentMaterial.folder_id &&
+          f.name.toLowerCase().includes('punkteschema')
+        )
+        if (punkteschemaFolder) {
+          expandedSet.add(punkteschemaFolder.id)
+        }
+
+        // Scroll target: the Punkteschema folder if found, otherwise the material's folder
+        scrollTarget = punkteschemaFolder?.id || currentMaterial.folder_id
+      }
+    }
+
+    setExpandedFolders(expandedSet)
+    setPunkteschemaScrollTarget(scrollTarget)
+    setPunkteschemaCase(c)
+  }
+
+  // Scroll to the target folder once the Punkteschema modal is rendered
+  useEffect(() => {
+    if (!punkteschemaCase || !punkteschemaScrollTarget) return
+    const timer = setTimeout(() => {
+      document
+        .getElementById(`download-folder-${punkteschemaScrollTarget}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [punkteschemaCase, punkteschemaScrollTarget])
 
   const handleOpenReturnModal = async (c: VbCase) => {
     setReturnCase(c)
@@ -1092,6 +1153,54 @@ export const VbKorrekturDashboard: React.FC = () => {
     )
   }
 
+  // Recursive browse-only folder renderer with per-file download buttons
+  const renderDownloadFolder = (folder: MaterialFolder): React.ReactNode => {
+    const folderMaterials = materialsByFolder[folder.id] || []
+    const isExpanded = expandedFolders.has(folder.id)
+    const subFolders = folderStructure.filter(f => f.parent_id === folder.id)
+
+    return (
+      <React.Fragment key={folder.id}>
+        <div
+          id={`download-folder-${folder.id}`}
+          onClick={() => toggleFolder(folder.id)}
+          className="group relative bg-white rounded-xl shadow-sm border hover:shadow-md hover:border-primary/30 transition-all cursor-pointer touch-manipulation border-gray-100 flex items-center gap-3 px-3 py-5"
+        >
+          <div className="text-2xl flex-shrink-0">📁</div>
+          <span className="flex-1 text-sm font-medium text-gray-700 group-hover:text-primary truncate">
+            {folder.name}
+          </span>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {isExpanded ? (
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-gray-400" />
+            )}
+          </div>
+        </div>
+
+        {isExpanded && (
+          <div className="ml-8 mt-2 space-y-2">
+            {subFolders.map(subFolder => renderDownloadFolder(subFolder))}
+            {folderMaterials.map(material => (
+              <button
+                key={material.id}
+                onClick={() => downloadFile(material.file_url, material.file_name || material.title)}
+                className="w-full text-left p-3 border border-gray-200 rounded-lg transition-colors flex items-center justify-between group hover:bg-gray-50"
+              >
+                <div>
+                  <p className="font-medium text-gray-900 text-sm">{material.title}</p>
+                  <p className="text-xs text-gray-500">{material.file_name}</p>
+                </div>
+                <Download className="w-4 h-4 text-primary flex-shrink-0" />
+              </button>
+            ))}
+          </div>
+        )}
+      </React.Fragment>
+    )
+  }
+
   const handleSave = async (payload: KorrekturSavePayload) => {
     if (!selected || !user) return
     setIsSaving(true)
@@ -1262,6 +1371,7 @@ export const VbKorrekturDashboard: React.FC = () => {
 
       setSelected(null)
       await fetchCases()
+      await fetchAllCasesForTabs()
       
       // Reset material selection state
       setSelectedCorrectionMaterialUrls({})
@@ -1425,6 +1535,15 @@ export const VbKorrekturDashboard: React.FC = () => {
                           >
                             <Download className="w-4 h-4" />
                             Herunterladen
+                          </button>
+                        )}
+                        {activeTab === 'submissions' && (
+                          <button
+                            onClick={() => handleOpenPunkteschemaModal(c)}
+                            className="flex items-center gap-1 px-3 py-2 text-sm border border-green-400 text-green-600 rounded-lg hover:bg-green-50"
+                          >
+                            <Download className="w-4 h-4" />
+                            Punkteschema herunterladen
                           </button>
                         )}
                         {(c.status === 'corrected' && !c.video_correction_url) && (
@@ -1644,6 +1763,45 @@ export const VbKorrekturDashboard: React.FC = () => {
           selectedMaterialFileNames={selectedCorrectionMaterialFileNames}
           onClearFile={handleClearFile}
         />
+      )}
+
+      {/* Punkteschema download modal (browse-only, per-file download) */}
+      {punkteschemaCase && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setPunkteschemaCase(null)
+            }
+          }}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Sticky Header */}
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-6 z-10 rounded-t-lg">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Punkteschema herunterladen</h3>
+                <button
+                  onClick={() => setPunkteschemaCase(null)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto p-6 rounded-b-lg">
+              <div className="space-y-2">
+                {folderStructure
+                  .filter(f => f.parent_id === null && (!punkteschemaCase.legal_area || f.name === punkteschemaCase.legal_area))
+                  .map(folder => renderDownloadFolder(folder))}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {showMaterialSelector && (
