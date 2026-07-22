@@ -122,6 +122,25 @@ function App() {
               } else if (userRole === 'teilnehmer' && window.location.pathname === '/dashboard' && !window.location.search.includes('tab=')) {
                 console.log('✅ App: REDIRECT DECISION: Regular participant on /dashboard → redirecting to /dashboard?tab=dashboard');
                 window.history.replaceState({}, '', '/dashboard?tab=dashboard');
+              } else if (userRole === 'dozent' && additionalRoles?.includes('videobesprechung_dozent') && user) {
+                // VB Springer dozenten land directly on the Korrektur dashboard after login
+                const path = window.location.pathname;
+                const isDefaultLanding = path === '/' || path === '/login' || (path === '/dashboard' && !window.location.search.includes('tab='));
+                if (isDefaultLanding) {
+                  const { data: springerProfile } = await supabase
+                    .from('profiles')
+                    .select('vb_springer')
+                    .eq('id', user.id)
+                    .maybeSingle();
+                  if (springerProfile?.vb_springer === true) {
+                    console.log('✅ App: REDIRECT DECISION: VB Springer dozent → redirecting to /klausurenbesprechung/korrektur');
+                    window.history.replaceState({}, '', '/klausurenbesprechung/korrektur');
+                  } else {
+                    console.log('✅ App: REDIRECT DECISION: No redirect needed for userRole:', userRole);
+                  }
+                } else {
+                  console.log('✅ App: REDIRECT DECISION: No redirect needed, staying on current page');
+                }
               } else {
                 console.log('✅ App: REDIRECT DECISION: No redirect needed for userRole:', userRole);
               }
@@ -248,7 +267,7 @@ function App() {
           <Route path="/elite-kleingruppe" element={<Navigate to="/dashboard" replace />} />
 
           {/* Login route */}
-          <Route path="/login" element={<AuthComponent />} />
+          <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <AuthComponent />} />
 
           {/* VB pages - using VbLayout wrapper */}
           <Route path="/klausurenbesprechung" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbLandingRedirect /></VbLayout>} />

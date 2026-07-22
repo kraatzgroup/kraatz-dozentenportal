@@ -140,7 +140,7 @@ serve(async (req) => {
                     </div>
                     
                     <div style="padding: 30px 20px; background-color: white;">
-                      <h2 style="color: #333; margin: 0 0 20px 0; font-size: 20px;">Neue Support-Anfrage (Videobesprechung)</h2>
+                      <h2 style="color: #333; margin: 0 0 20px 0; font-size: 20px;">Neue Support-Anfrage (Videoklausurenkorrektur)</h2>
                       
                       <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
                         Hallo ${admin.first_name} ${admin.last_name},

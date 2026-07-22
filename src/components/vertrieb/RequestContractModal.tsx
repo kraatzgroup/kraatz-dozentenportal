@@ -121,6 +121,7 @@ export function RequestContractModal({ leads, onClose, onSuccess, preselectedLea
         .from('profiles')
         .select('id, full_name, legal_areas')
         .eq('role', 'dozent')
+        .neq('vb_springer', true)
         .order('full_name');
       if (data) setDozenten(data);
     };

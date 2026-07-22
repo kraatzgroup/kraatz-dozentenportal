@@ -31,10 +31,9 @@ Deno.serve(async (req) => {
     const { email, fullName } = await req.json() as ResendEmailRequest;
     console.log(`📋 [${requestId}] Request data:`, { email, fullName });
 
-    // Determine base URL based on origin (localhost vs production)
-    const origin = req.headers.get('origin') || '';
-    const baseUrl = origin.includes('localhost') ? origin : 'https://portal.kraatz-group.de';
-    console.log(`🌐 [${requestId}] Origin: ${origin}, Base URL: ${baseUrl}`);
+    // Always use the production URL in welcome emails (never localhost)
+    const baseUrl = 'https://portal.kraatz-group.de';
+    console.log(`🌐 [${requestId}] Base URL: ${baseUrl}`);
 
     // Validate input
     if (!email || !fullName) {

@@ -1807,7 +1807,7 @@ export function TeilnehmerForm({ teilnehmer, participantType, onClose, onSaved, 
                     )}
                   </div>
 
-                  {/* Videobesprechung Section */}
+                  {/* Videoklausurenkorrektur Section */}
                   <div className="space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
                     <label className="flex items-center cursor-pointer">
                       <input
@@ -1816,7 +1816,7 @@ export function TeilnehmerForm({ teilnehmer, participantType, onClose, onSaved, 
                         onChange={(e) => setFormData({ ...formData, is_vb: e.target.checked })}
                         className="rounded border-gray-300 text-primary focus:ring-primary/20"
                       />
-                      <span className="text-sm text-gray-700">Videobesprechung (Teilnehmer)</span>
+                      <span className="text-sm text-gray-700">Videoklausurenkorrektur (Teilnehmer)</span>
                     </label>
                   </div>
 

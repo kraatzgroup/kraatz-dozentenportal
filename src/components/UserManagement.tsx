@@ -117,6 +117,7 @@ export function UserManagement() {
         .from('profiles')
         .select('id, full_name, legal_areas')
         .eq('role', 'dozent')
+        .neq('vb_springer', true)
         .order('full_name');
       if (data) setDozenten(data);
     };
@@ -947,12 +948,17 @@ export function UserManagement() {
                                       r === 'verwaltung' ? 'Verwaltung' :
                                       r === 'vertrieb' ? 'Vertrieb' :
                                       r === 'teilnehmer' ? 'Teilnehmer' :
-                                      r === 'videobesprechung' ? 'Videobesprechung' :
-                                      r === 'videobesprechung_dozent' ? 'Videobesprechung' :
+                                      r === 'videobesprechung' ? 'Videoklausurenkorrektur' :
+                                      r === 'videobesprechung_dozent' ? 'Videoklausurenkorrektur' :
                                       r === 'dozent' ? 'Dozent' : r}
                                   </span>
                                 ))}
                               </>
+                            )}
+                            {(user as any).vb_springer === true && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-200">
+                                Springer
+                              </span>
                             )}
                           </div>
                         </div>
@@ -1143,7 +1149,7 @@ export function UserManagement() {
                       <h3 className="text-lg font-medium text-gray-900 mb-4">
                         {dialog.type === 'new' ?
                           (dialog.userData.role === 'teilnehmer' ?
-                            (dialog.userData.isVideobesprechung ? 'Teilnehmer (Videobesprechung) einladen' : 'Teilnehmer (Elite-Kleingruppe) einladen') :
+                            (dialog.userData.isVideobesprechung ? 'Teilnehmer (Videoklausurenkorrektur) einladen' : 'Teilnehmer (Elite-Kleingruppe) einladen') :
                            dialog.userData.role === 'verwaltung' ? 'Verwaltung / Buchhaltung / Vertrieb einladen' :
                            'Dozent einladen') :
                          dialog.type === 'edit' ? 'User bearbeiten' :
@@ -1218,8 +1224,8 @@ export function UserManagement() {
                                   { value: 'buchhaltung', label: 'Buchhaltung' },
                                   { value: 'verwaltung', label: 'Verwaltung' },
                                   { value: 'vertrieb', label: 'Vertrieb' },
-                                  { value: 'videobesprechung', label: 'Videobesprechung (Teilnehmer)' },
-                                  { value: 'videobesprechung_dozent', label: 'Videobesprechung (Dozent)' },
+                                  { value: 'videobesprechung', label: 'Videoklausurenkorrektur (Teilnehmer)' },
+                                  { value: 'videobesprechung_dozent', label: 'Videoklausurenkorrektur (Dozent)' },
                                 ]
                                   .filter(r => r.value !== dialog.userData.role)
                                   .map(r => (
@@ -1251,7 +1257,7 @@ export function UserManagement() {
                           {(dialog.type === 'edit' || dialog.type === 'new') && (dialog.userData.additional_roles || []).includes('videobesprechung_dozent') && (
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Videobesprechung Rechtsgebiete
+                                Videoklausurenkorrektur Rechtsgebiete
                               </label>
                               <div className="space-y-2">
                                 {['Zivilrecht', 'Strafrecht', 'Öffentliches Recht'].map((area) => (
@@ -1276,7 +1282,7 @@ export function UserManagement() {
                                 ))}
                               </div>
                               <p className="mt-2 text-xs text-gray-500">
-                                Wählen Sie die Rechtsgebiete aus, für die dieser Dozent Videobesprechungen durchführen darf.
+                                Wählen Sie die Rechtsgebiete aus, für die dieser Dozent Videoklausurenkorrekturen durchführen darf.
                               </p>
                             </div>
                           )}
@@ -1370,7 +1376,7 @@ export function UserManagement() {
                                   }}
                                   className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                                 />
-                                <span className="ml-2 text-sm font-medium text-gray-700">Videobesprechung (Teilnehmer)</span>
+                                <span className="ml-2 text-sm font-medium text-gray-700">Videoklausurenkorrektur (Teilnehmer)</span>
                               </label>
                             </div>
                           )}
@@ -1564,8 +1570,8 @@ export function UserManagement() {
                     }}
                     className="w-full p-4 text-left border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors"
                   >
-                    <div className="font-medium text-gray-900">Teilnehmer (Videobesprechung)</div>
-                    <div className="text-sm text-gray-500 mt-1">Videobesprechung Teilnehmer mit Login-Zugang</div>
+                    <div className="font-medium text-gray-900">Teilnehmer (Videoklausurenkorrektur)</div>
+                    <div className="text-sm text-gray-500 mt-1">Videoklausurenkorrektur Teilnehmer mit Login-Zugang</div>
                   </button>
                   <button
                     onClick={() => {

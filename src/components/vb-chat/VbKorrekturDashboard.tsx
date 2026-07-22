@@ -292,7 +292,7 @@ export const VbKorrekturDashboard: React.FC = () => {
       // Fetch dozent's vacation status
       const { data: profile } = await supabase
         .from('profiles')
-        .select('vacation_start_date, vacation_end_date, email_notifications_enabled')
+        .select('vacation_start_date, vacation_end_date, email_notifications_enabled, vb_available, vb_springer')
         .eq('id', user?.id)
         .single();
 
@@ -321,6 +321,35 @@ export const VbKorrekturDashboard: React.FC = () => {
       setIsOnVacation(isCurrentlyOnVacation || profile?.email_notifications_enabled === false)
       console.log('🏖️ VbKorrekturDashboard: Vacation status:', isCurrentlyOnVacation, 'Email notifications:', profile?.email_notifications_enabled)
 
+      // Springer mode: determine which legal areas open (unclaimed) cases are visible for.
+      // null = no restriction (regular available dozent)
+      const isVbAvailable = profile?.vb_available !== false
+      const isSpringer = profile?.vb_springer === true
+      let openCaseAreas: string[] | null = null
+      if (!isVbAvailable) {
+        // Not available: new/open cases go to the Springer, hide them here
+        openCaseAreas = []
+      } else if (isSpringer) {
+        // Springer only sees open cases for areas where NO regular dozent is available
+        const { data: regulars } = await supabase
+          .from('profiles')
+          .select('vb_legal_areas, vb_available, vacation_start_date, vacation_end_date')
+          .eq('role', 'dozent')
+          .or('vb_springer.is.null,vb_springer.eq.false')
+          .not('vb_legal_areas', 'is', null)
+
+        const covered = new Set<string>()
+        for (const r of (regulars || [])) {
+          if (r.vb_available === false) continue
+          const vs = r.vacation_start_date ? new Date(r.vacation_start_date) : null
+          const ve = r.vacation_end_date ? new Date(r.vacation_end_date) : null
+          if (vs && ve && today >= vs && today <= ve) continue
+          for (const a of (r.vb_legal_areas || [])) covered.add(a)
+        }
+        openCaseAreas = areas.filter(a => !covered.has(a))
+        console.log('🤸 VbKorrekturDashboard: Springer mode, uncovered areas:', openCaseAreas)
+      }
+
       let query = supabase
         .from('vb_case_study_requests')
         .select('*, student:profiles!vb_case_study_requests_profile_id_fkey(first_name,last_name,email)')
@@ -337,6 +366,9 @@ export const VbKorrekturDashboard: React.FC = () => {
           case 'requests':
             // Show only requested cases (not materials_ready) - filter by legal areas
             query = query.eq('status', 'requested')
+            if (openCaseAreas !== null) {
+              query = query.in('legal_area', openCaseAreas.length > 0 ? openCaseAreas : ['__none__'])
+            }
             if (areas.length > 0 && legalAreaFilter !== 'all') {
               query = query.eq('legal_area', legalAreaFilter)
             }
@@ -344,6 +376,9 @@ export const VbKorrekturDashboard: React.FC = () => {
           case 'materials_sent':
             // Show materials_ready cases - filter by legal areas
             query = query.eq('status', 'materials_ready')
+            if (openCaseAreas !== null) {
+              query = query.in('legal_area', openCaseAreas.length > 0 ? openCaseAreas : ['__none__'])
+            }
             if (areas.length > 0 && legalAreaFilter !== 'all') {
               query = query.eq('legal_area', legalAreaFilter)
             }

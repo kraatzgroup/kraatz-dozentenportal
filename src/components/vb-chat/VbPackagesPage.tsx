@@ -62,7 +62,7 @@ export const VbPackagesPage: React.FC = () => {
       answer: "Nein, Du kannst die Klausuren nacheinander bearbeiten und ein Rechtsgebiet auswählen. So bist Du absolut flexibel in Deiner Planung!"
     },
     {
-      question: "Wann erhalte ich meine Videobesprechung?",
+      question: "Wann erhalte ich meine Videoklausurenkorrektur?",
       answer: "Innerhalb von 48 Stunden stellen Dir unsere Dozenten die Klausurbearbeitung als Video-Datei zur Verfügung."
     },
     {

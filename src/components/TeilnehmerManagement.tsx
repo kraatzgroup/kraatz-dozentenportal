@@ -288,10 +288,10 @@ export function TeilnehmerManagement({ onBack, isAdmin = false }: TeilnehmerMana
             )}
           </div>
 
-          {/* Videobesprechung Participants (Admin only) */}
+          {/* Videoklausurenkorrektur Participants (Admin only) */}
           {isAdmin && (
             <div>
-              <h4 className="text-sm font-medium text-gray-900 mb-3">Videobesprechung Teilnehmer</h4>
+              <h4 className="text-sm font-medium text-gray-900 mb-3">Videoklausurenkorrektur Teilnehmer</h4>
               {isLoadingVb ? (
                 <div className="flex justify-center py-8 bg-gray-50 rounded-md">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -299,9 +299,9 @@ export function TeilnehmerManagement({ onBack, isAdmin = false }: TeilnehmerMana
               ) : vbTeilnehmer.length === 0 ? (
                 <div className="text-center py-8 bg-gray-50 rounded-md">
                   <User className="mx-auto h-12 w-12 text-gray-400" />
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">Keine Videobesprechung Teilnehmer</h3>
+                  <h3 className="mt-2 text-sm font-medium text-gray-900">Keine Videoklausurenkorrektur Teilnehmer</h3>
                   <p className="mt-1 text-sm text-gray-500">
-                    Videobesprechung Teilnehmer werden über die Benutzerverwaltung verwaltet.
+                    Videoklausurenkorrektur Teilnehmer werden über die Benutzerverwaltung verwaltet.
                   </p>
                 </div>
               ) : (
@@ -320,7 +320,7 @@ export function TeilnehmerManagement({ onBack, isAdmin = false }: TeilnehmerMana
                               <div className="flex items-center">
                                 <h4 className="text-sm font-medium text-gray-900">{person.full_name}</h4>
                                 <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                                  Videobesprechung
+                                  Videoklausurenkorrektur
                                 </span>
                               </div>
                               <div className="flex items-center mt-1 text-sm text-gray-500">

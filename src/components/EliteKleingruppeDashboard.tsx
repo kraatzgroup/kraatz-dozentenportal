@@ -1332,7 +1332,7 @@ export function EliteKleingruppeDashboard() {
                   className={`py-4 px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors ${activeTab === 'videobesprechung' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
                 >
                   <GraduationCap className="h-4 w-4 mr-2" />
-                  Videobesprechung
+                  Videoklausurenkorrektur
                 </button>
                 <button
                   onClick={() => setActiveTab('masterclass')}
@@ -4337,7 +4337,7 @@ export function EliteKleingruppeDashboard() {
       )}
 
       
-      {/* Videobesprechung Tab - Redirect to videobesprechung dashboard */}
+      {/* Videoklausurenkorrektur Tab - Redirect to videobesprechung dashboard */}
       {activeTab === 'videobesprechung' && (
         <div className="space-y-6">
           <div className="bg-white rounded-lg shadow p-8 text-center">

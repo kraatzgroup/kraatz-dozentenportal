@@ -452,7 +452,7 @@ export const VbResultsPage = () => {
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                     <div className="hidden sm:flex items-center space-x-2 px-3 py-1 bg-blue-100 text-primary rounded-full text-xs sm:text-sm whitespace-nowrap">
                       <CheckCircle className="w-4 h-4" />
-                      <span>Videobesprechung verfügbar</span>
+                      <span>Videoklausurenkorrektur verfügbar</span>
                     </div>
                     <button
                       onClick={() => openVideo(result.video_correction_url, result.id)}

@@ -19,7 +19,7 @@ export const VbDashboard: React.FC = () => {
     <div className="h-full flex flex-col bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <h1 className="text-2xl font-bold text-gray-900">Videobesprechung</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Videoklausurenkorrektur</h1>
         <p className="text-sm text-gray-600 mt-1">Ihre Lernplattform für Fallstudien und Video-Lektionen</p>
       </div>
 
@@ -97,7 +97,7 @@ export const VbDashboard: React.FC = () => {
 
             {/* Welcome Message */}
             <div className="mt-6 bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
-              <h2 className="text-lg font-semibold text-gray-900 mb-2">Willkommen bei Videobesprechung!</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-2">Willkommen bei Videoklausurenkorrektur!</h2>
               <p className="text-gray-600">
                 Dies ist Ihre persönliche Lernplattform. Hier können Sie Fallstudien bearbeiten, 
                 Video-Lektionen ansehen und mit anderen Teilnehmern chatten.

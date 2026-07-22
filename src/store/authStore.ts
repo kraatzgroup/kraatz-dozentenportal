@@ -68,7 +68,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.log('AuthStore: Fetching profile for user:', user.id);
       supabase
         .from('profiles')
-        .select('role, additional_roles, full_name')
+        .select('role, additional_roles, full_name, vb_legal_areas')
         .eq('id', user.id)
         .single()
         .then(async ({ data, error }) => {
@@ -113,7 +113,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               isMaterial: allRoles.includes('material'),
               userRole: data.role,
               additionalRoles: data.additional_roles || [],
-              vbLegalAreas: [],
+              vbLegalAreas: data.vb_legal_areas || [],
               isSettingUser: false
             });
             console.log('AuthStore: User state updated successfully');

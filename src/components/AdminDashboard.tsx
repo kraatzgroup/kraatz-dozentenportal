@@ -1135,6 +1135,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
         .from('profiles')
         .select('*')
         .or('role.eq.dozent,additional_roles.cs.{dozent}')
+        .neq('vb_springer', true)
         .order('full_name');
 
       if (error) throw error;
@@ -2547,7 +2548,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                             {t.is_vb && (
                               <div className="mt-1">
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                                  Videobesprechung
+                                  Videoklausurenkorrektur
                                 </span>
                               </div>
                             )}
@@ -2840,7 +2841,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                                   {t.is_vb && (
                                     <div className="mt-1">
                                       <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                                        Videobesprechung
+                                        Videoklausurenkorrektur
                                       </span>
                                     </div>
                                   )}
@@ -4419,8 +4420,8 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 }}
                 className="w-full p-4 text-left border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors"
               >
-                <div className="font-medium text-gray-900">Teilnehmer (Videobesprechung)</div>
-                <div className="text-sm text-gray-500 mt-1">Videobesprechung Teilnehmer mit Login-Zugang</div>
+                <div className="font-medium text-gray-900">Teilnehmer (Videoklausurenkorrektur)</div>
+                <div className="text-sm text-gray-500 mt-1">Videoklausurenkorrektur Teilnehmer mit Login-Zugang</div>
               </button>
             </div>
             <button

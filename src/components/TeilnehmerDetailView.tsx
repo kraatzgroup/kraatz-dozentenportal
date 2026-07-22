@@ -249,6 +249,7 @@ export function TeilnehmerDetailView({ teilnehmerId, teilnehmerName, onBack, isA
         .from('profiles')
         .select('id, full_name')
         .eq('role', 'dozent')
+        .neq('vb_springer', true)
         .order('full_name');
 
       if (error) throw error;

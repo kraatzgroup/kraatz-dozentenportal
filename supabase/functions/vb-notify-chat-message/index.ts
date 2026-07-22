@@ -133,7 +133,7 @@ serve(async (req) => {
           
           <!-- Main Content -->
           <div style="padding: 30px 20px; background-color: white;">
-            <h2 style="color: #333; margin: 0 0 20px 0; font-size: 20px;">Neue Chat-Nachricht (Videobesprechung)</h2>
+            <h2 style="color: #333; margin: 0 0 20px 0; font-size: 20px;">Neue Chat-Nachricht (Videoklausurenkorrektur)</h2>
             
             <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
               Liebe/r ${user.first_name} ${user.last_name},

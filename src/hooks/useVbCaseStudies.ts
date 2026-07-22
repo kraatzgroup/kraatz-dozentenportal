@@ -141,22 +141,33 @@ export const useVbCaseStudies = () => {
         // Find designated VB dozenten whose vb_legal_areas cover this legal area
         const { data: dozenten } = await supabase
           .from('profiles')
-          .select('id, email, first_name, last_name, email_notifications_enabled, vacation_start_date, vacation_end_date')
+          .select('id, email, first_name, last_name, email_notifications_enabled, vacation_start_date, vacation_end_date, vb_springer, vb_available')
           .eq('role', 'dozent')
           .contains('vb_legal_areas', [requestData.legal_area]);
 
         const today = new Date();
         const studentName = fullName || user.email || 'Teilnehmer';
 
-        const recipients = (dozenten || []).filter(d => {
-          // skip dozenten who disabled email notifications
-          if (d.email_notifications_enabled === false) return false;
-          // skip dozenten currently on vacation
+        const isOnVacation = (d: any) => {
           if (d.vacation_start_date && d.vacation_end_date) {
             const start = new Date(d.vacation_start_date);
             const end = new Date(d.vacation_end_date);
-            if (today >= start && today <= end) return false;
+            if (today >= start && today <= end) return true;
           }
+          return false;
+        };
+
+        // Eligible = available (toggle on) and not on vacation
+        const eligible = (dozenten || []).filter(d => d.vb_available !== false && !isOnVacation(d));
+        const regularDozenten = eligible.filter(d => d.vb_springer !== true);
+        const springerDozenten = eligible.filter(d => d.vb_springer === true);
+
+        // Springer mode: only notify Springer if NO regular dozent is available
+        const targetDozenten = regularDozenten.length > 0 ? regularDozenten : springerDozenten;
+
+        const recipients = targetDozenten.filter(d => {
+          // skip dozenten who disabled email notifications
+          if (d.email_notifications_enabled === false) return false;
           return !!d.email;
         });
 

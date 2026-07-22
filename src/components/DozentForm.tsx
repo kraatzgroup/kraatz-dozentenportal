@@ -91,6 +91,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
   const [eliteAssignments, setEliteAssignments] = useState<Record<string, string[]>>({});
   const [isVbDozentEnabled, setIsVbDozentEnabled] = useState(false);
   const [vbLegalAreas, setVbLegalAreas] = useState<string[]>([]);
+  const [isVbSpringer, setIsVbSpringer] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const organigrammInputRef = useRef<HTMLInputElement>(null);
@@ -139,6 +140,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         if (additionalRoles.includes('videobesprechung_dozent')) {
           setIsVbDozentEnabled(true);
           setVbLegalAreas((dozent as any).vb_legal_areas || []);
+          setIsVbSpringer((dozent as any).vb_springer === true);
         }
       };
       fetchAssignments();
@@ -525,6 +527,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         phone: formData.phone.trim() || null,
         legal_areas: formData.legal_areas.length > 0 ? formData.legal_areas : null,
         vb_legal_areas: isVbDozentEnabled ? vbLegalAreas : null,
+        vb_springer: isVbDozentEnabled ? isVbSpringer : false,
         exam_types: formData.exam_types,
         street: formData.street.trim() || null,
         house_number: formData.house_number.trim() || null,
@@ -1307,7 +1310,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
             )}
           </div>
 
-          {/* Videobesprechung Dozent Section */}
+          {/* Videoklausurenkorrektur Dozent Section */}
           <div className="border-t pt-4">
             <label className="flex items-center cursor-pointer mb-4">
               <input
@@ -1316,14 +1319,14 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
                 onChange={(e) => setIsVbDozentEnabled(e.target.checked)}
                 className="h-4 w-4 text-primary border-gray-300 rounded focus:ring-primary"
               />
-              <span className="ml-2 text-sm font-medium text-gray-900">Videobesprechung (Dozent)</span>
+              <span className="ml-2 text-sm font-medium text-gray-900">Videoklausurenkorrektur (Dozent)</span>
             </label>
 
             {/* VB Legal Areas Panel */}
             {isVbDozentEnabled && (
               <div className="bg-gray-50 rounded-lg p-4">
                 <p className="text-sm text-gray-600 mb-3">
-                  Wählen Sie die Rechtsgebiete aus, für die dieser Dozent Videobesprechungen durchführen darf:
+                  Wählen Sie die Rechtsgebiete aus, für die dieser Dozent Videoklausurenkorrekturen durchführen darf:
                 </p>
                 <div className="space-y-2">
                   {['Zivilrecht', 'Strafrecht', 'Öffentliches Recht'].map((area) => (
@@ -1342,6 +1345,20 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
                       <span className="ml-2 text-sm text-gray-700">{area}</span>
                     </label>
                   ))}
+                </div>
+                <div className="mt-4 pt-3 border-t border-gray-200">
+                  <label className="flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isVbSpringer}
+                      onChange={(e) => setIsVbSpringer(e.target.checked)}
+                      className="h-4 w-4 text-primary border-gray-300 rounded focus:ring-primary"
+                    />
+                    <span className="ml-2 text-sm font-medium text-gray-900">Springer</span>
+                  </label>
+                  <p className="mt-1 ml-6 text-xs text-gray-500">
+                    Springer erhalten neue Sachverhalt-Anfragen für die ausgewählten Rechtsgebiete nur, wenn kein regulärer Dozent dafür verfügbar ist.
+                  </p>
                 </div>
               </div>
             )}

@@ -126,13 +126,26 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
 
   const unreadActivities = recentActivities.filter(a => !dismissedActivityIds.has(a.id));
 
-  const dismissActivity = (activityId: string) => {
+  const dismissActivity = (activity: any) => {
+    const activityId = typeof activity === 'string' ? activity : activity.id;
     setDismissedActivityIds(prev => {
       const next = new Set(prev);
       next.add(activityId);
       localStorage.setItem('dismissedActivityIds', JSON.stringify([...next]));
       return next;
     });
+    // VB notifications: also mark as read in DB so all headers stay in sync
+    if (typeof activity !== 'string' && activity.vbNotificationId) {
+      console.log('🔔 Dashboard: Marking vb_notification as read:', activity.vbNotificationId);
+      supabase
+        .from('vb_notifications')
+        .update({ read: true })
+        .eq('id', activity.vbNotificationId)
+        .then(({ error }) => {
+          if (error) console.error('❌ Dashboard: Error marking vb_notification as read:', error);
+          else console.log('✅ Dashboard: vb_notification marked as read');
+        });
+    }
   };
   const activityDropdownRef = React.useRef<HTMLDivElement>(null);
   const [hoursFormData, setHoursFormData] = useState({
@@ -446,7 +459,39 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
         console.error('Error fetching klausur activities:', e);
       }
 
+      // Fetch unread VB (Videoklausurenkorrektur) notifications
+      let vbActivities: any[] = [];
+      try {
+        console.log('🔔 Dashboard: Fetching unread vb_notifications for user:', user.id);
+        const { data: vbData, error: vbError } = await supabase
+          .from('vb_notifications')
+          .select('id, title, message, type, created_at')
+          .eq('profile_id', user.id)
+          .eq('read', false)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        if (vbError) {
+          console.error('❌ Dashboard: Error fetching vb_notifications:', vbError);
+        }
+        console.log(`🔔 Dashboard: Found ${vbData?.length || 0} unread vb_notifications:`, vbData);
+        vbActivities = (vbData || []).map(n => ({
+          id: `vb-${n.id}`,
+          type: 'vb',
+          vbNotificationId: n.id,
+          title: n.title,
+          subtitle: n.message,
+          timestamp: n.created_at,
+          icon: 'klausur',
+          link: '/klausurenbesprechung/korrektur'
+        }));
+      } catch (e) {
+        console.error('❌ Dashboard: Error fetching vb notifications:', e);
+      }
+
       const activities: any[] = [];
+
+      // Add VB notification activities
+      activities.push(...vbActivities);
 
       // Add file activities
       (filesData || []).forEach(f => {
@@ -1086,7 +1131,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                 unreadActivities.map((activity) => (
                   <div key={activity.id} className="p-3 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer"
                     onClick={() => {
-                      dismissActivity(activity.id);
+                      dismissActivity(activity);
                       if (activity.link) {
                         setShowActivityDropdown(false);
                         navigate(activity.link);
@@ -1113,7 +1158,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                           })}
                         </p>
                       </div>
-                      <button onClick={(e) => { e.stopPropagation(); dismissActivity(activity.id); }} className="text-gray-400 hover:text-gray-600 flex-shrink-0 mt-1">
+                      <button onClick={(e) => { e.stopPropagation(); dismissActivity(activity); }} className="text-gray-400 hover:text-gray-600 flex-shrink-0 mt-1">
                         <X className="h-4 w-4" />
                       </button>
                     </div>
