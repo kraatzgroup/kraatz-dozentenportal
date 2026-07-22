@@ -42,6 +42,7 @@ interface CaseStudyRequest {
   scoring_schema_url?: string;
   video_viewed_at?: string;
   pdf_downloaded_at?: string;
+  case_study_downloaded_at?: string;
   correction_viewed_at?: string;
   created_at: string;
   updated_at: string;
@@ -142,6 +143,31 @@ export const VbCaseStudyDashboard: React.FC = () => {
       console.error('Error tracking video view:', error)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Track Sachverhalt download (persisted; unlocks the upload section)
+  const handleCaseStudyDownload = async (caseStudyId: string) => {
+    try {
+      const now = new Date().toISOString()
+      const { error } = await supabase
+        .from('vb_case_study_requests')
+        .update({ case_study_downloaded_at: now })
+        .eq('id', caseStudyId)
+
+      if (!error) {
+        setCaseStudies(prevCases =>
+          prevCases.map(cs =>
+            cs.id === caseStudyId
+              ? { ...cs, case_study_downloaded_at: now }
+              : cs
+          )
+        )
+      } else {
+        console.error('Error tracking case study download:', error)
+      }
+    } catch (error) {
+      console.error('Error tracking case study download:', error)
+    }
+  }
 
   // Track PDF download
   const handlePdfDownload = async (caseStudyId: string) => {
@@ -699,10 +725,8 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
       if (caseStudyError) throw caseStudyError
       setCaseStudies(caseStudyData || [])
 
-      // Calculate used credits (submitted/in_review/completed/graded/corrected case studies)
-      const usedCredits = caseStudyData?.filter(cs =>
-        ['submitted', 'in_review', 'completed', 'graded', 'corrected'].includes(cs.status)
-      ).length || 0
+      // Every requested Sachverhalt consumes 1 credit immediately (any status)
+      const usedCredits = caseStudyData?.length || 0
 
       // Set available credits to remaining (total - used)
       setAvailableCredits(totalPurchasedCredits - usedCredits)
@@ -1165,7 +1189,10 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                   <div className="flex flex-col sm:flex-row flex-wrap gap-2">
                     {caseStudy.case_study_material_url && (
                       <button
-                        onClick={() => downloadFileAsPDF(caseStudy.case_study_material_url!, `Sachverhalt_${caseStudy.case_study_number}.pdf`, caseStudy.id)}
+                        onClick={async () => {
+                          await handleCaseStudyDownload(caseStudy.id)
+                          await downloadFileAsPDF(caseStudy.case_study_material_url!, `Sachverhalt_${caseStudy.case_study_number}.pdf`, caseStudy.id)
+                        }}
                         className="text-white px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors flex items-center justify-center space-x-2 whitespace-nowrap"
                         style={{ backgroundColor: '#2e83c2' }}
                         onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0a1f44'}
@@ -1203,44 +1230,9 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                       </a>
                     )}
                   </div>
-                </div>
-              ))}
-            </div>
-        </div>
-        )}
-
-        {/* 4. Upload Bearbeitung */}
-        {(materialsReadyCases.length > 0 || submittedCases.length > 0) && (
-        <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 sm:mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Upload Bearbeitung</h2>
-            <div className="flex items-center space-x-2">
-              <Upload className="w-5 h-5 text-primary" />
-              <span className="font-bold text-primary">{materialsReadyCases.length + submittedCases.length}</span>
-            </div>
-          </div>
-          <div className="space-y-4">
-              {/* Ready for upload cases */}
-              {materialsReadyCases.map((caseStudy) => (
-                <div 
-                  key={caseStudy.id} 
-                  id={`case-study-${caseStudy.id}`}
-                  className={`border rounded-lg p-4 transition-all duration-1000 ${
-                    highlightedCaseId === caseStudy.id 
-                      ? 'border-blue-400 bg-blue-100 shadow-lg ring-2 ring-blue-300' 
-                      : 'border-orange-200 bg-orange-50'
-                  }`}
-                >
-                  <div className="mb-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="bg-blue-100 text-blue-600 text-xs font-semibold px-2 py-1 rounded">
-                        #{caseStudy.case_study_number}
-                      </span>
-                      <h3 className="font-medium text-gray-900">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
-                    </div>
-                    <p className="text-sm text-gray-600">Schwerpunkt: {caseStudy.focus_area}</p>
-                  </div>
-                  <div className="space-y-3">
+                  {/* Upload Bearbeitung - only visible after the Sachverhalt was downloaded */}
+                  {caseStudy.case_study_downloaded_at ? (
+                  <div className="space-y-3 mt-4 pt-4 border-t border-blue-200">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Bearbeitung hochladen (PDF oder Word)
@@ -1317,9 +1309,28 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                       </span>
                     </button>
                   </div>
+                  ) : (
+                  <p className="mt-3 text-xs text-gray-500">
+                    💡 Lade zuerst den Sachverhalt herunter – danach kannst Du hier Deine Bearbeitung hochladen.
+                  </p>
+                  )}
                 </div>
               ))}
-              
+            </div>
+        </div>
+        )}
+
+        {/* 4. Eingereichte Bearbeitungen */}
+        {submittedCases.length > 0 && (
+        <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 sm:mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Upload Bearbeitung</h2>
+            <div className="flex items-center space-x-2">
+              <Upload className="w-5 h-5 text-primary" />
+              <span className="font-bold text-primary">{submittedCases.length}</span>
+            </div>
+          </div>
+          <div className="space-y-4">
               {/* Submitted cases */}
               {submittedCases.map((caseStudy, index) => (
                 <div 

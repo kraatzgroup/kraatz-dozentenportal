@@ -473,9 +473,11 @@ export const VbKorrekturDashboard: React.FC = () => {
             }
             break
           case 'submissions':
-            // Show assigned cases (submitted, under_review, corrected) - NO legal area filter for old assignments
+            // Show open correction work: submitted, under_review, corrected WITHOUT video.
+            // Corrected cases WITH video belong to the 'Abgeschlossen' tab.
+            // Must match the tab badge count exactly (same predicate).
             // Ownership: hide cases owned by another dozent (e.g. returned by springer)
-            query = query.in('status', ['submitted', 'under_review', 'corrected'])
+            query = query.or('status.eq.submitted,status.eq.under_review,and(status.eq.corrected,video_correction_url.is.null)')
               .or(`assigned_dozent_id.is.null,assigned_dozent_id.eq.${user?.id}`)
             break
           case 'completed':
@@ -577,7 +579,9 @@ export const VbKorrekturDashboard: React.FC = () => {
       const visible = rows.filter(c => {
         if (c.assigned_dozent_id === user?.id) return true
         if (c.assigned_dozent_id) return false
-        // Unassigned: only open stages, restricted to allowed areas
+        // Unassigned submission-stage cases are visible to everyone (same rule as the list)
+        if (c.status === 'submitted' || c.status === 'under_review' || c.status === 'corrected') return true
+        // Unassigned open stages (requested/materials_ready): restricted to allowed areas
         if (c.status !== 'requested' && c.status !== 'materials_ready') return false
         if (openCaseAreas === null) return true
         return openCaseAreas.includes(c.legal_area)
@@ -721,19 +725,6 @@ export const VbKorrekturDashboard: React.FC = () => {
     if (!s) return 'Unbekannt'
     const name = [s.first_name, s.last_name].filter(Boolean).join(' ').trim()
     return name || s.email || 'Unbekannt'
-  }
-
-  const handleClaim = async (c: VbCase) => {
-    if (!user) return
-    try {
-      await supabase
-        .from('vb_case_study_requests')
-        .update({ status: 'under_review', assigned_dozent_id: user.id })
-        .eq('id', c.id)
-      fetchCases()
-    } catch (err) {
-      console.error('Error claiming VB case:', err)
-    }
   }
 
   const downloadFile = async (url: string, filename: string) => {
@@ -1358,7 +1349,7 @@ export const VbKorrekturDashboard: React.FC = () => {
                 >
                   {tab.label}
                   {tab.count > 0 && (
-                    <span className="ml-2 bg-primary/10 text-primary text-xs px-2 py-0.5 rounded-full">
+                    <span className="ml-2 bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full">
                       {tab.count}
                     </span>
                   )}
@@ -1436,15 +1427,6 @@ export const VbKorrekturDashboard: React.FC = () => {
                             Herunterladen
                           </button>
                         )}
-                        {(c.status === 'submitted') && (
-                          <button
-                            onClick={() => handleClaim(c)}
-                            className="flex items-center gap-1 px-3 py-2 text-sm border border-blue-400 text-blue-600 rounded-lg hover:bg-blue-50"
-                          >
-                            <Clock className="w-4 h-4" />
-                            Übernehmen
-                          </button>
-                        )}
                         {(c.status === 'corrected' && !c.video_correction_url) && (
                           <button
                             onClick={() => setSelected(c)}
@@ -1507,6 +1489,7 @@ export const VbKorrekturDashboard: React.FC = () => {
                             Material ändern
                           </button>
                         )}
+                        {c.status !== 'materials_ready' && (
                         <button
                           onClick={async () => {
                             if (c.status === 'requested') {
@@ -1541,6 +1524,7 @@ export const VbKorrekturDashboard: React.FC = () => {
                             <><CheckCircle className="w-4 h-4" />Korrektur hochladen</>
                           )}
                         </button>
+                        )}
                         {isSpringerUser && (
                           <button
                             onClick={() => handleOpenReturnModal(c)}

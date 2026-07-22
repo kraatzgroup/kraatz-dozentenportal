@@ -179,9 +179,15 @@ function App() {
 
       const currentUser = useAuthStore.getState().user;
 
-      // On (re-)login always re-validate the session and re-fetch the profile,
-      // even for the same user id, so stale cached roles/permissions are refreshed.
+      // On (re-)login re-validate the session and re-fetch the profile.
+      // NOTE: Supabase also fires SIGNED_IN when the browser tab regains focus;
+      // skip re-initialization if the same user is already active to avoid
+      // an unnecessary full app reload on tab switches.
       if (_event === 'SIGNED_IN') {
+        if (currentUser && session?.user && currentUser.id === session.user.id) {
+          console.log('⏭️ App: SIGNED_IN for already active user (tab focus), ignoring');
+          return;
+        }
         console.log('🔄 App: SIGNED_IN, forcing fresh session/auth check');
         setUser(session?.user ?? null, true);
         setAppLoading(true);

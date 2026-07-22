@@ -68,8 +68,11 @@ export const useVbCaseStudies = () => {
         return sum + (order.case_study_count || 0);
       }, 0) || 0;
 
-      // Set available credits to total purchased (showing purchased credits)
-      setAccountCredits(totalPurchasedCredits);
+      // Every requested Sachverhalt consumes 1 credit immediately (any status)
+      const usedCredits = (data || []).length;
+      const remainingCredits = totalPurchasedCredits - usedCredits;
+
+      setAccountCredits(remainingCredits);
 
       // Sync account_credits in database if needed
       const { data: profile } = await supabase
@@ -78,10 +81,10 @@ export const useVbCaseStudies = () => {
         .eq('id', user.id)
         .single();
       
-      if (profile && profile.account_credits !== totalPurchasedCredits) {
+      if (profile && profile.account_credits !== remainingCredits) {
         await supabase
           .from('profiles')
-          .update({ account_credits: totalPurchasedCredits })
+          .update({ account_credits: remainingCredits })
           .eq('id', user.id);
       }
     } catch (err) {
@@ -102,7 +105,7 @@ export const useVbCaseStudies = () => {
 
     try {
       if (accountCredits < 1) {
-        throw new Error('Nicht genügend Credits verfügbar');
+        throw new Error('Nicht genügend Credits verfügbar. Bitte erwerbe ein neues Klausur-Paket.');
       }
 
       // Generate next case_study_number
@@ -130,8 +133,8 @@ export const useVbCaseStudies = () => {
 
       if (error) throw error;
 
-      // Credits are calculated from vb_orders in the frontend, not decremented here
-      // The credit is automatically "used" when the case study status changes to submitted/completed
+      // 1 credit is consumed immediately: remaining credits are derived as
+      // (purchased via vb_orders) - (all case study requests, any status)
       await fetchCaseStudies();
 
       // Notify designated VB dozenten for this legal area via email.

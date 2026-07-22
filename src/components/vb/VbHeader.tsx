@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { supabase } from '../../lib/supabase';
@@ -12,50 +12,71 @@ export const VbHeader: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [eliteKleingruppe, setEliteKleingruppe] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchUserData = async () => {
-      if (user) {
-        try {
-          // Fetch orders
-          const { data: ordersData } = await supabase
-            .from('vb_orders')
-            .select('*')
-            .eq('profile_id', user.id)
-            .eq('status', 'completed');
+  const fetchUserData = useCallback(async () => {
+    if (!user) return;
+    try {
+      // Fetch orders
+      const { data: ordersData } = await supabase
+        .from('vb_orders')
+        .select('*')
+        .eq('profile_id', user.id)
+        .eq('status', 'completed');
 
-          // Calculate total purchased credits directly from orders
-          const totalPurchasedCredits = ordersData?.reduce((sum, order) => {
-            return sum + (order.case_study_count || 0);
-          }, 0) || 0;
+      // Calculate total purchased credits directly from orders
+      const totalPurchasedCredits = ordersData?.reduce((sum, order) => {
+        return sum + (order.case_study_count || 0);
+      }, 0) || 0;
 
-          // Fetch case study requests to calculate used credits
-          const { data: requestsData } = await supabase
-            .from('vb_case_study_requests')
-            .select('id, status')
-            .eq('profile_id', user.id)
-            .in('status', ['submitted', 'in_review', 'completed', 'graded', 'corrected']);
+      // Every requested Sachverhalt consumes 1 credit immediately (any status)
+      const { data: requestsData } = await supabase
+        .from('vb_case_study_requests')
+        .select('id')
+        .eq('profile_id', user.id);
 
-          const usedCredits = (requestsData || []).length;
+      const usedCredits = (requestsData || []).length;
 
-          // Set available credits to remaining (total - used)
-          setUserCredits(totalPurchasedCredits - usedCredits);
+      // Set available credits to remaining (total - used)
+      setUserCredits(totalPurchasedCredits - usedCredits);
 
-          // Fetch elite kleingruppe membership
-          const { data: teilnehmerData } = await supabase
-            .from('teilnehmer')
-            .select('elite_kleingruppe')
-            .eq('profile_id', user.id)
-            .maybeSingle();
+      // Fetch elite kleingruppe membership
+      const { data: teilnehmerData } = await supabase
+        .from('teilnehmer')
+        .select('elite_kleingruppe')
+        .eq('profile_id', user.id)
+        .maybeSingle();
 
-          setEliteKleingruppe(teilnehmerData?.elite_kleingruppe || null);
-        } catch (error) {
-          console.error('Error fetching user data:', error);
-        }
-      }
-    };
-
-    fetchUserData();
+      setEliteKleingruppe(teilnehmerData?.elite_kleingruppe || null);
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+    }
   }, [user]);
+
+  useEffect(() => {
+    fetchUserData();
+  }, [fetchUserData]);
+
+  // Realtime: update credits immediately when case study requests change
+  useEffect(() => {
+    if (!user) return;
+
+    const subscription = supabase
+      .channel(`vb_header_credits_${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'vb_case_study_requests',
+          filter: `profile_id=eq.${user.id}`
+        },
+        () => fetchUserData()
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [user, fetchUserData]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
