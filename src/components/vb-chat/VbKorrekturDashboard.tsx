@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
-import { BookOpen, Clock, Download, Edit3, CheckCircle, AlertTriangle, FolderOpen, Upload, X, Search, ChevronDown, ChevronRight } from 'lucide-react'
+import { BookOpen, Clock, Download, Edit3, CheckCircle, AlertTriangle, FolderOpen, Upload, X, Search, ChevronDown, ChevronRight, Undo2 } from 'lucide-react'
 import { KorrekturModal } from '../shared/korrektur/KorrekturModal'
 import { VB_FIELD_CONFIG } from '../shared/korrektur/types'
 import type { KorrekturItem, KorrekturSavePayload } from '../shared/korrektur/types'
@@ -74,6 +74,7 @@ interface VbStudent {
   first_name: string | null
   last_name: string | null
   email: string | null
+  additional_roles?: string[] | null
 }
 
 interface VbCase {
@@ -156,6 +157,84 @@ export const VbKorrekturDashboard: React.FC = () => {
   const [completedTotal, setCompletedTotal] = useState(0)
   const [materialSelectorLegalArea, setMaterialSelectorLegalArea] = useState<string | null>(null)
   const [assignedMaterialUrls, setAssignedMaterialUrls] = useState<Set<string>>(new Set())
+  const [isSpringerUser, setIsSpringerUser] = useState(false)
+  const initialTabSelected = useRef(false)
+  const [returnCase, setReturnCase] = useState<VbCase | null>(null)
+  const [returnTarget, setReturnTarget] = useState<{ id: string; name: string; available: boolean } | null>(null)
+  const [isReturning, setIsReturning] = useState(false)
+
+  const handleOpenReturnModal = async (c: VbCase) => {
+    setReturnCase(c)
+    setReturnTarget(null)
+    try {
+      console.log('↩️ VbKorrektur: Loading regular dozenten for legal area:', c.legal_area)
+      const { data: regulars } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, vb_available, vacation_start_date, vacation_end_date')
+        .eq('role', 'dozent')
+        .or('vb_springer.is.null,vb_springer.eq.false')
+        .contains('vb_legal_areas', [c.legal_area])
+      const today = new Date()
+      const withAvailability = (regulars || []).map(r => {
+        const vs = r.vacation_start_date ? new Date(r.vacation_start_date) : null
+        const ve = r.vacation_end_date ? new Date(r.vacation_end_date) : null
+        const onVacation = !!(vs && ve && today >= vs && today <= ve)
+        return { id: r.id, name: r.full_name || r.email, available: r.vb_available !== false && !onVacation }
+      })
+      console.log('↩️ VbKorrektur: Candidates:', withAvailability)
+      const target = withAvailability.find(r => r.available) || withAvailability[0] || null
+      setReturnTarget(target)
+    } catch (err) {
+      console.error('❌ VbKorrektur: Error loading return target:', err)
+    }
+  }
+
+  const handleReturnCase = async () => {
+    if (!returnCase || !returnTarget || isReturning) return
+    setIsReturning(true)
+    try {
+      console.log('↩️ VbKorrektur: Returning case', returnCase.id, 'to dozent', returnTarget.id)
+      const { error } = await supabase
+        .from('vb_case_study_requests')
+        .update({ assigned_dozent_id: returnTarget.id })
+        .eq('id', returnCase.id)
+      if (error) throw error
+      // In-app notification for the receiving dozent
+      const { error: notifError } = await supabase
+        .from('vb_notifications')
+        .insert({
+          profile_id: returnTarget.id,
+          title: 'Fall an Sie zurückgegeben',
+          message: `Der Springer-Dozent hat Klausur #${returnCase.case_study_number} (${returnCase.legal_area}${returnCase.sub_area ? ` / ${returnCase.sub_area}` : ''}) an Sie zurückgegeben.`,
+          type: 'info',
+          read: false
+        })
+      if (notifError) console.error('❌ VbKorrektur: Error creating return notification:', notifError)
+      // Email notification to the receiving dozent
+      try {
+        console.log('📧 VbKorrektur: Invoking vb-notify-case-returned...')
+        const { data: emailResult, error: emailError } = await supabase.functions.invoke('vb-notify-case-returned', {
+          body: { caseId: returnCase.id, targetDozentId: returnTarget.id }
+        })
+        if (emailError) {
+          console.error('❌ VbKorrektur: Case-returned email failed:', emailError)
+        } else {
+          console.log('✅ VbKorrektur: Case-returned email result:', emailResult)
+        }
+      } catch (e) {
+        console.error('❌ VbKorrektur: Case-returned email exception:', e)
+      }
+      console.log('✅ VbKorrektur: Case returned successfully')
+      setReturnCase(null)
+      setReturnTarget(null)
+      fetchCases()
+      fetchAllCasesForTabs()
+    } catch (err) {
+      console.error('❌ VbKorrektur: Error returning case:', err)
+    } finally {
+      setIsReturning(false)
+    }
+  }
 
   const handleOpenCorrectionMaterialSelector = async (field: 'solution' | 'schema') => {
     setEditingCorrectionField(field)
@@ -325,6 +404,7 @@ export const VbKorrekturDashboard: React.FC = () => {
       // null = no restriction (regular available dozent)
       const isVbAvailable = profile?.vb_available !== false
       const isSpringer = profile?.vb_springer === true
+      setIsSpringerUser(isSpringer)
       let openCaseAreas: string[] | null = null
       if (!isVbAvailable) {
         // Not available: new/open cases go to the Springer, hide them here
@@ -352,7 +432,7 @@ export const VbKorrekturDashboard: React.FC = () => {
 
       let query = supabase
         .from('vb_case_study_requests')
-        .select('*, student:profiles!vb_case_study_requests_profile_id_fkey(first_name,last_name,email)')
+        .select('*, student:profiles!vb_case_study_requests_profile_id_fkey(first_name,last_name,email,additional_roles)')
 
       console.log('🔍 VbKorrekturDashboard: Active tab:', activeTab)
 
@@ -364,20 +444,29 @@ export const VbKorrekturDashboard: React.FC = () => {
         // Active: filter based on tab
         switch (activeTab) {
           case 'requests':
-            // Show only requested cases (not materials_ready) - filter by legal areas
+            // Show only requested cases (not materials_ready)
+            // Visible: cases assigned to me (always, e.g. returned by springer)
+            // OR unassigned open cases in my allowed areas (openCaseAreas restriction)
             query = query.eq('status', 'requested')
             if (openCaseAreas !== null) {
-              query = query.in('legal_area', openCaseAreas.length > 0 ? openCaseAreas : ['__none__'])
+              const areaList = (openCaseAreas.length > 0 ? openCaseAreas : ['__none__']).map(a => `"${a}"`).join(',')
+              query = query.or(`assigned_dozent_id.eq.${user?.id},and(assigned_dozent_id.is.null,legal_area.in.(${areaList}))`)
+            } else {
+              query = query.or(`assigned_dozent_id.is.null,assigned_dozent_id.eq.${user?.id}`)
             }
             if (areas.length > 0 && legalAreaFilter !== 'all') {
               query = query.eq('legal_area', legalAreaFilter)
             }
             break
           case 'materials_sent':
-            // Show materials_ready cases - filter by legal areas
+            // Show materials_ready cases
+            // Visible: cases assigned to me (always) OR unassigned ones in my allowed areas
             query = query.eq('status', 'materials_ready')
             if (openCaseAreas !== null) {
-              query = query.in('legal_area', openCaseAreas.length > 0 ? openCaseAreas : ['__none__'])
+              const areaList = (openCaseAreas.length > 0 ? openCaseAreas : ['__none__']).map(a => `"${a}"`).join(',')
+              query = query.or(`assigned_dozent_id.eq.${user?.id},and(assigned_dozent_id.is.null,legal_area.in.(${areaList}))`)
+            } else {
+              query = query.or(`assigned_dozent_id.is.null,assigned_dozent_id.eq.${user?.id}`)
             }
             if (areas.length > 0 && legalAreaFilter !== 'all') {
               query = query.eq('legal_area', legalAreaFilter)
@@ -385,7 +474,9 @@ export const VbKorrekturDashboard: React.FC = () => {
             break
           case 'submissions':
             // Show assigned cases (submitted, under_review, corrected) - NO legal area filter for old assignments
+            // Ownership: hide cases owned by another dozent (e.g. returned by springer)
             query = query.in('status', ['submitted', 'under_review', 'corrected'])
+              .or(`assigned_dozent_id.is.null,assigned_dozent_id.eq.${user?.id}`)
             break
           case 'completed':
             // Show completed cases - NO legal area filter for old assignments
@@ -444,14 +535,66 @@ export const VbKorrekturDashboard: React.FC = () => {
 
   const fetchAllCasesForTabs = useCallback(async () => {
     try {
-      // Fetch all cases for the dozent (regardless of tab) to calculate tab counts
+      // Fetch all cases relevant to this dozent (assigned to me OR unassigned open ones)
+      // to calculate tab counts using the same visibility rules as the lists
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('vb_available, vb_springer')
+        .eq('id', user?.id)
+        .single()
+      const areas: string[] = vbLegalAreas || []
+      const isVbAvailable = profile?.vb_available !== false
+      const isSpringer = profile?.vb_springer === true
+      let openCaseAreas: string[] | null = null
+      if (!isVbAvailable) {
+        openCaseAreas = []
+      } else if (isSpringer) {
+        const { data: regulars } = await supabase
+          .from('profiles')
+          .select('vb_legal_areas, vb_available, vacation_start_date, vacation_end_date')
+          .eq('role', 'dozent')
+          .or('vb_springer.is.null,vb_springer.eq.false')
+          .not('vb_legal_areas', 'is', null)
+        const today = new Date()
+        const covered = new Set<string>()
+        for (const r of (regulars || [])) {
+          if (r.vb_available === false) continue
+          const vs = r.vacation_start_date ? new Date(r.vacation_start_date) : null
+          const ve = r.vacation_end_date ? new Date(r.vacation_end_date) : null
+          if (vs && ve && today >= vs && today <= ve) continue
+          for (const a of (r.vb_legal_areas || [])) covered.add(a)
+        }
+        openCaseAreas = areas.filter(a => !covered.has(a))
+      }
+
       const { data } = await supabase
         .from('vb_case_study_requests')
-        .select('*, student:profiles!vb_case_study_requests_profile_id_fkey(first_name,last_name,email)')
-        .eq('assigned_dozent_id', user?.id)
+        .select('*, student:profiles!vb_case_study_requests_profile_id_fkey(first_name,last_name,email,additional_roles)')
+        .or(`assigned_dozent_id.eq.${user?.id},assigned_dozent_id.is.null`)
         .order('updated_at', { ascending: false })
-      
-      setAllCases((data || []) as VbCase[])
+
+      const rows = (data || []) as VbCase[]
+      const visible = rows.filter(c => {
+        if (c.assigned_dozent_id === user?.id) return true
+        if (c.assigned_dozent_id) return false
+        // Unassigned: only open stages, restricted to allowed areas
+        if (c.status !== 'requested' && c.status !== 'materials_ready') return false
+        if (openCaseAreas === null) return true
+        return openCaseAreas.includes(c.legal_area)
+      })
+      console.log('📊 VbKorrekturDashboard: Tab counts base (visible cases):', visible.length)
+      setAllCases(visible)
+
+      // On initial load: jump to the earliest stage with open items
+      if (!initialTabSelected.current) {
+        initialTabSelected.current = true
+        const openRequests = visible.filter(c => c.status === 'requested').length
+        const openMaterials = visible.filter(c => c.status === 'materials_ready').length
+        const openSubmissions = visible.filter(c => c.status === 'submitted' || c.status === 'under_review' || (c.status === 'corrected' && !c.video_correction_url)).length
+        const firstOpenTab = openRequests > 0 ? 'requests' : openMaterials > 0 ? 'materials_sent' : openSubmissions > 0 ? 'submissions' : 'requests'
+        console.log('📌 VbKorrekturDashboard: Auto-selecting tab:', firstOpenTab, { openRequests, openMaterials, openSubmissions })
+        if (firstOpenTab !== 'requests') setActiveTab(firstOpenTab as any)
+      }
     } catch (err) {
       console.error('Error fetching all cases for tabs:', err)
     }
@@ -678,7 +821,7 @@ export const VbKorrekturDashboard: React.FC = () => {
   }
 
   const selectAllMaterialsInFolder = (folderId: string) => {
-    const folderMaterials = materialsByFolder[folderId] || []
+    const folderMaterials = getSelectableFolderMaterials(folderId)
     const folderMaterialIds = folderMaterials.map(m => m.id)
     
     setSelectedMaterials(prev => {
@@ -697,7 +840,7 @@ export const VbKorrekturDashboard: React.FC = () => {
   }
 
   const isFolderSelected = (folderId: string) => {
-    const folderMaterials = materialsByFolder[folderId] || []
+    const folderMaterials = getSelectableFolderMaterials(folderId)
     if (folderMaterials.length === 0) return false
     return folderMaterials.every(m => selectedMaterials.has(m.id))
   }
@@ -817,10 +960,53 @@ export const VbKorrekturDashboard: React.FC = () => {
     return acc
   }, {} as Record<string, TeachingMaterial[]>)
 
+  // Crashkurs restriction: when assigning a Sachverhalt to a Crashkurs student,
+  // only folders containing "Crashkurs" in their name (and their contents) are selectable.
+  const isCrashkursMaterialSelection = !editingCorrectionField &&
+    ((selectedCaseForMaterial?.student?.additional_roles || []) as string[]).includes('vb_crashkurs')
+
+  let crashkursMaterialFolderIds: Set<string> | null = null
+  let crashkursVisibleFolderIds: Set<string> | null = null
+  if (isCrashkursMaterialSelection) {
+    // Folders whose name contains "Crashkurs"
+    const matchedFolders = folderStructure.filter(f => f.name.toLowerCase().includes('crashkurs'))
+    crashkursMaterialFolderIds = new Set(matchedFolders.map(f => f.id))
+
+    // Include all descendants of matched folders (materials selectable there too)
+    let changed = true
+    while (changed) {
+      changed = false
+      folderStructure.forEach(f => {
+        if (f.parent_id && crashkursMaterialFolderIds!.has(f.parent_id) && !crashkursMaterialFolderIds!.has(f.id)) {
+          crashkursMaterialFolderIds!.add(f.id)
+          changed = true
+        }
+      })
+    }
+
+    // Visible folders = crashkurs folders + their ancestors (for navigation)
+    crashkursVisibleFolderIds = new Set(crashkursMaterialFolderIds)
+    const foldersById = new Map(folderStructure.map(f => [f.id, f]))
+    matchedFolders.forEach(f => {
+      let parentId = f.parent_id
+      while (parentId && !crashkursVisibleFolderIds!.has(parentId)) {
+        crashkursVisibleFolderIds!.add(parentId)
+        parentId = foldersById.get(parentId)?.parent_id ?? null
+      }
+    })
+  }
+
+  // Materials of a folder that are actually selectable in the current selector context
+  const getSelectableFolderMaterials = (folderId: string): TeachingMaterial[] =>
+    crashkursMaterialFolderIds && !crashkursMaterialFolderIds.has(folderId)
+      ? []
+      : materialsByFolder[folderId] || []
+
   // Show only top-level folders (parent_id is null), and filter by legal area if set
   const filteredFolders = folderStructure.filter(f => 
     f.parent_id === null && 
-    (!materialSelectorLegalArea || f.name === materialSelectorLegalArea)
+    (!materialSelectorLegalArea || f.name === materialSelectorLegalArea) &&
+    (!crashkursVisibleFolderIds || crashkursVisibleFolderIds.has(f.id))
   )
 
   const toggleFolder = (folderId: string) => {
@@ -837,11 +1023,14 @@ export const VbKorrekturDashboard: React.FC = () => {
 
   // Recursive function to render folder hierarchy - using the exact same component as DozentenDashboard
   const renderFolder = (folder: MaterialFolder, level: number = 0) => {
-    const folderMaterials = materialsByFolder[folder.id] || []
+    const folderMaterials = getSelectableFolderMaterials(folder.id)
     const isExpanded = expandedFolders.has(folder.id)
 
     // Get subfolders of this folder
-    const subFolders = folderStructure.filter(f => f.parent_id === folder.id)
+    const subFolders = folderStructure.filter(f =>
+      f.parent_id === folder.id &&
+      (!crashkursVisibleFolderIds || crashkursVisibleFolderIds.has(f.id))
+    )
 
     // Check if all materials in this folder are selected
     const folderSelected = isFolderSelected(folder.id)
@@ -1155,8 +1344,8 @@ export const VbKorrekturDashboard: React.FC = () => {
               {[
                 { id: 'requests', label: 'Neue Anfragen', count: allCases.filter(c => c.status === 'requested').length },
                 { id: 'materials_sent', label: 'Materialien versendet', count: allCases.filter(c => c.status === 'materials_ready').length },
-                { id: 'submissions', label: 'Eingereichte Arbeiten', count: allCases.filter(c => c.status === 'submitted' || c.status === 'under_review' || c.status === 'corrected').length },
-                { id: 'completed', label: 'Abgeschlossen', count: allCases.filter(c => c.status === 'completed' || (c.status === 'corrected' && c.video_correction_url)).length },
+                { id: 'submissions', label: 'Eingereichte Arbeiten', count: allCases.filter(c => c.status === 'submitted' || c.status === 'under_review' || (c.status === 'corrected' && !c.video_correction_url)).length },
+                { id: 'completed', label: 'Abgeschlossen', count: 0 },
               ].map(tab => (
                 <button
                   key={tab.id}
@@ -1352,6 +1541,16 @@ export const VbKorrekturDashboard: React.FC = () => {
                             <><CheckCircle className="w-4 h-4" />Korrektur hochladen</>
                           )}
                         </button>
+                        {isSpringerUser && (
+                          <button
+                            onClick={() => handleOpenReturnModal(c)}
+                            title="Fall an den zuständigen Dozenten zurückgeben"
+                            className="ml-auto flex items-center gap-1 px-3 py-2 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50"
+                          >
+                            <Undo2 className="w-4 h-4" />
+                            <span className="hidden sm:inline">Zurückgeben</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1383,6 +1582,68 @@ export const VbKorrekturDashboard: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Return case to responsible dozent modal */}
+      {returnCase && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => !isReturning && setReturnCase(null)}
+          />
+          <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <div className="flex items-center mb-4">
+              <Undo2 className="h-6 w-6 text-primary mr-2 flex-shrink-0" />
+              <h3 className="text-lg font-medium text-gray-900">Fall zurückgeben?</h3>
+            </div>
+            <div className="text-sm text-gray-600 space-y-3 mb-6">
+              <p>
+                <strong>Klausur #{returnCase.case_study_number}</strong> ({returnCase.legal_area}
+                {returnCase.sub_area ? ` / ${returnCase.sub_area}` : ''}) wird an den zuständigen Dozenten
+                {returnTarget ? <> <strong>{returnTarget.name}</strong></> : ''} zurückgegeben.
+              </p>
+              <p>
+                Alle Zuständigkeiten für diesen Fall gehen an den Dozenten über – der Fall verschwindet aus Ihrer
+                Übersicht und der Dozent erhält eine Benachrichtigung.
+              </p>
+              {returnTarget && !returnTarget.available && (
+                <div className="p-3 bg-yellow-50 border border-yellow-300 rounded-md text-yellow-800">
+                  <p className="font-medium">⚠️ Hinweis</p>
+                  <p className="mt-1">
+                    Alle normalerweise zuständigen Dozenten für das Rechtsgebiet <strong>{returnCase.legal_area}</strong> sind
+                    aktuell <strong>nicht verfügbar</strong>. Der Fall bleibt dem Dozenten zugeordnet, wird aber
+                    möglicherweise erst bearbeitet, wenn dieser wieder verfügbar ist.
+                  </p>
+                </div>
+              )}
+              {returnTarget === null && (
+                <div className="p-3 bg-red-50 border border-red-300 rounded-md text-red-800">
+                  <p className="font-medium">❌ Kein zuständiger Dozent gefunden</p>
+                  <p className="mt-1">
+                    Für das Rechtsgebiet <strong>{returnCase.legal_area}</strong> ist kein regulärer Dozent hinterlegt.
+                    Der Fall kann nicht zurückgegeben werden.
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setReturnCase(null)}
+                disabled={isReturning}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-60"
+              >
+                Abbrechen
+              </button>
+              <button
+                onClick={handleReturnCase}
+                disabled={isReturning || !returnTarget}
+                className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-md transition-colors disabled:opacity-60"
+              >
+                {isReturning ? 'Wird zurückgegeben…' : 'Ja, Fall zurückgeben'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selected && (
         <KorrekturModal
@@ -1481,7 +1742,7 @@ export const VbKorrekturDashboard: React.FC = () => {
                 {filteredFolders.map(folder => renderFolder(folder))}
                 
                 {/* Show materials without folder */}
-                {materialsByFolder['no-folder'] && materialsByFolder['no-folder'].length > 0 && (
+                {!isCrashkursMaterialSelection && materialsByFolder['no-folder'] && materialsByFolder['no-folder'].length > 0 && (
                   <div>
                     <button
                       onClick={() => toggleFolder('no-folder')}

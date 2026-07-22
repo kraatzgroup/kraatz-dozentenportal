@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BookOpen } from 'lucide-react';
 import { useVbCaseStudies } from '../../hooks/useVbCaseStudies';
+import { useAuthStore } from '../../store/authStore';
 
 const LEGAL_AREAS = {
   'Zivilrecht': ['BGB AT', 'BGB BT', 'Schuldrecht AT', 'Schuldrecht BT', 'Sachenrecht', 'Familienrecht', 'Erbrecht'],
@@ -14,6 +15,8 @@ const STUDY_PHASES = ['Grund- und Hauptstudium', '1. Examensvorbereitung'];
 export const VbCaseStudyRequest: React.FC = () => {
   const navigate = useNavigate();
   const { accountCredits, createCaseStudyRequest } = useVbCaseStudies();
+  const additionalRoles = useAuthStore(state => state.additionalRoles);
+  const isCrashkurs = (additionalRoles || []).includes('vb_crashkurs');
   const [loading, setLoading] = useState(false);
   const [studyPhase, setStudyPhase] = useState('');
   const [legalArea, setLegalArea] = useState('');
@@ -26,7 +29,7 @@ export const VbCaseStudyRequest: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!studyPhase || !legalArea || (!subArea && !randomAssignment)) {
+    if ((!isCrashkurs && !studyPhase) || !legalArea || (!isCrashkurs && !subArea && !randomAssignment)) {
       alert('Bitte füllen Sie alle Pflichtfelder aus.');
       return;
     }
@@ -34,10 +37,10 @@ export const VbCaseStudyRequest: React.FC = () => {
     setLoading(true);
     try {
       await createCaseStudyRequest({
-        study_phase: studyPhase,
+        study_phase: isCrashkurs ? '1. Examensvorbereitung' : studyPhase,
         legal_area: legalArea,
-        sub_area: randomAssignment ? 'Beliebig' : subArea,
-        focus_area: focusArea
+        sub_area: isCrashkurs ? 'Crashkurs' : (randomAssignment ? 'Beliebig' : subArea),
+        focus_area: isCrashkurs ? '' : focusArea
       });
       navigate('/klausurenbesprechung/dashboard');
     } catch (error) {
@@ -60,6 +63,7 @@ export const VbCaseStudyRequest: React.FC = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {!isCrashkurs && (
           <div>
             <label htmlFor="studyPhase" className="block text-sm font-medium text-gray-700 mb-2">
               In welcher Phase des Studiums befindest Du Dich? *
@@ -77,6 +81,7 @@ export const VbCaseStudyRequest: React.FC = () => {
               ))}
             </select>
           </div>
+          )}
 
           <div>
             <label htmlFor="legalArea" className="block text-sm font-medium text-gray-700 mb-2">
@@ -99,6 +104,7 @@ export const VbCaseStudyRequest: React.FC = () => {
             </select>
           </div>
 
+          {!isCrashkurs && (
           <div className="flex items-start space-x-3">
             <input
               id="randomAssignment"
@@ -111,7 +117,9 @@ export const VbCaseStudyRequest: React.FC = () => {
               Mein Dozent soll eine beliebige Klausur aus dem gewählten Rechtsgebiet auswählen
             </label>
           </div>
+          )}
 
+          {!isCrashkurs && (
           <div>
             <label htmlFor="subArea" className="block text-sm font-medium text-gray-700 mb-2">
               Teilrechtsgebiet *
@@ -132,7 +140,9 @@ export const VbCaseStudyRequest: React.FC = () => {
               ))}
             </select>
           </div>
+          )}
 
+          {!isCrashkurs && (
           <div>
             <label htmlFor="focusArea" className="block text-sm font-medium text-gray-700 mb-2">
               Schwerpunkt / Spezifische Anforderungen
@@ -149,6 +159,7 @@ export const VbCaseStudyRequest: React.FC = () => {
               Bitte beachte, dass wir nur einen Wunschschwerpunkt berücksichtigen können.
             </p>
           </div>
+          )}
 
           <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-md text-sm">
             <p className="font-medium mb-1">Was passiert als nächstes?</p>

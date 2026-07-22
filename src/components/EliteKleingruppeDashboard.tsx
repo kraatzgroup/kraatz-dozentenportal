@@ -107,7 +107,9 @@ interface SupportVideo {
   updated_at: string;
 }
 
-type Tab = 'dashboard' | 'kalender' | 'materialien' | 'klausuren' | 'support' | 'videobesprechung' | 'masterclass';
+type Tab = 'dashboard' | 'kalender' | 'materialien' | 'klausuren' | 'support';
+
+const VALID_TABS: Tab[] = ['dashboard', 'kalender', 'materialien', 'klausuren', 'support'];
 
 export function EliteKleingruppeDashboard() {
   const { user, signOut, additionalRoles } = useAuthStore();
@@ -117,11 +119,11 @@ export function EliteKleingruppeDashboard() {
   const [eliteKleingruppe, setEliteKleingruppe] = useState<string | null>(null);
   const [activeTab, setActiveTabState] = useState<Tab>(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam && ['dashboard', 'kalender', 'materialien', 'klausuren', 'support', 'videobesprechung', 'masterclass'].includes(tabParam)) {
+    if (tabParam && VALID_TABS.includes(tabParam as Tab)) {
       return tabParam as Tab;
     }
     const saved = localStorage.getItem('eliteKleingruppeDashboardTab');
-    return (saved as Tab) || 'dashboard';
+    return saved && VALID_TABS.includes(saved as Tab) ? (saved as Tab) : 'dashboard';
   });
 
   // Helper function to change tab and update URL
@@ -1328,15 +1330,15 @@ export function EliteKleingruppeDashboard() {
             {eliteKleingruppe && additionalRoles?.includes('videobesprechung') && (
               <>
                 <button
-                  onClick={() => setActiveTab('videobesprechung')}
-                  className={`py-4 px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors ${activeTab === 'videobesprechung' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                  onClick={() => window.location.href = '/klausurenbesprechung/dashboard'}
+                  className="py-4 px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors text-gray-500 hover:text-gray-700 hover:bg-gray-50"
                 >
                   <GraduationCap className="h-4 w-4 mr-2" />
                   Videoklausurenkorrektur
                 </button>
                 <button
-                  onClick={() => setActiveTab('masterclass')}
-                  className={`py-4 px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors ${activeTab === 'masterclass' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                  onClick={() => window.location.href = '/klausurenbesprechung/klausuren-masterclass'}
+                  className="py-4 px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors text-gray-500 hover:text-gray-700 hover:bg-gray-50"
                 >
                   <GraduationCap className="h-4 w-4 mr-2" />
                   Klausuren-Masterclass
@@ -4337,45 +4339,6 @@ export function EliteKleingruppeDashboard() {
       )}
 
       
-      {/* Videoklausurenkorrektur Tab - Redirect to videobesprechung dashboard */}
-      {activeTab === 'videobesprechung' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow p-8 text-center">
-            <GraduationCap className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-xl font-medium text-gray-900 mb-2">Klausurenbesprechung</h3>
-            <p className="text-gray-500 max-w-md mx-auto mb-6">
-              Du wirst zum Klausurenbesprechung Dashboard weitergeleitet.
-            </p>
-            <button
-              onClick={() => window.location.href = '/klausurenbesprechung/dashboard'}
-              className="inline-flex items-center px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors font-medium"
-            >
-              <GraduationCap className="h-4 w-4 mr-2" />
-              Zum Klausurenbesprechung Dashboard
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Masterclass Tab - Redirect to videobesprechung masterclass */}
-      {activeTab === 'masterclass' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow p-8 text-center">
-            <GraduationCap className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-xl font-medium text-gray-900 mb-2">Klausuren-Masterclass</h3>
-            <p className="text-gray-500 max-w-md mx-auto mb-6">
-              Du wirst zur Klausuren-Masterclass weitergeleitet.
-            </p>
-            <button
-              onClick={() => window.location.href = '/klausurenbesprechung/klausuren-masterclass'}
-              className="inline-flex items-center px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors font-medium"
-            >
-              <GraduationCap className="h-4 w-4 mr-2" />
-              Zur Masterclass
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -22,6 +22,7 @@ interface DialogState {
     eliteKleingruppe?: string;
     vb_legal_areas?: string[];
     isVideobesprechung?: boolean;
+    isVbCrashkurs?: boolean;
   };
 }
 
@@ -167,6 +168,9 @@ export function UserManagement() {
       const additionalRoles: string[] = [];
       if (dialog.userData.isVideobesprechung) {
         additionalRoles.push('videobesprechung');
+        if (dialog.userData.isVbCrashkurs) {
+          additionalRoles.push('vb_crashkurs');
+        }
       }
 
       // Try edge function first, fallback to direct creation
@@ -273,6 +277,9 @@ export function UserManagement() {
         const additionalRoles: string[] = [];
         if (dialog.userData.isVideobesprechung) {
           additionalRoles.push('videobesprechung');
+          if (dialog.userData.isVbCrashkurs) {
+            additionalRoles.push('vb_crashkurs');
+          }
         }
 
         await createUser({
@@ -950,6 +957,7 @@ export function UserManagement() {
                                       r === 'teilnehmer' ? 'Teilnehmer' :
                                       r === 'videobesprechung' ? 'Videoklausurenkorrektur' :
                                       r === 'videobesprechung_dozent' ? 'Videoklausurenkorrektur' :
+                                      r === 'vb_crashkurs' ? 'Crashkurs' :
                                       r === 'dozent' ? 'Dozent' : r}
                                   </span>
                                 ))}
@@ -1254,6 +1262,31 @@ export function UserManagement() {
                               </p>
                             </div>
                           )}
+                          {dialog.type === 'edit' && (dialog.userData.additional_roles || []).includes('videobesprechung') && (
+                            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                              <label className="flex items-center cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={(dialog.userData.additional_roles || []).includes('vb_crashkurs')}
+                                  onChange={(e) => {
+                                    const current = dialog.userData.additional_roles || [];
+                                    const updated = e.target.checked
+                                      ? [...current, 'vb_crashkurs']
+                                      : current.filter(x => x !== 'vb_crashkurs');
+                                    setDialog({
+                                      ...dialog,
+                                      userData: { ...dialog.userData, additional_roles: updated }
+                                    });
+                                  }}
+                                  className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                />
+                                <span className="ml-2 text-sm font-medium text-gray-700">Crashkurs</span>
+                              </label>
+                              <p className="mt-2 text-xs text-gray-500">
+                                Crashkurs-Teilnehmer wählen beim Sachverhalt anfordern nur das Rechtsgebiet. Dozenten weisen ausschließlich Materialien aus Crashkurs-Ordnern zu.
+                              </p>
+                            </div>
+                          )}
                           {(dialog.type === 'edit' || dialog.type === 'new') && (dialog.userData.additional_roles || []).includes('videobesprechung_dozent') && (
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1378,6 +1411,26 @@ export function UserManagement() {
                                 />
                                 <span className="ml-2 text-sm font-medium text-gray-700">Videoklausurenkorrektur (Teilnehmer)</span>
                               </label>
+                              <label className="flex items-center cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={dialog.userData.isVbCrashkurs || false}
+                                  onChange={(e) => {
+                                    setDialog({
+                                      ...dialog,
+                                      userData: {
+                                        ...dialog.userData,
+                                        isVbCrashkurs: e.target.checked
+                                      }
+                                    });
+                                  }}
+                                  className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                />
+                                <span className="ml-2 text-sm font-medium text-gray-700">Crashkurs</span>
+                              </label>
+                              <p className="text-xs text-gray-500">
+                                Crashkurs-Teilnehmer wählen beim Sachverhalt anfordern nur das Rechtsgebiet. Dozenten weisen ausschließlich Materialien aus Crashkurs-Ordnern zu.
+                              </p>
                             </div>
                           )}
                         </div>

@@ -106,8 +106,15 @@ function App() {
 
                 console.log('🔍 App: Teilnehmer data:', { teilnehmerData, teilnehmerError, additionalRoles });
 
-                // Redirect decision tree
-                if (teilnehmerData?.elite_kleingruppe && teilnehmerData.elite_kleingruppe !== 'f' && teilnehmerData.elite_kleingruppe !== 'false' && teilnehmerData.elite_kleingruppe !== null) {
+                // Redirect decision tree – only applies on default landing paths,
+                // so deep links (e.g. /klausurenbesprechung/*) are preserved on reload.
+                const landingPath = window.location.pathname;
+                const isDefaultLanding = landingPath === '/' || landingPath === '/login' ||
+                  (landingPath === '/dashboard' && !window.location.search.includes('tab='));
+
+                if (!isDefaultLanding) {
+                  console.log('✅ App: REDIRECT DECISION: Non-default path, staying on current page:', landingPath);
+                } else if (teilnehmerData?.elite_kleingruppe && teilnehmerData.elite_kleingruppe !== 'f' && teilnehmerData.elite_kleingruppe !== 'false' && teilnehmerData.elite_kleingruppe !== null) {
                   console.log('✅ App: REDIRECT DECISION: User has elite kleingruppe membership:', teilnehmerData.elite_kleingruppe, '→ redirecting to /dashboard?tab=elite-kleingruppe');
                   window.history.replaceState({}, '', '/dashboard?tab=elite-kleingruppe');
                 } else if (additionalRoles?.includes('videobesprechung')) {
