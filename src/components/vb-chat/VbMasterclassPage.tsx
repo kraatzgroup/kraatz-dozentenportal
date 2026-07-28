@@ -136,9 +136,9 @@ export const VbMasterclassPage = () => {
             const watched = watchedIds.has(lesson.id)
             const thumb = lesson.thumbnail_url || youTubeThumb(lesson.video_url)
             return (
-              <div key={lesson.id} className="space-y-2 sm:space-y-3 transition-all duration-200">
+              <div key={lesson.id} className="space-y-2 sm:space-y-3 transition-all duration-200 h-full flex flex-col">
                 {/* Watch Status Indicator Above Video */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 min-h-6">
                   {watched && (
                     <span className="flex items-center gap-1 text-green-600 text-sm">
                       <CheckCircle className="w-4 h-4" />
@@ -148,7 +148,7 @@ export const VbMasterclassPage = () => {
                 </div>
 
                 {/* Video Card */}
-                <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow h-full flex flex-col">
+                <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow flex-1 flex flex-col">
                   {/* Thumbnail with Play Button */}
                   <div
                     className="relative aspect-video bg-gray-200 cursor-pointer group"

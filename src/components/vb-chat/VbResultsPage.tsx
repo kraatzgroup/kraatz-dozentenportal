@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BarChart3, BookOpen, Award, CheckCircle, Play, TrendingUp, TrendingDown, X } from 'lucide-react'
+import { BarChart3, BookOpen, Award, CheckCircle, Play, TrendingUp, TrendingDown } from 'lucide-react'
 import { useVbCaseStudies } from '../../hooks/useVbCaseStudies'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
@@ -124,24 +124,6 @@ export const VbResultsPage = () => {
       })
       .sort((a, b) => b.total_submissions - a.total_submissions)
   }, [gradedResults])
-
-  const [videoUrl, setVideoUrl] = useState<string | null>(null)
-
-  const openVideo = (correctionUrl?: string | null, caseStudyId?: string) => {
-    if (!correctionUrl) return
-    // Convert Loom share URL to embed URL
-    const embed = correctionUrl
-      .replace('https://www.loom.com/share/', 'https://www.loom.com/embed/')
-    setVideoUrl(embed)
-    // Mark the video as viewed (best-effort, non-blocking)
-    if (caseStudyId) {
-      supabase
-        .from('vb_case_study_requests')
-        .update({ video_viewed_at: new Date().toISOString() })
-        .eq('id', caseStudyId)
-        .then(undefined, err => console.error('Error marking video viewed:', err))
-    }
-  }
 
   const navigateToVideo = (caseStudyId: string) => {
     navigate(`/klausurenbesprechung/dashboard#case-study-${caseStudyId}`)
@@ -450,12 +432,15 @@ export const VbResultsPage = () => {
                 </div>
                 {result.video_correction_url && (
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
-                    <div className="hidden sm:flex items-center space-x-2 px-3 py-1 bg-blue-100 text-primary rounded-full text-xs sm:text-sm whitespace-nowrap">
+                    <button
+                      onClick={() => navigateToVideo(result.id)}
+                      className="hidden sm:flex items-center space-x-2 px-3 py-1 bg-blue-100 text-primary rounded-full text-xs sm:text-sm whitespace-nowrap hover:bg-blue-200 transition-colors"
+                    >
                       <CheckCircle className="w-4 h-4" />
                       <span>Videoklausurenkorrektur verfügbar</span>
-                    </div>
+                    </button>
                     <button
-                      onClick={() => openVideo(result.video_correction_url, result.id)}
+                      onClick={() => navigateToVideo(result.id)}
                       className="flex items-center justify-center space-x-2 px-3 sm:px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors text-sm sm:text-base whitespace-nowrap"
                     >
                       <Play className="w-4 h-4" />
@@ -528,32 +513,6 @@ export const VbResultsPage = () => {
         </div>
       )}
 
-      {/* Video Modal */}
-      {videoUrl && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-95 flex items-center justify-center z-50 p-4 sm:p-6"
-          onClick={() => setVideoUrl(null)}
-        >
-          <div className="relative w-full max-w-4xl mx-auto" onClick={e => e.stopPropagation()}>
-            <button
-              onClick={() => setVideoUrl(null)}
-              className="absolute -top-12 right-0 text-white hover:text-red-400 transition-colors bg-black bg-opacity-70 rounded-full p-2"
-            >
-              <X className="w-7 h-7" />
-            </button>
-            <div className="relative aspect-video bg-black rounded-lg overflow-hidden shadow-2xl">
-              <iframe
-                src={videoUrl}
-                title="Video-Korrektur"
-                className="w-full h-full"
-                frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-                allowFullScreen
-              />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

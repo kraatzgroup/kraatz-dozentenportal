@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuthStore } from '../../store/authStore'
 import { supabase } from '../../lib/supabase'
-import { CreditCard, BookOpen, Plus, Download, Upload, FileText, Video, X, Clock, CheckCircle, ChevronDown, ChevronUp, Star, MessageSquare, Table, Edit3, Eye, Trash2, Play } from 'lucide-react'
+import { CreditCard, BookOpen, Plus, Download, Upload, FileText, Video, X, Clock, CheckCircle, ChevronDown, ChevronUp, Star, MessageSquare, Table, Edit3, Eye, Trash2, Lightbulb, HelpCircle, Calendar, Mail } from 'lucide-react'
+import { jsPDF } from 'jspdf'
 import { Link, useSearchParams } from 'react-router-dom'
 
 interface UserProfile {
@@ -22,7 +23,7 @@ interface AdditionalMaterial {
 interface CaseStudyRequest {
   id: string;
   profile_id: string;
-  case_study_number: number;
+  case_study_number: number | null;
   study_phase: string;
   legal_area: string;
   sub_area: string;
@@ -95,8 +96,6 @@ export const VbCaseStudyDashboard: React.FC = () => {
   const [uploadFiles, setUploadFiles] = useState<Map<string, File>>(new Map())
   const [uploadingCaseId, setUploadingCaseId] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
-  const [videoModalOpen, setVideoModalOpen] = useState(false)
-  const [currentVideoUrl, setCurrentVideoUrl] = useState<string | null>(null)
   const [highlightedCaseId, setHighlightedCaseId] = useState<string | null>(null)
   const [expandedCases, setExpandedCases] = useState<Set<string>>(new Set())
   const [ratings, setRatings] = useState<Map<string, CaseStudyRating>>(new Map())
@@ -107,6 +106,30 @@ export const VbCaseStudyDashboard: React.FC = () => {
   const [submittingRating, setSubmittingRating] = useState(false)
   const [showFeedbackModal, setShowFeedbackModal] = useState(false)
   const [currentFeedbackCaseId, setCurrentFeedbackCaseId] = useState<string | null>(null)
+  const [feedbackForm, setFeedbackForm] = useState({ mistakes: '', improvements: '', reviewDate: '', emailReminder: false })
+  const [logoBase64, setLogoBase64] = useState<string>('')
+  const [logoSize, setLogoSize] = useState<{ width: number; height: number } | null>(null)
+
+  useEffect(() => {
+    const loadLogo = async () => {
+      try {
+        const response = await fetch('/KraatzGroup_Logo_web.png')
+        const blob = await response.blob()
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          const base64 = reader.result as string
+          setLogoBase64(base64)
+          const img = new Image()
+          img.onload = () => setLogoSize({ width: img.width, height: img.height })
+          img.src = base64
+        }
+        reader.readAsDataURL(blob)
+      } catch (error) {
+        console.error('Error loading logo:', error)
+      }
+    }
+    loadLogo()
+  }, [])
   const [studentFeedbacks, setStudentFeedbacks] = useState<Map<string, StudentFeedback>>(new Map())
   const [showPDFPreview, setShowPDFPreview] = useState(false)
   const [currentPDFData, setCurrentPDFData] = useState<string>('')
@@ -119,30 +142,6 @@ export const VbCaseStudyDashboard: React.FC = () => {
   const editFileInputRef = useRef<HTMLInputElement>(null)
   const [editingCaseId, setEditingCaseId] = useState<string | null>(null)
 
-  // Track video view
-  const handleVideoView = useCallback(async (caseStudyId: string) => {
-    try {
-      const { error } = await supabase
-        .from('vb_case_study_requests')
-        .update({ video_viewed_at: new Date().toISOString() })
-        .eq('id', caseStudyId)
-      
-      if (!error) {
-        // Update local state immediately for instant UI feedback
-        setCaseStudies(prevCases => 
-          prevCases.map(cs => 
-            cs.id === caseStudyId 
-              ? { ...cs, video_viewed_at: new Date().toISOString() }
-              : cs
-          )
-        )
-        // Also refresh from database
-        fetchUserData()
-      }
-    } catch (error) {
-      console.error('Error tracking video view:', error)
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track Sachverhalt download (persisted; unlocks the upload section)
   const handleCaseStudyDownload = async (caseStudyId: string) => {
@@ -274,43 +273,6 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
     console.log('✅ Download triggered')
   }
 
-  // Mark correction as viewed
-  const markCorrectionAsViewed = useCallback(async (caseStudyId: string) => {
-    try {
-      const { error } = await supabase
-        .from('vb_case_study_requests')
-        .update({ correction_viewed_at: new Date().toISOString() })
-        .eq('id', caseStudyId)
-
-      if (error) {
-        console.error('Error marking correction as viewed:', error)
-      } else {
-        // Refresh case studies to update UI
-        fetchUserData()
-      }
-    } catch (error) {
-      console.error('Error marking correction as viewed:', error)
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Open video modal
-  const openVideoModal = useCallback((videoUrl: string, caseStudyId: string) => {
-    // Convert Loom share URL to embed URL
-    const embedUrl = videoUrl.replace('https://www.loom.com/share/', 'https://www.loom.com/embed/')
-    setCurrentVideoUrl(embedUrl)
-    setVideoModalOpen(true)
-    
-    // Mark video as viewed and correction as viewed
-    handleVideoView(caseStudyId)
-    markCorrectionAsViewed(caseStudyId)
-  }, [handleVideoView, markCorrectionAsViewed])
-
-  // Close video modal
-  const closeVideoModal = () => {
-    setVideoModalOpen(false)
-    setCurrentVideoUrl(null)
-  }
-
   // Toggle case study expansion
   const toggleCaseExpansion = (caseId: string) => {
     setExpandedCases(prev => {
@@ -323,6 +285,21 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
       return newSet
     })
   }
+
+  // Expand case study and scroll to its correction section
+  const expandAndScrollToCorrection = useCallback((caseId: string) => {
+    setExpandedCases(prev => {
+      const next = new Set(prev)
+      next.add(caseId)
+      return next
+    })
+    setTimeout(() => {
+      const element = document.getElementById(`correction-section-${caseId}`)
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    }, 100)
+  }, [])
 
   // Fetch ratings for completed case studies
   const fetchRatings = async () => {
@@ -345,24 +322,26 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
   }
 
   // Fetch student feedbacks for completed case studies
-  // TODO: Implement when vb_student_feedback table is created
   const fetchStudentFeedbacks = async () => {
     try {
-      // Table doesn't exist yet, skip for now
-      /*
-      const { data, error } = await supabase
-        .from('vb_student_feedback')
-        .select('*')
-        .eq('profile_id', user?.id)
-
-      if (error) throw error
-
-      const feedbacksMap = new Map<string, StudentFeedback>()
-      data?.forEach((feedback: any) => {
-        feedbacksMap.set(feedback.case_study_id, feedback)
-      })
-      setStudentFeedbacks(feedbacksMap)
-      */
+      const stored = localStorage.getItem('vb_student_feedbacks')
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        const feedbacksMap = new Map<string, StudentFeedback>()
+        Object.entries(parsed).forEach(([key, value]) => {
+          const { pdfDataUri, filename, ...rest } = value as any
+          feedbacksMap.set(key, rest as StudentFeedback)
+        })
+        setStudentFeedbacks(feedbacksMap)
+        // Rewrite cleaned storage to drop old base64 PDF data and free quota
+        const cleaned: Record<string, StudentFeedback> = {}
+        feedbacksMap.forEach((value, key) => { cleaned[key] = value })
+        try {
+          localStorage.setItem('vb_student_feedbacks', JSON.stringify(cleaned))
+        } catch (e) {
+          console.warn('Could not rewrite cleaned feedbacks to localStorage:', e)
+        }
+      }
     } catch (error) {
       console.error('Error fetching student feedbacks:', error)
     }
@@ -379,7 +358,18 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
 
   // Open feedback modal
   const openFeedbackModal = (caseStudyId: string) => {
+    const existing = studentFeedbacks.get(caseStudyId)
     setCurrentFeedbackCaseId(caseStudyId)
+    setFeedbackForm(
+      existing
+        ? {
+            mistakes: existing.mistakes_learned,
+            improvements: existing.improvements_planned,
+            reviewDate: existing.review_date,
+            emailReminder: existing.email_reminder
+          }
+        : { mistakes: '', improvements: '', reviewDate: '', emailReminder: false }
+    )
     setShowFeedbackModal(true)
   }
 
@@ -387,53 +377,174 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
   const closeFeedbackModal = () => {
     setShowFeedbackModal(false)
     setCurrentFeedbackCaseId(null)
+    setFeedbackForm({ mistakes: '', improvements: '', reviewDate: '', emailReminder: false })
     // Refresh feedbacks after closing modal
     fetchStudentFeedbacks()
   }
 
-  // Open PDF preview
-  const openPDFPreview = () => {
-    // TODO: Implement PDF preview functionality
-    alert('PDF Preview functionality not yet implemented')
-    return
-    /*
-    const feedback = studentFeedbacks.get(caseStudyId)
-    const caseStudy = caseStudies.find(cs => cs.id === caseStudyId)
-    
-    if (!feedback || !caseStudy || !profile) {
-      alert('Feedbackpapier konnte nicht gefunden werden.')
+  // Generate PDF from feedback data
+  const generateFeedbackPDF = (feedback: StudentFeedback) => {
+    const caseStudy = caseStudies.find(cs => cs.id === feedback.case_study_id)
+    const doc = new jsPDF('p', 'mm', 'a4')
+    const margin = 20
+    const pageWidth = 210
+    const [r, g, b] = [46, 131, 194]
+
+    // Brand header (light blue so the dark logo is readable)
+    doc.setFillColor(215, 229, 243)
+    doc.rect(0, 0, pageWidth, 35, 'F')
+
+    // Logo
+    if (logoBase64 && logoSize) {
+      const logoWidth = 45
+      const logoHeight = logoWidth * (logoSize.height / logoSize.width)
+      doc.addImage(logoBase64, 'PNG', margin, 6, logoWidth, logoHeight)
+    }
+
+    // Title on header
+    doc.setTextColor(10, 31, 68)
+    doc.setFontSize(22)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Feedbackpapier', pageWidth - margin, 20, { align: 'right' })
+
+    // Subtitle / case info
+    let y = 48
+    doc.setTextColor(80, 80, 80)
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'normal')
+    if (caseStudy) {
+      doc.text(`${caseStudy.legal_area} - ${caseStudy.sub_area}`, margin, y)
+      y += 6
+      doc.text(`Schwerpunkt: ${caseStudy.focus_area}`, margin, y)
+      y += 6
+      doc.text(`Klausur #${caseStudy.case_study_number}`, margin, y)
+      y += 6
+    }
+    if (profile) {
+      doc.text(`Student: ${profile.first_name || ''} ${profile.last_name || ''}`, margin, y)
+      y += 6
+    }
+
+    // Divider
+    y += 6
+    doc.setDrawColor(r, g, b)
+    doc.setLineWidth(0.5)
+    doc.line(margin, y, pageWidth - margin, y)
+    y += 10
+
+    // Section 1
+    doc.setTextColor(r, g, b)
+    doc.setFontSize(13)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Was habe ich falsch gemacht?', margin, y)
+    y += 8
+    doc.setTextColor(0, 0, 0)
+    doc.setFontSize(11)
+    doc.setFont('helvetica', 'normal')
+    const mistakes = doc.splitTextToSize(feedback.mistakes_learned.trim(), 170)
+    doc.text(mistakes, margin, y)
+    y += mistakes.length * 5.5 + 10
+
+    // Section 2
+    doc.setTextColor(r, g, b)
+    doc.setFontSize(13)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Was möchte ich künftig besser machen?', margin, y)
+    y += 8
+    doc.setTextColor(0, 0, 0)
+    doc.setFontSize(11)
+    doc.setFont('helvetica', 'normal')
+    const improvements = doc.splitTextToSize(feedback.improvements_planned.trim(), 170)
+    doc.text(improvements, margin, y)
+    y += improvements.length * 5.5 + 10
+
+    // Review date
+    if (feedback.review_date) {
+      doc.setTextColor(r, g, b)
+      doc.setFontSize(12)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Wiederholungstermin:', margin, y)
+      doc.setTextColor(0, 0, 0)
+      doc.setFont('helvetica', 'normal')
+      doc.text(new Date(feedback.review_date).toLocaleDateString('de-DE'), margin + 50, y)
+    }
+
+    // Footer
+    doc.setFontSize(9)
+    doc.setTextColor(128, 128, 128)
+    doc.text(`Feedbackpapier - Kraatz Group · Erstellt am ${new Date().toLocaleDateString('de-DE')}`, margin, 287)
+
+    const filename = `Feedbackpapier_${caseStudy?.legal_area || 'Klausur'}_${caseStudy?.sub_area || ''}.pdf`
+    const blob = doc.output('blob')
+    const pdfUrl = URL.createObjectURL(blob)
+    return { pdfUrl, filename }
+  }
+
+  // Save feedback and generate PDF download
+  const submitFeedback = () => {
+    if (!currentFeedbackCaseId) return
+    if (!feedbackForm.mistakes.trim() || !feedbackForm.improvements.trim()) {
+      alert('Bitte fülle beide Selbsterkenntnis-Felder aus.')
       return
     }
-
-    const caseStudyInfo = {
-      legal_area: caseStudy.legal_area,
-      sub_area: caseStudy.sub_area,
-      focus_area: caseStudy.focus_area,
-      case_study_number: caseStudy.case_study_number
+    const existing = studentFeedbacks.get(currentFeedbackCaseId)
+    const newFeedback: StudentFeedback = {
+      id: existing?.id || Date.now().toString(),
+      case_study_id: currentFeedbackCaseId,
+      profile_id: user?.id || '',
+      mistakes_learned: feedbackForm.mistakes.trim(),
+      improvements_planned: feedbackForm.improvements.trim(),
+      review_date: feedbackForm.reviewDate,
+      email_reminder: feedbackForm.emailReminder,
+      reminder_sent: existing?.reminder_sent || false,
+      created_at: existing?.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString()
     }
-
-    const userInfo = {
-      first_name: profile.first_name,
-      last_name: profile.last_name
+    const next = new Map(studentFeedbacks)
+    next.set(currentFeedbackCaseId, newFeedback)
+    setStudentFeedbacks(next)
+    try {
+      const storedObj: Record<string, StudentFeedback> = {}
+      next.forEach((value, key) => {
+        const { pdfDataUri, filename, ...rest } = value as any
+        storedObj[key] = rest as StudentFeedback
+      })
+      localStorage.setItem('vb_student_feedbacks', JSON.stringify(storedObj))
+    } catch (err) {
+      console.warn('Could not persist feedbacks to localStorage:', err)
     }
-
-    const pdfDataUri = previewFeedbackPDF(feedback, caseStudyInfo, userInfo)
-    const filename = `Feedbackpapier_${caseStudy.legal_area}_${caseStudy.sub_area}_${new Date(feedback.created_at).toLocaleDateString('de-DE').replace(/\./g, '-')}.pdf`
-    
-    // Set the current case study ID for download
-    setCurrentFeedbackCaseId(caseStudyId)
-    setCurrentPDFData(pdfDataUri)
+    const { pdfUrl, filename } = generateFeedbackPDF(newFeedback)
+    if (currentPDFData.startsWith('blob:')) URL.revokeObjectURL(currentPDFData)
+    setCurrentPDFData(pdfUrl)
     setCurrentPDFFilename(filename)
+    closeFeedbackModal()
     setShowPDFPreview(true)
-    */
   }
 
   // Close PDF preview
   const closePDFPreview = () => {
+    if (currentPDFData.startsWith('blob:')) URL.revokeObjectURL(currentPDFData)
     setShowPDFPreview(false)
     setCurrentPDFData('')
     setCurrentPDFFilename('')
     setCurrentFeedbackCaseId(null)
+  }
+
+  // Direct download of an existing feedback PDF
+  const downloadFeedbackPDF = (caseStudyId: string) => {
+    const feedback = studentFeedbacks.get(caseStudyId)
+    if (!feedback) {
+      alert('Kein Feedbackpapier vorhanden.')
+      return
+    }
+    const { pdfUrl, filename } = generateFeedbackPDF(feedback)
+    const link = document.createElement('a')
+    link.href = pdfUrl
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    setTimeout(() => URL.revokeObjectURL(pdfUrl), 1000)
   }
 
   // Delete case study (admin only)
@@ -461,59 +572,16 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
 
   // Download PDF from preview
   const handlePDFDownload = () => {
-    // TODO: Implement PDF download functionality
-    alert('PDF Download functionality not yet implemented')
-    return
-    /*
-    console.log('🔄 handlePDFDownload called with currentFeedbackCaseId:', currentFeedbackCaseId)
-    
-    const feedback = studentFeedbacks.get(currentFeedbackCaseId || '')
-    const caseStudy = caseStudies.find(cs => cs.id === currentFeedbackCaseId)
-    
-    console.log('📊 Data check:', {
-      currentFeedbackCaseId,
-      feedback: !!feedback,
-      caseStudy: !!caseStudy,
-      profile: !!profile,
-      studentFeedbacksSize: studentFeedbacks.size,
-      caseStudiesLength: caseStudies.length
-    })
-    
-    if (!feedback || !caseStudy || !profile) {
-      console.error('❌ Missing data for PDF download:', { 
-        feedback: !!feedback, 
-        caseStudy: !!caseStudy, 
-        profile: !!profile,
-        currentFeedbackCaseId 
-      })
-      alert('Fehler: Nicht alle Daten für den PDF-Download verfügbar.')
+    if (!currentPDFData) {
+      alert('Kein PDF zum Herunterladen vorhanden.')
       return
     }
-
-    const caseStudyInfo = {
-      legal_area: caseStudy.legal_area,
-      sub_area: caseStudy.sub_area,
-      focus_area: caseStudy.focus_area,
-      case_study_number: caseStudy.case_study_number
-    }
-
-    const userInfo = {
-      first_name: profile.first_name,
-      last_name: profile.last_name
-    }
-
-    try {
-      console.log('🔄 Starting PDF download from Dashboard...', {
-        feedback,
-        caseStudyInfo,
-        userInfo
-      })
-      downloadFeedbackPDF(feedback, caseStudyInfo, userInfo)
-    } catch (error) {
-      console.error('❌ Error in handlePDFDownload:', error)
-      alert('Fehler beim PDF-Download. Bitte versuchen Sie es erneut.')
-    }
-    */
+    const link = document.createElement('a')
+    link.href = currentPDFData
+    link.download = currentPDFFilename || 'Feedbackpapier.pdf'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
   }
 
   // Close rating modal
@@ -590,22 +658,22 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
     // Don't use green highlighting if rated
     if (fullyAccessed && !isRated) {
       return {
-        containerClass: "border border-green-200 rounded-lg p-4 bg-green-50",
-        badgeClass: "px-2 py-1 bg-primary text-white text-xs rounded-full font-medium",
+        containerClass: "border-[3px] border-[#2e83c2]/40 shadow-sm rounded-lg p-4 bg-gray-50/80 backdrop-blur-sm",
+        badgeClass: "px-3 py-1.5 bg-[#2e83c2] text-white text-sm rounded-full font-medium",
         badgeText: "✓ Abgeschlossen",
         showNewBadge: false
       }
     } else if (partiallyAccessed || (fullyAccessed && isRated)) {
       return {
-        containerClass: "border border-gray-200 rounded-lg p-4 bg-gray-50",
-        badgeClass: "px-2 py-1 bg-gray-600 text-white text-xs rounded-full font-medium",
+        containerClass: "border-[3px] border-[#2e83c2]/40 shadow-sm rounded-lg p-4 bg-gray-50/80 backdrop-blur-sm",
+        badgeClass: "px-3 py-1.5 bg-[#2e83c2] text-white text-sm rounded-full font-medium",
         badgeText: "✓ Abgeschlossen",
         showNewBadge: false
       }
     } else {
       return {
-        containerClass: "border border-blue-200 rounded-lg p-4 bg-blue-50",
-        badgeClass: "px-2 py-1 bg-primary text-white text-xs rounded-full font-medium",
+        containerClass: "border-[3px] border-[#2e83c2]/40 shadow-sm rounded-lg p-4 bg-gray-50/80 backdrop-blur-sm",
+        badgeClass: "px-3 py-1.5 bg-[#2e83c2] text-white text-sm rounded-full font-medium",
         badgeText: "✓ Abgeschlossen",
         showNewBadge: isNew
       }
@@ -654,18 +722,8 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
           // Highlight the case study
           setHighlightedCaseId(caseStudyId)
           
-          // Scroll to the case study
-          setTimeout(() => {
-            const element = document.getElementById(`case-study-${caseStudyId}`)
-            if (element) {
-              element.scrollIntoView({ behavior: 'smooth', block: 'center' })
-            }
-          }, 500)
-          
-          // Open the video modal after a short delay
-          setTimeout(() => {
-            openVideoModal(caseStudy.video_correction_url!, caseStudyId)
-          }, 1000)
+          // Expand and scroll to the correction section
+          expandAndScrollToCorrection(caseStudyId)
           
           // Clear the hash and highlight after opening
           setTimeout(() => {
@@ -687,7 +745,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
     return () => {
       window.removeEventListener('hashchange', handleHashChange)
     }
-  }, [caseStudies, openVideoModal]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [caseStudies, expandAndScrollToCorrection]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchUserData = async () => {
     try {
@@ -723,7 +781,12 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
         .order('updated_at', { ascending: false })
 
       if (caseStudyError) throw caseStudyError
-      setCaseStudies(caseStudyData || [])
+      setCaseStudies(
+        (caseStudyData || []).map((cs, idx) => ({
+          ...cs,
+          case_study_number: cs.case_study_number ?? idx + 1
+        }))
+      )
 
       // Every requested Sachverhalt consumes 1 credit immediately (any status)
       const usedCredits = caseStudyData?.length || 0
@@ -946,7 +1009,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
 
         {/* 0. Neueste verfügbare Korrektur */}
         {newCorrections.length > 0 && (
-          <div className="bg-green-50 border-2 border-green-200 rounded-lg shadow p-4 sm:p-6 mb-6 sm:mb-8">
+          <div className="bg-green-50/80 backdrop-blur-sm border-2 border-green-200 rounded-lg shadow-sm p-4 sm:p-6 mb-6 sm:mb-8">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg sm:text-xl font-semibold text-green-900">🎉 Neue Korrektur verfügbar!</h2>
               <div className="flex items-center space-x-2">
@@ -957,12 +1020,12 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
             {newCorrections.slice(0, 1).map(caseStudy => {
               const style = getCompletedCaseStyle(caseStudy)
               return (
-                <div key={caseStudy.id} className={`${style.containerClass} rounded-lg p-4 border border-green-200`}>
+                <div key={caseStudy.id} className={style.containerClass}>
                   <div className="cursor-pointer">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="bg-green-100 text-green-600 text-xs font-semibold px-2 py-1 rounded">#{caseStudy.case_study_number}</span>
-                        <h3 className="font-medium text-gray-900 text-sm sm:text-base">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
+                        <h3 className="font-bold text-gray-900 text-sm sm:text-base">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
                         <ChevronDown className="w-4 h-4 text-gray-500" />
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
@@ -977,10 +1040,10 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                   {caseStudy.video_correction_url && (
                     <div className="mt-3">
                       <button
-                        onClick={() => openVideoModal(caseStudy.video_correction_url!, caseStudy.id)}
-                        className="flex items-center justify-center gap-1 px-3 py-2 sm:py-1 bg-primary text-white text-xs rounded-lg hover:bg-primary/90 transition-colors w-full sm:w-auto"
+                        onClick={() => expandAndScrollToCorrection(caseStudy.id)}
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-[#2e83c2] text-white text-sm rounded-lg hover:bg-[#0a1f44] transition-colors w-full sm:w-auto"
                       >
-                        <Video className="w-3 h-3" />
+                        <Video className="w-4 h-4" />
                         Video ansehen
                       </button>
                     </div>
@@ -988,75 +1051,84 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                   <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <button
                       onClick={() => openRatingModal(caseStudy.id)}
-                      className="flex items-center justify-center gap-1 px-3 py-2 sm:py-1 bg-transparent border border-blue-400 text-blue-500 text-xs rounded-lg hover:bg-blue-50 transition-colors w-full sm:w-auto"
+                      className="flex items-center justify-center gap-2 px-4 py-2 bg-[#2e83c2] text-white text-sm rounded-lg hover:bg-[#0a1f44] transition-colors w-full sm:w-auto"
                     >
-                      <Star className="w-3 h-3" />
+                      <Star className="w-4 h-4" />
                       Jetzt bewerten
                     </button>
                   </div>
                   <div className="mt-4 space-y-3 animate-in slide-in-from-top-2 duration-300">
-                    <div className="bg-gray-50 p-3 rounded border border-gray-200">
-                      <p className="text-sm text-gray-800 font-medium mb-2">📚 Deine Unterlagen:</p>
-                      <div className="flex flex-col gap-2 max-w-xs">
+                    <div className="bg-gray-50/80 backdrop-blur-sm p-3 rounded border border-gray-200 shadow-sm">
+                      <p className="text-sm text-gray-800 font-bold mb-2">📚 Deine Unterlagen:</p>
+                      <div className="flex flex-col gap-2 max-w-xs md:row-start-3 md:col-start-1">
                         {caseStudy.pdf_url && (
-                          <button onClick={() => downloadFileAsPDF(caseStudy.pdf_url!, `Sachverhalt_${caseStudy.case_study_number}.pdf`, caseStudy.id)} className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2" style={{ backgroundColor: 'rgb(46, 131, 194)' }}>
+                          <button onClick={() => downloadFileAsPDF(caseStudy.pdf_url!, `Sachverhalt_${caseStudy.case_study_number}.pdf`, caseStudy.id)} className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2 bg-[#2e83c2] hover:bg-[#0a1f44]">
                             <FileText className="w-4 h-4" />
                             <span>Sachverhalt</span>
                           </button>
                         )}
                         {caseStudy.case_study_material_url && (
-                          <button onClick={() => downloadFileAsPDF(caseStudy.case_study_material_url!, `Zusatzmaterial_${caseStudy.case_study_number}.pdf`, caseStudy.id)} className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2" style={{ backgroundColor: 'rgb(46, 131, 194)' }}>
+                          <button onClick={() => downloadFileAsPDF(caseStudy.case_study_material_url!, `Zusatzmaterial_${caseStudy.case_study_number}.pdf`, caseStudy.id)} className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2 bg-[#2e83c2] hover:bg-[#0a1f44]">
                             <FileText className="w-4 h-4" />
                             <span>Zusatzmaterial</span>
                           </button>
                         )}
                         {caseStudy.submission_url && (
-                          <a href={caseStudy.submission_url} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2" style={{ backgroundColor: 'rgb(46, 131, 194)' }}>
+                          <a href={caseStudy.submission_url} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2 bg-[#2e83c2] hover:bg-[#0a1f44]">
                             <Upload className="w-4 h-4" />
                             <span>Meine Bearbeitung</span>
                           </a>
                         )}
                       </div>
                     </div>
-                    <div className="bg-white p-3 rounded border border-green-200">
-                      <p className="text-sm text-green-800 font-medium mb-2">🎓 Deine Korrekturen:</p>
+                    <div id={`correction-section-${caseStudy.id}`} className="bg-white/80 backdrop-blur-sm p-3 rounded border border-green-200 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 items-start">
+                      <p className="md:col-span-2 text-sm text-green-800 font-bold mb-2">🎓 Deine Korrekturen:</p>
                       {submissions.has(caseStudy.id) && submissions.get(caseStudy.id)?.grade !== null && (
-                        <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded">
+                        <div className="mb-3 p-2 bg-blue-50/80 backdrop-blur-sm border border-blue-200 rounded shadow-sm max-w-sm md:row-start-2 md:col-start-1">
                           <div className="flex items-center justify-between">
                             <span className="text-sm font-medium text-primary">📊 Deine Note:</span>
                             <div className="text-right">
-                              <span className="text-lg font-bold text-primary">{submissions.get(caseStudy.id)?.grade} Punkte</span>
+                              <span className="text-2xl font-bold text-primary">{submissions.get(caseStudy.id)?.grade} Punkte</span>
                             </div>
                           </div>
                         </div>
                       )}
-                      <div className="flex flex-col gap-2 max-w-xs">
+                      {caseStudy.video_correction_url && (
+                        <div className="aspect-video w-full rounded-lg overflow-hidden border border-gray-200 md:col-start-2 md:row-start-2 md:row-span-2">
+                          <iframe
+                            src={caseStudy.video_correction_url.replace('https://www.loom.com/share/', 'https://www.loom.com/embed/')}
+                            className="w-full h-full"
+                            allowFullScreen
+                            title="Video-Korrektur"
+                          />
+                        </div>
+                      )}
+                      <div className="flex flex-col gap-2 max-w-xs md:row-start-3 md:col-start-1">
                         {caseStudy.solution_pdf_url && (
-                          <button onClick={() => downloadFileAsPDF(caseStudy.solution_pdf_url!, `Loesung_${caseStudy.case_study_number}.pdf`, caseStudy.id)} className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white" style={{ backgroundColor: 'rgb(46, 131, 194)' }}>
+                          <button onClick={() => downloadFileAsPDF(caseStudy.solution_pdf_url!, `Loesung_${caseStudy.case_study_number}.pdf`, caseStudy.id)} className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white bg-[#2e83c2] hover:bg-[#0a1f44]">
                             <FileText className="w-4 h-4" />
                             <span>Klausur-Lösung</span>
                           </button>
                         )}
                         {caseStudy.written_correction_url && (
-                          <button onClick={() => downloadFileAsPDF(caseStudy.written_correction_url!, `Korrektur_${caseStudy.case_study_number}.pdf`, caseStudy.id)} className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white" style={{ backgroundColor: 'rgb(46, 131, 194)' }}>
+                          <button onClick={() => downloadFileAsPDF(caseStudy.written_correction_url!, `Korrektur_${caseStudy.case_study_number}.pdf`, caseStudy.id)} className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white bg-[#2e83c2] hover:bg-[#0a1f44]">
                             <FileText className="w-4 h-4" />
                             <span>Schriftliche Korrektur</span>
                           </button>
                         )}
                         <button
                           onClick={() => openFeedbackModal(caseStudy.id)}
-                          className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white"
-                          style={{ backgroundColor: 'rgb(10, 31, 68)' }}
+                          className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white bg-[#2e83c2] hover:bg-[#0a1f44]"
                         >
                           <Edit3 className="w-4 h-4" />
                           <span>Feedbackpapier erstellen</span>
                         </button>
                       </div>
                     </div>
-                    <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">💡 Schaue Dir sowohl die Video-Korrektur, als auch die schriftliche Bewertung Deines Dozenten an, um einen maximalen Mehrwert in der Nachbereitung zu erhalten!</div>
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <div className="text-xs text-gray-500 bg-gray-50/80 backdrop-blur-sm p-2 rounded shadow-sm">💡 Schaue Dir sowohl die Video-Korrektur, als auch die schriftliche Bewertung Deines Dozenten an, um einen maximalen Mehrwert in der Nachbereitung zu erhalten!</div>
+                    <div className="bg-yellow-50/80 backdrop-blur-sm border border-yellow-200 rounded-lg p-4 shadow-sm">
                       <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                        <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
                           <Star className="w-4 h-4 text-yellow-500" />
                           Bewerte Deine Klausurenkorrektur
                         </h4>
@@ -1064,7 +1136,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                       <p className="text-xs text-gray-600 mb-3">Wie bewertest Du Deine Klausurenkorrektur? Gibt es Kritik/Verbesserungswünsche?</p>
                       <button
                         onClick={() => openRatingModal(caseStudy.id)}
-                        className="w-full bg-yellow-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-yellow-700 transition-colors flex items-center justify-center gap-2"
+                        className="w-full bg-[#2e83c2] text-white px-3 py-2 rounded-lg text-sm hover:bg-[#0a1f44] transition-colors flex items-center justify-center gap-2"
                       >
                         <MessageSquare className="w-4 h-4" />
                         Jetzt bewerten
@@ -1078,9 +1150,9 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
         )}
 
         {/* 1. Verfügbare Klausuren */}
-        <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 sm:mb-8">
+        <div className="bg-white/80 backdrop-blur-sm rounded-lg shadow-sm p-4 sm:p-6 mb-6 sm:mb-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Verfügbare Klausuren</h2>
+            <h2 className="text-lg sm:text-xl font-bold text-gray-900">Verfügbare Klausuren</h2>
             <div className="flex items-center space-x-2">
               <CreditCard className="w-5 h-5 text-primary" />
               <span className="font-bold text-primary">{availableSlots}</span>
@@ -1093,7 +1165,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
             {availableSlots > 0 && (
               <Link
                 to="/klausurenbesprechung/sachverhalt-anfordern"
-                className="bg-primary text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base w-full sm:w-auto"
+                className="bg-[#2e83c2] text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg hover:bg-[#0a1f44] transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base w-full sm:w-auto"
               >
                 <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
                 <span>Sachverhalt anfordern</span>
@@ -1105,7 +1177,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
               <p className="text-gray-600 mb-4">Keine verfügbaren Credits.</p>
               <Link
                 to="/klausurenbesprechung/pakete"
-                className="bg-primary text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base"
+                className="bg-[#2e83c2] text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg hover:bg-[#0a1f44] transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base"
               >
                 <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                 <span>Weitere Klausuren buchen</span>
@@ -1116,9 +1188,9 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
 
         {/* 2. Sachverhalt angefordert */}
         {requestedCases.length > 0 && (
-        <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 sm:mb-8">
+        <div className="bg-white/80 backdrop-blur-sm rounded-lg shadow-sm p-4 sm:p-6 mb-6 sm:mb-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Sachverhalt angefordert</h2>
+            <h2 className="text-lg sm:text-xl font-bold text-gray-900">Sachverhalt angefordert</h2>
             <div className="flex items-center space-x-2">
               <Clock className="w-5 h-5 text-primary" />
               <span className="font-bold text-primary">{requestedCases.length}</span>
@@ -1141,7 +1213,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                         <span className="bg-blue-100 text-blue-600 text-xs font-semibold px-2 py-1 rounded whitespace-nowrap">
                           #{index + 1}
                         </span>
-                        <h3 className="font-medium text-gray-900 text-sm sm:text-base truncate">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
+                        <h3 className="font-bold text-gray-900 text-sm sm:text-base truncate">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
                       </div>
                       <p className="text-xs sm:text-sm text-gray-600 truncate">Schwerpunkt: {caseStudy.focus_area}</p>
                       <p className="text-xs text-gray-500">Angefordert: {formatDate(caseStudy.created_at)}</p>
@@ -1158,9 +1230,9 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
 
         {/* 3. Sachverhalt verfügbar */}
         {materialsReadyCases.length > 0 && (
-        <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 sm:mb-8">
+        <div className="bg-white/80 backdrop-blur-sm rounded-lg shadow-sm p-4 sm:p-6 mb-6 sm:mb-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Sachverhalt verfügbar</h2>
+            <h2 className="text-lg sm:text-xl font-bold text-gray-900">Sachverhalt verfügbar</h2>
             <div className="flex items-center space-x-2">
               <BookOpen className="w-5 h-5 text-primary" />
               <span className="font-bold text-primary">{materialsReadyCases.length}</span>
@@ -1171,10 +1243,10 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                 <div 
                   key={caseStudy.id} 
                   id={`case-study-${caseStudy.id}`}
-                  className={`border rounded-lg p-3 transition-all duration-1000 ${
+                  className={`border-[3px] border-[#2e83c2]/40 shadow-sm rounded-lg p-3 transition-all duration-1000 backdrop-blur-sm ${
                     highlightedCaseId === caseStudy.id 
-                      ? 'border-blue-400 bg-blue-100 shadow-lg ring-2 ring-blue-300' 
-                      : 'border-blue-200 bg-blue-50'
+                      ? 'bg-blue-100/80 ring-2 ring-blue-300' 
+                      : 'bg-blue-50/80'
                   }`}
                 >
                   <div className="mb-3">
@@ -1182,7 +1254,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                       <span className="bg-blue-100 text-blue-600 text-xs font-semibold px-2 py-1 rounded whitespace-nowrap">
                         #{caseStudy.case_study_number}
                       </span>
-                      <h3 className="font-medium text-gray-900 text-sm sm:text-base break-words">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
+                      <h3 className="font-bold text-gray-900 text-sm sm:text-base break-words">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
                     </div>
                     <p className="text-xs sm:text-sm text-gray-600 break-words">Schwerpunkt: {caseStudy.focus_area}</p>
                   </div>
@@ -1211,7 +1283,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                             href={material.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="bg-primary text-white px-3 py-2 rounded-lg text-xs sm:text-sm hover:bg-primary/90 transition-colors flex items-center justify-center space-x-2 whitespace-nowrap"
+                            className="bg-[#2e83c2] text-white px-3 py-2 rounded-lg text-xs sm:text-sm hover:bg-[#0a1f44] transition-colors flex items-center justify-center space-x-2 whitespace-nowrap"
                           >
                             <Download className="w-4 h-4" />
                             <span>{caseStudy.additional_materials.length > 1 ? `Zusatzmaterial ${index + 1}` : 'Zusatzmaterial'}</span>
@@ -1223,7 +1295,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                         href={caseStudy.additional_materials_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="bg-primary text-white px-3 py-2 rounded-lg text-xs sm:text-sm hover:bg-primary/90 transition-colors flex items-center justify-center space-x-2 whitespace-nowrap"
+                        className="bg-[#2e83c2] text-white px-3 py-2 rounded-lg text-xs sm:text-sm hover:bg-[#0a1f44] transition-colors flex items-center justify-center space-x-2 whitespace-nowrap"
                       >
                         <Download className="w-4 h-4" />
                         <span>Zusatzmaterialien</span>
@@ -1296,7 +1368,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                       disabled={!uploadFiles.get(caseStudy.id) || uploadingCaseId === caseStudy.id}
                       className={`w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center space-x-2 ${
                         uploadFiles.get(caseStudy.id) && uploadingCaseId !== caseStudy.id
-                          ? 'bg-primary hover:bg-primary/90 text-white'
+                          ? 'bg-[#2e83c2] hover:bg-[#0a1f44] text-white'
                           : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       }`}
                     >
@@ -1322,9 +1394,9 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
 
         {/* 4. Eingereichte Bearbeitungen */}
         {submittedCases.length > 0 && (
-        <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 sm:mb-8">
+        <div className="bg-white/80 backdrop-blur-sm rounded-lg shadow-sm p-4 sm:p-6 mb-6 sm:mb-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Upload Bearbeitung</h2>
+            <h2 className="text-lg sm:text-xl font-bold text-gray-900">Upload Bearbeitung</h2>
             <div className="flex items-center space-x-2">
               <Upload className="w-5 h-5 text-primary" />
               <span className="font-bold text-primary">{submittedCases.length}</span>
@@ -1347,11 +1419,11 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                       <span className="bg-blue-100 text-blue-600 text-xs font-semibold px-2 py-1 rounded">
                         #{caseStudy.case_study_number}
                       </span>
-                      <h3 className="font-medium text-gray-900">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
+                      <h3 className="font-bold text-gray-900">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
                     </div>
                     <p className="text-sm text-gray-600">Schwerpunkt: {caseStudy.focus_area}</p>
                   </div>
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <div className="bg-green-50/80 backdrop-blur-sm border border-green-200 rounded-lg p-4 shadow-sm">
                     <div className="flex items-center space-x-3">
                       <CheckCircle className="w-6 h-6 text-green-600" />
                       <div>
@@ -1429,10 +1501,10 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
 
         {/* 5. Video-Klausurenkorrektur verfügbar */}
         {completedCases.length > 0 && (
-        <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 sm:mb-8">
+        <div className="bg-white/80 backdrop-blur-sm rounded-lg shadow-sm p-4 sm:p-6 mb-6 sm:mb-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Video-Klausurenkorrektur verfügbar</h2>
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900">Video-Klausurenkorrektur verfügbar</h2>
               <div className="flex items-center space-x-2 sm:hidden">
                 <Video className="w-5 h-5 text-primary" />
                 <span className="font-bold text-primary">{filteredCompletedCases.length}</span>
@@ -1468,12 +1540,12 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                     <div className="flex items-center">
                       <CheckCircle className="w-5 h-5 text-primary mr-2" />
                       <div>
-                        <h3 className="text-sm font-semibold text-blue-800">🎉 Eine neue Klausur-Korrektur ist ab sofort für Dich verfügbar.</h3>
+                        <h3 className="text-sm font-bold text-blue-800">🎉 Eine neue Klausur-Korrektur ist ab sofort für Dich verfügbar.</h3>
                       </div>
                     </div>
                   </div>
                   
-                  <h3 className="text-md font-semibold text-gray-900 mb-3">Neue Video-Klausurenkorrekturen</h3>
+                  <h3 className="text-md font-bold text-gray-900 mb-3">Neue Video-Klausurenkorrekturen</h3>
                   <div className="space-y-3">
                     {paginatedNewCorrections.map((caseStudy, index) => {
                       const style = getCompletedCaseStyle(caseStudy)
@@ -1501,7 +1573,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                 <span className="bg-blue-100 text-blue-600 text-xs font-semibold px-2 py-1 rounded">
                                   #{caseStudy.case_study_number}
                                 </span>
-                                <h3 className="font-medium text-gray-900 text-sm sm:text-base">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
+                                <h3 className="font-bold text-gray-900 text-sm sm:text-base">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
                                 {expandedCases.has(caseStudy.id) ? (
                                   <ChevronUp className="w-4 h-4 text-gray-500" />
                                 ) : (
@@ -1559,11 +1631,11 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  openVideoModal(caseStudy.video_correction_url!, caseStudy.id)
+                                  expandAndScrollToCorrection(caseStudy.id)
                                 }}
-                                className="flex items-center justify-center gap-1 px-3 py-2 sm:py-1 bg-primary text-white text-xs rounded-lg hover:bg-primary/90 transition-colors w-full sm:w-auto"
+                                className="flex items-center justify-center gap-2 px-4 py-2 bg-[#2e83c2] text-white text-sm rounded-lg hover:bg-[#0a1f44] transition-colors w-full sm:w-auto"
                               >
-                                <Video className="w-3 h-3" />
+                                <Video className="w-4 h-4" />
                                 Video ansehen
                               </button>
                             </div>
@@ -1572,12 +1644,12 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                           {/* Rating Button - Always Visible */}
                           <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                             {ratings.has(caseStudy.id) ? (
-                              <div className="flex items-center gap-1 px-3 py-2 sm:py-1 bg-gray-100 text-gray-700 text-xs rounded-lg w-full sm:w-auto">
+                              <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg w-full sm:w-auto">
                                 <div className="flex">
                                   {[1, 2, 3, 4, 5].map((star) => (
                                     <Star
                                       key={star}
-                                      className={`w-3 h-3 ${
+                                      className={`w-4 h-4 ${
                                         star <= (ratings.get(caseStudy.id)?.rating || 0)
                                           ? 'fill-yellow-400 text-yellow-400'
                                           : 'text-gray-300'
@@ -1593,9 +1665,9 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                   e.stopPropagation()
                                   openRatingModal(caseStudy.id)
                                 }}
-                                className="flex items-center justify-center gap-1 px-3 py-2 sm:py-1 bg-transparent border border-blue-400 text-blue-500 text-xs rounded-lg hover:bg-blue-50 transition-colors w-full sm:w-auto"
+                                className="flex items-center justify-center gap-2 px-4 py-2 bg-[#2e83c2] text-white text-sm rounded-lg hover:bg-[#0a1f44] transition-colors w-full sm:w-auto"
                               >
-                                <Star className="w-3 h-3" />
+                                <Star className="w-4 h-4" />
                                 Jetzt bewerten
                               </button>
                             )}
@@ -1608,7 +1680,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                 className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 transition-colors"
                                 title="Klausur löschen (Admin)"
                               >
-                                <Trash2 className="w-3 h-3" />
+                                <Trash2 className="w-4 h-4" />
                                 Löschen
                               </button>
                             )}
@@ -1617,9 +1689,9 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                           {/* Expandable Details Section */}
                           {expandedCases.has(caseStudy.id) && (
                             <div className="mt-4 space-y-3 animate-in slide-in-from-top-2 duration-300">
-                              <div className="bg-gray-50 p-3 rounded border border-gray-200">
-                                <p className="text-sm text-gray-800 font-medium mb-2">📚 Deine Unterlagen:</p>
-                                <div className="flex flex-col gap-2 max-w-xs">
+                              <div className="bg-gray-50/80 backdrop-blur-sm p-3 rounded border border-gray-200 shadow-sm">
+                                <p className="text-sm text-gray-800 font-bold mb-2">📚 Deine Unterlagen:</p>
+                                <div className="flex flex-col gap-2 max-w-xs md:row-start-3 md:col-start-1">
                                   {caseStudy.case_study_material_url && (
                                     <button
                                       onClick={(e) => {
@@ -1630,9 +1702,9 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                         }
                                       }}
                                       className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white"
-                                      style={{ backgroundColor: caseStudy.pdf_downloaded_at ? '#10b981' : '#2e83c2' }}
-                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = caseStudy.pdf_downloaded_at ? '#059669' : '#0a1f44'}
-                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = caseStudy.pdf_downloaded_at ? '#10b981' : '#2e83c2'}
+                                      style={{ backgroundColor: '#2e83c2' }}
+                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0a1f44'}
+                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#2e83c2'}
                                     >
                                       <FileText className="w-4 h-4" />
                                       <span>Sachverhalt</span>
@@ -1690,15 +1762,15 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                 </div>
                               </div>
                               
-                              <div className="bg-white p-3 rounded border border-green-200">
-                                <p className="text-sm text-green-800 font-medium mb-2">🎓 Deine Korrekturen:</p>
+                              <div id={`correction-section-${caseStudy.id}`} className="bg-white/80 backdrop-blur-sm p-3 rounded border border-green-200 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 items-start">
+                                <p className="md:col-span-2 text-sm text-green-800 font-bold mb-2">🎓 Deine Korrekturen:</p>
                                 {/* Grade Display for New Corrections */}
                                 {submissions.has(caseStudy.id) && submissions.get(caseStudy.id)?.grade !== null && (
-                                  <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded">
+                                  <div className="mb-3 p-2 bg-blue-50/80 backdrop-blur-sm border border-blue-200 rounded shadow-sm max-w-sm md:row-start-2 md:col-start-1">
                                     <div className="flex items-center justify-between">
                                       <span className="text-sm font-medium text-primary">📊 Deine Note:</span>
                                       <div className="text-right">
-                                        <span className="text-lg font-bold text-primary">
+                                        <span className="text-2xl font-bold text-primary">
                                           {submissions.get(caseStudy.id)?.grade} Punkte
                                         </span>
                                         {submissions.get(caseStudy.id)?.grade && (
@@ -1715,23 +1787,17 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                     )}
                                   </div>
                                 )}
-                                <div className="flex flex-col gap-2 max-w-xs">
-                                  {caseStudy.video_correction_url && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        openVideoModal(caseStudy.video_correction_url!, caseStudy.id)
-                                      }}
-                                      className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white"
-                                      style={{ backgroundColor: caseStudy.video_viewed_at ? '#10b981' : '#2e83c2' }}
-                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = caseStudy.video_viewed_at ? '#059669' : '#0a1f44'}
-                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = caseStudy.video_viewed_at ? '#10b981' : '#2e83c2'}
-                                    >
-                                      <Video className="w-4 h-4" />
-                                      <span>Video ansehen</span>
-                                      {caseStudy.video_viewed_at && <span className="text-xs">✓</span>}
-                                    </button>
-                                  )}
+                                {caseStudy.video_correction_url && (
+                                  <div className="aspect-video w-full rounded-lg overflow-hidden border border-gray-200 md:col-start-2 md:row-start-2 md:row-span-2">
+                                    <iframe
+                                      src={caseStudy.video_correction_url.replace('https://www.loom.com/share/', 'https://www.loom.com/embed/')}
+                                      className="w-full h-full"
+                                      allowFullScreen
+                                      title="Video-Korrektur"
+                                    />
+                                  </div>
+                                )}
+                                <div className="flex flex-col gap-2 max-w-xs md:row-start-3 md:col-start-1">
                                   { (
                                     <button
                                       onClick={(e) => {
@@ -1774,9 +1840,9 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                         downloadFileAsPDF(caseStudy.written_correction_url!, `Korrektur_${caseStudy.case_study_number}.pdf`, caseStudy.id)
                                       }}
                                       className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white"
-                                      style={{ backgroundColor: caseStudy.pdf_downloaded_at ? '#10b981' : '#2e83c2' }}
-                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = caseStudy.pdf_downloaded_at ? '#059669' : '#0a1f44'}
-                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = caseStudy.pdf_downloaded_at ? '#10b981' : '#2e83c2'}
+                                      style={{ backgroundColor: '#2e83c2' }}
+                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0a1f44'}
+                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#2e83c2'}
                                     >
                                       <FileText className="w-4 h-4" />
                                       <span>Schriftliche Korrektur</span>
@@ -1789,9 +1855,9 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                       openFeedbackModal(caseStudy.id)
                                     }}
                                     className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white"
-                                    style={{ backgroundColor: studentFeedbacks.has(caseStudy.id) ? '#10b981' : '#0a1f44' }}
-                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = studentFeedbacks.has(caseStudy.id) ? '#059669' : '#2e83c2'}
-                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = studentFeedbacks.has(caseStudy.id) ? '#10b981' : '#0a1f44'}
+                                    style={{ backgroundColor: '#2e83c2' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0a1f44'}
+                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#2e83c2'}
                                   >
                                     <Edit3 className="w-4 h-4" />
                                     <span>
@@ -1803,21 +1869,22 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation()
-                                        openPDFPreview()
+                                        downloadFeedbackPDF(caseStudy.id)
                                       }}
                                       className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white"
                                       style={{ backgroundColor: '#2e83c2' }}
                                       onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0a1f44'}
                                       onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#2e83c2'}
+                                      title="Feedbackpapier herunterladen"
                                     >
-                                      <Eye className="w-4 h-4" />
-                                      <span>Feedbackpapier anzeigen</span>
+                                      <Download className="w-4 h-4" />
+                                      <span>Feedbackpapier herunterladen</span>
                                     </button>
                                   )}
                                 </div>
                               </div>
                               
-                              <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+                              <div className="text-xs text-gray-500 bg-gray-50/80 backdrop-blur-sm p-2 rounded shadow-sm">
                                 💡 Schaue Dir sowohl die Video-Korrektur, als auch die schriftliche Bewertung Deines Dozenten an, um einen maximalen Mehrwert in der Nachbereitung zu erhalten!
                               </div>
                             </div>
@@ -1832,7 +1899,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
               {/* Vergangene Video-Klausurenkorrekturen */}
               {paginatedViewedCorrections.length > 0 && (
                 <div className="mb-6">
-                  <h3 className="text-md font-semibold text-gray-900 mb-3">Vergangene Video-Klausurenkorrekturen</h3>
+                  <h3 className="text-md font-bold text-gray-900 mb-3">Vergangene Video-Klausurenkorrekturen</h3>
                   <div className="space-y-3">
                     {paginatedViewedCorrections.map((caseStudy) => {
                       const style = getCompletedCaseStyle(caseStudy)
@@ -1856,7 +1923,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                 <span className="bg-blue-100 text-blue-600 text-xs font-semibold px-2 py-1 rounded">
                                   #{caseStudy.case_study_number}
                                 </span>
-                                <h3 className="font-medium text-gray-900 text-sm sm:text-base">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
+                                <h3 className="font-bold text-gray-900 text-sm sm:text-base">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
                                 {expandedCases.has(caseStudy.id) ? (
                                   <ChevronUp className="w-4 h-4 text-gray-500" />
                                 ) : (
@@ -1914,11 +1981,11 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  openVideoModal(caseStudy.video_correction_url!, caseStudy.id)
+                                  expandAndScrollToCorrection(caseStudy.id)
                                 }}
-                                className="flex items-center justify-center gap-1 px-3 py-2 sm:py-1 bg-primary text-white text-xs rounded-lg hover:bg-primary/90 transition-colors w-full sm:w-auto"
+                                className="flex items-center justify-center gap-2 px-4 py-2 bg-[#2e83c2] text-white text-sm rounded-lg hover:bg-[#0a1f44] transition-colors w-full sm:w-auto"
                               >
-                                <Video className="w-3 h-3" />
+                                <Video className="w-4 h-4" />
                                 Video ansehen
                               </button>
                             </div>
@@ -1927,12 +1994,12 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                           {/* Rating Button - Always Visible */}
                           <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                             {ratings.has(caseStudy.id) ? (
-                              <div className="flex items-center gap-1 px-3 py-2 sm:py-1 bg-gray-100 text-gray-700 text-xs rounded-lg w-full sm:w-auto">
+                              <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg w-full sm:w-auto">
                                 <div className="flex">
                                   {[1, 2, 3, 4, 5].map((star) => (
                                     <Star
                                       key={star}
-                                      className={`w-3 h-3 ${
+                                      className={`w-4 h-4 ${
                                         star <= (ratings.get(caseStudy.id)?.rating || 0)
                                           ? 'fill-yellow-400 text-yellow-400'
                                           : 'text-gray-300'
@@ -1948,9 +2015,9 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                   e.stopPropagation()
                                   openRatingModal(caseStudy.id)
                                 }}
-                                className="flex items-center justify-center gap-1 px-3 py-2 sm:py-1 bg-transparent border border-blue-400 text-blue-500 text-xs rounded-lg hover:bg-blue-50 transition-colors w-full sm:w-auto"
+                                className="flex items-center justify-center gap-2 px-4 py-2 bg-[#2e83c2] text-white text-sm rounded-lg hover:bg-[#0a1f44] transition-colors w-full sm:w-auto"
                               >
-                                <Star className="w-3 h-3" />
+                                <Star className="w-4 h-4" />
                                 Jetzt bewerten
                               </button>
                             )}
@@ -1963,7 +2030,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                 className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 transition-colors"
                                 title="Klausur löschen (Admin)"
                               >
-                                <Trash2 className="w-3 h-3" />
+                                <Trash2 className="w-4 h-4" />
                                 Löschen
                               </button>
                             )}
@@ -1972,9 +2039,9 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                           {/* Expandable Details Section */}
                           {expandedCases.has(caseStudy.id) && (
                             <div className="mt-4 space-y-3 animate-in slide-in-from-top-2 duration-300">
-                              <div className="bg-gray-50 p-3 rounded border border-gray-200">
-                                <p className="text-sm text-gray-800 font-medium mb-2">📚 Deine Unterlagen:</p>
-                                <div className="flex flex-col gap-2 max-w-xs">
+                              <div className="bg-gray-50/80 backdrop-blur-sm p-3 rounded border border-gray-200 shadow-sm">
+                                <p className="text-sm text-gray-800 font-bold mb-2">📚 Deine Unterlagen:</p>
+                                <div className="flex flex-col gap-2 max-w-xs md:row-start-3 md:col-start-1">
                                   {caseStudy.case_study_material_url && (
                                     <button
                                       onClick={(e) => {
@@ -1985,9 +2052,9 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                         }
                                       }}
                                       className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white"
-                                      style={{ backgroundColor: caseStudy.pdf_downloaded_at ? '#10b981' : '#2e83c2' }}
-                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = caseStudy.pdf_downloaded_at ? '#059669' : '#0a1f44'}
-                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = caseStudy.pdf_downloaded_at ? '#10b981' : '#2e83c2'}
+                                      style={{ backgroundColor: '#2e83c2' }}
+                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0a1f44'}
+                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#2e83c2'}
                                     >
                                       <FileText className="w-4 h-4" />
                                       <span>Sachverhalt</span>
@@ -2045,15 +2112,15 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                 </div>
                               </div>
                               
-                              <div className="bg-white p-3 rounded border border-green-200">
-                                <p className="text-sm text-green-800 font-medium mb-2">🎓 Deine Korrekturen:</p>
+                              <div id={`correction-section-${caseStudy.id}`} className="bg-white/80 backdrop-blur-sm p-3 rounded border border-green-200 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 items-start">
+                                <p className="md:col-span-2 text-sm text-green-800 font-bold mb-2">🎓 Deine Korrekturen:</p>
                                 {/* Grade Display for Viewed Corrections */}
                                 {submissions.has(caseStudy.id) && submissions.get(caseStudy.id)?.grade !== null && (
-                                  <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded">
+                                  <div className="mb-3 p-2 bg-blue-50/80 backdrop-blur-sm border border-blue-200 rounded shadow-sm max-w-sm md:row-start-2 md:col-start-1">
                                     <div className="flex items-center justify-between">
                                       <span className="text-sm font-medium text-primary">📊 Deine Note:</span>
                                       <div className="text-right">
-                                        <span className="text-lg font-bold text-primary">
+                                        <span className="text-2xl font-bold text-primary">
                                           {submissions.get(caseStudy.id)?.grade} Punkte
                                         </span>
                                         {submissions.get(caseStudy.id)?.grade && (
@@ -2070,23 +2137,17 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                     )}
                                   </div>
                                 )}
-                                <div className="flex flex-col gap-2 max-w-xs">
-                                  {caseStudy.video_correction_url && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        openVideoModal(caseStudy.video_correction_url!, caseStudy.id)
-                                      }}
-                                      className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white"
-                                      style={{ backgroundColor: caseStudy.video_viewed_at ? '#10b981' : '#2e83c2' }}
-                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = caseStudy.video_viewed_at ? '#059669' : '#0a1f44'}
-                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = caseStudy.video_viewed_at ? '#10b981' : '#2e83c2'}
-                                    >
-                                      <Video className="w-4 h-4" />
-                                      <span>Video ansehen</span>
-                                      {caseStudy.video_viewed_at && <span className="text-xs">✓</span>}
-                                    </button>
-                                  )}
+                                {caseStudy.video_correction_url && (
+                                  <div className="aspect-video w-full rounded-lg overflow-hidden border border-gray-200 md:col-start-2 md:row-start-2 md:row-span-2">
+                                    <iframe
+                                      src={caseStudy.video_correction_url.replace('https://www.loom.com/share/', 'https://www.loom.com/embed/')}
+                                      className="w-full h-full"
+                                      allowFullScreen
+                                      title="Video-Korrektur"
+                                    />
+                                  </div>
+                                )}
+                                <div className="flex flex-col gap-2 max-w-xs md:row-start-3 md:col-start-1">
                                   { (
                                     <button
                                       onClick={(e) => {
@@ -2129,9 +2190,9 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                         downloadFileAsPDF(caseStudy.written_correction_url!, `Korrektur_${caseStudy.case_study_number}.pdf`, caseStudy.id)
                                       }}
                                       className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white"
-                                      style={{ backgroundColor: caseStudy.pdf_downloaded_at ? '#10b981' : '#2e83c2' }}
-                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = caseStudy.pdf_downloaded_at ? '#059669' : '#0a1f44'}
-                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = caseStudy.pdf_downloaded_at ? '#10b981' : '#2e83c2'}
+                                      style={{ backgroundColor: '#2e83c2' }}
+                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0a1f44'}
+                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#2e83c2'}
                                     >
                                       <FileText className="w-4 h-4" />
                                       <span>Schriftliche Korrektur</span>
@@ -2144,9 +2205,9 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                       openFeedbackModal(caseStudy.id)
                                     }}
                                     className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white"
-                                    style={{ backgroundColor: studentFeedbacks.has(caseStudy.id) ? '#10b981' : '#0a1f44' }}
-                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = studentFeedbacks.has(caseStudy.id) ? '#059669' : '#2e83c2'}
-                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = studentFeedbacks.has(caseStudy.id) ? '#10b981' : '#0a1f44'}
+                                    style={{ backgroundColor: '#2e83c2' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0a1f44'}
+                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#2e83c2'}
                                   >
                                     <Edit3 className="w-4 h-4" />
                                     <span>
@@ -2158,28 +2219,29 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation()
-                                        openPDFPreview()
+                                        downloadFeedbackPDF(caseStudy.id)
                                       }}
                                       className="px-3 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 text-white"
                                       style={{ backgroundColor: '#2e83c2' }}
                                       onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0a1f44'}
                                       onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#2e83c2'}
+                                      title="Feedbackpapier herunterladen"
                                     >
-                                      <Eye className="w-4 h-4" />
-                                      <span>Feedbackpapier anzeigen</span>
+                                      <Download className="w-4 h-4" />
+                                      <span>Feedbackpapier herunterladen</span>
                                     </button>
                                   )}
                                 </div>
                               </div>
                               
-                              <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+                              <div className="text-xs text-gray-500 bg-gray-50/80 backdrop-blur-sm p-2 rounded shadow-sm">
                                 💡 Schaue Dir sowohl die Video-Korrektur, als auch die schriftliche Bewertung Deines Dozenten an, um einen maximalen Mehrwert in der Nachbereitung zu erhalten!
                               </div>
                               
                               {/* Rating Section */}
-                              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                              <div className="bg-yellow-50/80 backdrop-blur-sm border border-yellow-200 rounded-lg p-4 shadow-sm">
                                 <div className="flex items-center justify-between mb-3">
-                                  <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                  <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
                                     <Star className="w-4 h-4 text-yellow-500" />
                                     Bewerte Deine Klausurenkorrektur
                                   </h4>
@@ -2206,7 +2268,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                     e.stopPropagation()
                                     openRatingModal(caseStudy.id)
                                   }}
-                                  className="w-full bg-yellow-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-yellow-700 transition-colors flex items-center justify-center gap-2"
+                                  className="w-full bg-[#2e83c2] text-white px-3 py-2 rounded-lg text-sm hover:bg-[#0a1f44] transition-colors flex items-center justify-center gap-2"
                                 >
                                   <MessageSquare className="w-4 h-4" />
                                   {ratings.has(caseStudy.id) ? 'Bewertung bearbeiten' : 'Jetzt bewerten'}
@@ -2268,40 +2330,13 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
         </div>
         )}
 
-        {/* Video Modal */}
-        {videoModalOpen && currentVideoUrl && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
-              <div className="flex items-center justify-between p-4 border-b">
-                <h3 className="text-lg font-semibold text-gray-900">Video-Korrektur</h3>
-                <button
-                  onClick={closeVideoModal}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-              <div className="p-4">
-                <div className="aspect-video w-full">
-                  <iframe
-                    src={currentVideoUrl}
-                    className="w-full h-full rounded-lg"
-                    frameBorder="0"
-                    allowFullScreen
-                    title="Loom Video Correction"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Rating Modal */}
         {showRatingModal && currentRatingCaseId && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg max-w-md w-full">
               <div className="flex items-center justify-between p-4 border-b">
-                <h3 className="text-lg font-semibold text-gray-900">Klausurenkorrektur bewerten</h3>
+                <h3 className="text-lg font-bold text-gray-900">Klausurenkorrektur bewerten</h3>
                 <button
                   onClick={closeRatingModal}
                   className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -2369,7 +2404,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                     className={`flex-1 px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 ${
                       tempRating === 0 || submittingRating
                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-primary text-white hover:bg-primary/90'
+                        : 'bg-[#2e83c2] text-white hover:bg-[#0a1f44]'
                     }`}
                   >
                     {submittingRating ? (
@@ -2389,58 +2424,149 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
 
         {/* Feedback Modal */}
         {showFeedbackModal && currentFeedbackCaseId && (
-          // TODO: Implement FeedbackForm component
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-md w-full p-6">
-              <p>Feedback Form functionality not yet implemented</p>
-              <button onClick={closeFeedbackModal} className="mt-4 px-4 py-2 bg-gray-200 rounded">Close</button>
+            <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-xl">
+              <div className="bg-[#2e83c2] text-white px-6 py-4 rounded-t-lg flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold flex items-center gap-2">
+                    <FileText className="w-5 h-5" />
+                    {studentFeedbacks.has(currentFeedbackCaseId) ? 'Feedbackpapier bearbeiten' : 'Feedbackpapier erstellen'}
+                  </h3>
+                  {(() => {
+                    const caseStudy = caseStudies.find(cs => cs.id === currentFeedbackCaseId)
+                    return caseStudy ? <p className="text-sm opacity-90">{caseStudy.legal_area} - {caseStudy.sub_area}</p> : null
+                  })()}
+                </div>
+                <button onClick={closeFeedbackModal} className="text-white hover:text-gray-200">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              <div className="p-6 space-y-6">
+                <div className="bg-blue-50/80 backdrop-blur-sm border border-blue-200 rounded-lg p-4 text-sm text-blue-800 flex items-start gap-3">
+                  <Lightbulb className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                  <p>
+                    <strong>Nutze dieses Feedbackpapier</strong> zur Reflexion deiner Klausurkorrektur. Es hilft dir dabei, aus Fehlern zu lernen und deine Leistung kontinuierlich zu verbessern.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-bold text-gray-900 mb-2">
+                    <HelpCircle className="w-4 h-4 text-yellow-500" />
+                    Selbsterkenntnis: Was habe ich falsch gemacht?
+                  </label>
+                  <textarea
+                    value={feedbackForm.mistakes}
+                    onChange={(e) => setFeedbackForm({ ...feedbackForm, mistakes: e.target.value })}
+                    placeholder="Beschreibe hier, welche Fehler du gemacht hast und was du aus der Korrektur gelernt hast..."
+                    className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-[#2e83c2] focus:border-transparent resize-none"
+                    rows={4}
+                  />
+                  <p className="text-xs text-gray-500 italic mt-2">Beispiel: „Ich habe die Anspruchsgrundlage nicht vollständig geprüft..."</p>
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-bold text-gray-900 mb-2">
+                    <HelpCircle className="w-4 h-4 text-green-500" />
+                    Selbsterkenntnis: Was möchte ich künftig besser machen?
+                  </label>
+                  <textarea
+                    value={feedbackForm.improvements}
+                    onChange={(e) => setFeedbackForm({ ...feedbackForm, improvements: e.target.value })}
+                    placeholder="Beschreibe hier konkrete Verbesserungsmaßnahmen für zukünftige Klausuren..."
+                    className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-[#2e83c2] focus:border-transparent resize-none"
+                    rows={4}
+                  />
+                  <p className="text-xs text-gray-500 italic mt-2">Beispiel: „Ich werde systematischer vorgehen und eine Checkliste verwenden..."</p>
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-bold text-gray-900 mb-2">
+                    <Calendar className="w-4 h-4 text-purple-500" />
+                    Wann möchte ich die Inhalte wiederholen? <span className="text-gray-500 font-normal">(optional)</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={feedbackForm.reviewDate}
+                    onChange={(e) => setFeedbackForm({ ...feedbackForm, reviewDate: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-[#2e83c2] focus:border-transparent"
+                  />
+                </div>
+
+                <label className="flex items-start gap-3 bg-gray-50/80 backdrop-blur-sm rounded-lg p-3 border border-gray-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={feedbackForm.emailReminder}
+                    onChange={(e) => setFeedbackForm({ ...feedbackForm, emailReminder: e.target.checked })}
+                    className="mt-1 w-4 h-4 text-[#2e83c2] rounded focus:ring-[#2e83c2]"
+                  />
+                  <div>
+                    <div className="flex items-center gap-2 text-sm font-bold text-gray-900">
+                      <Mail className="w-4 h-4 text-[#2e83c2]" />
+                      E-Mail-Erinnerung senden
+                    </div>
+                    <p className="text-xs text-gray-500">Du erhältst eine Benachrichtigung am Wiederholungstermin.</p>
+                  </div>
+                </label>
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                  <button
+                    onClick={closeFeedbackModal}
+                    className="flex-1 px-4 py-3 rounded-lg text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors font-medium"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    onClick={submitFeedback}
+                    className="flex-1 px-4 py-3 rounded-lg text-white bg-[#2e83c2] hover:bg-[#0a1f44] transition-colors font-medium flex items-center justify-center gap-2"
+                  >
+                    <FileText className="w-4 h-4" />
+                    Speichern
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-          /*
-          <FeedbackForm
-            isOpen={showFeedbackModal}
-            onClose={closeFeedbackModal}
-            caseStudyId={currentFeedbackCaseId}
-            caseStudyTitle={(() => {
-              const caseStudy = caseStudies.find(cs => cs.id === currentFeedbackCaseId)
-              return caseStudy ? `${caseStudy.legal_area} - ${caseStudy.sub_area}` : 'Klausur'
-            })()}
-            existingFeedback={studentFeedbacks.get(currentFeedbackCaseId) || null}
-            caseStudyInfo={(() => {
-              const caseStudy = caseStudies.find(cs => cs.id === currentFeedbackCaseId)
-              return caseStudy ? {
-                legal_area: caseStudy.legal_area,
-                sub_area: caseStudy.sub_area,
-                focus_area: caseStudy.focus_area,
-                case_study_number: caseStudy.case_study_number
-              } : undefined
-            })()}
-            userInfo={profile ? {
-              first_name: profile.first_name,
-              last_name: profile.last_name
-            } : undefined}
-          />
-          */
         )}
 
         {/* PDF Preview Modal */}
         {showPDFPreview && (
-          // TODO: Implement FeedbackPDFPreview component
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-md w-full p-6">
-              <p>PDF Preview functionality not yet implemented</p>
-              <button onClick={closePDFPreview} className="mt-4 px-4 py-2 bg-gray-200 rounded">Close</button>
+            <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-xl flex flex-col">
+              <div className="bg-[#2e83c2] text-white px-6 py-4 flex items-center justify-between">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <Eye className="w-5 h-5" />
+                  Feedbackpapier Vorschau
+                </h3>
+                <button onClick={closePDFPreview} className="text-white hover:text-gray-200">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              <div className="p-4 flex-1 overflow-auto">
+                {currentPDFData ? (
+                  <object data={currentPDFData} type="application/pdf" width="100%" height="500px" className="rounded border w-full">
+                    <p className="text-gray-600">PDF kann nicht angezeigt werden.</p>
+                  </object>
+                ) : (
+                  <p className="text-gray-600">Kein PDF verfügbar.</p>
+                )}
+              </div>
+              <div className="p-4 border-t flex flex-col sm:flex-row gap-3 justify-end">
+                <button
+                  onClick={closePDFPreview}
+                  className="px-4 py-2 rounded-lg text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors font-medium"
+                >
+                  Schließen
+                </button>
+                <button
+                  onClick={handlePDFDownload}
+                  className="px-4 py-2 rounded-lg text-white bg-[#2e83c2] hover:bg-[#0a1f44] transition-colors font-medium flex items-center justify-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  PDF herunterladen
+                </button>
+              </div>
             </div>
           </div>
-          /*
-          <FeedbackPDFPreview
-            isOpen={showPDFPreview}
-            onClose={closePDFPreview}
-            pdfDataUri={currentPDFData}
-            filename={currentPDFFilename}
-            onDownload={handlePDFDownload}
-          />
-          */
         )}
       </div>
     </div>
