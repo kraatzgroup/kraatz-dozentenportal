@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { supabase } from '../../lib/supabase';
-import { User, CreditCard, LogOut, MessageCircle, Menu, X, LayoutDashboard, Award, GraduationCap, Settings } from 'lucide-react';
+import { User, CreditCard, LogOut, MessageCircle, Menu, X, LayoutDashboard, Award, GraduationCap, Settings, CalendarDays } from 'lucide-react';
 
 export const VbHeader: React.FC = () => {
   const user = useAuthStore(state => state.user);
@@ -127,6 +127,13 @@ export const VbHeader: React.FC = () => {
                   {additionalRoles?.includes('videobesprechung') && (
                     <>
                       <Link
+                        to="/klausurenbesprechung/wiederholung"
+                        className="text-gray-600 hover:text-primary transition-colors flex items-center gap-1 text-sm sm:text-base font-medium"
+                      >
+                        <CalendarDays className="w-4 h-4 text-primary" />
+                        <span>Wiederholung</span>
+                      </Link>
+                      <Link
                         to="/klausurenbesprechung/chat"
                         className="text-gray-600 hover:text-primary transition-colors flex items-center gap-1 text-sm sm:text-base font-medium"
                       >
@@ -163,6 +170,13 @@ export const VbHeader: React.FC = () => {
                     className="text-gray-600 hover:text-primary transition-colors text-sm sm:text-base font-medium"
                   >
                     Ergebnisse
+                  </Link>
+                  <Link
+                    to="/klausurenbesprechung/wiederholung"
+                    className="text-gray-600 hover:text-primary transition-colors flex items-center gap-1 text-sm sm:text-base font-medium"
+                  >
+                    <CalendarDays className="w-4 h-4 text-primary" />
+                    <span>Wiederholung</span>
                   </Link>
                   <Link
                     to="/klausurenbesprechung/klausuren-masterclass"
@@ -273,6 +287,14 @@ export const VbHeader: React.FC = () => {
                   {additionalRoles?.includes('videobesprechung') && (
                     <>
                       <Link
+                        to="/klausurenbesprechung/wiederholung"
+                        className="text-gray-600 hover:text-primary transition-colors flex items-center gap-2 px-2 py-2 text-sm sm:text-base font-medium"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <CalendarDays className="w-4 h-4 text-primary" />
+                        Wiederholung
+                      </Link>
+                      <Link
                         to="/klausurenbesprechung/chat"
                         className="text-gray-600 hover:text-primary transition-colors flex items-center gap-2 px-2 py-2 text-sm sm:text-base font-medium"
                         onClick={() => setMobileMenuOpen(false)}
@@ -309,6 +331,14 @@ export const VbHeader: React.FC = () => {
                   >
                     <Award className="w-4 h-4 text-primary" />
                     Ergebnisse
+                  </Link>
+                  <Link
+                    to="/klausurenbesprechung/wiederholung"
+                    className="text-gray-600 hover:text-primary transition-colors flex items-center gap-2 px-2 py-2 text-sm sm:text-base font-medium"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <CalendarDays className="w-4 h-4 text-primary" />
+                    Wiederholung
                   </Link>
                   <Link
                     to="/klausurenbesprechung/klausuren-masterclass"

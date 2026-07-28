@@ -9,6 +9,7 @@ import { VbCaseStudyRequest } from './components/vb-chat/VbCaseStudyRequest';
 import { VbChatLayout } from './components/vb-chat/VbChatLayout';
 import { VbResultsPage } from './components/vb-chat/VbResultsPage';
 import { VbMasterclassPage } from './components/vb-chat/VbMasterclassPage';
+import { VbWiederholungPage } from './components/vb-chat/VbWiederholungPage';
 import { VbKorrekturDashboard } from './components/vb-chat/VbKorrekturDashboard';
 import { VbKorrekturLayout } from './components/vb-chat/VbKorrekturLayout';
 
@@ -289,6 +290,7 @@ function App() {
           <Route path="/klausurenbesprechung/sachverhalt-anfordern" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbCaseStudyRequest /></VbLayout>} />
           <Route path="/klausurenbesprechung/ergebnisse" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbResultsPage /></VbLayout>} />
           <Route path="/klausurenbesprechung/klausuren-masterclass" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbMasterclassPage /></VbLayout>} />
+          <Route path="/klausurenbesprechung/wiederholung" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbWiederholungPage /></VbLayout>} />
           <Route
             path="/klausurenbesprechung/korrektur"
             element={
