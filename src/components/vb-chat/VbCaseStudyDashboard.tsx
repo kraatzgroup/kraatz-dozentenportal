@@ -1277,7 +1277,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                     {/* Show additional materials - support both old URL format and new array format */}
                     {caseStudy.additional_materials && caseStudy.additional_materials.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
-                        {caseStudy.additional_materials.map((material, index) => (
+                        {caseStudy.additional_materials.map((material, index, materials) => (
                           <a
                             key={material.id}
                             href={material.url}
@@ -1286,7 +1286,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                             className="bg-[#2e83c2] text-white px-3 py-2 rounded-lg text-xs sm:text-sm hover:bg-[#0a1f44] transition-colors flex items-center justify-center space-x-2 whitespace-nowrap"
                           >
                             <Download className="w-4 h-4" />
-                            <span>{caseStudy.additional_materials.length > 1 ? `Zusatzmaterial ${index + 1}` : 'Zusatzmaterial'}</span>
+                            <span>{materials.length > 1 ? `Zusatzmaterial ${index + 1}` : 'Zusatzmaterial'}</span>
                           </a>
                         ))}
                       </div>
@@ -1404,7 +1404,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
           </div>
           <div className="space-y-4">
               {/* Submitted cases */}
-              {submittedCases.map((caseStudy, index) => (
+              {submittedCases.map((caseStudy) => (
                 <div 
                   key={caseStudy.id} 
                   id={`case-study-${caseStudy.id}`}
@@ -1547,7 +1547,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                   
                   <h3 className="text-md font-bold text-gray-900 mb-3">Neue Video-Klausurenkorrekturen</h3>
                   <div className="space-y-3">
-                    {paginatedNewCorrections.map((caseStudy, index) => {
+                    {paginatedNewCorrections.map((caseStudy) => {
                       const style = getCompletedCaseStyle(caseStudy)
                       return (
                         <div 
