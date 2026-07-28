@@ -6,7 +6,7 @@ interface VbConversationListProps {
   conversations: VbConversation[];
   activeConversationId: string | null;
   onSelectConversation: (conversationId: string) => void;
-  onStartConversation: (userIds: string[]) => Promise<void>;
+  onNewChat: () => void;
   loading?: boolean;
 }
 
@@ -14,7 +14,7 @@ export const VbConversationList: React.FC<VbConversationListProps> = ({
   conversations,
   activeConversationId,
   onSelectConversation,
-  onStartConversation,
+  onNewChat,
   loading = false
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -31,8 +31,8 @@ export const VbConversationList: React.FC<VbConversationListProps> = ({
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900">Chats</h2>
           <button
-            onClick={() => onStartConversation([])}
-            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-gray-100 rounded-lg"
+            onClick={onNewChat}
+            className="p-2 text-gray-500 hover:text-primary hover:bg-gray-100 rounded-lg"
             title="Neue Unterhaltung starten"
           >
             <Plus className="w-5 h-5" />
@@ -46,7 +46,7 @@ export const VbConversationList: React.FC<VbConversationListProps> = ({
             placeholder="Unterhaltungen durchsuchen..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
           />
         </div>
       </div>
@@ -54,7 +54,7 @@ export const VbConversationList: React.FC<VbConversationListProps> = ({
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center p-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
         ) : filteredConversations.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
@@ -67,7 +67,7 @@ export const VbConversationList: React.FC<VbConversationListProps> = ({
               key={conversation.id}
               onClick={() => onSelectConversation(conversation.id)}
               className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${
-                conversation.id === activeConversationId ? 'bg-blue-50' : ''
+                conversation.id === activeConversationId ? 'bg-primary/10' : ''
               }`}
             >
               <div className="flex items-start justify-between">
@@ -80,7 +80,7 @@ export const VbConversationList: React.FC<VbConversationListProps> = ({
                   </p>
                 </div>
                 {conversation.unread_count > 0 && (
-                  <div className="ml-2 bg-blue-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                  <div className="ml-2 bg-primary text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
                     {conversation.unread_count}
                   </div>
                 )}

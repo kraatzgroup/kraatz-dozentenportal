@@ -143,6 +143,22 @@ export const useVbMessages = (conversationId: string | null) => {
 
       if (error) throw error;
 
+      // Notify other participants via email (fire-and-forget)
+      supabase.functions.invoke('vb-notify-chat-message', {
+        body: {
+          type: 'INSERT',
+          record: {
+            id: data.id,
+            conversation_id: data.conversation_id,
+            sender_id: data.sender_id,
+            content: data.content,
+            created_at: data.created_at
+          }
+        }
+      }).catch((notifyError) => {
+        console.error('Error sending chat notification:', notifyError);
+      });
+
       const { data: senderData } = await supabase
         .from('profiles')
         .select('id, email, first_name, last_name, role')

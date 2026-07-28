@@ -309,7 +309,7 @@ function App() {
           <Route path="/klausurenbesprechung/case-studies/request" element={!user ? <Navigate to="/login" replace /> : <Navigate to="/klausurenbesprechung/sachverhalt-anfordern" replace />} />
           <Route path="/klausurenbesprechung/results" element={!user ? <Navigate to="/login" replace /> : <Navigate to="/klausurenbesprechung/ergebnisse" replace />} />
           <Route path="/klausurenbesprechung/masterclass" element={!user ? <Navigate to="/login" replace /> : <Navigate to="/klausurenbesprechung/klausuren-masterclass" replace />} />
-          <Route path="/klausurenbesprechung/chat" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbChatLayout /></VbLayout>} />
+          <Route path="/klausurenbesprechung/chat" element={!user ? <Navigate to="/login" replace /> : <VbLayout fullscreen><VbChatLayout /></VbLayout>} />
 
           {/* Unified dashboard - renders correct view based on role */}
           <Route

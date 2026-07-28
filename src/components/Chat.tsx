@@ -25,7 +25,7 @@ interface ChatGroup {
 
 export function Chat() {
   const navigate = useNavigate();
-  const { user, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, userRole } = useAuthStore();
+  const { user, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, userRole, additionalRoles } = useAuthStore();
   const { messages, fetchMessages, sendMessage, fetchGroupMessages, sendGroupMessage, fetchUnreadCount } = useChatStore();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [groups, setGroups] = useState<ChatGroup[]>([]);
@@ -34,6 +34,8 @@ export function Chat() {
   const [newMessage, setNewMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [vbConversationId, setVbConversationId] = useState<string | null>(null);
+  const [vbMessages, setVbMessages] = useState<any[]>([]);
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [newChatSearchQuery, setNewChatSearchQuery] = useState('');
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
@@ -95,6 +97,138 @@ export function Chat() {
     }
   };
 
+  // ---- VB (Videobesprechung) thread integration ----
+  // VB teilnehmer threads live in the VB chat tables so the teilnehmer sees
+  // them in /klausurenbesprechung/chat. Admin and VB dozenten read and
+  // answer them here in the regular messages chat.
+  const isVbTeilnehmerContact = (contact: Contact | null): boolean => {
+    if (!contact) return false;
+    const roles = (contact as any).additional_roles as string[] | undefined;
+    return !!roles?.includes('videobesprechung') &&
+      (isAdmin || !!additionalRoles?.includes('videobesprechung_dozent'));
+  };
+
+  const loadVbMessages = async (conversationId: string, contact: Contact, theirLastReadAt?: string | null) => {
+    const { data, error } = await supabase
+      .from('vb_chat_messages')
+      .select('*')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: true });
+    if (error) {
+      console.error('Error loading VB messages:', error);
+      return;
+    }
+    const mapped = (data || []).map((m: any) => ({
+      id: m.id,
+      sender_id: m.sender_id,
+      receiver_id: m.sender_id === user?.id ? contact.id : user?.id,
+      group_id: null,
+      content: m.content,
+      created_at: m.created_at,
+      read_at: m.sender_id === user?.id && theirLastReadAt && theirLastReadAt > m.created_at ? theirLastReadAt : null,
+      is_deleted: !!m.is_deleted,
+      file_url: m.attachment_url,
+      file_name: m.attachment_name,
+      file_type: m.attachment_type,
+      file_size: m.attachment_size,
+      sender: { full_name: m.sender_id === user?.id ? 'Sie' : contact.full_name },
+      _vb: true
+    }));
+    setVbMessages(mapped);
+  };
+
+  const loadVbThread = async (contact: Contact) => {
+    if (!user) return;
+    try {
+      const { data: myParts } = await supabase
+        .from('vb_conversation_participants')
+        .select('conversation_id')
+        .eq('profile_id', user.id);
+      const myConvIds = (myParts || []).map((p: any) => p.conversation_id);
+
+      let convId: string | null = null;
+      let theirLastReadAt: string | null = null;
+      if (myConvIds.length > 0) {
+        const { data: theirParts } = await supabase
+          .from('vb_conversation_participants')
+          .select('conversation_id, last_read_at')
+          .eq('profile_id', contact.id)
+          .in('conversation_id', myConvIds);
+        if (theirParts && theirParts.length > 0) {
+          const ids = theirParts.map((p: any) => p.conversation_id);
+          const { data: convs } = await supabase
+            .from('vb_conversations')
+            .select('id')
+            .in('id', ids)
+            .order('updated_at', { ascending: false })
+            .limit(1);
+          convId = convs?.[0]?.id || null;
+          theirLastReadAt = theirParts.find((p: any) => p.conversation_id === convId)?.last_read_at || null;
+        }
+      }
+
+      setVbConversationId(convId);
+      if (convId) {
+        await loadVbMessages(convId, contact, theirLastReadAt);
+        await supabase
+          .from('vb_conversation_participants')
+          .update({ last_read_at: new Date().toISOString() })
+          .eq('conversation_id', convId)
+          .eq('profile_id', user.id);
+      } else {
+        setVbMessages([]);
+      }
+    } catch (error) {
+      console.error('Error loading VB thread:', error);
+    }
+  };
+
+  const sendVbMessage = async (content: string, fileUrl: string | null, fileName: string | null, fileType: string | null, fileSize: number | null) => {
+    if (!user || !selectedContact) return;
+    let convId = vbConversationId;
+    if (!convId) {
+      const { data, error } = await supabase.functions.invoke('vb-create-conversation', {
+        body: { title: selectedContact.full_name, type: 'group', participantIds: [selectedContact.id] }
+      });
+      if (error || !data?.conversationId) {
+        throw new Error('Unterhaltung konnte nicht erstellt werden.');
+      }
+      convId = data.conversationId;
+      setVbConversationId(convId);
+    }
+
+    const { data: inserted, error } = await supabase
+      .from('vb_chat_messages')
+      .insert({
+        conversation_id: convId,
+        sender_id: user.id,
+        content: content || (fileName ? `Datei: ${fileName}` : ''),
+        message_type: 'text',
+        attachment_url: fileUrl,
+        attachment_name: fileName,
+        attachment_type: fileType,
+        attachment_size: fileSize
+      })
+      .select()
+      .single();
+    if (error) throw error;
+
+    supabase.functions.invoke('vb-notify-chat-message', {
+      body: {
+        type: 'INSERT',
+        record: {
+          id: inserted.id,
+          conversation_id: inserted.conversation_id,
+          sender_id: inserted.sender_id,
+          content: inserted.content,
+          created_at: inserted.created_at
+        }
+      }
+    }).catch((notifyError) => console.error('Error sending chat notification:', notifyError));
+
+    await loadVbMessages(convId!, selectedContact);
+  };
+
   useEffect(() => {
     if (selectedGroup) {
       fetchGroupMessages(selectedGroup.id);
@@ -136,6 +270,35 @@ export function Chat() {
       subscription.unsubscribe();
     };
   }, [selectedContact, selectedGroup, user?.id]);
+
+  // Load VB thread when a VB teilnehmer contact is selected
+  useEffect(() => {
+    if (!selectedContact || !isVbTeilnehmerContact(selectedContact)) {
+      setVbConversationId(null);
+      setVbMessages([]);
+      return;
+    }
+    loadVbThread(selectedContact);
+  }, [selectedContact?.id]);
+
+  // Realtime updates for the open VB thread
+  useEffect(() => {
+    if (!vbConversationId || !selectedContact) return;
+    const channel = supabase
+      .channel(`vb-thread-${vbConversationId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'vb_chat_messages',
+        filter: `conversation_id=eq.${vbConversationId}`,
+      }, () => {
+        loadVbMessages(vbConversationId, selectedContact);
+      })
+      .subscribe();
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [vbConversationId]);
 
   const fetchContacts = async () => {
     setIsLoading(true);
@@ -321,6 +484,23 @@ export function Chat() {
           }
         }
         
+        // Add VB (Videobesprechung) teilnehmer for dozenten with the videobesprechung_dozent role
+        if (additionalRoles?.includes('videobesprechung_dozent')) {
+          const { data: vbTeilnehmerProfiles } = await supabase
+            .from('profiles')
+            .select('*')
+            .contains('additional_roles', ['videobesprechung']);
+
+          if (vbTeilnehmerProfiles) {
+            vbTeilnehmerProfiles.forEach(p => {
+              if (!seenIds.has(p.id)) {
+                seenIds.add(p.id);
+                allContacts.push(p);
+              }
+            });
+          }
+        }
+
         setContacts(allContacts.filter(contact => contact.id !== user?.id).sort((a, b) => a.full_name.localeCompare(b.full_name)));
       } else if (userRole === 'vertrieb') {
         // Vertrieb can message admin-level users and other dozenten
@@ -496,6 +676,14 @@ export function Chat() {
         fileName = selectedFile.name;
         fileType = contentType;
         fileSize = selectedFile.size;
+      }
+
+      // VB teilnehmer threads are stored in the VB chat tables
+      if (isVbTeilnehmerContact(selectedContact)) {
+        await sendVbMessage(newMessage.trim(), fileUrl, fileName, fileType, fileSize);
+        setNewMessage('');
+        setSelectedFile(null);
+        return;
       }
 
       // Send message with or without attachment
@@ -1291,7 +1479,7 @@ export function Chat() {
                       </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 h-[calc(100vh-320px)] sm:h-auto">
-                      {messages.map(message => (
+                      {(isVbTeilnehmerContact(selectedContact) ? vbMessages : messages).map(message => (
                         <div
                           key={message.id}
                           className={`flex group relative ${
@@ -1374,7 +1562,7 @@ export function Chat() {
                               )}
                             </div>
                           </div>
-                          {message.sender_id === user?.id && !message.is_deleted && (
+                          {message.sender_id === user?.id && !message.is_deleted && !(message as any)._vb && (
                             <button
                               onClick={() => {
                                 setMessageToDelete(message.id);

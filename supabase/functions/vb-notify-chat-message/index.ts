@@ -94,15 +94,14 @@ serve(async (req) => {
       })
     }
 
-    // Filter participants who have videobesprechung role
-    const notifiableParticipants = participants?.filter(p => 
-      p.additional_roles?.includes('videobesprechung')
-    ) || []
+    // Notify all other participants, regardless of role
+    // (teilnehmer, dozent, admin, verwaltung)
+    const notifiableParticipants = (participants || []).filter(p => !!p.email)
 
-    console.log(`Found ${notifiableParticipants.length} participants with videobesprechung role`)
+    console.log(`Found ${notifiableParticipants.length} participants to notify`)
 
     if (notifiableParticipants.length === 0) {
-      return new Response('No participants with videobesprechung role', { 
+      return new Response('No participants to notify', { 
         status: 200, 
         headers: corsHeaders 
       })
@@ -147,7 +146,7 @@ serve(async (req) => {
               <h4 style="margin: 0 0 15px 0; color: #333; font-size: 16px;">Details:</h4>
               <p style="margin: 8px 0; color: #555; font-size: 14px;"><strong>Von:</strong> ${sender.first_name} ${sender.last_name}</p>
               <p style="margin: 8px 0; color: #555; font-size: 14px;"><strong>Gesendet am:</strong> ${new Date(record.created_at).toLocaleString('de-DE')}</p>
-              <p style="margin: 8px 0; color: #555; font-size: 14px;"><strong>Nachricht:</strong> "${record.content}"</p>
+              <p style="margin: 8px 0; color: #555; font-size: 14px;"><strong>Nachricht:</strong> "${record.content.length > 300 ? record.content.substring(0, 300) + '…' : record.content}"</p>
             </div>
             
             <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
@@ -156,9 +155,9 @@ serve(async (req) => {
             
             <!-- Action Button -->
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${Deno.env.get('SITE_URL') || 'https://portal.kraatz-group.de'}/dashboard" 
+              <a href="${Deno.env.get('SITE_URL') || 'https://portal.kraatz-group.de'}/klausurenbesprechung/chat" 
                  style="display: inline-block; background-color: #2e83c2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500;">
-                Zum Dashboard
+                Zum Chat
               </a>
             </div>
           </div>

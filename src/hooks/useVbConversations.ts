@@ -179,20 +179,40 @@ export const useVbConversations = () => {
     }
   }, [user]);
 
-  // Get available chat partners (profiles with videobesprechung role)
+  // Get available chat partners, role-aware:
+  // - Teilnehmer (students) may only start support chats with admin/verwaltung
+  // - Staff (dozent/admin/verwaltung) may start chats with VB students
   const getAvailableChatPartners = useCallback(async (): Promise<any[]> => {
     if (!user) return [];
 
     try {
-      const { data, error } = await supabase
+      const { data: ownProfile, error: ownProfileError } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (ownProfileError) throw ownProfileError;
+
+      let query = supabase
         .from('profiles')
         .select('id, email, first_name, last_name, role, profile_picture_url, additional_roles')
-        .neq('id', user.id)
-        .contains('additional_roles', '["videobesprechung"]');
+        .neq('id', user.id);
+
+      if (ownProfile?.role === 'teilnehmer') {
+        query = query.in('role', ['admin', 'verwaltung']);
+      } else {
+        query = query.contains('additional_roles', ['videobesprechung']);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
-      return data || [];
+      // Hide profiles without a name (broken/placeholder accounts)
+      return (data || []).filter(
+        (p) => (p.first_name?.trim() || '') !== '' || (p.last_name?.trim() || '') !== ''
+      );
     } catch (err) {
       console.error('Error fetching VB chat partners:', err);
       return [];

@@ -1,13 +1,14 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
-import { VbHeader } from '../vb/VbHeader';
+import { VbHeader, VbMobileHeader } from '../vb/VbHeader';
 import { useAuthStore } from '../../store/authStore';
 
 interface VbLayoutProps {
   children: React.ReactNode;
+  fullscreen?: boolean;
 }
 
-export const VbLayout: React.FC<VbLayoutProps> = ({ children }) => {
+export const VbLayout: React.FC<VbLayoutProps> = ({ children, fullscreen = false }) => {
   const additionalRoles = useAuthStore(state => state.additionalRoles);
   const isAdmin = useAuthStore(state => state.isAdmin);
 
@@ -22,11 +23,20 @@ export const VbLayout: React.FC<VbLayoutProps> = ({ children }) => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className={`bg-background flex ${fullscreen ? 'h-screen' : 'min-h-screen'}`}>
       <VbHeader />
-      <main className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-8">
-        {children}
-      </main>
+      <div className="flex-1 flex flex-col min-w-0">
+        <VbMobileHeader />
+        {fullscreen ? (
+          <main className="flex-1 flex flex-col min-h-0">
+            {children}
+          </main>
+        ) : (
+          <main className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-8 w-full">
+            {children}
+          </main>
+        )}
+      </div>
     </div>
   );
 };
