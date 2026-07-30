@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Bell, MessageCircle, FileText, Info } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -30,6 +31,12 @@ interface VbNotificationBellProps {
   variant?: 'icon' | 'menu';
 }
 
+interface DropdownPosition {
+  top: number;
+  left: number | null;
+  right: number | null;
+}
+
 export const VbNotificationBell: React.FC<VbNotificationBellProps> = ({ variant = 'icon' }) => {
   const user = useAuthStore(state => state.user);
   const additionalRoles = useAuthStore(state => state.additionalRoles);
@@ -37,6 +44,9 @@ export const VbNotificationBell: React.FC<VbNotificationBellProps> = ({ variant 
   const [notifications, setNotifications] = useState<VbNotification[]>([]);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<DropdownPosition>({ top: 0, left: null, right: null });
 
   const fetchNotifications = useCallback(async () => {
     if (!user) return;
@@ -79,16 +89,98 @@ export const VbNotificationBell: React.FC<VbNotificationBellProps> = ({ variant 
     };
   }, [user, fetchNotifications]);
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
+  // Compute dropdown position from the bell button's bounding rect so the
+  // portal-rendered dropdown can be placed correctly regardless of which
+  // stacking context the bell lives in (sidebar / mobile header).
+  useLayoutEffect(() => {
+    if (!open || !buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    const dropdownWidth = 320; // w-80
+    const margin = 8;
+
+    let left: number | null = null;
+    let right: number | null = null;
+
+    if (variant === 'menu') {
+      // Open to the right of the sidebar button
+      left = rect.right + margin;
+      // If it would overflow the viewport, flip to the left side
+      if (left + dropdownWidth > window.innerWidth) {
+        left = null;
+        right = window.innerWidth - rect.left + margin;
       }
+    } else {
+      // Align right edge of dropdown with right edge of the bell button
+      right = window.innerWidth - rect.right;
+      // If it would overflow on the left, anchor to the left edge instead
+      if ((right ?? 0) + dropdownWidth > window.innerWidth) {
+        right = null;
+        left = rect.left;
+      }
+    }
+
+    setPosition({ top: rect.bottom + margin, left, right });
+  }, [open, variant]);
+
+  // Recompute on scroll/resize while open
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      if (!buttonRef.current) return;
+      const rect = buttonRef.current.getBoundingClientRect();
+      const dropdownWidth = 320;
+      const margin = 8;
+      let left: number | null = null;
+      let right: number | null = null;
+      if (variant === 'menu') {
+        left = rect.right + margin;
+        if (left + dropdownWidth > window.innerWidth) {
+          left = null;
+          right = window.innerWidth - rect.left + margin;
+        }
+      } else {
+        right = window.innerWidth - rect.right;
+        if ((right ?? 0) + dropdownWidth > window.innerWidth) {
+          right = null;
+          left = rect.left;
+        }
+      }
+      setPosition({ top: rect.bottom + margin, left, right });
+    };
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [open, variant]);
+
+  // Close dropdown on outside click (button + portal dropdown are both excluded)
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        containerRef.current?.contains(target) ||
+        dropdownRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  }, [open]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -126,10 +218,69 @@ export const VbNotificationBell: React.FC<VbNotificationBellProps> = ({ variant 
     return <Info className="w-4 h-4 text-gray-500 flex-shrink-0" />;
   };
 
+  const dropdownStyle: React.CSSProperties = {
+    position: 'fixed',
+    top: position.top,
+    left: position.left ?? undefined,
+    right: position.right ?? undefined,
+    zIndex: 9999,
+  };
+
+  const dropdown = open ? (
+    <div
+      ref={dropdownRef}
+      style={dropdownStyle}
+      className="w-80 max-w-[90vw] bg-white rounded-md shadow-lg border border-gray-200 overflow-hidden"
+    >
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-200">
+        <h3 className="text-sm font-semibold text-gray-900">Benachrichtigungen</h3>
+        {unreadCount > 0 && (
+          <button
+            onClick={markAllRead}
+            className="text-xs text-primary hover:text-primary/80"
+          >
+            Alle als gelesen markieren
+          </button>
+        )}
+      </div>
+
+      <div className="max-h-96 overflow-y-auto">
+        {notifications.length === 0 ? (
+          <div className="px-4 py-8 text-center text-sm text-gray-500">
+            Keine Benachrichtigungen
+          </div>
+        ) : (
+          notifications.map(n => (
+            <button
+              key={n.id}
+              onClick={() => handleClickNotification(n)}
+              className={`w-full text-left px-4 py-3 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors flex items-start gap-3 ${
+                n.read ? 'opacity-60' : 'bg-primary/5'
+              }`}
+            >
+              {getIcon(n)}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <p className={`text-sm truncate ${n.read ? 'font-normal text-gray-700' : 'font-semibold text-gray-900'}`}>
+                    {n.title}
+                  </p>
+                  {!n.read && <span className="w-2 h-2 bg-primary rounded-full flex-shrink-0" />}
+                </div>
+                <p className="text-xs text-gray-600 line-clamp-2 mt-0.5">{n.message}</p>
+                <p className="text-[11px] text-gray-400 mt-1">{formatTime(n.created_at)}</p>
+              </div>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div className="relative" ref={containerRef}>
       {variant === 'menu' ? (
         <button
+          ref={buttonRef}
           onClick={() => setOpen(!open)}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-gray-600 hover:bg-gray-100 hover:text-primary transition-colors text-sm font-medium"
           aria-label="Benachrichtigungen"
@@ -144,6 +295,7 @@ export const VbNotificationBell: React.FC<VbNotificationBellProps> = ({ variant 
         </button>
       ) : (
         <button
+          ref={buttonRef}
           onClick={() => setOpen(!open)}
           className="relative p-1.5 sm:p-2 rounded-md hover:bg-gray-100 transition-colors"
           title="Benachrichtigungen"
@@ -158,53 +310,7 @@ export const VbNotificationBell: React.FC<VbNotificationBellProps> = ({ variant 
         </button>
       )}
 
-      {open && (
-        <div className={`absolute w-80 max-w-[90vw] bg-white rounded-md shadow-lg border border-gray-200 z-50 overflow-hidden ${
-          variant === 'menu' ? 'left-full top-0 ml-2' : 'right-0 mt-2'
-        }`}>
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-200">
-            <h3 className="text-sm font-semibold text-gray-900">Benachrichtigungen</h3>
-            {unreadCount > 0 && (
-              <button
-                onClick={markAllRead}
-                className="text-xs text-primary hover:text-primary/80"
-              >
-                Alle als gelesen markieren
-              </button>
-            )}
-          </div>
-
-          <div className="max-h-96 overflow-y-auto">
-            {notifications.length === 0 ? (
-              <div className="px-4 py-8 text-center text-sm text-gray-500">
-                Keine Benachrichtigungen
-              </div>
-            ) : (
-              notifications.map(n => (
-                <button
-                  key={n.id}
-                  onClick={() => handleClickNotification(n)}
-                  className={`w-full text-left px-4 py-3 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors flex items-start gap-3 ${
-                    n.read ? 'opacity-60' : 'bg-primary/5'
-                  }`}
-                >
-                  {getIcon(n)}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className={`text-sm truncate ${n.read ? 'font-normal text-gray-700' : 'font-semibold text-gray-900'}`}>
-                        {n.title}
-                      </p>
-                      {!n.read && <span className="w-2 h-2 bg-primary rounded-full flex-shrink-0" />}
-                    </div>
-                    <p className="text-xs text-gray-600 line-clamp-2 mt-0.5">{n.message}</p>
-                    <p className="text-[11px] text-gray-400 mt-1">{formatTime(n.created_at)}</p>
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+      {dropdown && createPortal(dropdown, document.body)}
     </div>
   );
 };
