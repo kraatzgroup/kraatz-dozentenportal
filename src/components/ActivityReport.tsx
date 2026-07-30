@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Calendar, Clock, User, BookOpen, FileText, Plus, Edit, Trash2, Check, X, AlertCircle, Users, ChevronDown, ChevronUp } from 'lucide-react';
+import { Calendar, Clock, User, BookOpen, Edit, Trash2, Check, X, AlertCircle, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useHoursStore } from '../store/hoursStore';
@@ -27,14 +27,6 @@ interface ParticipantHoursEntry {
   is_elite_kleingruppe?: boolean;
 }
 
-interface DozentHoursEntry {
-  id: string;
-  date: string;
-  hours: number;
-  description: string;
-  category?: string;
-  type: 'dozent';
-}
 
 interface CombinedHoursEntry {
   id: string;
@@ -76,16 +68,16 @@ interface TeilnehmerWithHours extends Teilnehmer {
   monthly_hours: number;
 }
 
-export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onYearChange, onShowActivityDialog, dozentId, examType }: ActivityReportProps) {
+export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType }: ActivityReportProps) {
   const { user } = useAuthStore();
-  const { dozentHours, fetchDozentHours, createDozentHours } = useDozentHoursStore();
+  const { dozentHours, fetchDozentHours } = useDozentHoursStore();
   const [participantHours, setParticipantHours] = useState<ParticipantHoursEntry[]>([]);
   const [combinedHours, setCombinedHours] = useState<CombinedHoursEntry[]>([]);
   const [pendingHours, setPendingHours] = useState<PendingHoursEntry[]>([]);
   const [flatRateItems, setFlatRateItems] = useState<FlatRateItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [dozentName, setDozentName] = useState<string>('');
+  const [, setDozentName] = useState<string>('');
   const [editingEntry, setEditingEntry] = useState<CombinedHoursEntry | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingFlatRateItem, setEditingFlatRateItem] = useState<FlatRateItem | null>(null);
@@ -490,9 +482,6 @@ export function ActivityReport({ selectedMonth, selectedYear, onMonthChange, onY
     });
   };
 
-  const getLegalAreaColor = (legalArea: string) => {
-    return 'bg-blue-100 text-blue-800';
-  };
 
   const handleEditEntry = (entry: CombinedHoursEntry) => {
     setEditingEntry(entry);

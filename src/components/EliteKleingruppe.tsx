@@ -424,8 +424,6 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([]);
   const [selectedFolders, setSelectedFolders] = useState<string[]>([]);
   const [expandedRelease, setExpandedRelease] = useState<string | null>(null);
-  const [folderSearchTerm, setFolderSearchTerm] = useState('');
-  const [materialSearchTerm, setMaterialSearchTerm] = useState('');
   const [legalAreaFilter, setLegalAreaFilter] = useState<string>('alle');
   const [einheitenSearchQuery, setEinheitenSearchQuery] = useState<string>('');
   const [releaseLegalArea, setReleaseLegalArea] = useState<string>('');
@@ -1013,8 +1011,6 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
     setReleaseDescription('');
     setSelectedMaterials([]);
     setSelectedFolders([]);
-    setFolderSearchTerm('');
-    setMaterialSearchTerm('');
     setReleaseLegalArea('');
     setReleaseUnitType('');
     setReleaseStartTime('09:00');
@@ -2478,8 +2474,6 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
     return true;
   });
 
-  const toggleMaterialSelection = (id: string) => setSelectedMaterials(prev => prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]);
-  const toggleFolderSelection = (id: string) => setSelectedFolders(prev => prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]);
   const filteredTeilnehmer = teilnehmer.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()) || t.email.toLowerCase().includes(searchTerm.toLowerCase()));
 
   // OPTIMIZED: Memoized calendar rendering
@@ -2757,7 +2751,6 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
               }
 
               // Pagination logic
-              const totalPages = Math.ceil(einheitenReleases.length / itemsPerPage);
               const startIndex = (einheitenCurrentPage - 1) * itemsPerPage;
               const endIndex = startIndex + itemsPerPage;
               const paginatedReleases = einheitenReleases.slice(startIndex, endIndex);
@@ -2959,7 +2952,6 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
               }
 
               // Pagination logic
-              const totalPages = Math.ceil(sonstigesReleases.length / itemsPerPage);
               const startIndex = (sonstigesCurrentPage - 1) * itemsPerPage;
               const endIndex = startIndex + itemsPerPage;
               const paginatedSonstiges = sonstigesReleases.slice(startIndex, endIndex);
@@ -3863,9 +3855,6 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     
                     return result;
                   };
-                  
-                  // Hole alle Materialien mit ihrem Pfad
-                  const allNestedMaterials = getAllMaterialsFromFolder(releaseKlausurFolderId);
                   
                   return (
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">

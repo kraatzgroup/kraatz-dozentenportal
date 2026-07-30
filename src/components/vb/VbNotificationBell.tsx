@@ -32,6 +32,7 @@ interface VbNotificationBellProps {
 
 export const VbNotificationBell: React.FC<VbNotificationBellProps> = ({ variant = 'icon' }) => {
   const user = useAuthStore(state => state.user);
+  const additionalRoles = useAuthStore(state => state.additionalRoles);
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState<VbNotification[]>([]);
   const [open, setOpen] = useState(false);
@@ -102,7 +103,9 @@ export const VbNotificationBell: React.FC<VbNotificationBellProps> = ({ variant 
     if (n.related_conversation_id) {
       navigate('/klausurenbesprechung/chat');
     } else if (n.related_case_study_id) {
-      navigate('/klausurenbesprechung/ergebnisse');
+      // Dozents go to the correction workspace; everyone else to results
+      const isDozent = additionalRoles?.includes('videobesprechung_dozent') || additionalRoles?.includes('admin');
+      navigate(isDozent ? '/klausurenbesprechung/korrektur' : '/klausurenbesprechung/ergebnisse');
     }
     fetchNotifications();
   };

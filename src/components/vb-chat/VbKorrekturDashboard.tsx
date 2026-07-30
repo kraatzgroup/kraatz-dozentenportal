@@ -260,17 +260,8 @@ export const VbKorrekturDashboard: React.FC = () => {
         .update({ assigned_dozent_id: returnTarget.id })
         .eq('id', returnCase.id)
       if (error) throw error
-      // In-app notification for the receiving dozent
-      const { error: notifError } = await supabase
-        .from('vb_notifications')
-        .insert({
-          profile_id: returnTarget.id,
-          title: 'Fall an Sie zurückgegeben',
-          message: `Der Springer-Dozent hat Klausur #${returnCase.case_study_number} (${returnCase.legal_area}${returnCase.sub_area ? ` / ${returnCase.sub_area}` : ''}) an Sie zurückgegeben.`,
-          type: 'info',
-          read: false
-        })
-      if (notifError) console.error('❌ VbKorrektur: Error creating return notification:', notifError)
+      // In-app notification is created server-side by the vb-notify-case-returned
+      // edge function (service role), so the bell shows it reliably.
       // Email notification to the receiving dozent
       try {
         console.log('📧 VbKorrektur: Invoking vb-notify-case-returned...')
@@ -1283,20 +1274,9 @@ export const VbKorrekturDashboard: React.FC = () => {
           console.error('Error creating notification:', notificationError)
         }
 
-        // Also create notification in database for in-app display
-        const { error: dbError } = await supabase
-          .from('vb_notifications')
-          .insert({
-            profile_id: selected.profile_id,
-            title: 'Korrektur abgeschlossen',
-            message: `Die Korrektur für Klausur #${selected.case_study_number} ist abgeschlossen. Eine neue Video-Klausurenkorrektur ist verfügbar.`,
-            type: 'success',
-            related_case_study_id: selected.id,
-          })
-
-        if (dbError) {
-          console.error('Error creating notification in database:', dbError)
-        }
+        // In-app notification is created automatically by the
+        // notify_student_on_correction_complete DB trigger (service definer),
+        // so no manual insert is needed here.
       }
 
       const { data: existing } = await supabase

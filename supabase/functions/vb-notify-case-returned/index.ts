@@ -118,6 +118,24 @@ Deno.serve(async (req) => {
     const springerName = callerProfile?.full_name || 'Der Springer-Dozent';
     const redirectUrl = 'https://portal.kraatz-group.de/klausurenbesprechung/korrektur';
 
+    // In-app notification for the receiving dozent (service role bypasses RLS)
+    const areaParts = [caseData.legal_area, caseData.sub_area].filter(Boolean).join(' / ');
+    const { error: notifError } = await supabaseAdmin
+      .from('vb_notifications')
+      .insert({
+        profile_id: targetDozentId,
+        title: 'Fall an Sie zurückgegeben',
+        message: `Der Springer-Dozent hat Klausur #${caseData.case_study_number ?? '?'} (${areaParts || 'Unbekannt'}) an Sie zurückgegeben.`,
+        type: 'info',
+        related_case_study_id: caseData.id,
+        read: false,
+      });
+    if (notifError) {
+      console.error(`❌ [${requestId}] Error creating in-app notification:`, notifError);
+    } else {
+      console.log(`✅ [${requestId}] In-app notification created for dozent ${dozent.email}`);
+    }
+
     // Generate magic link for direct login
     let magicLink = redirectUrl;
     try {
