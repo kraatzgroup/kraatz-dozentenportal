@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { supabase } from '../../lib/supabase';
-import { User, CreditCard, LogOut, MessageCircle, Menu, X, LayoutDashboard, Award, GraduationCap, Settings, CalendarDays } from 'lucide-react';
+import { User, CreditCard, LogOut, MessageCircle, Menu, X, LayoutDashboard, Award, GraduationCap, Settings, CalendarDays, ClipboardList } from 'lucide-react';
 import { VbNotificationBell } from './VbNotificationBell';
 
 const LOGO_URL = 'https://kraatz-group.de/wp-content/uploads/2023/05/KraatzGroup_Logo_web.png';
@@ -10,6 +10,7 @@ const LOGO_URL = 'https://kraatz-group.de/wp-content/uploads/2023/05/KraatzGroup
 const useVbHeaderData = () => {
   const user = useAuthStore(state => state.user);
   const additionalRoles = useAuthStore(state => state.additionalRoles);
+  const isAdmin = useAuthStore(state => state.isAdmin);
   const navigate = useNavigate();
   const [userCredits, setUserCredits] = useState<number>(0);
   const [eliteKleingruppe, setEliteKleingruppe] = useState<string | null>(null);
@@ -80,7 +81,7 @@ const useVbHeaderData = () => {
     navigate('/klausurenbesprechung');
   };
 
-  return { user, additionalRoles, userCredits, eliteKleingruppe, handleSignOut };
+  return { user, additionalRoles, isAdmin, userCredits, eliteKleingruppe, handleSignOut };
 };
 
 interface NavLinkItemProps {
@@ -104,7 +105,7 @@ const SidebarNavLink: React.FC<NavLinkItemProps> = ({ to, icon, label, onClick }
 // Desktop: left sidebar with navigation on top, settings/user at the bottom.
 // Collapsible via hamburger button (logo left, hamburger right when open).
 export const VbHeader: React.FC = () => {
-  const { user, additionalRoles, userCredits, eliteKleingruppe, handleSignOut } = useVbHeaderData();
+  const { user, additionalRoles, isAdmin, userCredits, eliteKleingruppe, handleSignOut } = useVbHeaderData();
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem('vb_sidebar_collapsed') === 'true';
@@ -209,6 +210,9 @@ export const VbHeader: React.FC = () => {
             {additionalRoles?.includes('videobesprechung_dozent') && (
               <SidebarNavLink to="/klausurenbesprechung/korrektur" icon={<GraduationCap className="w-4 h-4 text-primary" />} label="Korrektur" />
             )}
+            {isAdmin && (
+              <SidebarNavLink to="/klausurenbesprechung" icon={<ClipboardList className="w-4 h-4 text-primary" />} label="Admin-Übersicht" />
+            )}
           </nav>
 
           {/* Settings + user (bottom) */}
@@ -234,7 +238,7 @@ export const VbHeader: React.FC = () => {
 
 // Mobile: top bar with hamburger menu
 export const VbMobileHeader: React.FC = () => {
-  const { user, additionalRoles, userCredits, eliteKleingruppe, handleSignOut } = useVbHeaderData();
+  const { user, additionalRoles, isAdmin, userCredits, eliteKleingruppe, handleSignOut } = useVbHeaderData();
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
 
   const closeMenu = () => setMobileMenuOpen(false);
@@ -315,6 +319,9 @@ export const VbMobileHeader: React.FC = () => {
               )}
               {additionalRoles?.includes('videobesprechung_dozent') && (
                 <SidebarNavLink to="/klausurenbesprechung/korrektur" icon={<GraduationCap className="w-4 h-4 text-primary" />} label="Korrektur" onClick={closeMenu} />
+              )}
+              {isAdmin && (
+                <SidebarNavLink to="/klausurenbesprechung" icon={<ClipboardList className="w-4 h-4 text-primary" />} label="Admin-Übersicht" onClick={closeMenu} />
               )}
               <SidebarNavLink to="/klausurenbesprechung/einstellungen" icon={<Settings className="w-4 h-4 text-primary" />} label="Einstellungen" onClick={closeMenu} />
 

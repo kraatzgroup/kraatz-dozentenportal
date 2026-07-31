@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { MessageSquare, LogOut, Users, Clock, FileText, Calendar, Edit2, X, Check, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Receipt, Search, Download, Eye, Mail, Send, Trash2, Settings, TrendingUp, GraduationCap, LayoutDashboard, Zap, Bell, Upload, UserPlus, HelpCircle } from 'lucide-react';
+import { MessageSquare, LogOut, Users, Clock, FileText, Calendar, Edit2, X, Check, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Receipt, Search, Download, Eye, Mail, Send, Trash2, Settings, TrendingUp, GraduationCap, LayoutDashboard, Zap, Bell, Upload, UserPlus, HelpCircle, BookOpen } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
 import { useFileStore } from '../store/fileStore';
@@ -26,6 +26,7 @@ import { IntegrationsTab } from './IntegrationsTab';
 import { DozentenDashboard } from './DozentenDashboard';
 import { EliteKleingruppe } from './EliteKleingruppe';
 import { VertraegeManager } from './vertraege/VertraegeManager';
+import { VbAdminDashboard } from './vb-chat/VbAdminDashboard';
 import { generateTeilnehmerStundenPDF } from '../utils/pdfGenerator';
 
 // Helper function to check if teilnehmer is active based on contract dates
@@ -99,6 +100,7 @@ const getContractProgress = (t: any): { percent: number; daysLeft: number; total
 interface Profile {
   id: string;
   full_name: string;
+  email?: string;
   role: string;
 }
 
@@ -134,10 +136,10 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   const defaultTab = isRestrictedMode ? 'dozenten' : 'uebersicht';
   const storageKey = isAccountingMode ? 'accountingDashboardTab' : isVerwaltungMode ? 'verwaltungDashboardTab' : 'adminDashboardTab';
 
-  const [activeTab, setActiveTabState] = useState<'uebersicht' | 'dozenten' | 'teilnehmer' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard' | 'elite-kleingruppe' | 'vertraege'>(() => {
+  const [activeTab, setActiveTabState] = useState<'uebersicht' | 'dozenten' | 'teilnehmer' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard' | 'elite-kleingruppe' | 'vertraege' | 'klausurenkorrektur'>(() => {
     // Check URL parameter first
     const tabParam = searchParams.get('tab');
-    const allTabs = ['uebersicht', 'dozenten', 'teilnehmer', 'rechnungen', 'kalender', 'emails', 'vertrieb', 'integrationen', 'dozenten-dashboard', 'elite-kleingruppe', 'vertraege'];
+    const allTabs = ['uebersicht', 'dozenten', 'teilnehmer', 'rechnungen', 'kalender', 'emails', 'vertrieb', 'integrationen', 'dozenten-dashboard', 'elite-kleingruppe', 'vertraege', 'klausurenkorrektur'];
     if (tabParam && allTabs.includes(tabParam)) {
       // In restricted mode, only allow permitted tabs
       if (allowedTabs && !allowedTabs.includes(tabParam)) {
@@ -1314,7 +1316,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
 
       const authorShort = profile?.full_name
         ?.split(' ')
-        .map(n => n[0])
+        .map((n: string) => n[0])
         .join('')
         .toUpperCase()
         .slice(0, 3) || 'N/A';
@@ -1874,12 +1876,21 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
               )}
               {!isRestrictedMode && (
               <button
-                onClick={() => { navigate('/feedback'); }}
+                onClick={() => { setActiveTab('klausurenkorrektur'); }}
                 className={`${
-                  activeTab === 'feedback'
+                  activeTab === 'klausurenkorrektur'
                     ? 'border-primary text-primary'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 } whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm sm:text-base flex items-center`}
+              >
+                <BookOpen className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
+                <span className="hidden sm:inline">Klausurenkorrektur</span>
+              </button>
+              )}
+              {!isRestrictedMode && (
+              <button
+                onClick={() => { navigate('/feedback'); }}
+                className="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm sm:text-base flex items-center"
               >
                 <HelpCircle className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">Feedback</span>
@@ -4322,6 +4333,10 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
 
         {activeTab === 'dozenten-dashboard' && (
           <DozentenDashboard />
+        )}
+
+        {activeTab === 'klausurenkorrektur' && !isRestrictedMode && (
+          <VbAdminDashboard />
         )}
 
         {activeTab === 'integrationen' && (
