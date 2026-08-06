@@ -5,6 +5,7 @@ import { BookOpen, Clock, Download, Edit3, CheckCircle, AlertTriangle, FolderOpe
 import { KorrekturModal } from '../shared/korrektur/KorrekturModal'
 import { VB_FIELD_CONFIG } from '../shared/korrektur/types'
 import type { KorrekturItem, KorrekturSavePayload } from '../shared/korrektur/types'
+import { SchwerpunktTagsInput } from './SchwerpunktTagsInput'
 
 // DraggableFolder component from DozentenDashboard - exact copy
 function DraggableFolder({ folder, isExpanded, onToggle, materialCount, isSelected, onToggleSelection }: {
@@ -84,6 +85,7 @@ interface VbCase {
   legal_area: string
   sub_area: string
   focus_area: string | null
+  admin_focus_tags: string[] | null
   status: string
   submission_url: string | null
   video_correction_url: string | null
@@ -128,6 +130,9 @@ const storagePathFromUrl = (url: string): string | null => {
 export const VbKorrekturDashboard: React.FC = () => {
   const user = useAuthStore(state => state.user)
   const vbLegalAreas = useAuthStore(state => state.vbLegalAreas)
+  const isAdmin = useAuthStore(state => state.isAdmin)
+  const isMaterial = useAuthStore(state => state.isMaterial)
+  const canEditTags = isAdmin || isMaterial
   const [cases, setCases] = useState<VbCase[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'requests' | 'materials_sent' | 'submissions' | 'completed'>('requests')
@@ -1505,6 +1510,27 @@ export const VbKorrekturDashboard: React.FC = () => {
                           <p className="text-xs text-gray-500 mt-1">
                             Material: {c.case_study_material_url.split('/').pop()}
                           </p>
+                        )}
+                        {canEditTags && (
+                          <div className="mt-2">
+                            <SchwerpunktTagsInput
+                              caseStudyId={c.id}
+                              caseStudyNumber={c.case_study_number}
+                              tags={c.admin_focus_tags || []}
+                              onTagsChanged={(newTags) => {
+                                setCases(prev => prev.map(pc => pc.id === c.id ? { ...pc, admin_focus_tags: newTags } : pc))
+                              }}
+                            />
+                          </div>
+                        )}
+                        {!canEditTags && c.admin_focus_tags && c.admin_focus_tags.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                            {c.admin_focus_tags.map(tag => (
+                              <span key={tag} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
                         )}
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">

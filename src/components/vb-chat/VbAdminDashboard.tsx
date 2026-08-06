@@ -11,6 +11,7 @@ import {
   Clock,
   Package,
 } from 'lucide-react';
+import { SchwerpunktTagsInput } from './SchwerpunktTagsInput';
 
 // ---- Types ----
 
@@ -43,6 +44,7 @@ interface VbCaseRow {
   legal_area: string;
   sub_area: string;
   focus_area: string | null;
+  admin_focus_tags: string[] | null;
   status: string;
   assigned_dozent_id: string | null;
   video_correction_url: string | null;
@@ -516,12 +518,32 @@ export const VbAdminDashboard: React.FC = () => {
                           </div>
                           <p className="text-xs text-gray-700 truncate">TN: {displayStudentName(c)}</p>
                           <p className="text-xs text-gray-500 truncate">Schwerpunkt: {c.sub_area}{c.focus_area ? ` · ${c.focus_area}` : ''}</p>
+                          {c.admin_focus_tags && c.admin_focus_tags.length > 0 && (
+                            <div className="mt-1 flex flex-wrap items-center gap-1">
+                              {c.admin_focus_tags.map(tag => (
+                                <span key={tag} className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-100 text-indigo-700">
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                           <div className="mt-2 pt-2 border-t border-gray-100">
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-xs text-gray-500">Zuständig:</span>
                               <span className={`text-xs font-medium truncate ${c.assigned_dozent_id ? 'text-gray-900' : 'text-orange-600'}`}>
                                 {c.dozent?.full_name || c.dozent?.email || 'Niemand'}
                               </span>
+                            </div>
+                            <div className="mt-2">
+                              <SchwerpunktTagsInput
+                                caseStudyId={c.id}
+                                caseStudyNumber={c.case_study_number}
+                                tags={c.admin_focus_tags || []}
+                                compact={false}
+                                onTagsChanged={(newTags) => {
+                                  setCases(prev => prev.map(pc => pc.id === c.id ? { ...pc, admin_focus_tags: newTags } : pc))
+                                }}
+                              />
                             </div>
                           </div>
                         </div>

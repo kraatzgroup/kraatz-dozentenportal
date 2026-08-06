@@ -3,15 +3,17 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useToastStore } from '../store/toastStore';
-import { GraduationCap, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, FileText, FolderPlus, Search, Filter, X, Plus, Edit2, Trash2, Download, Copy, ExternalLink, Eye, MoreVertical, Info, AlertTriangle, Menu, Bell, MessageSquare, Settings, LogOut, Upload, GripVertical, Users, LayoutGrid, Play, Pin, Clock } from 'lucide-react';
+import { GraduationCap, ChevronDown, ChevronUp, FileText, Search, X, Plus, Edit2, Trash2, Download, Copy, ExternalLink, Eye, Info, AlertTriangle, MessageSquare, Settings, LogOut, Upload, GripVertical, Users, LayoutGrid, Play, Pin, Clock } from 'lucide-react';
 import { Logo } from './Logo';
 import { EliteKleingruppe } from './EliteKleingruppe';
 import { InvoiceManagement } from './InvoiceManagement';
+import { SchwerpunktTagsInput } from './vb-chat/SchwerpunktTagsInput';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, DragOverEvent, useDroppable, DragOverlay, DragStartEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, rectSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { extractTagsFromPdfFile } from '../lib/extractSchwerpunkte';
 
 interface Chapter { id: string; title: string; description: string | null; thumbnail_url: string | null; position: number; is_published: boolean; lessons?: Lesson[]; }
 interface Lesson { id: string; chapter_id: string; title: string; description: string | null; video_url: string | null; thumbnail_url: string | null; position: number; is_published: boolean; attachments?: Attachment[]; }
@@ -22,7 +24,7 @@ interface YouTubeVideo { id: string; title: string; thumbnail: string; published
 interface LinkPreview { title: string; description: string; image: string; url: string; siteName: string; }
 interface DashboardSection { id: string; title: string | null; columns: number; position: number; is_active: boolean; }
 interface TeachingMaterial { id: string; title: string; description: string | null; file_url: string; file_name: string; file_type: string; file_size: number | null; category: string | null; position: number; is_active: boolean; folder_id: string | null; updated_at?: string; created_at?: string; }
-interface MaterialFolder { id: string; name: string; parent_id: string | null; position: number; is_active: boolean; }
+interface MaterialFolder { id: string; name: string; parent_id: string | null; position: number; is_active: boolean; schwerpunkt_tags?: string[] | null; }
 
 function SortableWidget({ id, children, isEditMode }: { id: string; children: React.ReactNode; isEditMode: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -53,6 +55,44 @@ function DroppableSection({ id, children, isOver }: { id: string; children: Reac
   );
 }
 
+// Renders a tag with the portion matching `query` highlighted in yellow
+function HighlightedTag({ tag, query, className }: { tag: string; query?: string; className?: string }) {
+  const q = query?.toLowerCase().trim();
+  if (!q) return <span className={className}><span className="whitespace-normal break-words">{tag}</span></span>;
+  const idx = tag.toLowerCase().indexOf(q);
+  if (idx === -1) return <span className={className}><span className="whitespace-normal break-words">{tag}</span></span>;
+  const before = tag.slice(0, idx);
+  const match = tag.slice(idx, idx + q.length);
+  const after = tag.slice(idx + q.length);
+  return (
+    <span className={className}>
+      <span className="whitespace-normal break-words">
+        {before}
+        <mark className="bg-yellow-300 text-indigo-900 rounded px-0.5">{match}</mark>
+        {after}
+      </span>
+    </span>
+  );
+}
+
+// Renders arbitrary text with the portion matching `query` highlighted in yellow
+function HighlightedText({ text, query }: { text: string; query?: string }) {
+  const q = query?.toLowerCase().trim();
+  if (!q) return <>{text}</>;
+  const idx = text.toLowerCase().indexOf(q);
+  if (idx === -1) return <>{text}</>;
+  const before = text.slice(0, idx);
+  const match = text.slice(idx, idx + q.length);
+  const after = text.slice(idx + q.length);
+  return (
+    <>
+      {before}
+      <mark className="bg-yellow-300 text-gray-900 rounded px-0.5">{match}</mark>
+      {after}
+    </>
+  );
+}
+
 function DroppablePlaceholder({ sectionId, index }: { sectionId: string; index: number }) {
   const { setNodeRef, isOver } = useDroppable({ id: `section-${sectionId}-placeholder-${index}` });
   return (
@@ -62,7 +102,7 @@ function DroppablePlaceholder({ sectionId, index }: { sectionId: string; index: 
   );
 }
 
-export function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdit, onDelete, canEdit, isDownloadingZip, selectedFolders, onToggleSelection, viewMode }: {
+export function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdit, onDelete, canEdit, isDownloadingZip, selectedFolders, onToggleSelection, viewMode, showTags, searchQuery }: {
   folder: MaterialFolder;
   onOpen: (id: string) => void;
   onDownload: (id: string, name: string) => void;
@@ -74,6 +114,8 @@ export function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdi
   selectedFolders: Set<string>;
   onToggleSelection: (id: string) => void;
   viewMode: 'grid' | 'list';
+  showTags?: boolean;
+  searchQuery?: string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: folder.id,
@@ -96,8 +138,15 @@ export function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdi
   // Disable drag and drop on touch devices
   const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
+  // When searching, split tags into matching and non-matching
+  const q = searchQuery?.toLowerCase().trim();
+  const allTags = folder.schwerpunkt_tags || [];
+  const matchingTags = q ? allTags.filter(t => t.toLowerCase().includes(q)) : allTags;
+  const otherTags = q ? allTags.filter(t => !t.toLowerCase().includes(q)) : [];
+  const hasMoreTags = otherTags.length > 0;
+
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...isTouchDevice ? {} : listeners} onClick={handleClick} className={`group relative bg-white rounded-xl shadow-sm border hover:shadow-md hover:border-primary/30 transition-all cursor-pointer touch-manipulation ${
+    <div ref={setNodeRef} style={style} {...attributes} {...isTouchDevice ? {} : listeners} onClick={handleClick} className={`group relative bg-white rounded-xl shadow-sm border hover:shadow-md hover:border-primary/30 transition-all cursor-pointer touch-manipulation overflow-hidden ${
       selectedFolders.has(folder.id) ? 'border-primary border-2 bg-primary/5' : 'border-gray-100'
     } ${viewMode === 'list' ? 'flex items-center gap-3 px-3 py-5' : 'p-4'}`}>
       {canEdit && (
@@ -114,7 +163,22 @@ export function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdi
       {viewMode === 'list' ? (
         <>
           <div className="text-2xl flex-shrink-0">📁</div>
-          <span className="flex-1 text-sm font-medium text-gray-700 group-hover:text-primary truncate">{folder.name}</span>
+          <div className="flex-1 min-w-0">
+            <span className="block text-sm font-medium text-gray-700 group-hover:text-primary truncate"><HighlightedText text={folder.name} query={q} /></span>
+            {showTags && folder.schwerpunkt_tags && folder.schwerpunkt_tags.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1 mt-1 min-w-0 w-full">
+                {matchingTags.map(tag => (
+                  <HighlightedTag key={tag} tag={tag} query={q} className="inline-flex items-center max-w-full px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-100 text-indigo-700" />
+                ))}
+                {hasMoreTags && (
+                  <span className="hidden group-hover:inline-flex items-center max-w-full px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-50 text-indigo-400">+{otherTags.length} weitere</span>
+                )}
+                {hasMoreTags && otherTags.map(tag => (
+                  <HighlightedTag key={tag} tag={tag} query={q} className="hidden group-hover:inline-flex items-center max-w-full px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-50 text-indigo-400" />
+                ))}
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <button
               onClick={e => { e.stopPropagation(); onDownload(folder.id, folder.name); }}
@@ -143,7 +207,20 @@ export function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdi
         <>
           <div className="flex flex-col items-center text-center">
             <div className="text-4xl mb-2">📁</div>
-            <span className="text-sm font-medium text-gray-700 group-hover:text-primary">{folder.name}</span>
+            <span className="text-sm font-medium text-gray-700 group-hover:text-primary"><HighlightedText text={folder.name} query={q} /></span>
+            {showTags && folder.schwerpunkt_tags && folder.schwerpunkt_tags.length > 0 && (
+              <div className="flex flex-wrap justify-center items-center gap-1 mt-2 min-w-0 w-full">
+                {matchingTags.map(tag => (
+                  <HighlightedTag key={tag} tag={tag} query={q} className="inline-flex items-center max-w-full px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-100 text-indigo-700" />
+                ))}
+                {hasMoreTags && (
+                  <span className="hidden group-hover:inline-flex items-center max-w-full px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-50 text-indigo-400">+{otherTags.length} weitere</span>
+                )}
+                {hasMoreTags && otherTags.map(tag => (
+                  <HighlightedTag key={tag} tag={tag} query={q} className="hidden group-hover:inline-flex items-center max-w-full px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-50 text-indigo-400" />
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex justify-center gap-1.5 mt-2 opacity-0 group-hover:opacity-100">
             <button
@@ -174,7 +251,7 @@ export function DraggableFolder({ folder, onOpen, onDownload, onDuplicate, onEdi
   );
 }
 
-function DraggableMaterial({ material, canEdit, selectedMaterials, onToggleSelection, onPreview, onDownload, onEdit, onDelete, getFileIcon, formatFileSize, viewMode }: {
+function DraggableMaterial({ material, canEdit, selectedMaterials, onToggleSelection, onPreview, onDownload, onEdit, onDelete, getFileIcon, formatFileSize, viewMode, showTags, folderTags, searchQuery }: {
   material: TeachingMaterial;
   canEdit: boolean;
   selectedMaterials: Set<string>;
@@ -186,12 +263,22 @@ function DraggableMaterial({ material, canEdit, selectedMaterials, onToggleSelec
   getFileIcon: (type: string) => string;
   formatFileSize: (size: number) => string;
   viewMode: 'grid' | 'list';
+  showTags?: boolean;
+  folderTags?: string[];
+  searchQuery?: string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: material.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+
+  // When searching, split tags into matching and non-matching
+  const q = searchQuery?.toLowerCase().trim();
+  const allTags = folderTags || [];
+  const matchingTags = q ? allTags.filter(t => t.toLowerCase().includes(q)) : allTags;
+  const otherTags = q ? allTags.filter(t => !t.toLowerCase().includes(q)) : [];
+  const hasMoreTags = otherTags.length > 0;
   
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`bg-white rounded-xl shadow-sm border hover:shadow-md transition-shadow relative cursor-move group ${
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`bg-white rounded-xl shadow-sm border hover:shadow-md transition-shadow relative cursor-move group overflow-hidden ${
       selectedMaterials.has(material.id) ? 'border-primary border-2 bg-primary/5' : 'border-gray-100'
     } ${viewMode === 'list' ? 'flex items-center gap-3 px-3 py-5' : 'p-4 flex flex-col h-full'}`}>
       {canEdit && (
@@ -209,9 +296,22 @@ function DraggableMaterial({ material, canEdit, selectedMaterials, onToggleSelec
         <>
           <div className={`text-2xl flex-shrink-0 ${canEdit ? '' : 'ml-0'}`}>{getFileIcon(material.file_type)}</div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-medium text-gray-900 truncate" title={material.title}>{material.title}</h3>
-            <div className="text-xs text-gray-400 truncate">{material.file_name}</div>
+            <h3 className="text-sm font-medium text-gray-900 truncate" title={material.title}><HighlightedText text={material.title} query={q} /></h3>
+            <div className="text-xs text-gray-400 truncate"><HighlightedText text={material.file_name} query={q} /></div>
             <div className="text-xs text-gray-300 truncate">Zuletzt bearbeitet: {material.updated_at ? new Date(material.updated_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Unbekannt'}</div>
+            {showTags && folderTags && folderTags.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1 mt-1 min-w-0 w-full">
+                {matchingTags.map(tag => (
+                  <HighlightedTag key={tag} tag={tag} query={q} className="inline-flex items-center max-w-full px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-100 text-indigo-700" />
+                ))}
+                {hasMoreTags && (
+                  <span className="hidden group-hover:inline-flex items-center max-w-full px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-50 text-indigo-400">+{otherTags.length} weitere</span>
+                )}
+                {hasMoreTags && otherTags.map(tag => (
+                  <HighlightedTag key={tag} tag={tag} query={q} className="hidden group-hover:inline-flex items-center max-w-full px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-50 text-indigo-400" />
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <button onClick={() => onPreview(material)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Ansehen">
@@ -245,12 +345,25 @@ function DraggableMaterial({ material, canEdit, selectedMaterials, onToggleSelec
           <div className="flex items-start gap-3 flex-1">
             <div className={`text-3xl flex-shrink-0 ${canEdit ? 'ml-7' : ''}`}>{getFileIcon(material.file_type)}</div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-medium text-gray-900 truncate" title={material.title}>{material.title}</h3>
+              <h3 className="font-medium text-gray-900 truncate" title={material.title}><HighlightedText text={material.title} query={q} /></h3>
               {material.description && <p className="text-sm text-gray-500 mt-1">{material.description}</p>}
               <div className="flex items-center gap-2 mt-2 text-xs text-gray-400 break-all">
-                <span className="line-clamp-2" title={material.file_name}>{material.file_name}</span>
+                <span className="line-clamp-2" title={material.file_name}><HighlightedText text={material.file_name} query={q} /></span>
                 {material.file_size && <span>• {formatFileSize(material.file_size)}</span>}
               </div>
+              {showTags && folderTags && folderTags.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1 mt-2 min-w-0 w-full">
+                  {matchingTags.map(tag => (
+                    <HighlightedTag key={tag} tag={tag} query={q} className="inline-flex items-center max-w-full px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-100 text-indigo-700" />
+                  ))}
+                  {hasMoreTags && (
+                    <span className="hidden group-hover:inline-flex items-center max-w-full px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-50 text-indigo-400">+{otherTags.length} weitere</span>
+                  )}
+                  {hasMoreTags && otherTags.map(tag => (
+                    <HighlightedTag key={tag} tag={tag} query={q} className="hidden group-hover:inline-flex items-center max-w-full px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-50 text-indigo-400" />
+                  ))}
+                </div>
+              )}
             </div>
           </div>
           <div className="flex items-center justify-center gap-1.5 mt-3 pt-2 border-t border-gray-50 opacity-0 group-hover:opacity-100">
@@ -566,17 +679,10 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   const navigate = useNavigate();
   const { subTab: urlSubTab } = useParams<{ subTab?: string }>();
   const { isAdmin, isBuchhaltung, isMaterial, user, signOut } = useAuthStore();
-  const [isEliteKleingruppeDozent, setIsEliteKleingruppeDozent] = useState(false);
   const [dozentLegalAreas, setDozentLegalAreas] = useState<string[]>([]);
   const [internalShowEliteKleingruppe, setInternalShowEliteKleingruppe] = useState(false);
   const showEliteKleingruppe = externalShowEliteKleingruppe ?? internalShowEliteKleingruppe ?? !!urlSubTab;
   const [activeTab, setActiveTab] = useState('dashboard');
-  const setShowEliteKleingruppe = (val: boolean) => {
-    if (!val && onCloseEliteKleingruppe) {
-      onCloseEliteKleingruppe();
-    }
-    setInternalShowEliteKleingruppe(val);
-  };
 
   const { addToast } = useToastStore();
   const [chapters, setChapters] = useState<Chapter[]>([]);
@@ -734,9 +840,25 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   const [editingFolder, setEditingFolder] = useState<MaterialFolder | null>(null);
   const [folderName, setFolderName] = useState('');
   const [materialFolderId, setMaterialFolderId] = useState<string | null>(null);
+  const [pendingMaterialTags, setPendingMaterialTags] = useState<string[]>([]);
   const [isDownloadingZip, setIsDownloadingZip] = useState(false);
   const [previewMaterial, setPreviewMaterial] = useState<TeachingMaterial | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const updateSearchQuery = (value: string) => {
+    setSearchQuery(value);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => setDebouncedSearchQuery(value), 1000);
+  };
+
+  const flushSearchQuery = () => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    setDebouncedSearchQuery(searchQuery);
+  };
+
+  useEffect(() => () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); }, []);
   const [selectedMaterials, setSelectedMaterials] = useState<Set<string>>(new Set());
   const [selectedFolders, setSelectedFolders] = useState<Set<string>>(new Set());
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -1302,6 +1424,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     setMaterialFileName(m?.file_name || '');
     setMaterialFileType(m?.file_type || '');
     setMaterialCategory(m?.category || '');
+    setPendingMaterialTags([]);
     const targetFolderId = m?.folder_id !== undefined ? m.folder_id : currentFolderId;
     setMaterialFolderId(targetFolderId);
     setShowMaterialModal(true);
@@ -1324,6 +1447,19 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     setShowFolderModal(false);
     fetchFolders();
     addToast('Gespeichert', 'success');
+  };
+
+  const saveFolderTags = async (folderId: string, tags: string[]) => {
+    const { error } = await supabase
+      .from('material_folders')
+      .update({ schwerpunkt_tags: tags })
+      .eq('id', folderId);
+    if (error) {
+      console.error('Error saving schwerpunkt_tags:', error);
+      addToast('Fehler beim Speichern der Tags', 'error');
+      return;
+    }
+    setFolders(prev => prev.map(f => f.id === folderId ? { ...f, schwerpunkt_tags: tags } : f));
   };
 
   const deleteFolder = async (id: string) => {
@@ -1481,7 +1617,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   const getFolderPath = (folderId: string | null): string => {
     if (!folderId) return '';
     const breadcrumbs = [];
-    let current = folderId;
+    let current: string | null = folderId;
     const visited = new Set<string>();
     
     while (current && !visited.has(current)) {
@@ -1534,12 +1670,19 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
       // Update file name and type in UI for both new and editing materials
       setMaterialFileName(file.name);
       setMaterialFileType(file.type);
-      // When editing existing material, only update file_url, preserve everything else
+      // Auto-tag: extract Schwerpunkte from Lösung-PDFs (for new materials only)
       if (!editingMaterial) {
         console.log('🆕 New material - updating all fields');
         // Auto-fill title from filename (without extension)
         const titleFromFile = file.name.replace(/\.[^/.]+$/, '');
         if (!materialTitle) setMaterialTitle(titleFromFile);
+        // Extract tags in background (non-blocking)
+        extractTagsFromPdfFile(file).then(tags => {
+          if (tags.length > 0) {
+            setPendingMaterialTags(tags);
+            console.log(`🏷️  ${tags.length} Tags aus PDF extrahiert`);
+          }
+        }).catch(err => console.error('Tag-Extraktion fehlgeschlagen:', err));
       } else {
         console.log('🔄 Editing existing material - updating file_url and UI file name');
         console.log('📋 Preserved fields:', { title: materialTitle });
@@ -1623,6 +1766,31 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
           successCount++;
           // Add to existing files set to prevent duplicates within the same batch
           existingFileNames.add(file.name.toLowerCase());
+
+          // Auto-tag: extract Schwerpunkte from Lösung-PDFs and merge into parent folder
+          if (currentFolderId) {
+            try {
+              const tags = await extractTagsFromPdfFile(file);
+              if (tags.length > 0) {
+                const { data: folderRow } = await supabase
+                  .from('material_folders')
+                  .select('schwerpunkt_tags')
+                  .eq('id', currentFolderId)
+                  .single();
+                const existingTags: string[] = Array.isArray(folderRow?.schwerpunkt_tags) ? folderRow.schwerpunkt_tags : [];
+                const merged = Array.from(new Set([...existingTags, ...tags]));
+                if (merged.length !== existingTags.length) {
+                  await supabase
+                    .from('material_folders')
+                    .update({ schwerpunkt_tags: merged })
+                    .eq('id', currentFolderId);
+                  console.log(`🏷️  ${file.name}: ${tags.length} Tags extrahiert und Ordner zugewiesen`);
+                }
+              }
+            } catch (tagErr) {
+              console.error('Fehler beim Auto-Tagging:', tagErr);
+            }
+          }
         }
       } catch (error) {
         console.error(`Unexpected error uploading ${file.name}:`, error);
@@ -1632,6 +1800,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     
     setBulkUploadProgress(null);
     fetchMaterials();
+    fetchFolders();
     
     // Build status message
     const messages: string[] = [];
@@ -1642,7 +1811,7 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     if (failedFiles.length > 0) {
       addToast(messages.join('. '), 'error');
     } else if (skippedFiles.length > 0) {
-      addToast(messages.join('. '), 'warning');
+      addToast(messages.join('. '), 'error');
     } else {
       addToast(messages.join('. '), 'success');
     }
@@ -1712,9 +1881,33 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
         folder_id: materialFolderId,
         position: materials.filter(m => m.folder_id === materialFolderId).length
       });
+
+      // Auto-tag: merge extracted Schwerpunkte into the parent folder's tags
+      if (materialFolderId && pendingMaterialTags.length > 0) {
+        try {
+          const { data: folderRow } = await supabase
+            .from('material_folders')
+            .select('schwerpunkt_tags')
+            .eq('id', materialFolderId)
+            .single();
+          const existingTags: string[] = Array.isArray(folderRow?.schwerpunkt_tags) ? folderRow.schwerpunkt_tags : [];
+          const merged = Array.from(new Set([...existingTags, ...pendingMaterialTags]));
+          if (merged.length !== existingTags.length) {
+            await supabase
+              .from('material_folders')
+              .update({ schwerpunkt_tags: merged })
+              .eq('id', materialFolderId);
+            console.log(`🏷️  ${pendingMaterialTags.length} Tags dem Ordner zugewiesen`);
+          }
+        } catch (tagErr) {
+          console.error('Fehler beim Auto-Tagging des Ordners:', tagErr);
+        }
+      }
     }
     setShowMaterialModal(false);
+    setPendingMaterialTags([]);
     fetchMaterials();
+    fetchFolders();
     addToast('Gespeichert', 'success');
   };
 
@@ -2099,39 +2292,33 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
   }
 
   if (showMaterialsView) {
-    const currentFolders = searchQuery 
-      ? [] 
+    const activeSearch = debouncedSearchQuery;
+    const currentFolders = activeSearch
+      ? []
       : folders
           .filter(f => f.parent_id === currentFolderId)
           .sort((a, b) => a.name.localeCompare(b.name, 'de', { sensitivity: 'base', numeric: true }));
-    
+
     // Get materials for current folder
-    const rawMaterials = searchQuery 
-      ? materials.filter(m => m.file_name.toLowerCase().includes(searchQuery.toLowerCase()) || m.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    const rawMaterials = activeSearch
+      ? materials.filter(m => m.file_name.toLowerCase().includes(activeSearch.toLowerCase()) || m.title.toLowerCase().includes(activeSearch.toLowerCase()))
       : materials.filter(m => m.folder_id === currentFolderId);
-    
-    console.log('=== MATERIALS DEBUG ===');
-    console.log('currentFolderId:', currentFolderId);
-    console.log('Total materials in state:', materials.length);
-    console.log('Materials matching folder:', rawMaterials.length);
-    console.log('Matching materials:', rawMaterials.map(m => ({ id: m.id, title: m.title, folder_id: m.folder_id })));
-    console.log('All materials with this folder_id:', materials.filter(m => m.folder_id === currentFolderId).map(m => ({ id: m.id, title: m.title })));
-    
-    // Check for duplicate IDs
-    const idCounts = new Map<string, number>();
-    rawMaterials.forEach(m => {
-      idCounts.set(m.id, (idCounts.get(m.id) || 0) + 1);
-    });
-    const duplicates = Array.from(idCounts.entries()).filter(([_, count]) => count > 1);
-    if (duplicates.length > 0) {
-      console.error('DUPLICATE IDs found:', duplicates);
+
+    // When searching, also find folders whose name or schwerpunkt_tags match
+    const searchFolders = activeSearch
+      ? folders.filter(f => {
+          const q = activeSearch.toLowerCase();
+          if (f.name.toLowerCase().includes(q)) return true;
+          if (f.schwerpunkt_tags && f.schwerpunkt_tags.some(t => t.toLowerCase().includes(q))) return true;
+          return false;
+        })
+      : [];
+
+    if (activeSearch) {
+      // search results computed above
     }
-    
+
     const currentMaterials = rawMaterials;
-    
-    console.log('currentMaterials count:', currentMaterials.length);
-    console.log('currentMaterials IDs:', currentMaterials.map(m => m.id));
-    console.log('========================');
     
     const breadcrumbs = getBreadcrumbs();
     
@@ -2243,11 +2430,13 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
           <div className="flex items-center gap-2 flex-wrap">
             {/* Home/Root Button */}
             <button 
-              onClick={() => { 
-                setCurrentFolderId(null); 
+              onClick={() => {
+                setCurrentFolderId(null);
                 setSearchQuery('');
-              }} 
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm transition-colors ${!currentFolderId && !searchQuery ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-gray-100 text-gray-600'}`}
+                setDebouncedSearchQuery('');
+                if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+              }}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm transition-colors ${!currentFolderId && !debouncedSearchQuery ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-gray-100 text-gray-600'}`}
             >
               <FileText className="h-4 w-4" />
               Alle Materialien
@@ -2283,13 +2472,15 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Datei suchen..."
+              placeholder="Datei oder Tag suchen..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm w-48 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              onChange={(e) => updateSearchQuery(e.target.value)}
+              onBlur={flushSearchQuery}
+              onKeyDown={(e) => { if (e.key === 'Enter') flushSearchQuery(); }}
+              className="pl-9 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm w-64 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <button onClick={() => { setSearchQuery(''); setDebouncedSearchQuery(''); if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                 <X className="h-4 w-4" />
               </button>
             )}
@@ -2298,11 +2489,11 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
       </div>
       
       <DndContext sensors={materialsSensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      {currentFolders.length === 0 && currentMaterials.length === 0 ? (
+      {currentFolders.length === 0 && currentMaterials.length === 0 && searchFolders.length === 0 ? (
         <div className="bg-white rounded-xl p-8 text-center">
           <FileText className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-500">{currentFolderId ? 'Dieser Ordner ist leer' : 'Keine Materialien vorhanden'}</p>
-          {canEdit && (
+          <p className="text-gray-500">{debouncedSearchQuery ? `Keine Ergebnisse für „${debouncedSearchQuery}“` : (currentFolderId ? 'Dieser Ordner ist leer' : 'Keine Materialien vorhanden')}</p>
+          {canEdit && !debouncedSearchQuery && (
             <div className="flex items-center justify-center gap-2 mt-4">
               <button onClick={() => openFolderModal()} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm">Ordner erstellen</button>
               <button onClick={() => openMaterialModal()} className="px-4 py-2 bg-primary text-white rounded-lg text-sm">Material hinzufügen</button>
@@ -2311,6 +2502,37 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
         </div>
       ) : (
         <div className="space-y-6">
+          {/* Search results: folders matching by name or tags */}
+          {debouncedSearchQuery && searchFolders.length > 0 && (
+            <div>
+              <h3 className="text-sm font-medium text-gray-500 mb-2">Ordner ({searchFolders.length})</h3>
+              <div className={`grid gap-3 ${viewMode === 'grid' ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5' : 'grid-cols-1'}`}>
+                {searchFolders.map(folder => (
+                  <DraggableFolder
+                    key={folder.id}
+                    folder={folder}
+                    onOpen={(id) => {
+                      setCurrentFolderId(id);
+                      setSearchQuery('');
+                      setDebouncedSearchQuery('');
+                      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+                    }}
+                    onDownload={downloadFolderAsZip}
+                    onDuplicate={duplicateFolder}
+                    onEdit={openFolderModal}
+                    onDelete={deleteFolder}
+                    canEdit={canEdit}
+                    isDownloadingZip={isDownloadingZip}
+                    selectedFolders={selectedFolders}
+                    onToggleSelection={toggleFolderSelection}
+                    viewMode={viewMode}
+                    showTags
+                    searchQuery={debouncedSearchQuery}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
           {/* Combined Folders and Materials Grid */}
           {(currentFolders.length > 0 || currentMaterials.length > 0) && (
             <div>
@@ -2386,6 +2608,9 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
                     getFileIcon={getFileIcon}
                     formatFileSize={formatFileSize}
                     viewMode={viewMode}
+                    showTags={!!debouncedSearchQuery}
+                    folderTags={folders.find(f => f.id === m.folder_id)?.schwerpunkt_tags || undefined}
+                    searchQuery={debouncedSearchQuery}
                   />
                 ))}
               </div>
@@ -2444,14 +2669,32 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
       )}
       {showFolderModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
             <div className="flex items-center justify-between p-4 border-b">
               <h3 className="font-semibold">{editingFolder ? 'Ordner bearbeiten' : 'Neuer Ordner'}</h3>
               <button onClick={() => setShowFolderModal(false)}><X className="h-5 w-5" /></button>
             </div>
-            <div className="p-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Ordnername *</label>
-              <input value={folderName} onChange={e => setFolderName(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="z.B. Modul 1" autoFocus />
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ordnername *</label>
+                <input value={folderName} onChange={e => setFolderName(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="z.B. Modul 1" autoFocus />
+              </div>
+              {editingFolder && (
+                <SchwerpunktTagsInput
+                  caseStudyId={editingFolder.id}
+                  caseStudyNumber={0}
+                  tags={editingFolder.schwerpunkt_tags || []}
+                  tooltipTitle={`Schwerpunkt-Tags für Ordner „${editingFolder.name}“`}
+                  onSave={async (newTags) => {
+                    const { error } = await supabase
+                      .from('material_folders')
+                      .update({ schwerpunkt_tags: newTags })
+                      .eq('id', editingFolder.id);
+                    if (error) throw error;
+                  }}
+                  onTagsChanged={(newTags) => saveFolderTags(editingFolder.id, newTags)}
+                />
+              )}
             </div>
             <div className="flex justify-end gap-2 p-4 border-t">
               <button onClick={() => setShowFolderModal(false)} className="px-4 py-2 text-gray-700">Abbrechen</button>
