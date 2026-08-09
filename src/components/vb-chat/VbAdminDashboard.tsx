@@ -10,6 +10,8 @@ import {
   CheckCircle2,
   Clock,
   Package,
+  Plus,
+  X,
 } from 'lucide-react';
 import { SchwerpunktTagsInput } from './SchwerpunktTagsInput';
 
@@ -120,6 +122,9 @@ export const VbAdminDashboard: React.FC = () => {
   const [cases, setCases] = useState<VbCaseRow[]>([]);
   const [legalAreaFilter, setLegalAreaFilter] = useState<string>('all');
   const [availableLegalAreas, setAvailableLegalAreas] = useState<string[]>([]);
+  const [addCreditsFor, setAddCreditsFor] = useState<VbTeilnehmer | null>(null);
+  const [creditsAmount, setCreditsAmount] = useState('');
+  const [addingCredits, setAddingCredits] = useState(false);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -273,6 +278,37 @@ export const VbAdminDashboard: React.FC = () => {
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
+
+  const handleAddCredits = async () => {
+    if (!addCreditsFor || !creditsAmount) return;
+    const newValue = parseInt(creditsAmount, 10);
+    if (isNaN(newValue) || newValue < 0) return;
+    const delta = newValue - addCreditsFor.remainingCredits;
+    if (delta === 0) {
+      setAddCreditsFor(null);
+      return;
+    }
+    setAddingCredits(true);
+    try {
+      const { error } = await supabase
+        .from('vb_orders')
+        .insert({
+          profile_id: addCreditsFor.id,
+          status: 'completed',
+          case_study_count: delta,
+          total_cents: 0,
+        });
+      if (error) throw error;
+      setCreditsAmount('');
+      setAddCreditsFor(null);
+      await fetchAll();
+    } catch (err) {
+      console.error('Error adding credits:', err);
+      alert('Fehler beim Aktualisieren der Credits: ' + (err instanceof Error ? err.message : 'Unbekannt'));
+    } finally {
+      setAddingCredits(false);
+    }
+  };
 
   // Realtime updates
   useEffect(() => {
@@ -432,9 +468,10 @@ export const VbAdminDashboard: React.FC = () => {
                 <thead>
                   <tr className="text-left text-gray-500 border-b border-gray-200">
                     <th className="py-2 pr-3 font-medium">Teilnehmer</th>
+                    <th className="py-2 pr-1 font-medium text-center w-8"></th>
+                    <th className="py-2 pr-3 font-medium text-right bg-blue-50">Verbleibend</th>
                     <th className="py-2 pr-3 font-medium text-right">Credits gesamt</th>
                     <th className="py-2 pr-3 font-medium text-right">Benutzt</th>
-                    <th className="py-2 pr-3 font-medium text-right">Verbleibend</th>
                     <th className="py-2 pr-3 font-medium text-right">Offene Fälle</th>
                   </tr>
                 </thead>
@@ -445,13 +482,22 @@ export const VbAdminDashboard: React.FC = () => {
                         <div className="font-medium text-gray-900">{t.full_name || t.email || 'Unbekannt'}</div>
                         {t.full_name && t.email && <div className="text-xs text-gray-500">{t.email}</div>}
                       </td>
-                      <td className="py-2 pr-3 text-right text-gray-700">{t.totalCredits}</td>
-                      <td className="py-2 pr-3 text-right text-gray-700">{t.usedCredits}</td>
-                      <td className="py-2 pr-3 text-right">
+                      <td className="py-2 pr-1 text-center">
+                        <button
+                          onClick={() => { setAddCreditsFor(t); setCreditsAmount(String(t.remainingCredits)); }}
+                          className="flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors mx-auto"
+                          title="Credits hinzufügen"
+                        >
+                          <Plus className="h-3 w-3" />
+                        </button>
+                      </td>
+                      <td className="py-2 pr-3 text-right bg-blue-50">
                         <span className={`font-medium ${t.remainingCredits < 0 ? 'text-red-600' : t.remainingCredits === 0 ? 'text-orange-600' : 'text-green-600'}`}>
                           {t.remainingCredits}
                         </span>
                       </td>
+                      <td className="py-2 pr-3 text-right text-gray-700">{t.totalCredits}</td>
+                      <td className="py-2 pr-3 text-right text-gray-700">{t.usedCredits}</td>
                       <td className="py-2 pr-3 text-right font-medium text-gray-900">{t.openCases}</td>
                     </tr>
                   ))}
@@ -556,6 +602,88 @@ export const VbAdminDashboard: React.FC = () => {
           })}
         </div>
       </div>
+
+      {/* Add Credits Modal */}
+      {addCreditsFor && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setAddCreditsFor(null)}>
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="flex items-start justify-between mb-4">
+                  <h3 className="text-lg font-medium text-gray-900">Credits hinzufügen</h3>
+                  <button onClick={() => setAddCreditsFor(null)} className="text-gray-400 hover:text-gray-600">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Teilnehmer</label>
+                    <div className="text-sm text-gray-900 font-medium">{addCreditsFor.full_name || addCreditsFor.email}</div>
+                    {addCreditsFor.full_name && addCreditsFor.email && (
+                      <div className="text-xs text-gray-500">{addCreditsFor.email}</div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Verbleibende Credits</label>
+                    <div className="flex items-center justify-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setCreditsAmount(String(Math.max(0, (parseInt(creditsAmount || '0', 10) || 0) - 1)))}
+                        className="flex items-center justify-center w-9 h-9 rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors flex-shrink-0 text-xl font-bold"
+                      >
+                        −
+                      </button>
+                      <input
+                        type="number"
+                        min="0"
+                        value={creditsAmount}
+                        onChange={(e) => setCreditsAmount(e.target.value)}
+                        className="w-20 text-center px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-lg font-semibold"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setCreditsAmount(String((parseInt(creditsAmount || '0', 10) || 0) + 1))}
+                        className="flex items-center justify-center w-9 h-9 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors flex-shrink-0 text-xl font-bold"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500">
+                      {(() => {
+                        const delta = (parseInt(creditsAmount || '0', 10) || 0) - addCreditsFor.remainingCredits;
+                        if (delta === 0) return 'Keine Änderung';
+                        if (delta > 0) return `+${delta} Credits werden hinzugefügt`;
+                        return `${delta} Credits werden abgezogen`;
+                      })()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button
+                  type="button"
+                  onClick={handleAddCredits}
+                  disabled={!creditsAmount || addingCredits}
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary text-base font-medium text-white hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                >
+                  {addingCredits ? 'Wird gespeichert...' : 'Speichern'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAddCreditsFor(null)}
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"
+                >
+                  Abbrechen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
