@@ -137,6 +137,9 @@ export const VbCaseStudyDashboard: React.FC = () => {
   const [submissions, setSubmissions] = useState<Map<string, {grade: number | null, grade_text: string | null}>>(new Map())
   const [legalAreaFilter, setLegalAreaFilter] = useState<string>('all')
   const [availableCredits, setAvailableCredits] = useState<number>(0)
+  const [nextExpiry, setNextExpiry] = useState<{ date: string; credits: number } | null>(null)
+  const [allExpiries, setAllExpiries] = useState<{ date: string; credits: number; createdAt: string }[]>([])
+  const [showExpiryModal, setShowExpiryModal] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 5
   const editFileInputRef = useRef<HTMLInputElement>(null)
@@ -768,10 +771,22 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
 
       if (ordersError) throw ordersError
 
-      // Calculate total purchased credits directly from orders
-      const totalPurchasedCredits = ordersData?.reduce((sum, order) => {
+      // Filter out expired orders and collect expiration info
+      const now = new Date();
+      const validOrders = (ordersData || []).filter(order => {
+        if (!order.expires_at) return true; // no expiration = valid
+        return new Date(order.expires_at) > now;
+      });
+
+      // Calculate total purchased credits from non-expired orders only
+      const totalPurchasedCredits = validOrders.reduce((sum, order) => {
         return sum + (order.case_study_count || 0)
       }, 0) || 0
+
+      // Find expiring valid orders with credits (sorted by expiry date)
+      const sortedByExpiry = validOrders
+        .filter(o => o.expires_at && (o.case_study_count || 0) > 0)
+        .sort((a, b) => new Date(a.expires_at).getTime() - new Date(b.expires_at).getTime());
 
       // Fetch case studies with dozent information
       const { data: caseStudyData, error: caseStudyError } = await supabase
@@ -793,6 +808,37 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
 
       // Set available credits to remaining (total - used)
       setAvailableCredits(totalPurchasedCredits - usedCredits)
+
+      // Allocate used credits FIFO (oldest expiry first) to find remaining per order
+      let remainingToDeduct = usedCredits;
+      const ordersWithRemaining: { date: string; credits: number; createdAt: string }[] = [];
+      for (const o of sortedByExpiry) {
+        const orderCredits = o.case_study_count || 0;
+        const remaining = Math.max(0, orderCredits - remainingToDeduct);
+        remainingToDeduct = Math.max(0, remainingToDeduct - orderCredits);
+        if (remaining > 0) {
+          ordersWithRemaining.push({
+            date: o.expires_at,
+            credits: remaining,
+            createdAt: o.created_at,
+          });
+        }
+      }
+      // Merge orders with the same expiry date
+      const merged: { date: string; credits: number; createdAt: string }[] = [];
+      for (const item of ordersWithRemaining) {
+        const existing = merged.find(m => new Date(m.date).toDateString() === new Date(item.date).toDateString());
+        if (existing) {
+          existing.credits += item.credits;
+        } else {
+          merged.push({ ...item });
+        }
+      }
+      const nextExpiry = merged.length > 0
+        ? { date: merged[0].date, credits: merged[0].credits }
+        : null;
+      setNextExpiry(nextExpiry)
+      setAllExpiries(merged)
 
       // Fetch submissions with grades
       if (caseStudyData && caseStudyData.length > 0) {
@@ -1162,6 +1208,17 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
             <p className="text-gray-600 text-sm sm:text-base">
               Du hast <span className="font-bold">{availableSlots}</span> verfügbare Klausur-Credits.
             </p>
+            {nextExpiry && availableSlots > 0 && (
+              <div className="flex items-start gap-2">
+                <HelpCircle
+                  className="h-4 w-4 text-orange-600 flex-shrink-0 mt-0.5 cursor-pointer hover:text-orange-700"
+                  onClick={() => setShowExpiryModal(true)}
+                />
+                <p className="text-orange-600 text-xs sm:text-sm">
+                  <span className="font-medium">Achtung:</span> {nextExpiry.credits} Credits verfallen am {new Date(nextExpiry.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}.
+                </p>
+              </div>
+            )}
             {availableSlots > 0 && (
               <Link
                 to="/klausurenbesprechung/sachverhalt-anfordern"
@@ -2569,6 +2626,69 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
           </div>
         )}
       </div>
+
+      {/* Credit Expiry Info Modal */}
+      {showExpiryModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowExpiryModal(false)}>
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <HelpCircle className="h-5 w-5 text-orange-600" />
+                    <h3 className="text-lg font-medium text-gray-900">Credit-Ablauf</h3>
+                  </div>
+                  <button onClick={() => setShowExpiryModal(false)} className="text-gray-400 hover:text-gray-600">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <p className="text-sm text-gray-600 mb-4">
+                  Deine Credits sind jeweils 18 Monate ab Kauf gültig. Hier siehst du, wann welche Credits verfallen:
+                </p>
+                <div className="space-y-2">
+                  {allExpiries.length === 0 ? (
+                    <p className="text-sm text-gray-500">Keine Credits mit Ablaufdatum vorhanden.</p>
+                  ) : (
+                    allExpiries.map((exp, idx) => {
+                      const expired = new Date(exp.date) < new Date();
+                      return (
+                        <div key={idx} className={`flex items-center justify-between p-3 rounded-lg ${expired ? 'bg-gray-100' : 'bg-orange-50'}`}>
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">{exp.credits} Credits</div>
+                            <div className="text-xs text-gray-500">
+                              Gekauft am {new Date(exp.createdAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className={`text-sm font-medium ${expired ? 'text-gray-400 line-through' : 'text-orange-600'}`}>
+                              {new Date(exp.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {expired ? 'Abgelaufen' : 'Verfällt am'}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6">
+                <button
+                  type="button"
+                  onClick={() => setShowExpiryModal(false)}
+                  className="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:text-sm"
+                >
+                  Schließen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

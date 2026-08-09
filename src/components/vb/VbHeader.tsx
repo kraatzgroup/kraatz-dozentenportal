@@ -24,7 +24,14 @@ const useVbHeaderData = () => {
         .eq('profile_id', user.id)
         .eq('status', 'completed');
 
-      const totalPurchasedCredits = ordersData?.reduce((sum, order) => {
+      // Filter out expired orders
+      const now = new Date();
+      const validOrders = (ordersData || []).filter(order => {
+        if (!order.expires_at) return true;
+        return new Date(order.expires_at) > now;
+      });
+
+      const totalPurchasedCredits = validOrders.reduce((sum, order) => {
         return sum + (order.case_study_count || 0);
       }, 0) || 0;
 

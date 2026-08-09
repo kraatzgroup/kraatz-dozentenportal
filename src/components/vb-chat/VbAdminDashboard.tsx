@@ -191,18 +191,21 @@ export const VbAdminDashboard: React.FC = () => {
       }));
       setCases(rows);
 
-      // 5) Orders for teilnehmer credits
+      // 5) Orders for teilnehmer credits (only non-expired)
       let vbCreditsByProfile: Record<string, { total: number; used: number; remaining: number }> = {};
       if (teilnehmerIds.length > 0) {
+        const nowIso = new Date().toISOString();
         const { data: ordersData } = await supabase
           .from('vb_orders')
-          .select('id, profile_id, status, case_study_count')
+          .select('id, profile_id, status, case_study_count, expires_at')
           .in('profile_id', teilnehmerIds);
         (ordersData || []).forEach(order => {
           if (!vbCreditsByProfile[order.profile_id]) {
             vbCreditsByProfile[order.profile_id] = { total: 0, used: 0, remaining: 0 };
           }
           if (order.status === 'completed' || order.status === 'paid') {
+            // Skip expired orders (expires_at in the past)
+            if (order.expires_at && new Date(order.expires_at) < new Date(nowIso)) return;
             vbCreditsByProfile[order.profile_id].total += order.case_study_count || 0;
           }
         });
@@ -290,6 +293,8 @@ export const VbAdminDashboard: React.FC = () => {
     }
     setAddingCredits(true);
     try {
+      const expiresAt = new Date();
+      expiresAt.setMonth(expiresAt.getMonth() + 18);
       const { error } = await supabase
         .from('vb_orders')
         .insert({
@@ -297,6 +302,7 @@ export const VbAdminDashboard: React.FC = () => {
           status: 'completed',
           case_study_count: delta,
           total_cents: 0,
+          expires_at: expiresAt.toISOString(),
         });
       if (error) throw error;
       setCreditsAmount('');

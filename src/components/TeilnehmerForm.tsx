@@ -858,9 +858,11 @@ export function TeilnehmerForm({ teilnehmer, participantType, onClose, onSaved, 
 
           const usedCount = (requestsData || []).length;
 
-          // Calculate total credits from completed/paid orders
+          // Calculate total credits from completed/paid non-expired orders
+          const now = new Date();
           const totalCredits = (ordersData || [])
             .filter(order => order.status === 'completed' || order.status === 'paid')
+            .filter(order => !order.expires_at || new Date(order.expires_at) > now)
             .reduce((sum, order) => sum + (order.case_study_count || 0), 0);
 
           setVbCredits({
@@ -914,9 +916,11 @@ export function TeilnehmerForm({ teilnehmer, participantType, onClose, onSaved, 
         setVbOrders(ordersData);
       }
 
-      // Recalculate credits
+      // Recalculate credits (non-expired only)
+      const nowDel = new Date();
       const totalCredits = (ordersData || [])
         .filter(order => order.status === 'completed' || order.status === 'paid')
+        .filter(order => !order.expires_at || new Date(order.expires_at) > nowDel)
         .reduce((sum, order) => sum + (order.case_study_count || 0), 0);
 
       setVbCredits(prev => ({
@@ -968,9 +972,11 @@ export function TeilnehmerForm({ teilnehmer, participantType, onClose, onSaved, 
         setVbOrders(ordersData);
       }
 
-      // Recalculate credits
+      // Recalculate credits (non-expired only)
+      const nowAdd = new Date();
       const totalCredits = (ordersData || [])
         .filter(order => order.status === 'completed' || order.status === 'paid')
+        .filter(order => !order.expires_at || new Date(order.expires_at) > nowAdd)
         .reduce((sum, order) => sum + (order.case_study_count || 0), 0);
 
       setVbCredits(prev => ({
