@@ -15,6 +15,7 @@ interface DialogState {
   userData: {
     id?: string;
     email: string;
+    originalEmail?: string;
     fullName: string;
     password?: string;
     role?: string;
@@ -35,6 +36,8 @@ interface ConfirmationState {
   isDestructive?: boolean;
   requireNameConfirmation?: boolean;
   nameToConfirm?: string;
+  userId?: string;
+  allowSetPassword?: boolean;
 }
 
 interface CreateUserResponse {
@@ -79,6 +82,7 @@ export function UserManagement() {
     nameToConfirm: ''
   });
   const [confirmationInput, setConfirmationInput] = useState('');
+  const [directPassword, setDirectPassword] = useState('');
   const [showRoleSelection, setShowRoleSelection] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [eliteTeilnehmerIds, setEliteTeilnehmerIds] = useState<Set<string>>(new Set());
@@ -357,12 +361,38 @@ export function UserManagement() {
 
     try {
       setLocalLoading(true);
+      const emailChanged = dialog.userData.email !== dialog.userData.originalEmail;
       await updateUser(dialog.userData.id, {
         fullName: dialog.userData.fullName,
+        email: emailChanged ? dialog.userData.email : undefined,
         role: dialog.userData.role,
         additional_roles: dialog.userData.additional_roles || [],
         vb_legal_areas: dialog.userData.vb_legal_areas || []
       });
+
+      // Update elite kleingruppe status in teilnehmer table
+      if (dialog.userData.role === 'teilnehmer') {
+        const isElite = !!dialog.userData.eliteKleingruppe;
+        const eliteGroup = eliteKleingruppen.find(g => g.name === dialog.userData.eliteKleingruppe);
+        await supabase
+          .from('teilnehmer')
+          .update({
+            is_elite_kleingruppe: isElite,
+            elite_kleingruppe_id: eliteGroup?.id || null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('profile_id', dialog.userData.id);
+
+        // Refresh elite teilnehmer IDs
+        const { data: eliteData } = await supabase
+          .from('teilnehmer')
+          .select('profile_id')
+          .eq('is_elite_kleingruppe', true);
+        if (eliteData) {
+          setEliteTeilnehmerIds(new Set(eliteData.map(t => t.profile_id)));
+        }
+      }
+
       setSuccessMessage('Benutzer wurde erfolgreich aktualisiert.');
       closeDialog();
       await fetchUsers();
@@ -404,13 +434,16 @@ export function UserManagement() {
     }
   };
 
-  const handleResetPasswordForUser = async (userEmail: string, _userName: string) => {
+  const handleResetPasswordForUser = async (userEmail: string, _userName: string, userId?: string) => {
+    setDirectPassword('');
     setConfirmation({
       show: true,
       title: 'Neues Passwort generieren',
       message: `Möchten Sie ein neues Passwort für "${userEmail}" generieren und per E-Mail senden?`,
       confirmText: 'Passwort senden',
       isDestructive: false,
+      userId,
+      allowSetPassword: !!userId,
       onConfirm: async () => {
         try {
           console.log('Generating new password for user:', userEmail);
@@ -426,6 +459,40 @@ export function UserManagement() {
         }
       }
     });
+  };
+
+  const handleSetPasswordDirectly = async () => {
+    if (!confirmation.userId || !directPassword) return;
+    if (directPassword.length < 8) {
+      setDialogError('Passwort muss mindestens 8 Zeichen lang sein.');
+      return;
+    }
+    try {
+      setLocalLoading(true);
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/set-user-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          userId: confirmation.userId,
+          newPassword: directPassword,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Fehler beim Setzen des Passworts');
+      }
+      setConfirmation(prev => ({ ...prev, show: false }));
+      setDirectPassword('');
+      setSuccessMessage('Passwort wurde erfolgreich gesetzt.');
+    } catch (error: any) {
+      console.error('Error setting password:', error);
+      setDialogError(error.message || 'Fehler beim Setzen des Passworts');
+    } finally {
+      setLocalLoading(false);
+    }
   };
 
   const handleResendWelcomeEmail = async (userEmail: string, userName: string, _userId: string) => {
@@ -973,20 +1040,44 @@ export function UserManagement() {
                         </div>
                         <div className="flex items-center space-x-2 flex-shrink-0">
                           <button
-                            onClick={() => {
+                            onClick={async () => {
                               if (user.role === 'dozent') {
                                 setSelectedDozentForEdit(user);
                                 setShowDozentForm(true);
                               } else {
+                                // Fetch elite kleingruppe status from teilnehmer table
+                                let eliteKleingruppe: string | undefined;
+                                if (user.role === 'teilnehmer') {
+                                  const { data: tnData } = await supabase
+                                    .from('teilnehmer')
+                                    .select('is_elite_kleingruppe, elite_kleingruppe_id')
+                                    .eq('profile_id', user.id)
+                                    .single();
+                                  if (tnData?.is_elite_kleingruppe) {
+                                    // Try to resolve the group name from elite_kleingruppe_id
+                                    if (tnData.elite_kleingruppe_id) {
+                                      const { data: grp } = await supabase
+                                        .from('elite_kleingruppen')
+                                        .select('name')
+                                        .eq('id', tnData.elite_kleingruppe_id)
+                                        .single();
+                                      eliteKleingruppe = grp?.name || eliteKleingruppen[0]?.name || '';
+                                    } else {
+                                      eliteKleingruppe = eliteKleingruppen[0]?.name || '';
+                                    }
+                                  }
+                                }
                                 setDialog({
                                   type: 'edit',
                                   userData: {
                                     id: user.id,
                                     email: user.email,
+                                    originalEmail: user.email,
                                     fullName: user.full_name,
                                     role: user.role,
                                     additional_roles: user.additional_roles || [],
-                                    vb_legal_areas: (user as any).vb_legal_areas || []
+                                    vb_legal_areas: (user as any).vb_legal_areas || [],
+                                    eliteKleingruppe,
                                   }
                                 });
                               }
@@ -1011,7 +1102,7 @@ export function UserManagement() {
                             <Mail className="h-4 w-4" />
                           </button>
                           <button
-                            onClick={() => handleResetPasswordForUser(user.email, user.full_name)}
+                            onClick={() => handleResetPasswordForUser(user.email, user.full_name, user.id)}
                             className="p-2 border border-gray-300 shadow-sm rounded-md text-gray-700 bg-white hover:bg-gray-50"
                             title="Passwort zurücksetzen"
                           >
@@ -1330,15 +1421,12 @@ export function UserManagement() {
                                 ...dialog,
                                 userData: { ...dialog.userData, email: e.target.value }
                               })}
-                              disabled={dialog.type === 'edit'}
-                              className={`block w-full rounded-md border-gray-300 shadow-sm ${
-                                dialog.type === 'edit' ? 'bg-gray-100' : 'focus:border-primary focus:ring focus:ring-primary/20'
-                              }`}
+                              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
                               required
                             />
                             {dialog.type === 'edit' && (
                               <p className="mt-2 text-sm text-gray-500">
-                                Die E-Mail-Adresse kann nicht geändert werden.
+                                Beim Ändern der E-Mail-Adresse muss sich der Benutzer neu anmelden.
                               </p>
                             )}
                             {dialog.type === 'new' && (
@@ -1380,6 +1468,50 @@ export function UserManagement() {
                                     })}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
                                     required
+                                  >
+                                    <option value="">Bitte wählen...</option>
+                                    {eliteKleingruppen.map((gruppe) => (
+                                      <option key={gruppe.id} value={gruppe.name}>
+                                        {gruppe.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {dialog.type === 'edit' && dialog.userData.role === 'teilnehmer' && (
+                            <div className="space-y-3 p-4 bg-purple-50 rounded-lg border border-purple-200">
+                              <label className="flex items-center cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={dialog.userData.eliteKleingruppe !== undefined && dialog.userData.eliteKleingruppe !== ''}
+                                  onChange={(e) => {
+                                    const isChecked = e.target.checked;
+                                    setDialog({
+                                      ...dialog,
+                                      userData: {
+                                        ...dialog.userData,
+                                        eliteKleingruppe: isChecked ? eliteKleingruppen[0]?.name || '' : ''
+                                      }
+                                    });
+                                  }}
+                                  className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                />
+                                <span className="ml-2 text-sm font-medium text-gray-700">Elite-Kleingruppe Teilnehmer</span>
+                              </label>
+                              {dialog.userData.eliteKleingruppe && (
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Elite-Kleingruppe zuordnen
+                                  </label>
+                                  <select
+                                    value={dialog.userData.eliteKleingruppe || ''}
+                                    onChange={(e) => setDialog({
+                                      ...dialog,
+                                      userData: { ...dialog.userData, eliteKleingruppe: e.target.value }
+                                    })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
                                   >
                                     <option value="">Bitte wählen...</option>
                                     {eliteKleingruppen.map((gruppe) => (
@@ -1503,6 +1635,33 @@ export function UserManagement() {
                                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
                                 autoFocus
                               />
+                            </div>
+                          )}
+                          {confirmation.allowSetPassword && (
+                            <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Passwort direkt setzen (optional):
+                              </label>
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  value={directPassword}
+                                  onChange={(e) => setDirectPassword(e.target.value)}
+                                  placeholder="Neues Passwort (min. 8 Zeichen)"
+                                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={handleSetPasswordDirectly}
+                                  disabled={!directPassword || directPassword.length < 8 || localLoading}
+                                  className="px-3 py-2 bg-gray-700 text-white rounded-md text-sm font-medium hover:bg-gray-800 disabled:opacity-50 whitespace-nowrap"
+                                >
+                                  {localLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Setzen'}
+                                </button>
+                              </div>
+                              <p className="mt-2 text-xs text-gray-500">
+                                Setzt das Passwort direkt ohne E-Mail-Versand. Der Benutzer kann sich sofort mit diesem Passwort anmelden.
+                              </p>
                             </div>
                           )}
                         </div>

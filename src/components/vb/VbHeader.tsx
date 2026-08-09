@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { supabase } from '../../lib/supabase';
-import { User, CreditCard, LogOut, MessageCircle, Menu, X, LayoutDashboard, Award, GraduationCap, Settings, CalendarDays, ClipboardList } from 'lucide-react';
+import { User, CreditCard, LogOut, MessageCircle, Menu, X, LayoutDashboard, Award, GraduationCap, Settings, CalendarDays, ClipboardList, Trophy } from 'lucide-react';
 import { VbNotificationBell } from './VbNotificationBell';
 
 const LOGO_URL = 'https://kraatz-group.de/wp-content/uploads/2023/05/KraatzGroup_Logo_web.png';
@@ -39,11 +39,24 @@ const useVbHeaderData = () => {
 
       const { data: teilnehmerData } = await supabase
         .from('teilnehmer')
-        .select('elite_kleingruppe')
+        .select('is_elite_kleingruppe, elite_kleingruppe_id')
         .eq('profile_id', user.id)
         .maybeSingle();
 
-      setEliteKleingruppe(teilnehmerData?.elite_kleingruppe || null);
+      if (teilnehmerData?.is_elite_kleingruppe) {
+        if (teilnehmerData.elite_kleingruppe_id) {
+          const { data: grp } = await supabase
+            .from('elite_kleingruppen')
+            .select('name')
+            .eq('id', teilnehmerData.elite_kleingruppe_id)
+            .single();
+          setEliteKleingruppe(grp?.name || 'elite');
+        } else {
+          setEliteKleingruppe('elite');
+        }
+      } else {
+        setEliteKleingruppe(null);
+      }
     } catch (error) {
       console.error('Error fetching user data:', error);
     }
@@ -207,6 +220,9 @@ export const VbHeader: React.FC = () => {
                 <SidebarNavLink to="/klausurenbesprechung/klausuren-masterclass" icon={<GraduationCap className="w-4 h-4 text-primary" />} label="Klausuren-Masterclass" />
               </>
             )}
+            {eliteKleingruppe && additionalRoles?.includes('videobesprechung') && (
+              <SidebarNavLink to="/dashboard/elite-kleingruppe" icon={<Trophy className="w-4 h-4 text-primary" />} label="Elite-Kleingruppe" />
+            )}
             {additionalRoles?.includes('videobesprechung_dozent') && (
               <SidebarNavLink to="/klausurenbesprechung/korrektur" icon={<GraduationCap className="w-4 h-4 text-primary" />} label="Korrektur" />
             )}
@@ -316,6 +332,9 @@ export const VbMobileHeader: React.FC = () => {
                   <SidebarNavLink to="/klausurenbesprechung/klausuren-masterclass" icon={<GraduationCap className="w-4 h-4 text-primary" />} label="Klausuren-Masterclass" onClick={closeMenu} />
                   <SidebarNavLink to="/klausurenbesprechung/chat" icon={<MessageCircle className="w-4 h-4 text-primary" />} label="Chat" onClick={closeMenu} />
                 </>
+              )}
+              {eliteKleingruppe && additionalRoles?.includes('videobesprechung') && (
+                <SidebarNavLink to="/dashboard/elite-kleingruppe" icon={<Trophy className="w-4 h-4 text-primary" />} label="Elite-Kleingruppe" onClick={closeMenu} />
               )}
               {additionalRoles?.includes('videobesprechung_dozent') && (
                 <SidebarNavLink to="/klausurenbesprechung/korrektur" icon={<GraduationCap className="w-4 h-4 text-primary" />} label="Korrektur" onClick={closeMenu} />

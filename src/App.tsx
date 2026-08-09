@@ -116,8 +116,12 @@ function App() {
                 if (!isDefaultLanding) {
                   console.log('✅ App: REDIRECT DECISION: Non-default path, staying on current page:', landingPath);
                 } else if (teilnehmerData?.elite_kleingruppe && teilnehmerData.elite_kleingruppe !== 'f' && teilnehmerData.elite_kleingruppe !== 'false' && teilnehmerData.elite_kleingruppe !== null) {
-                  console.log('✅ App: REDIRECT DECISION: User has elite kleingruppe membership:', teilnehmerData.elite_kleingruppe, '→ redirecting to /dashboard?tab=elite-kleingruppe');
-                  window.history.replaceState({}, '', '/dashboard?tab=elite-kleingruppe');
+                  // Elite-Kleingruppe members (incl. VB teilnehmer with elite kleingruppe)
+                  // land on the Elite-Kleingruppe dashboard. VB teilnehmer additionally
+                  // see the "Videoklausurenkorrektur" tab via EliteKleingruppeDashboard.
+                  // 'dashboard' is a valid subtab of EliteKleingruppeDashboard (VALID_TABS).
+                  console.log('✅ App: REDIRECT DECISION: User has elite kleingruppe membership:', teilnehmerData.elite_kleingruppe, '→ redirecting to /dashboard?tab=dashboard');
+                  window.history.replaceState({}, '', '/dashboard?tab=dashboard');
                 } else if (additionalRoles?.includes('videobesprechung')) {
                   console.log('✅ App: REDIRECT DECISION: User has videobesprechung role but no elite kleingruppe → redirecting to /klausurenbesprechung/dashboard');
                   window.history.replaceState({}, '', '/klausurenbesprechung/dashboard');

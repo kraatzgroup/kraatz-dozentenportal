@@ -254,11 +254,27 @@ export function EliteKleingruppeDashboard() {
     if (user) {
       supabase
         .from('teilnehmer')
-        .select('elite_kleingruppe')
+        .select('is_elite_kleingruppe, elite_kleingruppe_id')
         .eq('profile_id', user.id)
         .maybeSingle()
         .then(({ data }) => {
-          setEliteKleingruppe(data?.elite_kleingruppe || null);
+          if (data?.is_elite_kleingruppe) {
+            // Resolve group name from elite_kleingruppe_id
+            if (data.elite_kleingruppe_id) {
+              supabase
+                .from('elite_kleingruppen')
+                .select('name')
+                .eq('id', data.elite_kleingruppe_id)
+                .single()
+                .then(({ data: grp }) => {
+                  setEliteKleingruppe(grp?.name || 'elite');
+                });
+            } else {
+              setEliteKleingruppe('elite');
+            }
+          } else {
+            setEliteKleingruppe(null);
+          }
         });
     }
 
@@ -3260,8 +3276,6 @@ export function EliteKleingruppeDashboard() {
                                 file_name: doc.file_name,
                                 file_url: doc.file_url,
                                 file_type: doc.file_type || 'application/pdf',
-                                created_at: doc.created_at,
-                                updated_at: doc.created_at
                               };
                               return (
                                 <button

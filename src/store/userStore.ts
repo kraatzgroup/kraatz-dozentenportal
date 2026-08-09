@@ -18,7 +18,7 @@ interface UserState {
   error: string | null;
   fetchUsers: () => Promise<void>;
   createUser: (userData: { email: string; password: string; fullName: string; role?: string; additional_roles?: string[] }) => Promise<void>;
-  updateUser: (id: string, data: { fullName: string; role?: string; additional_roles?: string[]; vb_legal_areas?: string[] }) => Promise<void>;
+  updateUser: (id: string, data: { fullName: string; email?: string; role?: string; additional_roles?: string[]; vb_legal_areas?: string[] }) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
 }
@@ -110,7 +110,7 @@ export const useUserStore = create<UserState>((set, get) => ({
     }
   },
 
-  updateUser: async (id: string, data: { fullName: string; role?: string; additional_roles?: string[]; vb_legal_areas?: string[] }) => {
+  updateUser: async (id: string, data: { fullName: string; email?: string; role?: string; additional_roles?: string[]; vb_legal_areas?: string[] }) => {
     set({ isLoading: true, error: null });
     try {
       const updateData: any = { full_name: data.fullName };
@@ -130,6 +130,28 @@ export const useUserStore = create<UserState>((set, get) => ({
         .eq('id', id);
 
       if (error) throw error;
+
+      // If email changed, call edge function to update auth user email
+      if (data.email) {
+        const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/update-user-email`;
+        const response = await fetch(edgeFunctionUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            userId: id,
+            newEmail: data.email,
+          }),
+        });
+
+        if (!response.ok) {
+          const result = await response.json();
+          throw new Error(result.error || 'Fehler beim Aktualisieren der E-Mail-Adresse');
+        }
+      }
+
       await get().fetchUsers();
     } catch (error: any) {
       set({ error: error.message });

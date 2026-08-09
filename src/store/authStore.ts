@@ -66,12 +66,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ isSettingUser: true });
 
       console.log('AuthStore: Fetching profile for user:', user.id);
-      supabase
-        .from('profiles')
-        .select('role, additional_roles, full_name, vb_legal_areas')
-        .eq('id', user.id)
-        .single()
-        .then(async ({ data, error }) => {
+      (async () => {
+        try {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('role, additional_roles, full_name, vb_legal_areas')
+            .eq('id', user.id)
+            .single();
+
           // Check again if we're still not signing out and user hasn't changed
           const currentState = get();
           if (currentState.isSigningOut) {
@@ -84,14 +86,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           if (!error && data) {
             const allRoles = [data.role, ...(data.additional_roles || [])];
             console.log('AuthStore: User role:', data.role, 'additional:', data.additional_roles, 'all:', allRoles);
-            
+
             // Mark user as logged in
             try {
               console.log('AuthStore: Updating last_login timestamp for user:', user.id);
-              const { error: loginError } = await supabase.rpc('mark_user_login', { 
-                user_id: user.id 
+              const { error: loginError } = await supabase.rpc('mark_user_login', {
+                user_id: user.id
               });
-              
+
               if (loginError) {
                 console.error('AuthStore: Failed to update login timestamp:', loginError);
               } else {
@@ -100,8 +102,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             } catch (loginError) {
               console.error('AuthStore: Error updating login timestamp:', loginError);
             }
-            
-            set({ 
+
+            set({
               user,
               fullName: data.full_name || null,
               isAdmin: allRoles.includes('admin'),
@@ -135,8 +137,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               isSettingUser: false
             });
           }
-        })
-        .catch((err) => {
+        } catch (err: unknown) {
           console.error('AuthStore: Unexpected error fetching profile:', err);
           const currentState = get();
           if (!currentState.isSigningOut) {
@@ -158,7 +159,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           } else {
             set({ isSettingUser: false });
           }
-        });
+        }
+      })();
     } else {
       console.log('AuthStore: Clearing user');
       set({

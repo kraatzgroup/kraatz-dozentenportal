@@ -130,10 +130,10 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   const [checkResult, setCheckResult] = useReactState<any>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
-  const accountingTabs = ['dozenten', 'teilnehmer', 'rechnungen', 'kalender', 'elite-kleingruppe'];
+  const accountingTabs = ['vertraege'];
   const verwaltungTabs = ['dozenten', 'teilnehmer', 'kalender', 'elite-kleingruppe', 'vertraege'];
   const allowedTabs = isAccountingMode ? accountingTabs : isVerwaltungMode ? verwaltungTabs : null;
-  const defaultTab = isRestrictedMode ? 'dozenten' : 'uebersicht';
+  const defaultTab = isAccountingMode ? 'vertraege' : isVerwaltungMode ? 'dozenten' : 'uebersicht';
   const storageKey = isAccountingMode ? 'accountingDashboardTab' : isVerwaltungMode ? 'verwaltungDashboardTab' : 'adminDashboardTab';
 
   const [activeTab, setActiveTabState] = useState<'uebersicht' | 'dozenten' | 'teilnehmer' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard' | 'elite-kleingruppe' | 'vertraege' | 'klausurenkorrektur'>(() => {
@@ -1770,6 +1770,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 <span className="hidden sm:inline">Übersicht</span>
               </button>
               )}
+              {(!isAccountingMode) && (
               <button
                 onClick={() => { setActiveTab('dozenten'); }}
                 className={`${
@@ -1781,6 +1782,8 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 <FileText className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">Dozenten</span>
               </button>
+              )}
+              {(!isAccountingMode) && (
               <button
                 onClick={() => { setActiveTab('teilnehmer'); }}
                 className={`${
@@ -1806,7 +1809,8 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                   ) : null;
                 })()}
               </button>
-              {(isAdmin || isBuchhaltung) && (
+              )}
+              {(isAdmin || isBuchhaltung) && !isAccountingMode && (
               <button
                 onClick={() => { setActiveTab('rechnungen'); }}
                 className={`${
@@ -1824,6 +1828,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 )}
               </button>
               )}
+              {!isAccountingMode && (
               <button
                 onClick={() => { setActiveTab('kalender'); }}
                 className={`${
@@ -1835,6 +1840,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 <Calendar className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">Kalender</span>
               </button>
+              )}
               {!isRestrictedMode && (
               <button
                 onClick={() => { setActiveTab('emails'); }}
@@ -1896,6 +1902,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 <span className="hidden sm:inline">Feedback</span>
               </button>
               )}
+              {!isAccountingMode && (
               <button
                 onClick={() => { setActiveTab('elite-kleingruppe'); }}
                 className={`${
@@ -1907,7 +1914,8 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 <Users className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">Elite-Kleingruppe</span>
               </button>
-              {(isAdmin || isVerwaltungMode) && !isDozent && (
+              )}
+              {(isAdmin || isVerwaltungMode || isAccountingMode) && !isDozent && (
               <button
                 onClick={() => { setActiveTab('vertraege'); }}
                 className={`${
