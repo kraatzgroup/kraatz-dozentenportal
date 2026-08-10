@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { supabase } from '../../lib/supabase';
 import { User, CreditCard, LogOut, MessageCircle, Menu, X, LayoutDashboard, Award, GraduationCap, Settings, CalendarDays, ClipboardList, Trophy } from 'lucide-react';
@@ -11,7 +11,6 @@ const useVbHeaderData = () => {
   const user = useAuthStore(state => state.user);
   const additionalRoles = useAuthStore(state => state.additionalRoles);
   const isAdmin = useAuthStore(state => state.isAdmin);
-  const navigate = useNavigate();
   const [userCredits, setUserCredits] = useState<number>(0);
   const [eliteKleingruppe, setEliteKleingruppe] = useState<string | null>(null);
 
@@ -97,8 +96,8 @@ const useVbHeaderData = () => {
   }, [user, fetchUserData]);
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    navigate('/klausurenbesprechung');
+    const { signOut } = useAuthStore.getState();
+    await signOut();
   };
 
   return { user, additionalRoles, isAdmin, userCredits, eliteKleingruppe, handleSignOut };

@@ -202,13 +202,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isSigningOut: true,
         isSettingUser: false
       });
-      
-      // Clear any stored session data
-      localStorage.removeItem('supabase.auth.token');
-      sessionStorage.clear();
-      
-      // Try to sign out from Supabase
+
+      // Sign out from Supabase (local scope just clears the local session)
       const { error } = await supabase.auth.signOut({ scope: 'local' });
+
+      // Explicitly remove all Supabase auth storage entries to prevent re-auth on reload
+      try {
+        const keysToRemove = Object.keys(localStorage).filter(k =>
+          k.startsWith('sb-') || k.includes('supabase') || k.includes('auth-token')
+        );
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+        const sessionKeys = Object.keys(sessionStorage).filter(k =>
+          k.startsWith('sb-') || k.includes('supabase') || k.includes('auth-token')
+        );
+        sessionKeys.forEach(k => sessionStorage.removeItem(k));
+      } catch (e) {
+        console.log('AuthStore: Error clearing storage, continuing', e);
+      }
       
       if (error) {
         // Check if this is a session-related error that we can safely ignore
@@ -256,7 +266,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isSigningOut: false,
         isSettingUser: false
       });
-      console.log('AuthStore: Sign out process completed');
+      console.log('AuthStore: Sign out process completed, redirecting to /login');
+      // Hard redirect to login page
+      window.location.href = '/login';
     }
   },
 }));

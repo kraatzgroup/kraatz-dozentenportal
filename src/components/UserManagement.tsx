@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { UserPlus, Key, Loader2, AlertCircle, ArrowLeft, Pencil, Trash2, Calendar, Search, Mail, Bell, MessageSquare, LogOut, Menu, X, LogIn, Copy, ExternalLink } from 'lucide-react';
+import { UserPlus, Key, Loader2, AlertCircle, ArrowLeft, Pencil, Trash2, Calendar, Search, Mail, Bell, MessageSquare, LogOut, Menu, X, LogIn } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useUserStore } from '../store/userStore';
 import { useAuthStore } from '../store/authStore';
@@ -88,14 +88,7 @@ export function UserManagement() {
   const [eliteTeilnehmerIds, setEliteTeilnehmerIds] = useState<Set<string>>(new Set());
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [eliteKleingruppen, setEliteKleingruppen] = useState<{ id: string; name: string }[]>([]);
-  const [showMagicLinkModal, setShowMagicLinkModal] = useState(false);
-  const [magicLink, setMagicLink] = useState<string>('');
-  const [magicLinkUser, setMagicLinkUser] = useState<string>('');
   const [generatingLinkForUserId, setGeneratingLinkForUserId] = useState<string | null>(null);
-  const [copySuccess, setCopySuccess] = useState(false);
-  const [magicLinkEnv, setMagicLinkEnv] = useState<'localhost' | 'production'>(
-    window.location.hostname.includes('localhost') ? 'localhost' : 'production'
-  );
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
 
@@ -540,12 +533,12 @@ export function UserManagement() {
     });
   };
 
-  const handleLoginAsUser = async (userId: string, userEmail: string, userName: string) => {
+  const handleLoginAsUser = async (userId: string, userEmail: string, _userName: string) => {
     try {
       setGeneratingLinkForUserId(userId);
       setLocalError(null);
-      
-      console.log('Generating magic link for user:', userEmail);
+
+      console.log('Logging in as user:', userEmail);
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-login-as-user`, {
         method: 'POST',
         headers: {
@@ -563,64 +556,20 @@ export function UserManagement() {
       }
 
       const result = await response.json();
-      console.log('Magic link generated:', result);
+      console.log('Login as user result:', result);
 
       if (result.success && result.magicLink) {
-        setMagicLink(result.magicLink);
-        setMagicLinkUser(userName);
-        setShowMagicLinkModal(true);
-        setCopySuccess(false);
+        // Navigate to the magic link in the same tab (no new window)
+        window.location.href = result.magicLink;
       } else {
-        throw new Error('Failed to generate magic link');
+        throw new Error('Failed to login as user');
       }
     } catch (error: any) {
-      console.error('Error generating magic link:', error);
-      setLocalError(`Fehler beim Generieren des Login-Links: ${error.message}`);
+      console.error('Error logging in as user:', error);
+      setLocalError(`Fehler beim Anmelden als Benutzer: ${error.message}`);
     } finally {
       setGeneratingLinkForUserId(null);
     }
-  };
-
-  // Unused function - kept for future features
-  const _handleCopyMagicLink = async () => {
-    try {
-      await navigator.clipboard.writeText(magicLink);
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
-    } catch (error) {
-      console.error('Error copying to clipboard:', error);
-    }
-  };
-
-  const getLocalhostOrigin = () => {
-    if (typeof window !== 'undefined' && window.location.hostname.includes('localhost')) {
-      return window.location.origin;
-    }
-    return 'http://localhost:3000';
-  };
-
-  const getMagicLinkForEnv = (env: 'localhost' | 'production') => {
-    const localhostRedirect = encodeURIComponent(`${getLocalhostOrigin()}/dashboard?tab=dashboard`);
-    const productionRedirect = encodeURIComponent('https://portal.kraatz-group.de/dashboard?tab=dashboard');
-    if (env === 'localhost') {
-      return magicLink.replace(/redirect_to=[^&]+/, `redirect_to=${localhostRedirect}`);
-    }
-    return magicLink.replace(/redirect_to=[^&]+/, `redirect_to=${productionRedirect}`);
-  };
-
-  const handleCopyMagicLinkForEnv = async (env: 'localhost' | 'production') => {
-    try {
-      await navigator.clipboard.writeText(getMagicLinkForEnv(env));
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
-    } catch (error) {
-      console.error('Error copying to clipboard:', error);
-    }
-  };
-
-  const handleOpenMagicLink = (env?: 'localhost' | 'production') => {
-    const link = getMagicLinkForEnv(env || magicLinkEnv);
-    window.open(link, '_blank', 'width=1200,height=800,left=100,top=100');
   };
 
   // Unused function - kept for future admin features
@@ -1810,97 +1759,6 @@ export function UserManagement() {
             </div>
           )}
 
-          {/* Magic Link Modal */}
-          {showMagicLinkModal && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Als Benutzer anmelden</h3>
-                  <button
-                    onClick={() => setShowMagicLinkModal(false)}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
-                
-                <div className="mb-4">
-                  <p className="text-sm text-gray-600 mb-2">
-                    Login-Link für <strong>{magicLinkUser}</strong> wurde generiert.
-                  </p>
-                  <p className="text-xs text-gray-500 mb-4">
-                    Dieser Link ist 24 Stunden gültig und meldet Sie automatisch als dieser Benutzer an.
-                  </p>
-                </div>
-
-                {/* Environment Toggle */}
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="text-xs font-medium text-gray-700">Umgebung:</span>
-                  <div className="inline-flex rounded-md shadow-sm">
-                    <button
-                      onClick={() => setMagicLinkEnv('localhost')}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-l-md border ${
-                        magicLinkEnv === 'localhost'
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      Localhost
-                    </button>
-                    <button
-                      onClick={() => setMagicLinkEnv('production')}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-r-md border-t border-b border-r ${
-                        magicLinkEnv === 'production'
-                          ? 'bg-green-600 text-white border-green-600'
-                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      Production
-                    </button>
-                  </div>
-                  <span className={`text-xs ${magicLinkEnv === 'localhost' ? 'text-blue-600' : 'text-green-600'}`}>
-                    {magicLinkEnv === 'localhost' ? 'http://localhost:3000' : 'https://portal.kraatz-group.de'}
-                  </span>
-                </div>
-
-                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-4">
-                  <label className="block text-xs font-medium text-gray-700 mb-2">
-                    Magic Link ({magicLinkEnv === 'localhost' ? 'Localhost' : 'Production'}):
-                  </label>
-                  <div className="bg-white p-3 rounded border border-gray-300 break-all text-xs font-mono text-gray-700 max-h-32 overflow-y-auto">
-                    {getMagicLinkForEnv(magicLinkEnv)}
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <button
-                    onClick={() => handleCopyMagicLinkForEnv(magicLinkEnv)}
-                    className="flex-1 inline-flex items-center justify-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    {copySuccess ? 'Kopiert!' : 'In Zwischenablage kopieren'}
-                  </button>
-                  <button
-                    onClick={() => handleOpenMagicLink(magicLinkEnv)}
-                    className={`flex-1 inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${
-                      magicLinkEnv === 'localhost'
-                        ? 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500'
-                        : 'bg-green-600 hover:bg-green-700 focus:ring-green-500'
-                    } focus:outline-none focus:ring-2 focus:ring-offset-2`}
-                  >
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    {magicLinkEnv === 'localhost' ? 'Auf Localhost öffnen' : 'Auf Production öffnen'}
-                  </button>
-                </div>
-
-                <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                  <p className="text-xs text-yellow-800">
-                    <strong>Hinweis:</strong> Sie werden als dieser Benutzer angemeldet. Stellen Sie sicher, dass Sie sich danach wieder als Administrator anmelden.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

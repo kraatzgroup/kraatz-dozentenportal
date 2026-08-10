@@ -200,8 +200,8 @@ export const DozentenHeader: React.FC = () => {
   };
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    navigate('/login');
+    const { signOut } = useAuthStore.getState();
+    await signOut();
   };
 
   return (

@@ -194,6 +194,8 @@ function App() {
           return;
         }
         console.log('🔄 App: SIGNED_IN, forcing fresh session/auth check');
+        // On fresh login, always reset to /dashboard (clear any tab params from previous session)
+        window.history.replaceState({}, '', '/dashboard');
         setUser(session?.user ?? null, true);
         setAppLoading(true);
         setAppReady(false);
@@ -202,11 +204,10 @@ function App() {
       }
 
       if (_event === 'SIGNED_OUT') {
-        console.log('🔄 App: SIGNED_OUT, clearing user and re-initializing');
+        console.log('🔄 App: SIGNED_OUT, clearing user');
         setUser(null);
-        setAppLoading(true);
-        setAppReady(false);
-        initializeApp();
+        setAppLoading(false);
+        setAppReady(true);
         return;
       }
 
