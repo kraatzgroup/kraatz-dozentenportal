@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
-import { MessageSquare, LogOut, Settings, FolderIcon, Plus, Edit, Trash2, Users, FileText, User, Clock, Calendar, X, GraduationCap, Check, AlertTriangle, Menu, Bell, Upload } from 'lucide-react';
+import { MessageSquare, LogOut, Settings, FolderIcon, Edit, Trash2, Users, FileText, User, Clock, Calendar, X, GraduationCap, Check, AlertTriangle, Menu, Bell, Upload } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useMessageStore } from '../store/messageStore';
 import { useFolderStore } from '../store/folderStore';
@@ -27,7 +27,7 @@ interface DashboardProps {
 interface Folder {
   id: string;
   name: string;
-  is_system?: boolean;
+  is_system: boolean;
 }
 
 const EK_SUB_TAB_MAP: Record<string, string> = {
@@ -37,18 +37,11 @@ const EK_SUB_TAB_MAP: Record<string, string> = {
   'kurszeiten': 'kurszeiten',
 };
 
-const EK_SUB_TAB_REVERSE: Record<string, string> = {
-  'einheiten': 'einheiten-materialfreigabe',
-  'klausuren': 'klausurenkorrekturen',
-  'kommunikation': 'kommunikation',
-  'kurszeiten': 'kurszeiten',
-};
-
 export function Dashboard({ isAdmin = false }: DashboardProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { subTab: urlSubTab } = useParams<{ subTab?: string }>();
-  const { user, signOut, userRole, isAdmin: isUserAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isDozent, isMaterial, additionalRoles } = useAuthStore();
+  const { user, signOut, userRole, isAdmin: isUserAdmin, isBuchhaltung, isDozent, isMaterial, additionalRoles } = useAuthStore();
   const { folders, fetchFolders, createFolder, updateFolder, deleteFolder } = useFolderStore();
   const { files, fetchFiles, uploadFile, deleteFile } = useFileStore();
   const { teilnehmer, fetchTeilnehmer } = useTeilnehmerStore();
@@ -91,7 +84,6 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
   };
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
-  const [newFolderName, setNewFolderName] = useState('');
   const [showTeilnehmerManagement, setShowTeilnehmerManagement] = useState(false);
   const [showInvoiceManagement, setShowInvoiceManagement] = useState(() => {
     return localStorage.getItem('dozentDashboardView') === 'invoices';
@@ -106,7 +98,6 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const [showActivityTypeDialog, setShowActivityTypeDialog] = useState(false);
   const [selectedActivityType, setSelectedActivityType] = useState<'sonstige' | 'Elite Klausur Korrektur' | 'sonstiger_posten' | null>(null);
   const [showFlatRateDialog, setShowFlatRateDialog] = useState(false);
-  const [showNewFolder, setShowNewFolder] = useState(false);
   const [showAvailabilityPopup, setShowAvailabilityPopup] = useState(false);
   const [currentAvailability, setCurrentAvailability] = useState<{status: string; notes?: string} | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -267,7 +258,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
 
       if (legalAreas) {
         // Get actual hours used for this legal area from participant_hours
-        const { data: participantHours, error: phError } = await supabase
+        const { data: participantHours, error: _phError } = await supabase
           .from('participant_hours')
           .select('hours')
           .eq('package_id', pkg.id)
@@ -301,7 +292,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     }
   };
 
-  const unreadMessages = messages.filter(message => !message.read);
+  const unreadMessages = messages.filter(message => !message.read_at);
 
   // Don't restore selected folder automatically - Dozenten should always start at main dashboard
   // The folder selection is only persisted during the session, not across page reloads
@@ -668,19 +659,6 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     await uploadFile(file, file.name, selectedFolder.id);
   };
 
-  const handleCreateFolder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newFolderName.trim()) return;
-    
-    try {
-      await createFolder(newFolderName);
-      setNewFolderName('');
-      setShowNewFolder(false);
-    } catch (error) {
-      console.error('Failed to create folder:', error);
-    }
-  };
-
   const handleUpdateFolder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingFolder || !editingFolder.name.trim()) return;
@@ -792,10 +770,6 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     }
   };
 
-  const handleBackToTeilnehmer = () => {
-    setShowTeilnehmerManagement(false);
-  };
-
   const handleBackToInvoices = () => {
     setShowInvoiceManagement(false);
   };
@@ -836,7 +810,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       });
     } catch (error) {
       console.error('Error creating activity:', error);
-      alert('Fehler beim Speichern der Tätigkeit: ' + error.message);
+      alert('Fehler beim Speichern der Tätigkeit: ' + (error as Error).message);
     }
   };
 
@@ -1965,7 +1939,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                                   const { data: { user } } = await supabase.auth.getUser();
                                   if (user) {
                                     // Get profile ID of current user
-                                    const { data: profile } = await supabase
+                                    const { data: _profile } = await supabase
                                       .from('profiles')
                                       .select('id')
                                       .eq('id', user.id)
@@ -2581,7 +2555,6 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
 
                   const quantity = parseFloat(flatRateFormData.quantity);
                   const amountEuro = parseFloat(flatRateFormData.amount_euro);
-                  const totalEuro = quantity * amountEuro;
 
                   const { error } = await supabase.from('dozent_flat_rate_items').insert({
                     dozent_id: user.id,
@@ -2610,7 +2583,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   setActivityRefreshKey(prev => prev + 1);
                 } catch (error) {
                   console.error('Error creating flat rate item:', error);
-                  alert('Fehler beim Speichern des Postens: ' + error.message);
+                  alert('Fehler beim Speichern des Postens: ' + (error as Error).message);
                 }
               }}>
                 <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">

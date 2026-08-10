@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Plus, Edit, Trash2 } from 'lucide-react';
 import { FileUpload } from './FileUpload';
 import { FileListWithMonthSegmentation } from './FileListWithMonthSegmentation';
-import { File } from '../store/fileStore';
+import { File as FileRecord } from '../store/fileStore';
 import { useFileStore } from '../store/fileStore';
 
 interface Folder {
@@ -13,7 +13,7 @@ interface Folder {
 
 interface FileSectionProps {
   selectedFolder: Folder;
-  files: File[];
+  files: FileRecord[];
   selectedMonth: number;
   selectedYear: number;
   onMonthChange: (month: number) => void;

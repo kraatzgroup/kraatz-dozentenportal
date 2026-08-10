@@ -1,3 +1,4 @@
+/// <reference path="../deno.d.ts" />
 // Edge function for generating magic link for admin to login as user
 console.log('🚀 admin-login-as-user edge function loaded');
 

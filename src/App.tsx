@@ -193,9 +193,7 @@ function App() {
           console.log('⏭️ App: SIGNED_IN for already active user (tab focus), ignoring');
           return;
         }
-        console.log('🔄 App: SIGNED_IN, forcing fresh session/auth check');
-        // On fresh login, always reset to /dashboard (clear any tab params from previous session)
-        window.history.replaceState({}, '', '/dashboard');
+        console.log('🔄 App: SIGNED_IN, re-initializing (preserving URL:', window.location.pathname, ')');
         setUser(session?.user ?? null, true);
         setAppLoading(true);
         setAppReady(false);
