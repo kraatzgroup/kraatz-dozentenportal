@@ -1,8 +1,6 @@
 // Edge function for generating magic link for admin to login as user
 console.log('🚀 admin-login-as-user edge function loaded');
 
-import { createClient } from 'npm:@supabase/supabase-js@2';
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -49,31 +47,39 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Create Supabase admin client
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
     console.log(`🔗 [${requestId}] Generating magic link for: ${email}`);
 
-    // Generate magic link
-    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'magiclink',
-      email: email,
-      options: {
-        redirectTo: redirectUrl
-      }
+    // Generate magic link via Admin API
+    const generateLinkResponse = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': serviceRoleKey,
+        'Authorization': `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify({
+        type: 'magiclink',
+        email: email,
+        redirect_to: redirectUrl,
+      }),
     });
 
-    if (linkError) {
-      console.error(`❌ [${requestId}] Error generating magic link:`, linkError);
-      throw linkError;
+    if (!generateLinkResponse.ok) {
+      const errText = await generateLinkResponse.text();
+      console.error(`❌ [${requestId}] Error generating magic link:`, errText);
+      throw new Error(`generate_link failed: ${errText}`);
     }
 
-    const magicLink = linkData?.properties?.action_link;
+    const linkData = await generateLinkResponse.json();
+    console.log(`📋 [${requestId}] generate_link response keys:`, Object.keys(linkData));
+    console.log(`📋 [${requestId}] generate_link response:`, JSON.stringify(linkData).substring(0, 500));
+
+    const magicLink = linkData?.properties?.action_link || linkData?.action_link || linkData?.properties?.hashed_token;
     if (!magicLink) {
-      console.error(`❌ [${requestId}] No magic link returned`);
+      console.error(`❌ [${requestId}] No magic link returned. Full response:`, JSON.stringify(linkData));
       throw new Error('Failed to generate magic link');
     }
 
