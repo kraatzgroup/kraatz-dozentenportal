@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Type, PenTool, Stamp, Trash2, Loader2, Plus, Minus, Save } from 'lucide-react';
+import { X, Type, PenTool, Stamp, Trash2, Loader2, Plus, Minus, Save, Globe, Star } from 'lucide-react';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { supabase } from '../../lib/supabase';
 import { useToastStore } from '../../store/toastStore';
@@ -50,6 +50,8 @@ interface RecentAsset {
   id: string;
   file_path: string;
   url: string;
+  isGlobal?: boolean;
+  userId?: string;
 }
 
 interface Props {
@@ -63,7 +65,7 @@ const todayDe = () =>
 
 export function ContractSignEditor({ document: doc, onClose, onSigned }: Props) {
   const { addToast } = useToastStore();
-  const { user } = useAuthStore();
+  const { user, isAdmin } = useAuthStore();
 
   const [originalBytes, setOriginalBytes] = useState<Uint8Array | null>(null);
   const [pages, setPages] = useState<RenderedPage[]>([]);
@@ -195,22 +197,24 @@ export function ContractSignEditor({ document: doc, onClose, onSigned }: Props) 
     return out;
   };
 
-  // Load recent signatures + stamps
+  // Load recent signatures + stamps (eigene + globale Defaults)
   const loadRecents = useCallback(async () => {
     if (!user) return;
     const [{ data: sigs }, { data: stamps }] = await Promise.all([
       supabase
         .from('saved_signatures')
-        .select('id, file_path')
-        .eq('user_id', user.id)
+        .select('id, file_path, is_global, user_id')
+        .or(`user_id.eq.${user.id},is_global.eq.true`)
+        .order('is_global', { ascending: false })
         .order('created_at', { ascending: false })
-        .limit(12),
+        .limit(24),
       supabase
         .from('saved_stamps')
-        .select('id, file_path')
-        .eq('user_id', user.id)
+        .select('id, file_path, is_global, user_id')
+        .or(`user_id.eq.${user.id},is_global.eq.true`)
+        .order('is_global', { ascending: false })
         .order('created_at', { ascending: false })
-        .limit(12),
+        .limit(24),
     ]);
 
     // isPdf=true always renders first page; 'auto' detects by file extension
@@ -228,9 +232,9 @@ export function ContractSignEditor({ document: doc, onClose, onSigned }: Props) 
         if (isPdf) {
           const buf = new Uint8Array(await data.arrayBuffer());
           const { dataUrl } = await renderFirstPageToDataUrl(buf, 2);
-          out.push({ id: r.id, file_path: r.file_path, url: dataUrl });
+          out.push({ id: r.id, file_path: r.file_path, url: dataUrl, isGlobal: !!r.is_global, userId: r.user_id });
         } else {
-          out.push({ id: r.id, file_path: r.file_path, url: URL.createObjectURL(data) });
+          out.push({ id: r.id, file_path: r.file_path, url: URL.createObjectURL(data), isGlobal: !!r.is_global, userId: r.user_id });
         }
       }
       return out;
@@ -405,6 +409,11 @@ export function ContractSignEditor({ document: doc, onClose, onSigned }: Props) 
   };
 
   const deleteRecentSignature = async (asset: RecentAsset) => {
+    // Globale Einträge dürfen nur vom Admin oder vom Besitzer gelöscht werden
+    if (asset.isGlobal && !isAdmin && asset.userId !== user?.id) {
+      addToast('Globale Unterschrift kann nur von Admin gelöscht werden', 'error');
+      return;
+    }
     try {
       await supabase.storage.from('signatures').remove([asset.file_path]);
       await supabase.from('saved_signatures').delete().eq('id', asset.id);
@@ -412,6 +421,22 @@ export function ContractSignEditor({ document: doc, onClose, onSigned }: Props) 
     } catch (e) {
       console.error(e);
       addToast('Fehler beim Löschen der Unterschrift', 'error');
+    }
+  };
+
+  const toggleGlobalSignature = async (asset: RecentAsset) => {
+    if (!isAdmin) return;
+    try {
+      const { error } = await supabase
+        .from('saved_signatures')
+        .update({ is_global: !asset.isGlobal })
+        .eq('id', asset.id);
+      if (error) throw error;
+      addToast(asset.isGlobal ? 'Unterschrift ist nicht mehr global' : 'Unterschrift ist jetzt global (Default für alle)', 'success');
+      loadRecents();
+    } catch (e) {
+      console.error(e);
+      addToast('Fehler beim Umschalten des globalen Status', 'error');
     }
   };
 
@@ -453,6 +478,11 @@ export function ContractSignEditor({ document: doc, onClose, onSigned }: Props) 
   };
 
   const deleteRecentStamp = async (asset: RecentAsset) => {
+    // Globale Einträge dürfen nur vom Admin oder vom Besitzer gelöscht werden
+    if (asset.isGlobal && !isAdmin && asset.userId !== user?.id) {
+      addToast('Globaler Stempel kann nur von Admin gelöscht werden', 'error');
+      return;
+    }
     try {
       await supabase.storage.from('stamps').remove([asset.file_path]);
       await supabase.from('saved_stamps').delete().eq('id', asset.id);
@@ -460,6 +490,22 @@ export function ContractSignEditor({ document: doc, onClose, onSigned }: Props) 
     } catch (e) {
       console.error(e);
       addToast('Fehler beim Löschen des Stempels', 'error');
+    }
+  };
+
+  const toggleGlobalStamp = async (asset: RecentAsset) => {
+    if (!isAdmin) return;
+    try {
+      const { error } = await supabase
+        .from('saved_stamps')
+        .update({ is_global: !asset.isGlobal })
+        .eq('id', asset.id);
+      if (error) throw error;
+      addToast(asset.isGlobal ? 'Stempel ist nicht mehr global' : 'Stempel ist jetzt global (Default für alle)', 'success');
+      loadRecents();
+    } catch (e) {
+      console.error(e);
+      addToast('Fehler beim Umschalten des globalen Status', 'error');
     }
   };
 
@@ -806,8 +852,18 @@ export function ContractSignEditor({ document: doc, onClose, onSigned }: Props) 
               {recentSignatures.map((s) => (
                 <div
                   key={s.id}
-                  className="relative group border border-gray-200 rounded p-1 hover:border-primary bg-gray-50"
+                  className={`relative group border rounded p-1 hover:border-primary bg-gray-50 ${
+                    s.isGlobal ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
+                  }`}
                 >
+                  {s.isGlobal && (
+                    <span
+                      className="absolute -top-1.5 -left-1.5 p-0.5 rounded-full bg-blue-500 text-white shadow-sm z-10"
+                      title="Globale Default-Unterschrift (für alle sichtbar)"
+                    >
+                      <Globe className="w-3 h-3" />
+                    </span>
+                  )}
                   <button
                     onClick={() => addRecentSignature(s)}
                     className="w-full"
@@ -815,13 +871,28 @@ export function ContractSignEditor({ document: doc, onClose, onSigned }: Props) 
                   >
                     <img src={s.url} alt="Unterschrift" className="h-10 w-full object-contain" />
                   </button>
-                  <button
-                    onClick={() => deleteRecentSignature(s)}
-                    title="Unterschrift löschen"
-                    className="absolute -top-1.5 -right-1.5 p-1 rounded-full bg-white border border-gray-200 text-gray-400 hover:text-red-600 hover:border-red-300 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => toggleGlobalSignature(s)}
+                      title={s.isGlobal ? 'Als global deaktivieren' : 'Als global aktivieren (Default für alle)'}
+                      className={`absolute -bottom-1.5 -left-1.5 p-1 rounded-full border shadow-sm opacity-0 group-hover:opacity-100 transition-opacity ${
+                        s.isGlobal
+                          ? 'bg-blue-500 text-white border-blue-600 hover:bg-blue-600'
+                          : 'bg-white text-blue-500 border-blue-300 hover:bg-blue-50'
+                      }`}
+                    >
+                      <Star className="w-3 h-3" />
+                    </button>
+                  )}
+                  {(!s.isGlobal || isAdmin || s.userId === user?.id) && (
+                    <button
+                      onClick={() => deleteRecentSignature(s)}
+                      title="Unterschrift löschen"
+                      className="absolute -top-1.5 -right-1.5 p-1 rounded-full bg-white border border-gray-200 text-gray-400 hover:text-red-600 hover:border-red-300 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -836,8 +907,18 @@ export function ContractSignEditor({ document: doc, onClose, onSigned }: Props) 
               {recentStamps.map((s) => (
                 <div
                   key={s.id}
-                  className="relative group border border-gray-200 rounded p-1 hover:border-primary bg-gray-50"
+                  className={`relative group border rounded p-1 hover:border-primary bg-gray-50 ${
+                    s.isGlobal ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
+                  }`}
                 >
+                  {s.isGlobal && (
+                    <span
+                      className="absolute -top-1.5 -left-1.5 p-0.5 rounded-full bg-blue-500 text-white shadow-sm z-10"
+                      title="Globaler Default-Stempel (für alle sichtbar)"
+                    >
+                      <Globe className="w-3 h-3" />
+                    </span>
+                  )}
                   <button
                     onClick={() => addRecentStamp(s)}
                     className="w-full"
@@ -845,13 +926,28 @@ export function ContractSignEditor({ document: doc, onClose, onSigned }: Props) 
                   >
                     <img src={s.url} alt="Stempel" className="h-10 w-full object-contain" />
                   </button>
-                  <button
-                    onClick={() => deleteRecentStamp(s)}
-                    title="Stempel löschen"
-                    className="absolute -top-1.5 -right-1.5 p-1 rounded-full bg-white border border-gray-200 text-gray-400 hover:text-red-600 hover:border-red-300 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => toggleGlobalStamp(s)}
+                      title={s.isGlobal ? 'Als global deaktivieren' : 'Als global aktivieren (Default für alle)'}
+                      className={`absolute -bottom-1.5 -left-1.5 p-1 rounded-full border shadow-sm opacity-0 group-hover:opacity-100 transition-opacity ${
+                        s.isGlobal
+                          ? 'bg-blue-500 text-white border-blue-600 hover:bg-blue-600'
+                          : 'bg-white text-blue-500 border-blue-300 hover:bg-blue-50'
+                      }`}
+                    >
+                      <Star className="w-3 h-3" />
+                    </button>
+                  )}
+                  {(!s.isGlobal || isAdmin || s.userId === user?.id) && (
+                    <button
+                      onClick={() => deleteRecentStamp(s)}
+                      title="Stempel löschen"
+                      className="absolute -top-1.5 -right-1.5 p-1 rounded-full bg-white border border-gray-200 text-gray-400 hover:text-red-600 hover:border-red-300 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
