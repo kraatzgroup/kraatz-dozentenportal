@@ -29,11 +29,16 @@ Deno.serve(async (req) => {
     const { email } = await req.json() as LoginAsUserRequest;
     console.log(`📋 [${requestId}] Request data:`, { email });
 
-    // Determine redirect URL based on admin's origin (localhost vs production)
+    // Determine redirect URL based on admin's origin (localhost vs production).
+    // IMPORTANT: redirect to /dashboard (NOT /dashboard?tab=dashboard) so the
+    // client-side landing-redirect logic can route the user to the correct
+    // dashboard based on their server-validated role (Elite-Kleingruppe,
+    // VB dashboard, etc.). Hardcoding ?tab=dashboard bypassed that logic and
+    // caused non-Elite teilnehmer to see the Elite-Kleingruppe dashboard.
     const origin = req.headers.get('origin') || '';
     const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
     const baseUrl = isLocalhost ? origin : 'https://portal.kraatz-group.de';
-    const redirectUrl = `${baseUrl}/dashboard?tab=dashboard`;
+    const redirectUrl = `${baseUrl}/dashboard`;
     console.log(`🌐 [${requestId}] Admin origin: ${origin}, Is localhost: ${isLocalhost}, Redirect URL: ${redirectUrl}`);
 
     // Validate input

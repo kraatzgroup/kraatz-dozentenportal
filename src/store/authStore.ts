@@ -15,11 +15,18 @@ interface AuthState {
   userRole: string | null;
   additionalRoles: string[];
   vbLegalAreas: string[];
+  isEliteKleingruppe: boolean;
+  eliteKleingruppeId: string | null;
+  isVbSpringer: boolean;
   isSigningOut: boolean;
   isSettingUser: boolean;
+  /** Unix ms timestamp of the last successful server-side session validation. */
+  lastValidatedAt: number | null;
   setUser: (user: User | null, force?: boolean) => void;
   setFullName: (fullName: string | null) => void;
   signOut: () => Promise<void>;
+  /** Re-fetch session data from server (get_user_session_data RPC) and update store. Returns true on success. */
+  validateSession: () => Promise<boolean>;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -35,8 +42,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   userRole: null,
   additionalRoles: [],
   vbLegalAreas: [],
+  isEliteKleingruppe: false,
+  eliteKleingruppeId: null,
+  isVbSpringer: false,
   isSigningOut: false,
   isSettingUser: false,
+  lastValidatedAt: null,
   setFullName: (fullName) => set({ fullName }),
   setUser: (user, force = false) => {
     // Don't set user if we're in the middle of signing out
@@ -68,24 +79,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.log('AuthStore: Fetching profile for user:', user.id);
       (async () => {
         try {
+          // Server-side single source of truth: reads profiles + teilnehmer
+          // (elite membership) in one SECURITY DEFINER call, bypassing the
+          // teilnehmer RLS gap that made the old client-side elite check dead code.
           const { data, error } = await supabase
-            .from('profiles')
-            .select('role, additional_roles, full_name, vb_legal_areas')
-            .eq('id', user.id)
-            .single();
+            .rpc('get_user_session_data')
+            .maybeSingle();
 
           // Check again if we're still not signing out and user hasn't changed
           const currentState = get();
           if (currentState.isSigningOut) {
-            console.log('AuthStore: Discarding profile fetch result - sign out in progress');
+            console.log('AuthStore: Discarding session data fetch result - sign out in progress');
             set({ isSettingUser: false });
             return;
           }
 
-          console.log('AuthStore: Profile fetch result:', { data, error });
+          console.log('AuthStore: Session data fetch result:', { data, error });
           if (!error && data) {
             const allRoles = [data.role, ...(data.additional_roles || [])];
-            console.log('AuthStore: User role:', data.role, 'additional:', data.additional_roles, 'all:', allRoles);
+            console.log('AuthStore: User role:', data.role, 'additional:', data.additional_roles, 'all:', allRoles,
+              'elite:', data.is_elite_kleingruppe, 'vbSpringer:', data.vb_springer);
 
             // Mark user as logged in
             try {
@@ -116,11 +129,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               userRole: data.role,
               additionalRoles: data.additional_roles || [],
               vbLegalAreas: data.vb_legal_areas || [],
+              isEliteKleingruppe: data.is_elite_kleingruppe === true,
+              eliteKleingruppeId: data.elite_kleingruppe_id || null,
+              isVbSpringer: data.vb_springer === true,
+              lastValidatedAt: Date.now(),
               isSettingUser: false
             });
             console.log('AuthStore: User state updated successfully');
           } else {
-            console.error('AuthStore: Error fetching user profile:', error);
+            console.error('AuthStore: Error fetching session data:', error);
             set({
               user,
               fullName: null,
@@ -134,11 +151,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               userRole: null,
               additionalRoles: [],
               vbLegalAreas: [],
+              isEliteKleingruppe: false,
+              eliteKleingruppeId: null,
+              isVbSpringer: false,
               isSettingUser: false
             });
           }
         } catch (err: unknown) {
-          console.error('AuthStore: Unexpected error fetching profile:', err);
+          console.error('AuthStore: Unexpected error fetching session data:', err);
           const currentState = get();
           if (!currentState.isSigningOut) {
             set({
@@ -154,6 +174,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               userRole: null,
               additionalRoles: [],
               vbLegalAreas: [],
+              isEliteKleingruppe: false,
+              eliteKleingruppeId: null,
+              isVbSpringer: false,
               isSettingUser: false
             });
           } else {
@@ -175,6 +198,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         userRole: null,
         additionalRoles: [],
         vbLegalAreas: [],
+        isEliteKleingruppe: false,
+        eliteKleingruppeId: null,
+        isVbSpringer: false,
         isSettingUser: false
       });
     }
@@ -199,6 +225,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         userRole: null,
         additionalRoles: [],
         vbLegalAreas: [],
+        isEliteKleingruppe: false,
+        eliteKleingruppeId: null,
+        isVbSpringer: false,
         isSigningOut: true,
         isSettingUser: false
       });
@@ -263,12 +292,59 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         userRole: null,
         additionalRoles: [],
         vbLegalAreas: [],
+        isEliteKleingruppe: false,
+        eliteKleingruppeId: null,
+        isVbSpringer: false,
         isSigningOut: false,
         isSettingUser: false
       });
       console.log('AuthStore: Sign out process completed, redirecting to /login');
       // Hard redirect to login page
       window.location.href = '/login';
+    }
+  },
+  validateSession: async () => {
+    const { isSigningOut, user } = get();
+    if (isSigningOut || !user) {
+      console.log('AuthStore: validateSession skipped (signing out or no user)');
+      return false;
+    }
+
+    try {
+      console.log('AuthStore: validateSession — re-fetching from server');
+      const { data, error } = await supabase
+        .rpc('get_user_session_data')
+        .maybeSingle();
+
+      if (error || !data) {
+        console.error('AuthStore: validateSession failed:', error);
+        return false;
+      }
+
+      const allRoles = [data.role, ...(data.additional_roles || [])];
+      console.log('AuthStore: validateSession success:', { role: data.role, additional: data.additional_roles, elite: data.is_elite_kleingruppe });
+
+      set({
+        fullName: data.full_name || null,
+        isAdmin: allRoles.includes('admin'),
+        isBuchhaltung: allRoles.includes('buchhaltung'),
+        isVerwaltung: allRoles.includes('verwaltung'),
+        isVertrieb: allRoles.includes('vertrieb'),
+        isDozent: allRoles.includes('dozent'),
+        isTeilnehmer: allRoles.includes('teilnehmer'),
+        isMaterial: allRoles.includes('material'),
+        userRole: data.role,
+        additionalRoles: data.additional_roles || [],
+        vbLegalAreas: data.vb_legal_areas || [],
+        isEliteKleingruppe: data.is_elite_kleingruppe === true,
+        eliteKleingruppeId: data.elite_kleingruppe_id || null,
+        isVbSpringer: data.vb_springer === true,
+        lastValidatedAt: Date.now(),
+      });
+      return true;
+    } catch (err) {
+      console.error('AuthStore: validateSession unexpected error:', err);
+      return false;
     }
   },
 }));

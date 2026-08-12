@@ -1,4 +1,4 @@
-import { useEffect, lazy, Suspense } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthComponent } from './components/AuthComponent';
 import { VbLayout } from './components/vb/VbLayout';
@@ -14,13 +14,8 @@ import { VbKorrekturDashboard } from './components/vb-chat/VbKorrekturDashboard'
 import { VbKorrekturLayout } from './components/vb-chat/VbKorrekturLayout';
 
 // Lazy load heavy components
-const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
-const AdminDashboard = lazy(() => import('./components/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
-const VertriebDashboard = lazy(() => import('./components/VertriebDashboard').then(m => ({ default: m.VertriebDashboard })));
-const EliteKleingruppeDashboard = lazy(() => import('./components/EliteKleingruppeDashboard').then(m => ({ default: m.EliteKleingruppeDashboard })));
-const DozentenDashboard = lazy(() => import('./components/DozentenDashboard').then(m => ({ default: m.DozentenDashboard })));
-const DozentDetail = lazy(() => import('./components/DozentDetail').then(m => ({ default: m.DozentDetail })));
 const UserManagement = lazy(() => import('./components/UserManagement').then(m => ({ default: m.UserManagement })));
+const DozentDetail = lazy(() => import('./components/DozentDetail').then(m => ({ default: m.DozentDetail })));
 const Chat = lazy(() => import('./components/Chat').then(m => ({ default: m.Chat })));
 const Settings = lazy(() => import('./components/Settings').then(m => ({ default: m.Settings })));
 const IntegrationsTab = lazy(() => import('./components/IntegrationsTab').then(m => ({ default: m.IntegrationsTab })));
@@ -39,193 +34,59 @@ const DozentenPortalTutorials = lazy(() => import('./components/DozentenTutorial
 })));
 const TypeformSurvey = lazy(() => import('./components/TypeformSurvey').then(m => ({ default: m.TypeformSurvey })));
 const FeedbackAdmin = lazy(() => import('./components/FeedbackAdmin').then(m => ({ default: m.FeedbackAdmin })));
+
 import { useAuthStore } from './store/authStore';
 import { usePreviewStore } from './store/previewStore';
 import { PreviewBanner } from './components/PreviewBanner';
-import { supabase } from './lib/supabase';
+import { RoleGuard } from './components/RoleGuard';
+import { useSessionValidator } from './hooks/useSessionValidator';
 import { Footer } from './components/Footer';
 import { ToastContainer } from './components/Toast';
 
-import { useState } from 'react';
+const SuspenseFallback = (
+  <div className="flex-1 flex items-center justify-center">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+  </div>
+);
 
 function App() {
-  const { setUser, user, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isTeilnehmer, isMaterial, userRole, additionalRoles } = useAuthStore();
+  const { user, isAdmin } = useAuthStore();
   const { isPreviewMode, previewedRole, togglePreview, setPreviewedRole } = usePreviewStore();
-  const [appLoading, setAppLoading] = useState(true);
   const [appReady, setAppReady] = useState(false);
 
+  // Sets up: initial session validation, auth state listener, window focus
+  // re-validation, periodic re-validation, online re-validation.
+  // This is the global session lifecycle manager.
+  useSessionValidator();
+
+  // Wait for the initial session check to complete before rendering routes.
+  // The session validator calls setUser which sets lastValidatedAt; we wait
+  // for either a user or a confirmed no-session state.
   useEffect(() => {
-    // Global loading: Check session and profile before routing
-    const initializeApp = async () => {
-      console.log('🚀 App: Initializing...');
-      
-      // Get session
-      const { data: { session }, error } = await supabase.auth.getSession();
-      console.log('🔑 App: Session check:', session ? 'Found' : 'None');
-      
-      if (error) {
-        console.error('❌ App: Session error:', error);
-        setAppLoading(false);
+    let attempts = 0;
+    const maxAttempts = 50; // 5 seconds max
+
+    const checkReady = setInterval(() => {
+      attempts++;
+      const state = useAuthStore.getState();
+
+      // Ready if: user is set and validated, OR no user and not loading
+      if ((state.user && state.lastValidatedAt) || (!state.user && !state.isSettingUser)) {
+        clearInterval(checkReady);
+        console.log('🚀 App: Ready — user:', state.user?.email || 'none');
         setAppReady(true);
-        return;
-      }
-
-      if (session?.user) {
-        console.log('👤 App: Setting user:', session.user.email);
-        setUser(session.user);
-        
-        // Wait for profile to be loaded
-        let attempts = 0;
-        const maxAttempts = 50; // 5 seconds max
-        
-        const checkProfile = setInterval(() => {
-          attempts++;
-          const { userRole, additionalRoles, isSettingUser } = useAuthStore.getState();
-          
-          console.log(`⏳ App: Profile check attempt ${attempts}/${maxAttempts}`, { userRole, isSettingUser });
-          
-          if (!isSettingUser && userRole !== null) {
-            clearInterval(checkProfile);
-            console.log('✅ App: Profile loaded, performing role check');
-            console.log('📋 App: Account status:', {
-              userRole,
-              additionalRoles,
-              currentPath: window.location.pathname,
-              currentSearch: window.location.search
-            });
-
-            // Check for elite kleingruppe membership for teilnehmer users
-            const checkEliteKleingruppe = async () => {
-              const user = useAuthStore.getState().user;
-              if (userRole === 'teilnehmer' && user) {
-                console.log('🔍 App: Checking elite kleingruppe for user:', user.id);
-                const { data: teilnehmerData, error: teilnehmerError } = await supabase
-                  .from('teilnehmer')
-                  .select('elite_kleingruppe')
-                  .eq('profile_id', user.id)
-                  .maybeSingle();
-
-                console.log('🔍 App: Teilnehmer data:', { teilnehmerData, teilnehmerError, additionalRoles });
-
-                // Redirect decision tree – only applies on default landing paths,
-                // so deep links (e.g. /klausurenbesprechung/*) are preserved on reload.
-                const landingPath = window.location.pathname;
-                const isDefaultLanding = landingPath === '/' || landingPath === '/login' ||
-                  (landingPath === '/dashboard' && !window.location.search.includes('tab='));
-
-                if (!isDefaultLanding) {
-                  console.log('✅ App: REDIRECT DECISION: Non-default path, staying on current page:', landingPath);
-                } else if (teilnehmerData?.elite_kleingruppe && teilnehmerData.elite_kleingruppe !== 'f' && teilnehmerData.elite_kleingruppe !== 'false' && teilnehmerData.elite_kleingruppe !== null) {
-                  // Elite-Kleingruppe members (incl. VB teilnehmer with elite kleingruppe)
-                  // land on the Elite-Kleingruppe dashboard. VB teilnehmer additionally
-                  // see the "Videoklausurenkorrektur" tab via EliteKleingruppeDashboard.
-                  // 'dashboard' is a valid subtab of EliteKleingruppeDashboard (VALID_TABS).
-                  console.log('✅ App: REDIRECT DECISION: User has elite kleingruppe membership:', teilnehmerData.elite_kleingruppe, '→ redirecting to /dashboard?tab=dashboard');
-                  window.history.replaceState({}, '', '/dashboard?tab=dashboard');
-                } else if (additionalRoles?.includes('videobesprechung')) {
-                  console.log('✅ App: REDIRECT DECISION: User has videobesprechung role but no elite kleingruppe → redirecting to /klausurenbesprechung/dashboard');
-                  window.history.replaceState({}, '', '/klausurenbesprechung/dashboard');
-                } else if (window.location.pathname === '/dashboard' && !window.location.search.includes('tab=')) {
-                  console.log('✅ App: REDIRECT DECISION: Regular participant on /dashboard → redirecting to /dashboard?tab=dashboard');
-                  window.history.replaceState({}, '', '/dashboard?tab=dashboard');
-                } else {
-                  console.log('✅ App: REDIRECT DECISION: No redirect needed, staying on current page');
-                }
-              } else if (userRole === 'teilnehmer' && window.location.pathname === '/dashboard' && !window.location.search.includes('tab=')) {
-                console.log('✅ App: REDIRECT DECISION: Regular participant on /dashboard → redirecting to /dashboard?tab=dashboard');
-                window.history.replaceState({}, '', '/dashboard?tab=dashboard');
-              } else if (userRole === 'dozent' && additionalRoles?.includes('videobesprechung_dozent') && user) {
-                // VB Springer dozenten land directly on the Korrektur dashboard after login
-                const path = window.location.pathname;
-                const isDefaultLanding = path === '/' || path === '/login' || (path === '/dashboard' && !window.location.search.includes('tab='));
-                if (isDefaultLanding) {
-                  const { data: springerProfile } = await supabase
-                    .from('profiles')
-                    .select('vb_springer')
-                    .eq('id', user.id)
-                    .maybeSingle();
-                  if (springerProfile?.vb_springer === true) {
-                    console.log('✅ App: REDIRECT DECISION: VB Springer dozent → redirecting to /klausurenbesprechung/korrektur');
-                    window.history.replaceState({}, '', '/klausurenbesprechung/korrektur');
-                  } else {
-                    console.log('✅ App: REDIRECT DECISION: No redirect needed for userRole:', userRole);
-                  }
-                } else {
-                  console.log('✅ App: REDIRECT DECISION: No redirect needed, staying on current page');
-                }
-              } else {
-                console.log('✅ App: REDIRECT DECISION: No redirect needed for userRole:', userRole);
-              }
-
-              setAppLoading(false);
-              setAppReady(true);
-            };
-
-            checkEliteKleingruppe();
-          } else if (attempts >= maxAttempts) {
-            clearInterval(checkProfile);
-            console.error('❌ App: Profile load timeout');
-            setAppLoading(false);
-            setAppReady(true);
-          }
-        }, 100);
-      } else {
-        console.log('👤 App: No session, showing login');
-        setAppLoading(false);
+      } else if (attempts >= maxAttempts) {
+        clearInterval(checkReady);
+        console.error('❌ App: Initial load timeout');
         setAppReady(true);
       }
-    };
-    
-    initializeApp();
+    }, 100);
 
-    // Auth state change listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      console.log('🔄 App: Auth state changed:', _event, session?.user?.email);
+    return () => clearInterval(checkReady);
+  }, []);
 
-      const currentUser = useAuthStore.getState().user;
-
-      // On (re-)login re-validate the session and re-fetch the profile.
-      // NOTE: Supabase also fires SIGNED_IN when the browser tab regains focus;
-      // skip re-initialization if the same user is already active to avoid
-      // an unnecessary full app reload on tab switches.
-      if (_event === 'SIGNED_IN') {
-        if (currentUser && session?.user && currentUser.id === session.user.id) {
-          console.log('⏭️ App: SIGNED_IN for already active user (tab focus), ignoring');
-          return;
-        }
-        console.log('🔄 App: SIGNED_IN, re-initializing (preserving URL:', window.location.pathname, ')');
-        setUser(session?.user ?? null, true);
-        setAppLoading(true);
-        setAppReady(false);
-        initializeApp();
-        return;
-      }
-
-      if (_event === 'SIGNED_OUT') {
-        console.log('🔄 App: SIGNED_OUT, clearing user');
-        setUser(null);
-        setAppLoading(false);
-        setAppReady(true);
-        return;
-      }
-
-      // Other events (e.g. TOKEN_REFRESHED, USER_UPDATED): only act if the user changed
-      if (currentUser && session?.user && currentUser.id === session.user.id) {
-        console.log('⏭️ App: User unchanged, ignoring auth event');
-        return;
-      }
-
-      console.log('🔄 App: User changed, updating');
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, [setUser]);
-
-  console.log('App: Current user:', user?.email, 'isAdmin:', isAdmin, 'isPreviewMode:', isPreviewMode);
-
-  // Show loading while app is initializing or user profile is being loaded
-  if (appLoading || !appReady) {
+  // Show loading while app is initializing
+  if (!appReady) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="bg-white p-8 rounded-lg shadow-md">
@@ -238,24 +99,10 @@ function App() {
     );
   }
 
+  // Not authenticated → show login
   if (!user) {
-    console.log('App: No user, showing AuthComponent');
     return <AuthComponent />;
   }
-
-  console.log('App: User authenticated, rendering main app');
-
-  // Only show preview mode for actual admins
-  const showPreview = isAdmin && isPreviewMode;
-  
-  // Determine if we should show admin view based on role hierarchy and preview mode
-  const showAdminView = showPreview ? previewedRole === 'admin' : isAdmin;
-  const showBuchhaltungView = showPreview ? previewedRole === 'buchhaltung' : (isBuchhaltung && !isAdmin);
-  const showVerwaltungView = showPreview ? previewedRole === 'verwaltung' : isVerwaltung;
-  const showVertriebView = showPreview ? previewedRole === 'vertrieb' : isVertrieb;
-  const showTeilnehmerView = showPreview ? previewedRole === 'teilnehmer' : isTeilnehmer;
-
-  console.log('App: Rendering with views:', { showAdminView, showBuchhaltungView, showVerwaltungView, showVertriebView, showTeilnehmerView, userRole });
 
   return (
     <Router>
@@ -268,14 +115,10 @@ function App() {
         />
       )}
       <div className="min-h-screen bg-background flex flex-col">
-        <Suspense fallback={
-          <div className="flex-1 flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          </div>
-        }>
+        <Suspense fallback={SuspenseFallback}>
         <Routes>
-          {/* Root redirect: Auth check first */}
-          <Route path="/" element={!user ? <Navigate to="/login" replace /> : <Navigate to="/dashboard" replace />} />
+          {/* Root redirect */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
           {/* Legacy route redirects */}
           <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
@@ -284,148 +127,76 @@ function App() {
           <Route path="/elite-kleingruppe" element={<Navigate to="/dashboard" replace />} />
 
           {/* Login route */}
-          <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <AuthComponent />} />
+          <Route path="/login" element={<Navigate to="/dashboard" replace />} />
 
-          {/* VB pages - using VbLayout wrapper */}
-          <Route path="/klausurenbesprechung" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbLandingRedirect /></VbLayout>} />
-          <Route path="/klausurenbesprechung/pakete" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbPackagesPage /></VbLayout>} />
-          <Route path="/klausurenbesprechung/dashboard" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbCaseStudyDashboard /></VbLayout>} />
-          <Route path="/klausurenbesprechung/sachverhalt-anfordern" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbCaseStudyRequest /></VbLayout>} />
-          <Route path="/klausurenbesprechung/ergebnisse" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbResultsPage /></VbLayout>} />
-          <Route path="/klausurenbesprechung/klausuren-masterclass" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbMasterclassPage /></VbLayout>} />
-          <Route path="/klausurenbesprechung/wiederholung" element={!user ? <Navigate to="/login" replace /> : <VbLayout><VbWiederholungPage /></VbLayout>} />
+          {/* ─── VB pages (klausurenbesprechung) ─────────────────────────── */}
+          {/* VB teilnehmer pages: any authenticated user can access (the VB
+              components themselves check videobesprechung role internally) */}
+          <Route path="/klausurenbesprechung" element={<RoleGuard requireAuthOnly><VbLayout><VbLandingRedirect /></VbLayout></RoleGuard>} />
+          <Route path="/klausurenbesprechung/pakete" element={<RoleGuard requireAuthOnly><VbLayout><VbPackagesPage /></VbLayout></RoleGuard>} />
+          <Route path="/klausurenbesprechung/dashboard" element={<RoleGuard requireAuthOnly><VbLayout><VbCaseStudyDashboard /></VbLayout></RoleGuard>} />
+          <Route path="/klausurenbesprechung/sachverhalt-anfordern" element={<RoleGuard requireAuthOnly><VbLayout><VbCaseStudyRequest /></VbLayout></RoleGuard>} />
+          <Route path="/klausurenbesprechung/ergebnisse" element={<RoleGuard requireAuthOnly><VbLayout><VbResultsPage /></VbLayout></RoleGuard>} />
+          <Route path="/klausurenbesprechung/klausuren-masterclass" element={<RoleGuard requireAuthOnly><VbLayout><VbMasterclassPage /></VbLayout></RoleGuard>} />
+          <Route path="/klausurenbesprechung/wiederholung" element={<RoleGuard requireAuthOnly><VbLayout><VbWiederholungPage /></VbLayout></RoleGuard>} />
+          {/* VB Korrektur: admin or videobesprechung_dozent only */}
           <Route
             path="/klausurenbesprechung/korrektur"
             element={
-              !user ? (
-                <Navigate to="/login" replace />
-              ) : (isAdmin || additionalRoles?.includes('videobesprechung_dozent')) ? (
+              <RoleGuard require={['admin', 'videobesprechung_dozent']} redirectTo="/klausurenbesprechung">
                 <VbKorrekturLayout><VbKorrekturDashboard /></VbKorrekturLayout>
-              ) : (
-                <Navigate to="/klausurenbesprechung" replace />
-              )
+              </RoleGuard>
             }
           />
-          <Route path="/klausurenbesprechung/einstellungen" element={!user ? <Navigate to="/login" replace /> : <VbLayout><Settings hideChrome /></VbLayout>} />
+          <Route path="/klausurenbesprechung/einstellungen" element={<RoleGuard requireAuthOnly><VbLayout><Settings hideChrome /></VbLayout></RoleGuard>} />
           {/* Legacy English VB route redirects */}
-          <Route path="/klausurenbesprechung/packages" element={!user ? <Navigate to="/login" replace /> : <Navigate to="/klausurenbesprechung/pakete" replace />} />
-          <Route path="/klausurenbesprechung/case-studies/request" element={!user ? <Navigate to="/login" replace /> : <Navigate to="/klausurenbesprechung/sachverhalt-anfordern" replace />} />
-          <Route path="/klausurenbesprechung/results" element={!user ? <Navigate to="/login" replace /> : <Navigate to="/klausurenbesprechung/ergebnisse" replace />} />
-          <Route path="/klausurenbesprechung/masterclass" element={!user ? <Navigate to="/login" replace /> : <Navigate to="/klausurenbesprechung/klausuren-masterclass" replace />} />
-          <Route path="/klausurenbesprechung/chat" element={!user ? <Navigate to="/login" replace /> : <VbLayout fullscreen><VbChatLayout /></VbLayout>} />
+          <Route path="/klausurenbesprechung/packages" element={<Navigate to="/klausurenbesprechung/pakete" replace />} />
+          <Route path="/klausurenbesprechung/case-studies/request" element={<Navigate to="/klausurenbesprechung/sachverhalt-anfordern" replace />} />
+          <Route path="/klausurenbesprechung/results" element={<Navigate to="/klausurenbesprechung/ergebnisse" replace />} />
+          <Route path="/klausurenbesprechung/masterclass" element={<Navigate to="/klausurenbesprechung/klausuren-masterclass" replace />} />
+          <Route path="/klausurenbesprechung/chat" element={<RoleGuard requireAuthOnly><VbLayout fullscreen><VbChatLayout /></VbLayout></RoleGuard>} />
 
-          {/* Unified dashboard - renders correct view based on role */}
+          {/* ─── Unified dashboard ────────────────────────────────────────── */}
+          {/* RoleGuard in dashboard mode auto-selects the correct view based
+              on server-validated roles. EliteKleingruppeDashboard is only
+              shown when isEliteKleingruppe is true. */}
+          <Route path="/dashboard" element={<RoleGuard dashboard />} />
+          <Route path="/dashboard/elite-kleingruppe/:subTab?" element={<RoleGuard dashboard />} />
+          <Route path="/dashboard/taetigkeitsbericht" element={<RoleGuard dashboard />} />
+
+          {/* ─── Staff-only routes ────────────────────────────────────────── */}
           <Route
-            path="/dashboard"
-            element={
-              !user ? (
-                <Navigate to="/login" replace />
-              ) : isMaterial ?
-                <DozentenDashboard /> :
-              showTeilnehmerView ?
-                <EliteKleingruppeDashboard /> :
-              showVertriebView ?
-                <VertriebDashboard /> :
-              showBuchhaltungView ?
-                <AdminDashboard mode="accounting" /> :
-              showVerwaltungView ?
-                <AdminDashboard mode="verwaltung" /> :
-              showAdminView ?
-                <AdminDashboard mode="admin" /> :
-                <Dashboard isAdmin={false} />
-            }
+            path="/users"
+            element={<RoleGuard require={['admin']}><UserManagement /></RoleGuard>}
           />
           <Route
-            path="/dashboard/elite-kleingruppe/:subTab?"
-            element={
-              !user ? (
-                <Navigate to="/login" replace />
-              ) : showTeilnehmerView ?
-                <EliteKleingruppeDashboard /> :
-              isMaterial ?
-                <DozentenDashboard /> :
-                <Dashboard isAdmin={showAdminView || showVerwaltungView || showVertriebView} />
-            }
+            path="/dozent/:id"
+            element={<RoleGuard require={['admin', 'buchhaltung', 'verwaltung', 'vertrieb']}><DozentDetail /></RoleGuard>}
           />
-          <Route
-            path="/dashboard/taetigkeitsbericht"
-            element={
-              !user ? (
-                <Navigate to="/login" replace />
-              ) : isMaterial ?
-                <DozentenDashboard /> :
-              showTeilnehmerView ?
-                <EliteKleingruppeDashboard /> :
-              showVertriebView ?
-                <VertriebDashboard /> :
-              showBuchhaltungView ?
-                <AdminDashboard mode="accounting" /> :
-              showVerwaltungView ?
-                <AdminDashboard mode="verwaltung" /> :
-              showAdminView ?
-                <AdminDashboard mode="admin" /> :
-                <Dashboard isAdmin={false} />
-            }
-          />
-
-          {/* Sub-routes */}
-          <Route 
-            path="/users" 
-            element={
-              !user ? (
-                <Navigate to="/login" replace />
-              ) : showAdminView ? 
-                <UserManagement /> : 
-                <Navigate to="/dashboard" replace />
-            } 
-          />
-          <Route 
-            path="/dozent/:id" 
-            element={
-              !user ? (
-                <Navigate to="/login" replace />
-              ) : (showAdminView || showBuchhaltungView || showVerwaltungView || showVertriebView) ? 
-                <DozentDetail /> : 
-                <Navigate to="/dashboard" replace />
-            } 
-          />
-
-          {/* Common routes */}
-          <Route path="/messages" element={!user ? <Navigate to="/login" replace /> : <Chat />} />
-          <Route path="/settings" element={!user ? <Navigate to="/login" replace /> : <Settings />} />
-          <Route path="/feedback-elite-25" element={!user ? <Navigate to="/login" replace /> : <TypeformSurvey />} />
           <Route
             path="/feedback"
-            element={
-              !user ? (
-                <Navigate to="/login" replace />
-              ) : (showAdminView || showBuchhaltungView || showVerwaltungView) ?
-                <FeedbackAdmin /> :
-                <Navigate to="/dashboard" replace />
-            }
+            element={<RoleGuard require={['admin', 'buchhaltung', 'verwaltung']}><FeedbackAdmin /></RoleGuard>}
+          />
+          <Route
+            path="/integrationen"
+            element={<RoleGuard require={['admin', 'verwaltung', 'vertrieb']}><IntegrationsTab /></RoleGuard>}
           />
 
-          {/* Dozenten-Ordner Routen */}
-          <Route path="/rechnungen/:id" element={!user ? <Navigate to="/login" replace /> : <DozentenRechnungen />} />
-          <Route path="/taetigkeitsbericht/:id" element={!user ? <Navigate to="/login" replace /> : <DozentenTaetigkeitsbericht />} />
-          <Route path="/teilnehmer/:id" element={!user ? <Navigate to="/login" replace /> : <DozentenTeilnehmer />} />
-          <Route path="/probestunden/:id" element={!user ? <Navigate to="/login" replace /> : <DozentenProbestunden />} />
-          <Route path="/tutorials" element={!user ? <Navigate to="/login" replace /> : <DozentenTutorials />} />
-          <Route path="/tutorials-dozenten-portal" element={!user ? <Navigate to="/login" replace /> : <DozentenPortalTutorials />} />
-          
-          <Route 
-            path="/integrationen" 
-            element={
-              !user ? (
-                <Navigate to="/login" replace />
-              ) : (showAdminView || showVerwaltungView || showVertriebView) ? 
-                <IntegrationsTab /> : 
-                <Navigate to="/dashboard" replace />
-            } 
-          />
+          {/* ─── Common routes (any authenticated user) ───────────────────── */}
+          <Route path="/messages" element={<RoleGuard requireAuthOnly><Chat /></RoleGuard>} />
+          <Route path="/settings" element={<RoleGuard requireAuthOnly><Settings /></RoleGuard>} />
+          <Route path="/feedback-elite-25" element={<RoleGuard requireAuthOnly><TypeformSurvey /></RoleGuard>} />
+
+          {/* ─── Dozenten-Ordner routes ───────────────────────────────────── */}
+          <Route path="/rechnungen/:id" element={<RoleGuard requireAuthOnly><DozentenRechnungen /></RoleGuard>} />
+          <Route path="/taetigkeitsbericht/:id" element={<RoleGuard requireAuthOnly><DozentenTaetigkeitsbericht /></RoleGuard>} />
+          <Route path="/teilnehmer/:id" element={<RoleGuard requireAuthOnly><DozentenTeilnehmer /></RoleGuard>} />
+          <Route path="/probestunden/:id" element={<RoleGuard requireAuthOnly><DozentenProbestunden /></RoleGuard>} />
+          <Route path="/tutorials" element={<RoleGuard requireAuthOnly><DozentenTutorials /></RoleGuard>} />
+          <Route path="/tutorials-dozenten-portal" element={<RoleGuard requireAuthOnly><DozentenPortalTutorials /></RoleGuard>} />
 
           {/* Catch-all redirect */}
-          <Route path="*" element={!user ? <Navigate to="/login" replace /> : <Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
         </Suspense>
         <Footer />
