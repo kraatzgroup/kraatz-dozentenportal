@@ -12,6 +12,7 @@ import {
   Package,
   Plus,
   X,
+  Trash2,
 } from 'lucide-react';
 import { SchwerpunktTagsInput } from './SchwerpunktTagsInput';
 
@@ -49,7 +50,14 @@ interface VbCaseRow {
   admin_focus_tags: string[] | null;
   status: string;
   assigned_dozent_id: string | null;
+  pdf_url: string | null;
+  case_study_material_url: string | null;
+  additional_materials_url: string | null;
+  submission_url: string | null;
   video_correction_url: string | null;
+  written_correction_url: string | null;
+  solution_pdf_url: string | null;
+  scoring_schema_url: string | null;
   created_at: string;
   updated_at: string;
   student?: { first_name: string | null; last_name: string | null; email: string | null } | null;
@@ -99,6 +107,10 @@ const caseColumn = (c: VbCaseRow): 'requests' | 'materials_sent' | 'submissions'
   return 'submissions';
 };
 
+// Statuses that count as "used" credits (must match the fetchAll credit calculation).
+const USED_STATUSES = ['submitted', 'under_review', 'in_review', 'completed', 'graded', 'corrected', 'materials_ready'];
+const isCaseCreditUsed = (c: VbCaseRow): boolean => USED_STATUSES.includes(c.status);
+
 const displayStudentName = (c: VbCaseRow): string => {
   const s = c.student;
   if (!s) return 'Unbekannt';
@@ -125,6 +137,9 @@ export const VbAdminDashboard: React.FC = () => {
   const [addCreditsFor, setAddCreditsFor] = useState<VbTeilnehmer | null>(null);
   const [creditsAmount, setCreditsAmount] = useState('');
   const [addingCredits, setAddingCredits] = useState(false);
+  const [caseToDelete, setCaseToDelete] = useState<VbCaseRow | null>(null);
+  const [deletingCase, setDeletingCase] = useState(false);
+  const [refundCredit, setRefundCredit] = useState(true);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -189,6 +204,11 @@ export const VbAdminDashboard: React.FC = () => {
         grade: gradeMap.get(c.id)?.grade ?? null,
         grade_text: gradeMap.get(c.id)?.grade_text ?? null,
       }));
+      console.log('📊 VbAdminDashboard: fetchAll fetched cases:', {
+        count: rows.length,
+        cases: rows.map(r => ({ id: r.id, number: r.case_study_number, status: r.status, legal_area: r.legal_area })),
+        openCount: rows.filter(r => r.status !== 'completed').length,
+      });
       setCases(rows);
 
       // 5) Orders for teilnehmer credits (only non-expired)
@@ -228,11 +248,14 @@ export const VbAdminDashboard: React.FC = () => {
         });
       }
 
-      // Build open case counts per profile (non-completed)
+      // Build open case counts per profile.
+      // A case is "done" when completed OR corrected with a video correction URL
+      // (mirrors caseColumn() / isCaseDone() logic used for the stat cards).
       const openCasesByStudent = new Map<string, number>();
       const openCasesByDozent = new Map<string, number>();
       rows.forEach(c => {
-        if (c.status === 'completed') return;
+        const done = c.status === 'completed' || (c.status === 'corrected' && !!c.video_correction_url);
+        if (done) return;
         if (c.profile_id) openCasesByStudent.set(c.profile_id, (openCasesByStudent.get(c.profile_id) || 0) + 1);
         if (c.assigned_dozent_id) openCasesByDozent.set(c.assigned_dozent_id, (openCasesByDozent.get(c.assigned_dozent_id) || 0) + 1);
       });
@@ -316,6 +339,158 @@ export const VbAdminDashboard: React.FC = () => {
     }
   };
 
+  const handleDeleteCase = async (caseRow: VbCaseRow) => {
+    console.log('🗑️ VbAdminDashboard: handleDeleteCase START', {
+      id: caseRow.id,
+      case_study_number: caseRow.case_study_number,
+      status: caseRow.status,
+      legal_area: caseRow.legal_area,
+      profile_id: caseRow.profile_id,
+      assigned_dozent_id: caseRow.assigned_dozent_id,
+    });
+    setDeletingCase(true);
+    try {
+      // Collect storage file paths to delete from the case-studies bucket.
+      // URLs look like: https://<project>.supabase.co/storage/v1/object/public/case-studies/<path>
+      const urlFields = [
+        caseRow.pdf_url,
+        caseRow.case_study_material_url,
+        caseRow.additional_materials_url,
+        caseRow.submission_url,
+        caseRow.video_correction_url,
+        caseRow.written_correction_url,
+        caseRow.solution_pdf_url,
+        caseRow.scoring_schema_url,
+      ].filter((u): u is string => !!u);
+
+      console.log('🗑️ VbAdminDashboard: URL fields collected for cleanup:', urlFields);
+
+      const pathsToDelete: string[] = [];
+      for (const url of urlFields) {
+        // case-studies bucket
+        let marker = `/object/public/case-studies/`;
+        let idx = url.indexOf(marker);
+        if (idx >= 0) {
+          pathsToDelete.push(url.slice(idx + marker.length));
+          continue;
+        }
+        // masterclass bucket (some materials may live there)
+        marker = `/object/public/masterclass/`;
+        idx = url.indexOf(marker);
+        if (idx >= 0) {
+          // masterclass files are shared teaching materials – do NOT delete them.
+          continue;
+        }
+      }
+
+      console.log('🗑️ VbAdminDashboard: Storage paths to delete from case-studies bucket:', pathsToDelete);
+
+      // Delete storage files (best-effort, don't block on errors)
+      const caseStudiesPaths = pathsToDelete;
+      if (caseStudiesPaths.length > 0) {
+        console.log('🗑️ VbAdminDashboard: Removing storage files from case-studies bucket...');
+        const { data: storageData, error: storageError } = await supabase.storage
+          .from('case-studies')
+          .remove(caseStudiesPaths);
+        console.log('🗑️ VbAdminDashboard: Storage remove result:', { storageData, storageError });
+        if (storageError) {
+          console.warn('⚠️ VbAdminDashboard: Could not delete all storage files:', storageError);
+        }
+      } else {
+        console.log('🗑️ VbAdminDashboard: No storage files to delete (skipping storage cleanup).');
+      }
+
+      // Delete the database record.
+      // Cascading deletes will automatically remove related:
+      //   - vb_submissions, vb_notifications, vb_case_study_ratings
+      console.log('🗑️ VbAdminDashboard: Deleting DB record vb_case_study_requests id =', caseRow.id);
+
+      // Diagnostic: fetch the current user's profile to verify what RLS sees
+      const { data: authUser } = await supabase.auth.getUser();
+      if (authUser?.user?.id) {
+        const { data: myProfile, error: profileErr } = await supabase
+          .from('profiles')
+          .select('id, role, additional_roles')
+          .eq('id', authUser.user.id)
+          .single();
+        console.log('🔍 VbAdminDashboard: Current user profile (as seen by DB):', { myProfile, profileErr, authUid: authUser.user.id });
+      }
+
+      const { data: deleteData, error: deleteError, count: deleteCount } = await supabase
+        .from('vb_case_study_requests')
+        .delete({ count: 'exact' })
+        .eq('id', caseRow.id);
+
+      console.log('🗑️ VbAdminDashboard: Delete result:', { deleteData, deleteError, deleteCount });
+
+      if (deleteError) {
+        console.error('❌ VbAdminDashboard: Delete returned an error:', deleteError);
+        throw deleteError;
+      }
+
+      if (deleteCount === 0) {
+        console.warn('⚠️ VbAdminDashboard: Delete affected 0 rows! The record may not exist or RLS blocked the delete. id =', caseRow.id);
+      } else {
+        console.log('✅ VbAdminDashboard: Delete affected', deleteCount, 'row(s).');
+      }
+
+      // Verify the record is actually gone (read-back check)
+      const { data: verifyData, error: verifyError } = await supabase
+        .from('vb_case_study_requests')
+        .select('id, status, case_study_number')
+        .eq('id', caseRow.id);
+      console.log('🔍 VbAdminDashboard: Read-back verification after delete:', { verifyData, verifyError });
+      if (verifyData && verifyData.length > 0) {
+        console.error('❌ VbAdminDashboard: Record STILL EXISTS after delete! RLS may be blocking the DELETE.', verifyData);
+      } else {
+        console.log('✅ VbAdminDashboard: Record confirmed gone from DB.');
+      }
+
+      // Credit refund handling.
+      // Deleting a "used" case automatically reduces the used-credit count,
+      // which increases the participant's remaining credits by 1 (auto-refund).
+      // If the admin chose NOT to refund, insert a compensating vb_order with
+      // case_study_count = -1 so the total drops by 1 as well, keeping
+      // remaining = total - used unchanged.
+      const wasCreditUsed = isCaseCreditUsed(caseRow);
+      console.log('💰 VbAdminDashboard: Credit refund check:', { wasCreditUsed, refundCredit, status: caseRow.status });
+
+      if (wasCreditUsed && !refundCredit) {
+        console.log('💰 VbAdminDashboard: Inserting compensating debit order (case_study_count = -1) for profile', caseRow.profile_id);
+        const { error: debitError } = await supabase
+          .from('vb_orders')
+          .insert({
+            profile_id: caseRow.profile_id,
+            status: 'completed',
+            case_study_count: -1,
+            total_cents: 0,
+          });
+        if (debitError) {
+          console.error('❌ VbAdminDashboard: Could not insert compensating debit order:', debitError);
+          // Don't throw — the case is already deleted. Warn the admin instead.
+          alert('Die Anfrage wurde gelöscht, aber der Credit konnte nicht abgezogen werden (Datenbankfehler). Bitte Credits manuell anpassen.\n\nFehler: ' + debitError.message);
+        } else {
+          console.log('✅ VbAdminDashboard: Compensating debit order inserted — credit NOT refunded.');
+        }
+      } else if (wasCreditUsed && refundCredit) {
+        console.log('✅ VbAdminDashboard: Credit will be auto-refunded (used count drops naturally).');
+      } else {
+        console.log('ℹ️ VbAdminDashboard: Case was not credit-used (status =', caseRow.status, ') — no refund needed.');
+      }
+
+      setCaseToDelete(null);
+      setRefundCredit(true);
+      console.log('🔄 VbAdminDashboard: Triggering fetchAll() to refresh dashboard...');
+      await fetchAll();
+      console.log('✅ VbAdminDashboard: handleDeleteCase DONE');
+    } catch (err) {
+      console.error('❌ VbAdminDashboard: Error deleting case study request:', err);
+      alert('Fehler beim Löschen der Anfrage: ' + (err instanceof Error ? err.message : 'Unbekannt'));
+    } finally {
+      setDeletingCase(false);
+    }
+  };
+
   // Realtime updates
   useEffect(() => {
     const channel = supabase
@@ -346,11 +521,18 @@ export const VbAdminDashboard: React.FC = () => {
     return filteredCases.filter(c => caseColumn(c) === colId);
   };
 
+  // A case is considered "done" when it is completed OR corrected with a video
+  // correction URL — this mirrors the caseColumn() logic so the stat cards stay
+  // consistent with what is shown in the "Abgeschlossen" board column.
+  const isCaseDone = (c: VbCaseRow): boolean =>
+    c.status === 'completed' || (c.status === 'corrected' && !!c.video_correction_url);
+
   // Summary stats
-  const totalOpen = filteredCases.filter(c => c.status !== 'completed').length;
-  const totalCompleted = filteredCases.filter(c => c.status === 'completed').length;
-  const unassignedOpen = filteredCases.filter(c => !c.assigned_dozent_id && c.status !== 'completed').length;
+  const totalOpen = filteredCases.filter(c => !isCaseDone(c)).length;
+  const totalCompleted = filteredCases.filter(c => isCaseDone(c)).length;
+  const unassignedOpen = filteredCases.filter(c => !c.assigned_dozent_id && !isCaseDone(c)).length;
   const totalRemainingCredits = teilnehmer.reduce((sum, t) => sum + t.remainingCredits, 0);
+  console.log('📊 VbAdminDashboard: Stats computed:', { totalOpen, totalCompleted, unassignedOpen, casesCount: cases.length, filteredCount: filteredCases.length, legalAreaFilter });
 
   if (loading) {
     return (
@@ -560,7 +742,18 @@ export const VbAdminDashboard: React.FC = () => {
                         <div key={c.id} className="bg-white rounded-md border border-gray-200 p-3 hover:shadow-sm transition-shadow">
                           <div className="flex items-center justify-between gap-2 mb-1">
                             <h4 className="font-medium text-gray-900 text-sm">Klausur #{c.case_study_number}</h4>
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.cls}`}>{st.label}</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.cls}`}>{st.label}</span>
+                              <button
+                                type="button"
+                                onClick={() => setCaseToDelete(c)}
+                                className="text-gray-400 hover:text-red-600 transition-colors p-0.5"
+                                title="Anfrage löschen"
+                                aria-label="Anfrage löschen"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-1 mb-1">
                             <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">{c.legal_area}</span>
@@ -682,6 +875,88 @@ export const VbAdminDashboard: React.FC = () => {
                   type="button"
                   onClick={() => setAddCreditsFor(null)}
                   className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"
+                >
+                  Abbrechen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Case Confirmation Modal */}
+      {caseToDelete && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => { if (!deletingCase) { setCaseToDelete(null); setRefundCredit(true); } }}>
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-center w-10 h-10 rounded-full bg-red-100 flex-shrink-0">
+                      <Trash2 className="h-5 w-5 text-red-600" />
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900">Anfrage löschen</h3>
+                  </div>
+                  <button onClick={() => { if (!deletingCase) { setCaseToDelete(null); setRefundCredit(true); } }} className="text-gray-400 hover:text-gray-600" disabled={deletingCase}>
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-600">
+                    Sind Sie sicher, dass Sie diese Anfrage unwiderruflich löschen möchten?
+                  </p>
+                  <div className="bg-gray-50 rounded-lg p-3 space-y-1 text-sm">
+                    <div className="font-medium text-gray-900">Klausur #{caseToDelete.case_study_number}</div>
+                    <div className="text-gray-600">Rechtsgebiet: {caseToDelete.legal_area}</div>
+                    <div className="text-gray-600">Teilnehmer: {displayStudentName(caseToDelete)}</div>
+                    <div className="text-gray-600">Status: {(STATUS_LABELS[caseToDelete.status]?.label) || caseToDelete.status}</div>
+                    {caseToDelete.assigned_dozent_id && (
+                      <div className="text-gray-600">Zuständig: {caseToDelete.dozent?.full_name || caseToDelete.dozent?.email || 'Unbekannt'}</div>
+                    )}
+                  </div>
+                  <p className="text-xs text-red-600">
+                    Alle zugehörigen Daten (Einreichungen, Benachrichtigungen, Bewertungen und hochgeladene Dateien) werden ebenfalls gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.
+                  </p>
+                  {isCaseCreditUsed(caseToDelete) && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
+                      <label className="flex items-start gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={refundCredit}
+                          onChange={(e) => setRefundCredit(e.target.checked)}
+                          disabled={deletingCase}
+                          className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                        <div className="text-sm">
+                          <span className="font-medium text-gray-900">Credit an Teilnehmer zurückerstatten</span>
+                          <p className="text-xs text-gray-600 mt-0.5">
+                            {refundCredit
+                              ? 'Der für diese Anfrage verbrauchte Credit wird dem Teilnehmerkonto wieder gutgeschrieben.'
+                              : 'Der Credit wird NICHT zurückerstattet. Der Teilnehmer verliert den Credit unwiderruflich.'}
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button
+                  type="button"
+                  onClick={() => handleDeleteCase(caseToDelete)}
+                  disabled={deletingCase}
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-600 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                >
+                  {deletingCase ? 'Wird gelöscht...' : 'Endgültig löschen'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setCaseToDelete(null); setRefundCredit(true); }}
+                  disabled={deletingCase}
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm disabled:opacity-50"
                 >
                   Abbrechen
                 </button>
