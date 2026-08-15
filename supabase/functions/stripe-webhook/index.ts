@@ -242,6 +242,47 @@ async function sendWelcomeEmail(email: string, fullName: string): Promise<void> 
   }
 }
 
+async function sendOrderConfirmation(
+  email: string,
+  fullName: string,
+  packageName: string,
+  caseStudyCount: number,
+  totalCents: number,
+  checkoutSessionId: string,
+  expiresAt: string | null | undefined,
+  isNewUser: boolean
+): Promise<void> {
+  try {
+    const response = await fetch(
+      `${Deno.env.get('SUPABASE_URL')}/functions/v1/vb-order-confirmation`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY') ?? ''}`,
+        },
+        body: JSON.stringify({
+          email,
+          fullName,
+          packageName,
+          caseStudyCount,
+          totalCents,
+          checkoutSessionId,
+          expiresAt,
+          isNewUser,
+        }),
+      }
+    );
+    if (!response.ok) {
+      console.warn(`⚠️ vb-order-confirmation fehlgeschlagen (Status ${response.status})`);
+    } else {
+      console.log(`📧 Bestellbestätigung an ${email} versendet`);
+    }
+  } catch (error) {
+    console.warn('⚠️ vb-order-confirmation Exception:', error);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -355,9 +396,30 @@ Deno.serve(async (req) => {
     // User anlegen / finden
     const { profileId, isNewUser, fullName } = await ensureUser(supabaseAdmin, email, session);
 
-    // stripe_customer_id am Profil speichern
-    const customerId =
+    // Stripe Customer bestimmen (Session-Customer oder per E-Mail suchen/anlegen)
+    let customerId: string | null =
       typeof session.customer === 'string' ? session.customer : (session.customer?.id ?? null);
+
+    if (!customerId) {
+      // Fallback: z. B. Payment Links ohne customer_creation liefern keine Session-Customer
+      const customers = await stripeFetch(`/v1/customers?limit=10&email=${encodeURIComponent(email)}`);
+      const match = (customers?.data ?? []).find((c: any) => (c.email ?? '').toLowerCase() === email);
+      if (match) {
+        customerId = match.id;
+      } else {
+        const created = await stripeFetch('/v1/customers', {
+          method: 'POST',
+          body: new URLSearchParams({
+            email,
+            'metadata[source]': 'stripe-webhook',
+          }),
+        });
+        customerId = created.id;
+        console.log(`🆕 [stripe-webhook] Stripe Customer nachträglich angelegt: ${customerId} für ${email}`);
+      }
+    }
+
+    // stripe_customer_id am Profil speichern
     if (customerId) {
       const { data: freshProfile } = await supabaseAdmin
         .from('profiles')
@@ -401,6 +463,18 @@ Deno.serve(async (req) => {
       console.warn(`⚠️ Neukunden-Angebot für ${email} bereits gekauft – keine weiteren Credits gutgeschrieben`);
     } else if (purchaseResult?.inserted) {
       console.log(`✅ ${caseStudyCount} Credits für ${email} (Profil ${profileId}) verbucht, Ablauf ${purchaseResult.expires_at}`);
+
+      // Bestellbestätigung senden (nur bei erfolgreich verbuchten Käufen)
+      await sendOrderConfirmation(
+        email,
+        fullName,
+        packageName ?? 'Video-Klausurenkorrektur',
+        caseStudyCount,
+        totalCents,
+        session.id,
+        purchaseResult.expires_at,
+        isNewUser
+      );
     } else {
       console.log(`ℹ️ Session ${sessionId} bereits verarbeitet (idempotent übersprungen)`);
     }

@@ -30,7 +30,8 @@ Betriebsanleitung für die Stripe-Anbindung (Checkout + Webhook + Credit-Gutschr
      (Status `completed`, 18 Monate Gültigkeit, idempotent per Checkout-Session-ID,
      Neukunden-Guard gegen Doppelkauf)
    - aktualisiert `profiles.account_credits`
-   - sendet die Willkommens-E-Mail an neue User
+   - sendet die Willkommens-E-Mail an neue User und eine Bestellbestätigung
+     (`vb-order-confirmation`, Mailgun) bei jedem verbuchten Kauf
 
 ## Pakete / Stripe Preise (Stand 2026-08-15)
 
