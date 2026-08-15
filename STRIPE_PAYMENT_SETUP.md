@@ -83,6 +83,17 @@ supabase functions deploy stripe-webhook   --no-verify-jwt --project-ref gkkvelo
 `--no-verify-jwt` ist wichtig: Stripe sendet keine Auth-Header an den Webhook,
 und Gäste besitzen kein JWT für `stripe-checkout`.
 
+## Payment Links (ohne Login)
+
+| Angebot | Link |
+|---|---|
+| Neukunden-Angebot (50 €) | **https://book.stripe.com/6oUfZheS8ayF5VbgGo8Vi0l** (`plink_1U4eL5IeHKQHUuvsdE1ga6ld`) |
+
+Hinweise: `customer_creation=always` + Rabattcodes aktiv. Der frühere Link
+(`plink_1U4gMfIeHKQHUuvskrk85FVa`, buy.stripe.com) ist deaktiviert.
+Der Webhook verarbeitet Payment-Link-Käufe identisch (User-Anlage, Credits,
+Bestellbestätigung); fehlende Stripe Customers werden automatisch nachgepflegt.
+
 ## Promo-Codes
 
 | Code | Rabatt | Gültigkeit | Stripe-Promo-Code | Coupon |
