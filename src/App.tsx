@@ -133,7 +133,9 @@ function App() {
           {/* VB teilnehmer pages: any authenticated user can access (the VB
               components themselves check videobesprechung role internally) */}
           <Route path="/klausurenbesprechung" element={<RoleGuard requireAuthOnly><VbLayout><VbLandingRedirect /></VbLayout></RoleGuard>} />
-          <Route path="/klausurenbesprechung/pakete" element={<RoleGuard requireAuthOnly><VbLayout><VbPackagesPage /></VbLayout></RoleGuard>} />
+          {/* Pakete-Seite ist öffentlich: Neukunden kaufen ohne Login, der
+              User wird nach Zahlung im stripe-webhook automatisch angelegt */}
+          <Route path="/klausurenbesprechung/pakete" element={<VbLayout><VbPackagesPage /></VbLayout>} />
           <Route path="/klausurenbesprechung/dashboard" element={<RoleGuard requireAuthOnly><VbLayout><VbCaseStudyDashboard /></VbLayout></RoleGuard>} />
           <Route path="/klausurenbesprechung/sachverhalt-anfordern" element={<RoleGuard requireAuthOnly><VbLayout><VbCaseStudyRequest /></VbLayout></RoleGuard>} />
           <Route path="/klausurenbesprechung/ergebnisse" element={<RoleGuard requireAuthOnly><VbLayout><VbResultsPage /></VbLayout></RoleGuard>} />

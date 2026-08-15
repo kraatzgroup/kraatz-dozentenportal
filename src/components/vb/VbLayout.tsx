@@ -9,12 +9,15 @@ interface VbLayoutProps {
 }
 
 export const VbLayout: React.FC<VbLayoutProps> = ({ children, fullscreen = false }) => {
+  const user = useAuthStore(state => state.user);
   const additionalRoles = useAuthStore(state => state.additionalRoles);
   const isAdmin = useAuthStore(state => state.isAdmin);
 
-  // Users tagged with the 'videobesprechung' (student) or 'videobesprechung_dozent'
-  // (corrector) role, or admins, may access VB pages.
+  // Gäste (nicht eingeloggt) dürfen die öffentliche Paket-/Checkout-Seite
+  // sehen. Eingeloggte User benötigen die Rolle 'videobesprechung'
+  // (Teilnehmer) bzw. 'videobesprechung_dozent' (Korrektor) oder Admin.
   const hasAccess =
+    !user ||
     isAdmin ||
     additionalRoles?.includes('videobesprechung') ||
     additionalRoles?.includes('videobesprechung_dozent');
