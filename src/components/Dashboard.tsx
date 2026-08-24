@@ -16,7 +16,7 @@ import { ParticipantHoursSection } from './ParticipantHoursSection';
 import { SecondExamHoursSection } from './SecondExamHoursSection';
 import { TeilnehmerManagement } from './TeilnehmerManagement';
 import { InvoiceManagement } from './InvoiceManagement';
-import { AvailabilitySection } from './AvailabilitySection';
+import { AbsenceCalendar } from './AbsenceCalendar';
 import { useSalesStore } from '../store/salesStore';
 import { DozentenDashboard } from './DozentenDashboard';
 
@@ -104,6 +104,20 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const [showBundeslaenderModal, setShowBundeslaenderModal] = useState(false);
   const [selectedBundeslaender, setSelectedBundeslaender] = useState<string[]>([]);
   const [showActivityDropdown, setShowActivityDropdown] = useState(false);
+
+  // Lock background scroll while the availability modal is open
+  useEffect(() => {
+    if (showAvailabilityPopup) {
+      const prevBody = document.body.style.overflow;
+      const prevHtml = document.documentElement.style.overflow;
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevBody;
+        document.documentElement.style.overflow = prevHtml;
+      };
+    }
+  }, [showAvailabilityPopup]);
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(false);
   const [dismissedActivityIds, setDismissedActivityIds] = useState<Set<string>>(() => {
@@ -528,7 +542,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
     fetchMonthlySummary(undefined, selectedYear, selectedMonth);
   }, [user, selectedMonth, selectedYear, fetchMonthlySummary]);
 
-  // Fetch current month availability
+  // Fetch current month availability + current absence
   useEffect(() => {
     const fetchCurrentAvailability = async () => {
       try {
@@ -537,7 +551,22 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
         
         const currentMonth = new Date().getMonth() + 1;
         const currentYear = new Date().getFullYear();
-        
+        const todayStr = new Date().toISOString().slice(0, 10);
+
+        // Check whether the dozent is currently absent (vacation etc.)
+        const { data: absData, error: absError } = await supabase
+          .from('dozent_absences')
+          .select('id, end_date')
+          .eq('dozent_id', user.id)
+          .lte('start_date', todayStr)
+          .gte('end_date', todayStr)
+          .maybeSingle();
+
+        if (!absError && absData) {
+          setCurrentAvailability({ status: 'absent', notes: `Im Urlaub bis ${absData.end_date}` });
+          return;
+        }
+
         const { data, error } = await supabase
           .from('dozent_availability')
           .select('capacity_status, notes')
@@ -548,6 +577,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
         
         if (!error && data) {
           setCurrentAvailability({ status: data.capacity_status, notes: data.notes });
+        } else {
+          setCurrentAvailability({ status: 'available' });
         }
       } catch (error) {
         console.error('Error fetching availability:', error);
@@ -994,7 +1025,9 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
               <button
                 onClick={() => setShowAvailabilityPopup(true)}
                 className={`inline-flex items-center px-2 sm:px-3 py-1.5 rounded-full text-xs font-medium border transition cursor-pointer ${
-                  currentAvailability?.status === 'available' 
+                  currentAvailability?.status === 'absent'
+                    ? 'bg-red-100 text-red-800 border-red-300 hover:bg-red-200'
+                    : currentAvailability?.status === 'available' 
                     ? 'bg-green-100 text-green-800 border-green-300 hover:bg-green-200'
                     : currentAvailability?.status === 'limited'
                     ? 'bg-yellow-100 text-yellow-800 border-yellow-300 hover:bg-yellow-200'
@@ -1006,7 +1039,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
               >
                 <Calendar className="h-3.5 w-3.5 mr-1" />
                 <span className="hidden sm:inline">
-                  {currentAvailability?.status === 'available' ? 'Verfügbar' 
+                  {currentAvailability?.status === 'absent' ? 'Im Urlaub'
+                    : currentAvailability?.status === 'available' ? 'Verfügbar' 
                     : currentAvailability?.status === 'limited' ? 'Begrenzt'
                     : currentAvailability?.status === 'full' ? 'Ausgelastet'
                     : 'Verfügbarkeit'}
@@ -1154,7 +1188,9 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                     setMobileMenuOpen(false);
                   }}
                   className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium ${
-                    currentAvailability?.status === 'available' 
+                    currentAvailability?.status === 'absent'
+                      ? 'bg-red-100 text-red-800'
+                      : currentAvailability?.status === 'available' 
                       ? 'bg-green-100 text-green-800'
                       : currentAvailability?.status === 'limited'
                       ? 'bg-yellow-100 text-yellow-800'
@@ -1164,7 +1200,8 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   }`}
                 >
                   <Calendar className="h-4 w-4 inline mr-2" />
-                  {currentAvailability?.status === 'available' ? 'Verfügbar' 
+                  {currentAvailability?.status === 'absent' ? 'Im Urlaub'
+                    : currentAvailability?.status === 'available' ? 'Verfügbar' 
                     : currentAvailability?.status === 'limited' ? 'Begrenzt'
                     : currentAvailability?.status === 'full' ? 'Ausgelastet'
                     : 'Verfügbarkeit'}
@@ -1437,7 +1474,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   onShowActivityDialog={() => setShowActivityTypeDialog(true)}
                 />
               ) : isVerfuegbarkeitFolder ? (
-                <AvailabilitySection isAdmin={canManageAll} />
+                <AbsenceCalendar isAdmin={canManageAll} />
               ) : isProbestundenFolder ? (
                 <div className="bg-white shadow overflow-hidden sm:rounded-lg">
                   <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
@@ -1791,19 +1828,24 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       {/* Availability Popup */}
       {showAvailabilityPopup && (
         <div className="fixed z-50 inset-0 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowAvailabilityPopup(false)}>
+          <div className="flex items-center justify-center min-h-screen p-4 text-center">
+            <div
+              className="fixed inset-0 transition-opacity"
+              aria-hidden="true"
+              onClick={() => setShowAvailabilityPopup(false)}
+              onTouchMove={(e) => e.preventDefault()}
+            >
               <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
             </div>
-            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full relative">
+            <div className="inline-block bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:max-w-4xl sm:w-full relative max-h-[90vh] flex flex-col">
               <button
                 onClick={() => setShowAvailabilityPopup(false)}
                 className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 focus:outline-none z-10"
               >
                 <X className="h-6 w-6" />
               </button>
-              <div className="bg-white">
-                <AvailabilitySection 
+              <div className="bg-white overflow-y-auto">
+                <AbsenceCalendar
                   isAdmin={false}
                   onAvailabilityChange={(status) => setCurrentAvailability({ status })}
                 />

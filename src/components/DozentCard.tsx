@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { FolderIcon, Edit2, Mail, Phone, MapPin, X, GraduationCap, Scale, CheckCircle, AlertCircle, XCircle, CreditCard } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { ProfilePicture } from './ProfilePicture';
-import { AvailabilitySection } from './AvailabilitySection';
+import { AbsenceCalendar } from './AbsenceCalendar';
 
 interface DozentCardProps {
   dozent: {
@@ -58,6 +58,22 @@ export function DozentCard({ dozent, userRole, onEdit, onFolderClick, preloadedF
 
   const fetchCurrentAvailability = async () => {
     try {
+      const todayStr = new Date().toISOString().slice(0, 10);
+
+      // Absence takes precedence over monthly capacity status
+      const { data: absData, error: absError } = await supabase
+        .from('dozent_absences')
+        .select('id, end_date')
+        .eq('dozent_id', dozent.id)
+        .lte('start_date', todayStr)
+        .gte('end_date', todayStr)
+        .maybeSingle();
+
+      if (!absError && absData) {
+        setCurrentAvailability({ status: 'absent', notes: `Im Urlaub bis ${absData.end_date}` });
+        return;
+      }
+
       const currentMonth = new Date().getMonth() + 1;
       const currentYear = new Date().getFullYear();
       
@@ -263,7 +279,9 @@ export function DozentCard({ dozent, userRole, onEdit, onFolderClick, preloadedF
                 <span>Verfügbarkeit</span>
               </div>
               <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${
-                currentAvailability?.status === 'available' 
+                currentAvailability?.status === 'absent'
+                  ? 'bg-red-100 text-red-800 border-red-300'
+                  : currentAvailability?.status === 'available' 
                   ? 'bg-green-100 text-green-800 border-green-300'
                   : currentAvailability?.status === 'limited'
                   ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
@@ -271,11 +289,13 @@ export function DozentCard({ dozent, userRole, onEdit, onFolderClick, preloadedF
                   ? 'bg-red-100 text-red-800 border-red-300'
                   : 'bg-gray-100 text-gray-600 border-gray-300'
               }`}>
+                {currentAvailability?.status === 'absent' && <XCircle className="h-3 w-3" />}
                 {currentAvailability?.status === 'available' && <CheckCircle className="h-3 w-3" />}
                 {currentAvailability?.status === 'limited' && <AlertCircle className="h-3 w-3" />}
                 {currentAvailability?.status === 'full' && <XCircle className="h-3 w-3" />}
                 <span>
-                  {currentAvailability?.status === 'available' ? 'Verfügbar' 
+                  {currentAvailability?.status === 'absent' ? 'Im Urlaub'
+                    : currentAvailability?.status === 'available' ? 'Verfügbar' 
                     : currentAvailability?.status === 'limited' ? 'Begrenzt'
                     : currentAvailability?.status === 'full' ? 'Ausgelastet'
                     : 'Nicht angegeben'}
@@ -436,7 +456,7 @@ export function DozentCard({ dozent, userRole, onEdit, onFolderClick, preloadedF
                 <div className="px-4 py-3 border-b border-gray-200">
                   <h3 className="text-lg font-medium text-gray-900">Verfügbarkeit - {dozent.full_name}</h3>
                 </div>
-                <AvailabilitySection 
+                <AbsenceCalendar
                   dozentId={dozent.id}
                   isAdmin={true}
                 />

@@ -4,25 +4,36 @@ import { useAuthStore } from '../store/authStore';
 import { useMessageStore } from '../store/messageStore';
 import { supabase } from '../lib/supabase';
 import { Calendar, Bell, MessageSquare, Settings, LogOut, Menu, X, Upload, FileText, CheckCircle, XCircle } from 'lucide-react';
+import { AbsenceCalendar } from './AbsenceCalendar';
 
 export const DozentenHeader: React.FC = () => {
   const user = useAuthStore(state => state.user);
   const additionalRoles = useAuthStore(state => state.additionalRoles);
-  const vbLegalAreas = useAuthStore(state => state.vbLegalAreas);
   const messages = useMessageStore(state => state.messages);
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showActivityDropdown, setShowActivityDropdown] = useState(false);
   const [unreadActivities, setUnreadActivities] = useState<any[]>([]);
   const [vbAvailable, setVbAvailable] = useState<boolean | null>(null);
-  const [isVbSpringer, setIsVbSpringer] = useState(false);
-  const [isTogglingAvailability, setIsTogglingAvailability] = useState(false);
-  const [showAvailabilityConfirm, setShowAvailabilityConfirm] = useState(false);
-  const [openCases, setOpenCases] = useState<{ requests: string[]; corrections: string[]; videos: string[] } | null>(null);
+  const [showAvailabilityPopup, setShowAvailabilityPopup] = useState(false);
 
   const isVbDozent = additionalRoles?.includes('videobesprechung_dozent');
 
   const unreadMessages = messages.filter(message => message.read_at === null);
+
+  // Lock background scroll while the availability modal is open
+  useEffect(() => {
+    if (showAvailabilityPopup) {
+      const prevBody = document.body.style.overflow;
+      const prevHtml = document.documentElement.style.overflow;
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevBody;
+        document.documentElement.style.overflow = prevHtml;
+      };
+    }
+  }, [showAvailabilityPopup]);
 
   useEffect(() => {
     if (!user) return;
@@ -101,118 +112,26 @@ export const DozentenHeader: React.FC = () => {
       if (!user || !isVbDozent) return;
       const { data } = await supabase
         .from('profiles')
-        .select('vb_available, vb_springer')
+        .select('vb_available')
         .eq('id', user.id)
         .single();
       setVbAvailable(data?.vb_available !== false);
-      setIsVbSpringer(data?.vb_springer === true);
+
+      // Check if currently absent (vacation) — overrides vb_available for the badge
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const { data: absData } = await supabase
+        .from('dozent_absences')
+        .select('id, end_date')
+        .eq('dozent_id', user.id)
+        .lte('start_date', todayStr)
+        .gte('end_date', todayStr)
+        .maybeSingle();
+      if (absData) {
+        setVbAvailable(false);
+      }
     };
     fetchVbAvailability();
   }, [user?.id, isVbDozent]);
-
-  const handleOpenAvailabilityConfirm = async () => {
-    setOpenCases(null);
-    setShowAvailabilityConfirm(true);
-    // Only relevant when switching to "Nicht verfügbar": check for open cases
-    if (!user || vbAvailable !== true) return;
-    try {
-      const areas = vbLegalAreas || [];
-      let requestCases: any[] = [];
-      if (areas.length > 0) {
-        const { data } = await supabase
-          .from('vb_case_study_requests')
-          .select('id, case_study_number, legal_area, sub_area, focus_area, profile_id')
-          .eq('status', 'requested')
-          .in('legal_area', areas);
-        requestCases = data || [];
-      }
-      const { data: assigned } = await supabase
-        .from('vb_case_study_requests')
-        .select('id, case_study_number, legal_area, sub_area, focus_area, profile_id, status, video_correction_url')
-        .eq('assigned_dozent_id', user.id)
-        .in('status', ['submitted', 'under_review', 'corrected']);
-      const correctionCases = (assigned || []).filter(c => c.status === 'submitted' || c.status === 'under_review');
-      const videoCases = (assigned || []).filter(c => c.status === 'corrected' && !c.video_correction_url);
-
-      // Resolve student names
-      const profileIds = [...new Set([...requestCases, ...correctionCases, ...videoCases].map(c => c.profile_id).filter(Boolean))];
-      const nameMap = new Map<string, string>();
-      if (profileIds.length > 0) {
-        const { data: students } = await supabase
-          .from('profiles')
-          .select('id, full_name, email')
-          .in('id', profileIds);
-        (students || []).forEach(s => nameMap.set(s.id, s.full_name || s.email));
-      }
-
-      const describeCase = (c: any) => {
-        const parts = [c.legal_area, c.sub_area].filter(Boolean).join(' / ');
-        const student = nameMap.get(c.profile_id);
-        return `Klausur #${c.case_study_number ?? '?'} – ${parts}${c.focus_area ? `, ${c.focus_area}` : ''}${student ? ` (${student})` : ''}`;
-      };
-
-      setOpenCases({
-        requests: requestCases.map(describeCase),
-        corrections: correctionCases.map(describeCase),
-        videos: videoCases.map(describeCase)
-      });
-    } catch (err) {
-      console.error('Error checking open VB cases:', err);
-    }
-  };
-
-  const handleToggleVbAvailability = async () => {
-    if (!user || vbAvailable === null || isTogglingAvailability) return;
-    const newValue = !vbAvailable;
-    setIsTogglingAvailability(true);
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ vb_available: newValue })
-        .eq('id', user.id);
-      if (error) throw error;
-      setVbAvailable(newValue);
-      // Notify admin when an area becomes completely uncovered
-      // (regular dozent AND springer both unavailable)
-      if (newValue === false) {
-        try {
-          console.log('📧 DozentenHeader: Invoking vb-notify-admin-uncovered...');
-          const { error: adminUncoveredError } = await supabase.functions.invoke('vb-notify-admin-uncovered', {
-            body: { dozentId: user.id }
-          });
-          if (adminUncoveredError) {
-            console.error('❌ DozentenHeader: Admin uncovered notification failed:', adminUncoveredError);
-          } else {
-            console.log('✅ DozentenHeader: Admin uncovered notification succeeded');
-          }
-        } catch (e) {
-          console.error('❌ DozentenHeader: Admin uncovered notification exception:', e);
-        }
-      }
-      // Notify springer about handed-over cases when a regular dozent goes unavailable
-      if (newValue === false && !isVbSpringer) {
-        try {
-          console.log('📧 DozentenHeader: Invoking vb-notify-springer-handover...');
-          const { data: handoverResult, error: handoverError } = await supabase.functions.invoke('vb-notify-springer-handover', {
-            body: { dozentId: user.id }
-          });
-          if (handoverError) {
-            console.error('❌ DozentenHeader: Springer handover notification failed:', handoverError);
-          } else {
-            console.log('✅ DozentenHeader: Springer handover notification result:', handoverResult);
-          }
-        } catch (e) {
-          console.error('❌ DozentenHeader: Springer handover notification exception:', e);
-        }
-      }
-      // Reload the page so all views reflect the new availability
-      window.location.reload();
-    } catch (err) {
-      console.error('Error toggling VB availability:', err);
-      setIsTogglingAvailability(false);
-      setShowAvailabilityConfirm(false);
-    }
-  };
 
   const handleSignOut = async () => {
     const { signOut } = useAuthStore.getState();
@@ -241,21 +160,21 @@ export const DozentenHeader: React.FC = () => {
           <div className="hidden md:flex items-center space-x-2 sm:space-x-4">
             {isVbDozent ? (
               <button
-                onClick={handleOpenAvailabilityConfirm}
-                disabled={vbAvailable === null || isTogglingAvailability}
+                onClick={() => setShowAvailabilityPopup(true)}
+                disabled={vbAvailable === null}
                 className={`inline-flex items-center px-2 sm:px-3 py-1.5 rounded-full text-xs font-medium border transition cursor-pointer disabled:opacity-60 ${
                   vbAvailable === false
                     ? 'bg-red-100 text-red-800 border-red-300 hover:bg-red-200'
                     : 'bg-green-100 text-green-800 border-green-300 hover:bg-green-200'
                 }`}
-                title="Verfügbarkeit für Videoklausurenkorrektur umschalten"
+                title="Verfügbarkeit bearbeiten"
               >
                 {vbAvailable === false ? (
                   <XCircle className="h-3.5 w-3.5 mr-1" />
                 ) : (
                   <CheckCircle className="h-3.5 w-3.5 mr-1" />
                 )}
-                <span className="hidden sm:inline">{vbAvailable === false ? 'Nicht verfügbar' : 'Verfügbar'}</span>
+                <span className="hidden sm:inline">{vbAvailable === false ? 'Im Urlaub' : 'Verfügbar'}</span>
               </button>
             ) : (
               <button
@@ -308,14 +227,14 @@ export const DozentenHeader: React.FC = () => {
           <div className="md:hidden flex items-center space-x-2">
             {isVbDozent && (
               <button
-                onClick={handleOpenAvailabilityConfirm}
-                disabled={vbAvailable === null || isTogglingAvailability}
+                onClick={() => setShowAvailabilityPopup(true)}
+                disabled={vbAvailable === null}
                 className={`inline-flex items-center justify-center p-2 rounded-full border transition cursor-pointer disabled:opacity-60 ${
                   vbAvailable === false
                     ? 'bg-red-100 text-red-800 border-red-300 hover:bg-red-200'
                     : 'bg-green-100 text-green-800 border-green-300 hover:bg-green-200'
                 }`}
-                title="Verfügbarkeit für Videoklausurenkorrektur umschalten"
+                title="Verfügbarkeit bearbeiten"
               >
                 {vbAvailable === false ? (
                   <XCircle className="h-4 w-4" />
@@ -479,108 +398,34 @@ export const DozentenHeader: React.FC = () => {
         )}
       </div>
 
-      {/* VB Availability Confirmation Modal */}
-      {showAvailabilityConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => !isTogglingAvailability && setShowAvailabilityConfirm(false)}
-          />
-          <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
-            <div className="flex items-center mb-4">
-              {vbAvailable ? (
-                <XCircle className="h-6 w-6 text-red-500 mr-2 flex-shrink-0" />
-              ) : (
-                <CheckCircle className="h-6 w-6 text-green-500 mr-2 flex-shrink-0" />
-              )}
-              <h3 className="text-lg font-medium text-gray-900">
-                {vbAvailable ? 'Auf "Nicht verfügbar" stellen?' : 'Auf "Verfügbar" stellen?'}
-              </h3>
+      {/* Availability Calendar Modal (shared with regular dozents) */}
+      {showAvailabilityPopup && (
+        <div className="fixed z-50 inset-0 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen p-4 text-center">
+            <div
+              className="fixed inset-0 transition-opacity"
+              aria-hidden="true"
+              onClick={() => setShowAvailabilityPopup(false)}
+              onTouchMove={(e) => e.preventDefault()}
+            >
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
             </div>
-            {vbAvailable ? (
-              <div className="text-sm text-gray-600 space-y-2 mb-6">
-                <p>Wenn Sie sich auf <strong>Nicht verfügbar</strong> stellen:</p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>
-                    {isVbSpringer
-                      ? 'Sie erhalten keine neuen Sachverhalt-Anfragen mehr, bis Sie sich wieder als verfügbar stellen.'
-                      : 'Neue Sachverhalt-Anfragen für die Videoklausurenkorrektur werden automatisch an den Springer-Dozenten weitergeleitet.'}
-                  </li>
-                  <li>Sie sehen keine neuen offenen Anfragen mehr in den Tabs „Anfragen" und „Materialien versendet".</li>
-                  <li>Bereits von Ihnen übernommene Klausuren bleiben bei Ihnen und können weiter bearbeitet werden.</li>
-                </ul>
-                {openCases && (openCases.requests.length > 0 || openCases.corrections.length > 0 || openCases.videos.length > 0) && (
-                  <div className="mt-3 p-3 bg-yellow-50 border border-yellow-300 rounded-md">
-                    <p className="font-medium text-yellow-800">⚠️ Vorsicht: Sie haben noch offene Fälle!</p>
-                    <ul className="list-disc pl-5 mt-1 space-y-1 text-yellow-800">
-                      {openCases.requests.length > 0 && (
-                        <li>
-                          {openCases.requests.length === 1 ? '1 offene Anfrage, für die noch ein Sachverhalt zugewiesen werden muss:' : `${openCases.requests.length} offene Anfragen, für die noch Sachverhalte zugewiesen werden müssen:`}
-                          <ul className="list-[circle] pl-5 mt-0.5 space-y-0.5">
-                            {openCases.requests.map((label, i) => <li key={i}>{label}</li>)}
-                          </ul>
-                        </li>
-                      )}
-                      {openCases.corrections.length > 0 && (
-                        <li>
-                          {openCases.corrections.length === 1 ? '1 eingereichte Klausur, die noch korrigiert werden muss:' : `${openCases.corrections.length} eingereichte Klausuren, die noch korrigiert werden müssen:`}
-                          <ul className="list-[circle] pl-5 mt-0.5 space-y-0.5">
-                            {openCases.corrections.map((label, i) => <li key={i}>{label}</li>)}
-                          </ul>
-                        </li>
-                      )}
-                      {openCases.videos.length > 0 && (
-                        <li>
-                          {openCases.videos.length === 1 ? '1 korrigierte Klausur, zu der noch ein Video bereitgestellt werden muss:' : `${openCases.videos.length} korrigierte Klausuren, zu denen noch Videos bereitgestellt werden müssen:`}
-                          <ul className="list-[circle] pl-5 mt-0.5 space-y-0.5">
-                            {openCases.videos.map((label, i) => <li key={i}>{label}</li>)}
-                          </ul>
-                        </li>
-                      )}
-                    </ul>
-                    <p className="mt-2 text-yellow-800">Bitte schließen Sie diese Fälle nach Möglichkeit ab, bevor Sie sich auf „Nicht verfügbar“ stellen.</p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-sm text-gray-600 space-y-2 mb-6">
-                <p>Wenn Sie sich auf <strong>Verfügbar</strong> stellen:</p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>
-                    {isVbSpringer
-                      ? 'Sie erhalten wieder Sachverhalt-Anfragen, sofern für ein Rechtsgebiet kein regulärer Dozent verfügbar ist.'
-                      : 'Sie erhalten wieder neue Sachverhalt-Anfragen für Ihre Rechtsgebiete (E-Mail und Benachrichtigung).'}
-                  </li>
-                  <li>Offene Anfragen werden Ihnen wieder in den Tabs „Anfragen" und „Materialien versendet" angezeigt.</li>
-                  <li>
-                    {isVbSpringer
-                      ? 'Reguläre Dozenten für Ihre Rechtsgebiete erhalten weiterhin bevorzugt die neuen Anfragen.'
-                      : 'Der Springer-Dozent erhält für Ihre Rechtsgebiete keine neuen Anfragen mehr.'}
-                  </li>
-                </ul>
-              </div>
-            )}
-            <div className="flex justify-end gap-3">
+            <div className="inline-block bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:max-w-4xl sm:w-full relative max-h-[90vh] flex flex-col">
               <button
-                onClick={() => setShowAvailabilityConfirm(false)}
-                disabled={isTogglingAvailability}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-60"
+                onClick={() => setShowAvailabilityPopup(false)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 focus:outline-none z-10"
               >
-                Abbrechen
+                <X className="h-6 w-6" />
               </button>
-              <button
-                onClick={handleToggleVbAvailability}
-                disabled={isTogglingAvailability}
-                className={`px-4 py-2 text-sm font-medium text-white rounded-md transition-colors disabled:opacity-60 ${
-                  vbAvailable ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
-                }`}
-              >
-                {isTogglingAvailability
-                  ? 'Wird gespeichert…'
-                  : vbAvailable
-                    ? 'Ja, auf "Nicht verfügbar" stellen'
-                    : 'Ja, auf "Verfügbar" stellen'}
-              </button>
+              <div className="bg-white overflow-y-auto">
+                <AbsenceCalendar
+                  isAdmin={false}
+                  hideMaxParticipants
+                  onAvailabilityChange={(status) => {
+                    setVbAvailable(status !== 'absent');
+                  }}
+                />
+              </div>
             </div>
           </div>
         </div>
