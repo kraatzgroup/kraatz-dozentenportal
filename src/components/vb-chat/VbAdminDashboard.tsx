@@ -40,6 +40,18 @@ interface VbTeilnehmer {
   openCases: number;
 }
 
+interface AbsenceRequest {
+  id: string;
+  dozent_id: string;
+  start_date: string;
+  end_date: string;
+  reason: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+  dozent_name: string;
+  dozent_email: string | null;
+}
+
 interface VbCaseRow {
   id: string;
   profile_id: string;
@@ -140,6 +152,8 @@ export const VbAdminDashboard: React.FC = () => {
   const [caseToDelete, setCaseToDelete] = useState<VbCaseRow | null>(null);
   const [deletingCase, setDeletingCase] = useState(false);
   const [refundCredit, setRefundCredit] = useState(true);
+  const [absenceRequests, setAbsenceRequests] = useState<AbsenceRequest[]>([]);
+  const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -294,6 +308,41 @@ export const VbAdminDashboard: React.FC = () => {
       rows.forEach(c => areas.add(c.legal_area));
       dozentenList.forEach(d => (d.vb_legal_areas || []).forEach(a => areas.add(a)));
       setAvailableLegalAreas(sortLegalAreas(Array.from(areas)));
+
+      // 6) Pending absence requests (short-notice, within 14-day buffer)
+      const { data: absReqData } = await supabase
+        .from('dozent_absence_requests')
+        .select('id, dozent_id, start_date, end_date, reason, status, created_at')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+
+      const absReqDozentIds = Array.from(new Set((absReqData || []).map((r: any) => r.dozent_id)));
+      let absReqDozentMap = new Map<string, { full_name: string | null; email: string | null }>();
+      if (absReqDozentIds.length > 0) {
+        const { data: absReqDozenten } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .in('id', absReqDozentIds);
+        (absReqDozenten || []).forEach(p => {
+          absReqDozentMap.set(p.id, { full_name: p.full_name, email: p.email });
+        });
+      }
+
+      const absRequests: AbsenceRequest[] = (absReqData || []).map((r: any) => {
+        const d = absReqDozentMap.get(r.dozent_id);
+        return {
+          id: r.id,
+          dozent_id: r.dozent_id,
+          start_date: r.start_date,
+          end_date: r.end_date,
+          reason: r.reason,
+          status: r.status,
+          created_at: r.created_at,
+          dozent_name: d?.full_name || d?.email || 'Unbekannt',
+          dozent_email: d?.email || null,
+        };
+      });
+      setAbsenceRequests(absRequests);
     } catch (err) {
       console.error('❌ VbAdminDashboard: Error fetching data:', err);
     } finally {
@@ -336,6 +385,45 @@ export const VbAdminDashboard: React.FC = () => {
       alert('Fehler beim Aktualisieren der Credits: ' + (err instanceof Error ? err.message : 'Unbekannt'));
     } finally {
       setAddingCredits(false);
+    }
+  };
+
+  const handleAbsenceRequest = async (req: AbsenceRequest, action: 'approved' | 'rejected') => {
+    setProcessingRequestId(req.id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from('dozent_absence_requests')
+        .update({
+          status: action,
+          reviewed_by: user?.id || null,
+          reviewed_at: new Date().toISOString(),
+        })
+        .eq('id', req.id);
+      if (error) throw error;
+
+      // If approved, create the actual absence record
+      if (action === 'approved') {
+        const { error: absError } = await supabase
+          .from('dozent_absences')
+          .insert({
+            dozent_id: req.dozent_id,
+            start_date: req.start_date,
+            end_date: req.end_date,
+            reason: req.reason || 'Kurzfristige Abwesenheit (genehmigt)',
+          });
+        if (absError) {
+          console.error('Error creating absence record:', absError);
+        }
+      }
+
+      // Remove from list
+      setAbsenceRequests(prev => prev.filter(r => r.id !== req.id));
+    } catch (err) {
+      console.error('Error processing absence request:', err);
+      alert('Fehler beim Bearbeiten der Anfrage');
+    } finally {
+      setProcessingRequestId(null);
     }
   };
 
@@ -569,6 +657,64 @@ export const VbAdminDashboard: React.FC = () => {
         <StatCard label="Abgeschlossen" value={totalCompleted} icon={<CheckCircle2 className="w-5 h-5" />} accent="text-green-600 bg-green-50" />
         <StatCard label="Verfügbare Credits (gesamt)" value={totalRemainingCredits} icon={<Package className="w-5 h-5" />} accent="text-primary bg-primary/10" />
       </div>
+
+      {/* Pending absence requests (short-notice) */}
+      {absenceRequests.length > 0 && (
+        <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 border-l-4 border-orange-400">
+          <div className="flex items-center gap-2 mb-4">
+            <Clock className="w-5 h-5 text-orange-500" />
+            <h2 className="text-lg font-semibold text-gray-900">Offene Abwesenheitsanfragen</h2>
+            <span className="ml-1 text-gray-400 text-sm">({absenceRequests.length})</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-500 border-b border-gray-200">
+                  <th className="py-2 pr-3 font-medium">Dozent</th>
+                  <th className="py-2 pr-3 font-medium">Zeitraum</th>
+                  <th className="py-2 pr-3 font-medium">Grund</th>
+                  <th className="py-2 pr-3 font-medium text-right">Aktion</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {absenceRequests.map(r => {
+                  const dateRange = r.start_date === r.end_date
+                    ? r.start_date
+                    : `${r.start_date} – ${r.end_date}`;
+                  return (
+                    <tr key={r.id} className="hover:bg-gray-50">
+                      <td className="py-2 pr-3">
+                        <div className="font-medium text-gray-900">{r.dozent_name}</div>
+                        {r.dozent_email && <div className="text-xs text-gray-500">{r.dozent_email}</div>}
+                      </td>
+                      <td className="py-2 pr-3 text-gray-700">{dateRange}</td>
+                      <td className="py-2 pr-3 text-gray-600">{r.reason || <span className="text-gray-400">–</span>}</td>
+                      <td className="py-2 pr-3 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => handleAbsenceRequest(r, 'approved')}
+                            disabled={processingRequestId === r.id}
+                            className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors disabled:opacity-60"
+                          >
+                            <CheckCircle2 className="w-3 h-3" /> Genehmigen
+                          </button>
+                          <button
+                            onClick={() => handleAbsenceRequest(r, 'rejected')}
+                            disabled={processingRequestId === r.id}
+                            className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:opacity-60"
+                          >
+                            <X className="w-3 h-3" /> Ablehnen
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Dozenten & Teilnehmer side-by-side */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">

@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Trash2,
   Users,
+  AlertCircle,
 } from 'lucide-react';
 import {
   format,
@@ -117,6 +118,16 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
   const [dragEnd, setDragEnd] = useState<Date | null>(null);
   const isDragging = dragStart !== null;
   const calendarRef = useRef<HTMLDivElement>(null);
+
+  // Short-notice request dialog (within 14-day buffer)
+  const [requestRange, setRequestRange] = useState<{ start: Date; end: Date } | null>(null);
+  const [requestReason, setRequestReason] = useState('');
+  const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
+
+  const isDateInBuffer = (date: Date) => {
+    const d = startOfDay(date);
+    return d >= startOfDay(today) && d < minBookableDate;
+  };
 
   // Build the day grid for the visible month (incl. leading/trailing days from neighbour weeks)
   const days = useMemo(() => {
@@ -252,9 +263,11 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
         const start = dateMin([dragStart, dragEnd]);
         const end = dateMax([dragStart, dragEnd]);
         // If the drag starts on an already-absent day, treat it as "erase"
-        // (overpainting red -> available again). Otherwise paint a new absence.
         if (isDateAbsent(start)) {
           void eraseAbsence(start, end);
+        } else if (isDateInBuffer(start)) {
+          // Within 14-day buffer -> open request dialog instead of direct save
+          setRequestRange({ start, end });
         } else {
           void saveAbsence(start, end);
         }
@@ -479,6 +492,43 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
     }
   };
 
+  const submitAbsenceRequest = async () => {
+    if (!requestRange) return;
+    setIsSubmittingRequest(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+      const targetDozentId = dozentIdRef.current || user.id;
+
+      const { data, error } = await supabase
+        .from('dozent_absence_requests')
+        .insert({
+          dozent_id: targetDozentId,
+          start_date: format(requestRange.start, 'yyyy-MM-dd'),
+          end_date: format(requestRange.end, 'yyyy-MM-dd'),
+          reason: requestReason || null,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Notify admin via edge function (fire and forget)
+      supabase.functions.invoke('notify-absence-request', {
+        body: { requestId: data.id },
+      }).catch((e) => console.error('Failed to notify admin:', e));
+
+      addToast('Anfrage eingereicht — Admin wird benachrichtigt', 'success');
+      setRequestRange(null);
+      setRequestReason('');
+    } catch (error) {
+      console.error('Error submitting absence request:', error);
+      addToast('Fehler beim Einreichen der Anfrage', 'error');
+    } finally {
+      setIsSubmittingRequest(false);
+    }
+  };
+
   const saveMaxParticipants = async (value: string) => {
     if (isAdmin) return;
     setMaxParticipants(value);
@@ -516,13 +566,14 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
 
   const handleDayMouseDown = (date: Date) => {
     if (isAdmin || isSaving) return;
-    if (isDateDisabled(date)) return;
+    // Block past days entirely; buffer days are draggable (open request dialog)
+    if (startOfDay(date) < startOfDay(today)) return;
     setDragStart(date);
     setDragEnd(date);
   };
   const handleDayMouseEnter = (date: Date) => {
     if (!isDragging) return;
-    if (isDateDisabled(date)) return;
+    if (startOfDay(date) < startOfDay(today)) return;
     setDragEnd(date);
   };
 
@@ -724,6 +775,60 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
           )}
         </div>
       </div>
+
+      {/* Short-notice absence request dialog (within 14-day buffer) */}
+      {requestRange && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => !isSubmittingRequest && setRequestRange(null)}
+          />
+          <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center mb-4">
+              <AlertCircle className="h-6 w-6 text-orange-500 mr-2 flex-shrink-0" />
+              <h3 className="text-lg font-medium text-gray-900">Abwesenheit beantragen</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Dieser Zeitraum liegt innerhalb der 14-Tage-Frist und muss vom Admin bestätigt werden.
+            </p>
+            <div className="bg-gray-50 rounded-md p-3 mb-4">
+              <p className="text-sm text-gray-700">
+                <strong>Zeitraum:</strong>{' '}
+                {format(requestRange.start, 'dd.MM.yyyy', { locale: de })}
+                {requestRange.start.getTime() !== requestRange.end.getTime() &&
+                  ` – ${format(requestRange.end, 'dd.MM.yyyy', { locale: de })}`}
+              </p>
+            </div>
+            <div className="mb-4">
+              <label className="block text-xs text-gray-500 mb-1">Grund (optional)</label>
+              <input
+                type="text"
+                value={requestReason}
+                onChange={(e) => setRequestReason(e.target.value)}
+                placeholder="z.B. Krankheit, familiäre Verpflichtung"
+                disabled={isSubmittingRequest}
+                className="w-full text-sm px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setRequestRange(null)}
+                disabled={isSubmittingRequest}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-60"
+              >
+                Abbrechen
+              </button>
+              <button
+                onClick={submitAbsenceRequest}
+                disabled={isSubmittingRequest}
+                className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-md transition-colors disabled:opacity-60"
+              >
+                {isSubmittingRequest ? 'Wird gesendet…' : 'Anfrage senden'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
