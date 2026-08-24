@@ -65,9 +65,29 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
   const dozentIdRef = useRef<string | undefined>(dozentId);
   dozentIdRef.current = dozentId;
 
+  const monthLabel = format(cursor, 'MMMM yyyy', { locale: de });
+  const today = new Date();
+
+  // 14-day buffer: absences can only be entered starting 14 days from today
+  const BUFFER_DAYS = 14;
+  const minBookableDate = (() => {
+    const d = startOfDay(today);
+    d.setDate(d.getDate() + BUFFER_DAYS);
+    return d;
+  })();
+  const isDateDisabled = (date: Date) => {
+    const d = startOfDay(date);
+    return d < minBookableDate;
+  };
+
   const navigate = useCallback((dir: 'prev' | 'next') => {
-    setCursor((c) => (dir === 'prev' ? subMonths(c, 1) : addMonths(c, 1)));
-  }, []);
+    setCursor((c) => {
+      const next = dir === 'prev' ? subMonths(c, 1) : addMonths(c, 1);
+      // Don't navigate to months entirely before the 14-day buffer
+      if (dir === 'prev' && endOfMonth(next) < minBookableDate) return c;
+      return next;
+    });
+  }, [minBookableDate]);
 
   // Wheel-driven month switching with cooldown so one gesture advances one month
   const handleCalendarWheel = (e: React.WheelEvent) => {
@@ -97,9 +117,6 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
   const [dragEnd, setDragEnd] = useState<Date | null>(null);
   const isDragging = dragStart !== null;
   const calendarRef = useRef<HTMLDivElement>(null);
-
-  const monthLabel = format(cursor, 'MMMM yyyy', { locale: de });
-  const today = new Date();
 
   // Build the day grid for the visible month (incl. leading/trailing days from neighbour weeks)
   const days = useMemo(() => {
@@ -499,11 +516,13 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
 
   const handleDayMouseDown = (date: Date) => {
     if (isAdmin || isSaving) return;
+    if (isDateDisabled(date)) return;
     setDragStart(date);
     setDragEnd(date);
   };
   const handleDayMouseEnter = (date: Date) => {
     if (!isDragging) return;
+    if (isDateDisabled(date)) return;
     setDragEnd(date);
   };
 
@@ -600,7 +619,8 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
               const isToday = isSameDay(date, today);
               const absent = isDateAbsent(date);
               const inDrag = isDateInDrag(date);
-              const isPast = startOfDay(date) < startOfDay(today);
+              const isInBuffer = isDateDisabled(date);
+              const disabled = isAdmin || isInBuffer;
 
               const base =
                 'relative h-12 sm:h-14 flex items-start justify-end p-1.5 text-sm rounded-md border transition-colors';
@@ -609,7 +629,7 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
               else if (inDrag) cls += 'bg-red-500 text-white border-red-500 ';
               else if (absent) cls += 'bg-red-100 text-red-800 border-red-300 ';
               else if (isToday) cls += 'bg-primary-50 text-primary border-primary ';
-              else if (isPast) cls += 'text-gray-400 bg-gray-50 ';
+              else if (isInBuffer) cls += 'text-gray-300 bg-gray-50 ';
               else cls += 'text-gray-700 hover:bg-gray-100 ';
 
               return (
@@ -628,7 +648,7 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
                     }
                   }}
                   data-day={format(date, 'yyyy-MM-dd')}
-                  className={`${base} ${cls} ${isAdmin || isSaving ? 'cursor-default' : 'cursor-crosshair'}`}
+                  className={`${base} ${cls} ${disabled ? 'cursor-default' : 'cursor-crosshair'}`}
                 >
                   <span className={isToday && !inDrag && !absent ? 'font-bold' : ''}>
                     {format(date, 'd')}
