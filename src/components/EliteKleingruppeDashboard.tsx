@@ -156,11 +156,9 @@ export function EliteKleingruppeDashboard() {
   const [teilnehmerStateLaw, setTeilnehmerStateLaw] = useState<string | null>(null);
   const [dozenten, setDozenten] = useState<{id: string; name: string; email: string; profile_picture_url: string | null; legal_areas?: string[]}[]>([]);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
-  const [isUploadingProfilePic, setIsUploadingProfilePic] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
   const [firstName, setFirstName] = useState<string>('');
   const [examDate, setExamDate] = useState<string | null>(null);
@@ -169,7 +167,6 @@ export function EliteKleingruppeDashboard() {
   const [tempExamDate, setTempExamDate] = useState('');
   const [courseTimes, setCourseTimes] = useState<CourseTime[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [showKlausurDetail, setShowKlausurDetail] = useState<Klausur | null>(null);
   const [showActivityDropdown, setShowActivityDropdown] = useState(false);
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(false);
@@ -350,9 +347,8 @@ export function EliteKleingruppeDashboard() {
 
   const fetchProfileData = async () => {
     if (!user) return;
-    const { data } = await supabase.from('profiles').select('profile_picture_url, full_name, exam_date, exam_start_date').eq('id', user.id).single();
+    const { data } = await supabase.from('profiles').select('full_name, exam_date, exam_start_date').eq('id', user.id).single();
     if (data) {
-      setProfilePictureUrl(data.profile_picture_url);
       if (data.full_name) {
         const nameParts = data.full_name.split(' ');
         setFirstName(nameParts[0]);
@@ -456,21 +452,6 @@ export function EliteKleingruppeDashboard() {
     const diffTime = exam.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;
-  };
-
-  const getExamProgress = () => {
-    if (!examDate || !examStartDate) return 0;
-    const exam = new Date(examDate);
-    const start = new Date(examStartDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const totalDays = Math.ceil((exam.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-    const elapsedDays = Math.ceil((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-    
-    if (totalDays <= 0) return 100;
-    const progress = Math.max(0, Math.min(100, (elapsedDays / totalDays) * 100));
-    return Math.round(progress);
   };
 
   const fetchDozenten = async () => {
@@ -895,43 +876,6 @@ export function EliteKleingruppeDashboard() {
     }
   };
 
-  const handleProfilePictureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-    
-    setIsUploadingProfilePic(true);
-    setSettingsMessage(null);
-    try {
-      const fileName = `${user.id}/profile.${file.name.split('.').pop()}`;
-      
-      const { error: uploadError } = await supabase.storage
-        .from('profile-pictures')
-        .upload(fileName, file, { 
-          upsert: true,
-          contentType: file.type
-        });
-      
-      if (uploadError) throw uploadError;
-      
-      const { data: urlData } = supabase.storage.from('profile-pictures').getPublicUrl(fileName);
-      
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ profile_picture_url: urlData.publicUrl })
-        .eq('id', user.id);
-      
-      if (updateError) throw updateError;
-      
-      setProfilePictureUrl(urlData.publicUrl);
-      setSettingsMessage({ type: 'success', text: 'Profilbild erfolgreich aktualisiert!' });
-    } catch (error) {
-      console.error('Error uploading profile picture:', error);
-      setSettingsMessage({ type: 'error', text: 'Fehler beim Hochladen des Profilbilds' });
-    } finally {
-      setIsUploadingProfilePic(false);
-    }
-  };
-
   const handlePasswordChange = async () => {
     if (!newPassword || !confirmPassword) {
       setSettingsMessage({ type: 'error', text: 'Bitte beide Passwortfelder ausfüllen' });
@@ -997,8 +941,10 @@ export function EliteKleingruppeDashboard() {
         .from('elite-kleingruppe')
         .getPublicUrl(filePath);
 
-      // Create klausur entry
-      const { error: insertError } = await supabase
+      // Create klausur entry. Use .select() to get the row back with the
+      // dozent_id that was auto-assigned by the BEFORE INSERT trigger
+      // (auto_assign_klausur_dozent).
+      const { data: insertedKlausur, error: insertError } = await supabase
         .from('elite_kleingruppe_klausuren')
         .insert({
           teilnehmer_id: teilnehmerId,
@@ -1008,12 +954,58 @@ export function EliteKleingruppeDashboard() {
           file_name: uploadFile.name,
           file_size: uploadFile.size,
           status: 'pending'
-        });
+        })
+        .select('id, dozent_id')
+        .single();
 
       if (insertError) throw insertError;
 
-      // Note: Dozent notification is handled by database trigger (notify_dozent_of_klausur via pg_net)
-      // Do NOT call klausur-notify from frontend to avoid duplicate emails
+      // Notify the assigned dozent via edge function (frontend-driven,
+      // same pattern as vb-notify-dozent-submission). The old DB trigger
+      // (notify_dozent_of_klausur) was removed because pg_net calls
+      // without an Authorization header were silently rejected with 401.
+      const assignedDozentId = insertedKlausur?.dozent_id;
+      if (assignedDozentId) {
+        try {
+          const { data: dozent } = await supabase
+            .from('profiles')
+            .select('email, full_name')
+            .eq('id', assignedDozentId)
+            .single();
+
+          if (dozent?.email) {
+            const dozentName = dozent.full_name || dozent.email;
+            const { data: teilnehmer } = await supabase
+              .from('teilnehmer')
+              .select('name, first_name, last_name')
+              .eq('id', teilnehmerId)
+              .single();
+            const teilnehmerName = teilnehmer?.name
+              || [teilnehmer?.first_name, teilnehmer?.last_name].filter(Boolean).join(' ')
+              || user?.email
+              || 'Teilnehmer';
+
+            const { error: notifyError } = await supabase.functions.invoke('klausur-notify', {
+              body: {
+                dozentEmail: dozent.email,
+                dozentName,
+                teilnehmerName,
+                klausurTitle: uploadTitle,
+                legalArea: uploadLegalArea,
+                dozentId: assignedDozentId,
+              },
+            });
+            if (notifyError) {
+              console.error('Error notifying dozent about klausur submission:', notifyError);
+            } else if (import.meta.env.DEV) {
+              console.log('Dozent notified about new klausur submission:', dozent.email);
+            }
+          }
+        } catch (notifyErr) {
+          // Notification failure must not break the upload flow
+          console.error('Failed to notify dozent about klausur submission:', notifyErr);
+        }
+      }
 
       // Reset form and refresh
       setShowUploadModal(false);

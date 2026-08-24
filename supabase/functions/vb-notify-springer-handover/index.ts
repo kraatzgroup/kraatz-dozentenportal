@@ -1,6 +1,7 @@
 console.log('🚀 vb-notify-springer-handover edge function loaded');
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { logNotification } from '../_shared/notification-log.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -289,10 +290,12 @@ Deno.serve(async (req) => {
 
       if (mailgunApiKey) {
         const mailgunUrl = `https://api.eu.mailgun.net/v3/${mailgunDomain}/messages`;
+        const emailSender = 'Kraatz Group Portal <postmaster@kraatz-group.de>';
+        const emailSubject = `Fälle an Sie übertragen: ${springerCases.length === 1 ? '1 offener Fall' : `${springerCases.length} offene Fälle`} (Videoklausurenkorrektur)`;
         const formData = new FormData();
-        formData.append('from', 'Kraatz Group Portal <postmaster@kraatz-group.de>');
+        formData.append('from', emailSender);
         formData.append('to', springer.email);
-        formData.append('subject', `Fälle an Sie übertragen: ${springerCases.length === 1 ? '1 offener Fall' : `${springerCases.length} offene Fälle`} (Videoklausurenkorrektur)`);
+        formData.append('subject', emailSubject);
         formData.append('html', emailHtml);
         formData.append('charset', 'utf-8');
 
@@ -303,11 +306,36 @@ Deno.serve(async (req) => {
             body: formData,
           });
           if (mailgunResponse.ok) {
+            const emailResult = await mailgunResponse.json();
             console.log(`✅ [${requestId}] Handover email sent to springer ${springer.email}`);
+            await logNotification({
+              edgeFunction: 'vb-notify-springer-handover',
+              supabaseAdmin,
+              recipientEmail: springer.email,
+              recipientName: springer.full_name,
+              subject: emailSubject,
+              sender: emailSender,
+              status: 'sent',
+              providerMessageId: emailResult?.id,
+              context: { dozentId, springerId: springer.id, caseCount: springerCases.length, uncoveredAreas },
+              payload: { dozentId },
+            });
             results.push({ springer: springer.email, cases: springerCases.length, emailSent: true });
           } else {
             const errorText = await mailgunResponse.text();
             console.error(`❌ [${requestId}] Mailgun error for ${springer.email}:`, errorText);
+            await logNotification({
+              edgeFunction: 'vb-notify-springer-handover',
+              supabaseAdmin,
+              recipientEmail: springer.email,
+              recipientName: springer.full_name,
+              subject: emailSubject,
+              sender: emailSender,
+              status: 'failed',
+              errorMessage: `Mailgun API error: ${mailgunResponse.status} - ${errorText}`,
+              context: { dozentId, springerId: springer.id, caseCount: springerCases.length, uncoveredAreas },
+              payload: { dozentId },
+            });
             results.push({ springer: springer.email, cases: springerCases.length, emailSent: false });
           }
         } catch (mailgunError) {

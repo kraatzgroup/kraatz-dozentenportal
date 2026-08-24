@@ -1,6 +1,7 @@
 console.log('🚀 vb-notify-dozent edge function loaded');
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { logNotification } from '../_shared/notification-log.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -176,10 +177,12 @@ Deno.serve(async (req) => {
       </div>`;
 
     const mailgunUrl = `https://api.eu.mailgun.net/v3/${mailgunDomain}/messages`;
+    const emailSubject = `Neuer Sachverhalt zur Korrektur: ${legalArea} - ${subArea}`;
+    const emailSender = 'Kraatz Group Portal <postmaster@kraatz-group.de>';
     const formData = new FormData();
-    formData.append('from', 'Kraatz Group Portal <postmaster@kraatz-group.de>');
+    formData.append('from', emailSender);
     formData.append('to', dozentEmail);
-    formData.append('subject', `Neuer Sachverhalt zur Korrektur: ${legalArea} - ${subArea}`);
+    formData.append('subject', emailSubject);
     formData.append('html', emailHtml);
     formData.append('charset', 'utf-8');
 
@@ -196,9 +199,33 @@ Deno.serve(async (req) => {
         if (mailgunResponse.ok) {
           const emailResult = await mailgunResponse.json();
           console.log(`✅ [${requestId}] Notification email sent successfully via Mailgun:`, emailResult);
+          await logNotification({
+            edgeFunction: 'vb-notify-dozent',
+            supabaseAdmin,
+            recipientEmail: dozentEmail,
+            recipientName: dozentName,
+            subject: emailSubject,
+            sender: emailSender,
+            status: 'sent',
+            providerMessageId: emailResult?.id,
+            context: { caseStudyId, legalArea, subArea, studentName },
+            payload: { dozentEmail, dozentName, studentName, legalArea, subArea, caseStudyId },
+          });
         } else {
           const errorText = await mailgunResponse.text();
           console.error(`❌ [${requestId}] Mailgun error:`, errorText);
+          await logNotification({
+            edgeFunction: 'vb-notify-dozent',
+            supabaseAdmin,
+            recipientEmail: dozentEmail,
+            recipientName: dozentName,
+            subject: emailSubject,
+            sender: emailSender,
+            status: 'failed',
+            errorMessage: `Mailgun API error: ${mailgunResponse.status} - ${errorText}`,
+            context: { caseStudyId, legalArea, subArea, studentName },
+            payload: { dozentEmail, dozentName, studentName, legalArea, subArea, caseStudyId },
+          });
         }
       } catch (mailgunError) {
         console.error(`❌ [${requestId}] Failed to send email:`, mailgunError);

@@ -1,6 +1,7 @@
 console.log('🚀 new-message-notify edge function loaded');
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { logNotification } from '../_shared/notification-log.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -190,10 +191,12 @@ Deno.serve(async (req) => {
       </div>`;
 
     const mailgunUrl = `https://api.eu.mailgun.net/v3/${mailgunDomain}/messages`;
+    const emailSubject = `Neue Nachricht von ${senderName} - Kraatz Group Portal`;
+    const emailSender = 'Kraatz Group Portal <postmaster@kraatz-group.de>';
     const formData = new FormData();
-    formData.append('from', 'Kraatz Group Portal <postmaster@kraatz-group.de>');
+    formData.append('from', emailSender);
     formData.append('to', recipientEmail);
-    formData.append('subject', `Neue Nachricht von ${senderName} - Kraatz Group Portal`);
+    formData.append('subject', emailSubject);
     formData.append('html', emailHtml);
     formData.append('charset', 'utf-8');
 
@@ -208,11 +211,36 @@ Deno.serve(async (req) => {
     if (!mailgunResponse.ok) {
       const errorText = await mailgunResponse.text();
       console.error(`❌ [${requestId}] Mailgun error:`, errorText);
+      await logNotification({
+        edgeFunction: 'new-message-notify',
+        supabaseAdmin,
+        recipientEmail,
+        recipientName,
+        subject: emailSubject,
+        sender: emailSender,
+        status: 'failed',
+        errorMessage: `Mailgun API error: ${mailgunResponse.status} - ${errorText}`,
+        context: { recipientId, senderName },
+        payload: { recipientEmail, recipientName, senderName, messageContent, recipientId },
+      });
       throw new Error(`Mailgun API error: ${mailgunResponse.status} - ${errorText}`);
     }
 
     const emailResult = await mailgunResponse.json();
     console.log(`✅ [${requestId}] Notification email sent successfully via Mailgun:`, emailResult);
+
+    await logNotification({
+      edgeFunction: 'new-message-notify',
+      supabaseAdmin,
+      recipientEmail,
+      recipientName,
+      subject: emailSubject,
+      sender: emailSender,
+      status: 'sent',
+      providerMessageId: emailResult?.id,
+      context: { recipientId, senderName },
+      payload: { recipientEmail, recipientName, senderName, messageContent, recipientId },
+    });
 
     const endTime = Date.now();
     console.log(`⏱️ [${requestId}] Function completed in ${endTime - startTime}ms`);

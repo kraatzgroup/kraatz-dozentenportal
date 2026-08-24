@@ -1,6 +1,9 @@
+/// <reference path="../deno.d.ts" />
+/// <reference path="../npm-imports.d.ts" />
 console.log('🚀 klausur-notify edge function loaded');
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { logNotification } from '../_shared/notification-log.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -198,10 +201,12 @@ Deno.serve(async (req) => {
       </div>`;
 
     const mailgunUrl = `https://api.eu.mailgun.net/v3/${mailgunDomain}/messages`;
+    const emailSubject = `Neue Klausur zur Korrektur: ${klausurTitle} (${legalArea})`;
+    const emailSender = 'Kraatz Group Portal <postmaster@kraatz-group.de>';
     const formData = new FormData();
-    formData.append('from', 'Kraatz Group Portal <postmaster@kraatz-group.de>');
+    formData.append('from', emailSender);
     formData.append('to', dozentEmail);
-    formData.append('subject', `Neue Klausur zur Korrektur: ${klausurTitle} (${legalArea})`);
+    formData.append('subject', emailSubject);
     formData.append('html', emailHtml);
     formData.append('charset', 'utf-8');
 
@@ -216,11 +221,36 @@ Deno.serve(async (req) => {
     if (!mailgunResponse.ok) {
       const errorText = await mailgunResponse.text();
       console.error(`❌ [${requestId}] Mailgun error:`, errorText);
+      await logNotification({
+        edgeFunction: 'klausur-notify',
+        supabaseAdmin,
+        recipientEmail: dozentEmail,
+        recipientName: dozentName,
+        subject: emailSubject,
+        sender: emailSender,
+        status: 'failed',
+        errorMessage: `Mailgun API error: ${mailgunResponse.status} - ${errorText}`,
+        context: { klausurTitle, legalArea, dozentId },
+        payload: { dozentEmail, dozentName, teilnehmerName, klausurTitle, legalArea, dozentId },
+      });
       throw new Error(`Mailgun API error: ${mailgunResponse.status} - ${errorText}`);
     }
 
     const emailResult = await mailgunResponse.json();
     console.log(`✅ [${requestId}] Notification email sent successfully via Mailgun:`, emailResult);
+
+    await logNotification({
+      edgeFunction: 'klausur-notify',
+      supabaseAdmin,
+      recipientEmail: dozentEmail,
+      recipientName: dozentName,
+      subject: emailSubject,
+      sender: emailSender,
+      status: 'sent',
+      providerMessageId: emailResult?.id,
+      context: { klausurTitle, legalArea, dozentId },
+      payload: { dozentEmail, dozentName, teilnehmerName, klausurTitle, legalArea, dozentId },
+    });
 
     const endTime = Date.now();
     console.log(`⏱️ [${requestId}] Function completed in ${endTime - startTime}ms`);

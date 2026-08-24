@@ -1,6 +1,7 @@
 console.log('🚀 group-message-notify edge function loaded');
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { logNotification } from '../_shared/notification-log.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -236,10 +237,12 @@ Deno.serve(async (req) => {
           </div>`;
 
         const mailgunUrl = `https://api.eu.mailgun.net/v3/${mailgunDomain}/messages`;
+        const emailSubject = `Neue Nachricht in ${groupName} - Kraatz Group Portal`;
+        const emailSender = 'Kraatz Group Portal <postmaster@kraatz-group.de>';
         const formData = new FormData();
-        formData.append('from', 'Kraatz Group Portal <postmaster@kraatz-group.de>');
+        formData.append('from', emailSender);
         formData.append('to', recipientEmail);
-        formData.append('subject', `Neue Nachricht in ${groupName} - Kraatz Group Portal`);
+        formData.append('subject', emailSubject);
         formData.append('html', emailHtml);
         formData.append('charset', 'utf-8');
 
@@ -254,12 +257,36 @@ Deno.serve(async (req) => {
         if (!mailgunResponse.ok) {
           const errorText = await mailgunResponse.text();
           console.error(`❌ [${requestId}] Mailgun error for ${recipientEmail}:`, errorText);
+          await logNotification({
+            edgeFunction: 'group-message-notify',
+            supabaseAdmin,
+            recipientEmail,
+            recipientName,
+            subject: emailSubject,
+            sender: emailSender,
+            status: 'failed',
+            errorMessage: `Mailgun API error: ${mailgunResponse.status} - ${errorText}`,
+            context: { groupId, groupName, senderId, senderName },
+            payload: { groupId, groupName, senderName, senderId, messageContent },
+          });
           failCount++;
           continue;
         }
 
         const emailResult = await mailgunResponse.json();
         console.log(`✅ [${requestId}] Email sent to ${recipientEmail}:`, emailResult);
+        await logNotification({
+          edgeFunction: 'group-message-notify',
+          supabaseAdmin,
+          recipientEmail,
+          recipientName,
+          subject: emailSubject,
+          sender: emailSender,
+          status: 'sent',
+          providerMessageId: emailResult?.id,
+          context: { groupId, groupName, senderId, senderName },
+          payload: { groupId, groupName, senderName, senderId, messageContent },
+        });
         emailResults.push({ email: recipientEmail, result: emailResult });
         successCount++;
 

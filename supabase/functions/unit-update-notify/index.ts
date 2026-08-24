@@ -1,6 +1,7 @@
 console.log('🚀 unit-update-notify edge function loaded');
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { logNotification } from '../_shared/notification-log.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -244,8 +245,9 @@ Deno.serve(async (req) => {
           </div>`;
 
         const mailgunUrl = `https://api.eu.mailgun.net/v3/${mailgunDomain}/messages`;
+        const emailSender = 'Kraatz Group Portal <postmaster@kraatz-group.de>';
         const formData = new FormData();
-        formData.append('from', 'Kraatz Group Portal <postmaster@kraatz-group.de>');
+        formData.append('from', emailSender);
         formData.append('to', email);
         formData.append('subject', emailSubject);
         formData.append('html', emailHtml);
@@ -262,9 +264,35 @@ Deno.serve(async (req) => {
         if (!mailgunResponse.ok) {
           const errorText = await mailgunResponse.text();
           console.error(`❌ [${requestId}] Mailgun error for ${email}:`, errorText);
+          await logNotification({
+            edgeFunction: 'unit-update-notify',
+            supabaseAdmin,
+            recipientEmail: email,
+            recipientName: name,
+            subject: emailSubject,
+            sender: emailSender,
+            status: 'failed',
+            errorMessage: `Mailgun API error: ${mailgunResponse.status} - ${errorText}`,
+            context: { releaseId, eliteKleingruppeId, updateType, eventTitle },
+            payload: { releaseId, eventTitle, legalArea, releaseDate, eliteKleingruppeId, updateType, documentName, description },
+          });
           emailsFailed++;
           return;
         }
+
+        const emailResult = await mailgunResponse.json();
+        await logNotification({
+          edgeFunction: 'unit-update-notify',
+          supabaseAdmin,
+          recipientEmail: email,
+          recipientName: name,
+          subject: emailSubject,
+          sender: emailSender,
+          status: 'sent',
+          providerMessageId: emailResult?.id,
+          context: { releaseId, eliteKleingruppeId, updateType, eventTitle },
+          payload: { releaseId, eventTitle, legalArea, releaseDate, eliteKleingruppeId, updateType, documentName, description },
+        });
 
         emailsSent++;
         console.log(`✅ [${requestId}] Email sent to ${name} (${email})`);

@@ -1,6 +1,7 @@
 console.log('🚀 vb-notify-admin-uncovered edge function loaded');
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { logNotification } from '../_shared/notification-log.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -255,10 +256,12 @@ Deno.serve(async (req) => {
           </div>
         </div>`;
 
+        const emailSubject = `Kein Dozent verfügbar: ${uncoveredAreas.join(', ')} (Videoklausurenkorrektur)`;
+        const emailSender = 'Kraatz Group Portal <postmaster@kraatz-group.de>';
         const formData = new FormData();
-        formData.append('from', 'Kraatz Group Portal <postmaster@kraatz-group.de>');
+        formData.append('from', emailSender);
         formData.append('to', admin.email);
-        formData.append('subject', `Kein Dozent verfügbar: ${uncoveredAreas.join(', ')} (Videoklausurenkorrektur)`);
+        formData.append('subject', emailSubject);
         formData.append('html', emailHtml);
         formData.append('charset', 'utf-8');
 
@@ -269,11 +272,36 @@ Deno.serve(async (req) => {
             body: formData,
           });
           if (mailgunResponse.ok) {
+            const emailResult = await mailgunResponse.json();
             console.log(`✅ [${requestId}] Admin notification email sent to ${admin.email}`);
+            await logNotification({
+              edgeFunction: 'vb-notify-admin-uncovered',
+              supabaseAdmin,
+              recipientEmail: admin.email,
+              recipientName: admin.full_name || undefined,
+              subject: emailSubject,
+              sender: emailSender,
+              status: 'sent',
+              providerMessageId: emailResult?.id,
+              context: { dozentId, uncoveredAreas, adminId: admin.id },
+              payload: { dozentId },
+            });
             emailSent = true;
           } else {
             const errorText = await mailgunResponse.text();
             console.error(`❌ [${requestId}] Mailgun error for ${admin.email}:`, errorText);
+            await logNotification({
+              edgeFunction: 'vb-notify-admin-uncovered',
+              supabaseAdmin,
+              recipientEmail: admin.email,
+              recipientName: admin.full_name || undefined,
+              subject: emailSubject,
+              sender: emailSender,
+              status: 'failed',
+              errorMessage: `Mailgun API error: ${mailgunResponse.status} - ${errorText}`,
+              context: { dozentId, uncoveredAreas, adminId: admin.id },
+              payload: { dozentId },
+            });
           }
         } catch (mailgunError) {
           console.error(`❌ [${requestId}] Failed to send email to ${admin.email}:`, mailgunError);

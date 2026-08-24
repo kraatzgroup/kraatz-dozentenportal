@@ -1,6 +1,7 @@
 console.log('🚀 reschedule-event-notify edge function loaded');
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { logNotification } from '../_shared/notification-log.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -193,10 +194,12 @@ Deno.serve(async (req) => {
       </div>`;
 
     const mailgunUrl = `https://api.eu.mailgun.net/v3/${mailgunDomain}/messages`;
+    const emailSubject = `Terminänderung: ${eventTitle} - Neuer Termin: ${newDate}`;
+    const emailSender = 'Kraatz Group Portal <postmaster@kraatz-group.de>';
     const formData = new FormData();
-    formData.append('from', 'Kraatz Group Portal <postmaster@kraatz-group.de>');
+    formData.append('from', emailSender);
     formData.append('to', teilnehmerEmail);
-    formData.append('subject', `Terminänderung: ${eventTitle} - Neuer Termin: ${newDate}`);
+    formData.append('subject', emailSubject);
     formData.append('html', emailHtml);
     formData.append('charset', 'utf-8');
 
@@ -211,10 +214,34 @@ Deno.serve(async (req) => {
     if (!mailgunResponse.ok) {
       const errorText = await mailgunResponse.text();
       console.error(`❌ [${requestId}] Mailgun error:`, errorText);
+      await logNotification({
+        edgeFunction: 'reschedule-event-notify',
+        supabaseAdmin,
+        recipientEmail: teilnehmerEmail,
+        recipientName: teilnehmerName,
+        subject: emailSubject,
+        sender: emailSender,
+        status: 'failed',
+        errorMessage: `Mailgun API error: ${mailgunResponse.status} - ${errorText}`,
+        context: { eventTitle, legalArea, oldDate, oldTime, newDate, newTime },
+        payload: { teilnehmerEmail, teilnehmerName, eventTitle, oldDate, oldTime, newDate, newTime, legalArea, rescheduleReason },
+      });
       throw new Error(`Mailgun API error: ${mailgunResponse.status} - ${errorText}`);
     }
 
     const emailResult = await mailgunResponse.json();
+    await logNotification({
+      edgeFunction: 'reschedule-event-notify',
+      supabaseAdmin,
+      recipientEmail: teilnehmerEmail,
+      recipientName: teilnehmerName,
+      subject: emailSubject,
+      sender: emailSender,
+      status: 'sent',
+      providerMessageId: emailResult?.id,
+      context: { eventTitle, legalArea, oldDate, oldTime, newDate, newTime },
+      payload: { teilnehmerEmail, teilnehmerName, eventTitle, oldDate, oldTime, newDate, newTime, legalArea, rescheduleReason },
+    });
     
     const endTime = Date.now();
     console.log(`✅ [${requestId}] Reschedule notification sent to ${teilnehmerName} (${teilnehmerEmail}) in ${endTime - startTime}ms`);

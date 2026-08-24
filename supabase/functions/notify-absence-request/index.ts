@@ -1,6 +1,7 @@
 console.log('🚀 notify-absence-request edge function loaded');
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { logNotification } from '../_shared/notification-log.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -178,9 +179,11 @@ Deno.serve(async (req) => {
         </div>`;
 
         const formData = new FormData();
-        formData.append('from', 'Kraatz Group Portal <postmaster@kraatz-group.de>');
+        const emailSubject = `Neue Abwesenheitsanfrage: ${dozentLabel} (${dateRange})`;
+        const emailSender = 'Kraatz Group Portal <postmaster@kraatz-group.de>';
+        formData.append('from', emailSender);
         formData.append('to', admin.email);
-        formData.append('subject', `Neue Abwesenheitsanfrage: ${dozentLabel} (${dateRange})`);
+        formData.append('subject', emailSubject);
         formData.append('html', emailHtml);
         formData.append('charset', 'utf-8');
 
@@ -191,11 +194,36 @@ Deno.serve(async (req) => {
             body: formData,
           });
           if (mailgunResponse.ok) {
+            const emailResult = await mailgunResponse.json();
             console.log(`✅ [${logId}] Email sent to ${admin.email}`);
+            await logNotification({
+              edgeFunction: 'notify-absence-request',
+              supabaseAdmin,
+              recipientEmail: admin.email,
+              recipientName: admin.full_name,
+              subject: emailSubject,
+              sender: emailSender,
+              status: 'sent',
+              providerMessageId: emailResult?.id,
+              context: { requestId, dozentId: absRequest.dozent_id, dozentLabel, dateRange },
+              payload: { requestId },
+            });
             emailSent = true;
           } else {
             const errorText = await mailgunResponse.text();
             console.error(`❌ [${logId}] Mailgun error for ${admin.email}:`, errorText);
+            await logNotification({
+              edgeFunction: 'notify-absence-request',
+              supabaseAdmin,
+              recipientEmail: admin.email,
+              recipientName: admin.full_name,
+              subject: emailSubject,
+              sender: emailSender,
+              status: 'failed',
+              errorMessage: `Mailgun API error: ${mailgunResponse.status} - ${errorText}`,
+              context: { requestId, dozentId: absRequest.dozent_id, dozentLabel, dateRange },
+              payload: { requestId },
+            });
           }
         } catch (mailgunError) {
           console.error(`❌ [${logId}] Failed to send email to ${admin.email}:`, mailgunError);

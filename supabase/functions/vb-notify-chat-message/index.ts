@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { logNotification } from '../_shared/notification-log.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -169,9 +170,10 @@ serve(async (req) => {
         </div>
       `
 
+      const emailSender = 'Dozentenportal <postmaster@kraatz-group.de>'
       // Prepare form data for Mailgun
       const formData = new FormData()
-      formData.append('from', 'Dozentenportal <postmaster@kraatz-group.de>')
+      formData.append('from', emailSender)
       formData.append('to', user.email)
       formData.append('subject', `[Dozentenportal] ${emailSubject}`)
       formData.append('html', emailContent)
@@ -192,11 +194,35 @@ serve(async (req) => {
       if (!mailgunResponse.ok) {
         const errorText = await mailgunResponse.text()
         console.error(`Mailgun error for ${user.email}:`, errorText)
+        await logNotification({
+          edgeFunction: 'vb-notify-chat-message',
+          supabaseAdmin: supabaseClient,
+          recipientEmail: user.email,
+          recipientName: `${user.first_name} ${user.last_name}`,
+          subject: `[Dozentenportal] ${emailSubject}`,
+          sender: emailSender,
+          status: 'failed',
+          errorMessage: `Mailgun API error: ${mailgunResponse.status} - ${errorText}`,
+          context: { conversationId: record.conversation_id, senderId: record.sender_id, messageId: record.id },
+          payload: payload,
+        });
         throw new Error(`Mailgun API error: ${mailgunResponse.status}`)
       }
 
       const result = await mailgunResponse.json()
       console.log(`✅ Chat notification email sent to ${user.email}:`, result)
+      await logNotification({
+        edgeFunction: 'vb-notify-chat-message',
+        supabaseAdmin: supabaseClient,
+        recipientEmail: user.email,
+        recipientName: `${user.first_name} ${user.last_name}`,
+        subject: `[Dozentenportal] ${emailSubject}`,
+        sender: emailSender,
+        status: 'sent',
+        providerMessageId: result?.id,
+        context: { conversationId: record.conversation_id, senderId: record.sender_id, messageId: record.id },
+        payload: payload,
+      });
       return result
     })
 

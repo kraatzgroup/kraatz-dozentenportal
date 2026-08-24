@@ -1,6 +1,7 @@
 /// <reference path="../deno.d.ts" />
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { logNotification } from '../_shared/notification-log.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -198,10 +199,12 @@ serve(async (req) => {
 
       if (mailgunApiKey) {
         try {
+          const emailSender = 'Kraatz Group - Klausurenbesprechung <postmaster@kraatz-group.de>'
+          const fullSubject = `[Klausurenbesprechung] ${emailSubject}`
           const formData = new FormData()
-          formData.append('from', 'Kraatz Group - Klausurenbesprechung <postmaster@kraatz-group.de>')
+          formData.append('from', emailSender)
           formData.append('to', student.email)
-          formData.append('subject', `[Klausurenbesprechung] ${emailSubject}`)
+          formData.append('subject', fullSubject)
           formData.append('html', emailContent)
           formData.append('charset', 'utf-8')
 
@@ -216,10 +219,35 @@ serve(async (req) => {
 
           console.log('Mailgun response status:', response.status)
           if (response.ok) {
+            const emailResult = await response.json()
             console.log('Email sent successfully to:', student.email)
+            await logNotification({
+              edgeFunction: 'vb-notify-student',
+              supabaseAdmin: supabaseClient,
+              recipientEmail: student.email,
+              recipientName: `${student.first_name} ${student.last_name}`,
+              subject: fullSubject,
+              sender: emailSender,
+              status: 'sent',
+              providerMessageId: emailResult?.id,
+              context: { profileId: body.profile_id, caseStudyId: body.case_study_id },
+              payload: body,
+            });
           } else {
             const errorText = await response.text()
             console.error('Mailgun error - Status:', response.status, 'Body:', errorText)
+            await logNotification({
+              edgeFunction: 'vb-notify-student',
+              supabaseAdmin: supabaseClient,
+              recipientEmail: student.email,
+              recipientName: `${student.first_name} ${student.last_name}`,
+              subject: fullSubject,
+              sender: emailSender,
+              status: 'failed',
+              errorMessage: `Mailgun API error: ${response.status} - ${errorText}`,
+              context: { profileId: body.profile_id, caseStudyId: body.case_study_id },
+              payload: body,
+            });
           }
         } catch (mailgunError) {
           console.error('Failed to send email (exception):', mailgunError)
@@ -496,10 +524,12 @@ serve(async (req) => {
     
     if (mailgunApiKey) {
       try {
+        const emailSender = 'Kraatz Group Portal <postmaster@kraatz-group.de>'
+        const fullSubject = `[Dozentenportal] ${emailSubject}`
         const formData = new FormData()
-        formData.append('from', 'Kraatz Group Portal <postmaster@kraatz-group.de>')
+        formData.append('from', emailSender)
         formData.append('to', student.email)
-        formData.append('subject', `[Dozentenportal] ${emailSubject}`)
+        formData.append('subject', fullSubject)
         formData.append('html', emailContent)
         formData.append('charset', 'utf-8')
 
@@ -517,9 +547,33 @@ serve(async (req) => {
         if (mailgunResponse.ok) {
           const mailgunResult = await mailgunResponse.json()
           console.log('Email sent successfully:', mailgunResult)
+          await logNotification({
+            edgeFunction: 'vb-notify-student',
+            supabaseAdmin: supabaseClient,
+            recipientEmail: student.email,
+            recipientName: `${student.first_name} ${student.last_name}`,
+            subject: fullSubject,
+            sender: emailSender,
+            status: 'sent',
+            providerMessageId: mailgunResult?.id,
+            context: { profileId: notification.profile_id, caseStudyId: notification.related_case_study_id },
+            payload: payload,
+          });
         } else {
           const errorText = await mailgunResponse.text()
           console.error('Mailgun error:', errorText)
+          await logNotification({
+            edgeFunction: 'vb-notify-student',
+            supabaseAdmin: supabaseClient,
+            recipientEmail: student.email,
+            recipientName: `${student.first_name} ${student.last_name}`,
+            subject: fullSubject,
+            sender: emailSender,
+            status: 'failed',
+            errorMessage: `Mailgun API error: ${mailgunResponse.status} - ${errorText}`,
+            context: { profileId: notification.profile_id, caseStudyId: notification.related_case_study_id },
+            payload: payload,
+          });
         }
       } catch (mailgunError) {
         console.error('Failed to send email:', mailgunError)

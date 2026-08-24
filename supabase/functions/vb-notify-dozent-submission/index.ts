@@ -1,6 +1,7 @@
 /// <reference path="../deno.d.ts" />
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { logNotification } from '../_shared/notification-log.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -147,8 +148,9 @@ serve(async (req) => {
     }
 
     const mailgunUrl = `https://api.eu.mailgun.net/v3/${mailgunDomain}/messages`;
+    const emailSender = 'Kraatz Group - Klausurenbesprechung <postmaster@kraatz-group.de>';
     const formData = new FormData();
-    formData.append('from', 'Kraatz Group - Klausurenbesprechung <postmaster@kraatz-group.de>');
+    formData.append('from', emailSender);
     formData.append('to', dozentEmail);
     formData.append('subject', `[Klausurenbesprechung] ${emailSubject}`);
     formData.append('html', emailHtml);
@@ -165,6 +167,18 @@ serve(async (req) => {
     if (!mailgunResponse.ok) {
       const errorText = await mailgunResponse.text();
       console.error(`❌ [${requestId}] Mailgun error:`, errorText);
+      await logNotification({
+        edgeFunction: 'vb-notify-dozent-submission',
+        supabaseAdmin: supabaseClient,
+        recipientEmail: dozentEmail,
+        recipientName: dozentName,
+        subject: `[Klausurenbesprechung] ${emailSubject}`,
+        sender: emailSender,
+        status: 'failed',
+        errorMessage: `Mailgun API error: ${mailgunResponse.status} - ${errorText}`,
+        context: { caseStudyId, legalArea, subArea, studentName },
+        payload: { dozentEmail, dozentName, studentName, legalArea, subArea, caseStudyId },
+      });
       return new Response(
         JSON.stringify({ error: 'Fehler beim E-Mail-Versand', details: errorText }),
         { status: 500, headers: corsHeaders }
@@ -173,6 +187,19 @@ serve(async (req) => {
 
     const mailgunResult = await mailgunResponse.json();
     console.log(`✅ [${requestId}] Notification email sent successfully via Mailgun: ${mailgunResult.id}`);
+
+    await logNotification({
+      edgeFunction: 'vb-notify-dozent-submission',
+      supabaseAdmin: supabaseClient,
+      recipientEmail: dozentEmail,
+      recipientName: dozentName,
+      subject: `[Klausurenbesprechung] ${emailSubject}`,
+      sender: emailSender,
+      status: 'sent',
+      providerMessageId: mailgunResult?.id,
+      context: { caseStudyId, legalArea, subArea, studentName },
+      payload: { dozentEmail, dozentName, studentName, legalArea, subArea, caseStudyId },
+    });
 
     const endTime = Date.now();
     console.log(`⏱️ [${requestId}] Function completed in ${endTime - Date.now()}ms`);

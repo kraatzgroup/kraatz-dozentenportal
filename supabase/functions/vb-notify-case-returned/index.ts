@@ -1,6 +1,7 @@
 console.log('🚀 vb-notify-case-returned edge function loaded');
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { logNotification } from '../_shared/notification-log.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -153,8 +154,6 @@ Deno.serve(async (req) => {
       console.error(`⚠️ [${requestId}] Magic link exception, using plain URL:`, e);
     }
 
-    const areaParts = [caseData.legal_area, caseData.sub_area].filter(Boolean).join(' / ');
-
     const emailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff;">
         <!-- Header -->
@@ -240,10 +239,12 @@ Deno.serve(async (req) => {
     let emailSent = false;
     if (mailgunApiKey) {
       const mailgunUrl = `https://api.eu.mailgun.net/v3/kraatz-group.de/messages`;
+      const emailSubject = `Fall an Sie zurückgegeben: Klausur #${caseData.case_study_number ?? '?'} (${caseData.legal_area})`;
+      const emailSender = 'Kraatz Group Portal <postmaster@kraatz-group.de>';
       const formData = new FormData();
-      formData.append('from', 'Kraatz Group Portal <postmaster@kraatz-group.de>');
+      formData.append('from', emailSender);
       formData.append('to', dozent.email);
-      formData.append('subject', `Fall an Sie zurückgegeben: Klausur #${caseData.case_study_number ?? '?'} (${caseData.legal_area})`);
+      formData.append('subject', emailSubject);
       formData.append('html', emailHtml);
       formData.append('charset', 'utf-8');
 
@@ -254,11 +255,36 @@ Deno.serve(async (req) => {
           body: formData,
         });
         if (mailgunResponse.ok) {
+          const emailResult = await mailgunResponse.json();
           console.log(`✅ [${requestId}] Case-returned email sent to ${dozent.email}`);
+          await logNotification({
+            edgeFunction: 'vb-notify-case-returned',
+            supabaseAdmin,
+            recipientEmail: dozent.email,
+            recipientName: dozent.full_name || undefined,
+            subject: emailSubject,
+            sender: emailSender,
+            status: 'sent',
+            providerMessageId: emailResult?.id,
+            context: { caseId, caseStudyNumber: caseData.case_study_number, legalArea: caseData.legal_area, targetDozentId },
+            payload: { caseId, targetDozentId },
+          });
           emailSent = true;
         } else {
           const errorText = await mailgunResponse.text();
           console.error(`❌ [${requestId}] Mailgun error:`, errorText);
+          await logNotification({
+            edgeFunction: 'vb-notify-case-returned',
+            supabaseAdmin,
+            recipientEmail: dozent.email,
+            recipientName: dozent.full_name || undefined,
+            subject: emailSubject,
+            sender: emailSender,
+            status: 'failed',
+            errorMessage: `Mailgun API error: ${mailgunResponse.status} - ${errorText}`,
+            context: { caseId, caseStudyNumber: caseData.case_study_number, legalArea: caseData.legal_area, targetDozentId },
+            payload: { caseId, targetDozentId },
+          });
         }
       } catch (mailgunError) {
         console.error(`❌ [${requestId}] Failed to send email:`, mailgunError);
