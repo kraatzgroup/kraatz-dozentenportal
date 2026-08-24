@@ -27,6 +27,7 @@ interface VbDozent {
   vb_springer: boolean | null;
   vacation_start_date: string | null;
   vacation_end_date: string | null;
+  isAbsentToday: boolean;
   openCases: number;
 }
 
@@ -165,6 +166,20 @@ export const VbAdminDashboard: React.FC = () => {
         .eq('role', 'dozent')
         .contains('additional_roles', ['videobesprechung_dozent']);
 
+      // 1b) Fetch current absences for all dozenten (today within start_date..end_date)
+      const dozentIds = (dozentenData || []).map((d: any) => d.id);
+      let absentDozentIds = new Set<string>();
+      if (dozentIds.length > 0) {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const { data: absences } = await supabase
+          .from('dozent_absences')
+          .select('dozent_id')
+          .lte('start_date', todayStr)
+          .gte('end_date', todayStr)
+          .in('dozent_id', dozentIds);
+        (absences || []).forEach((a: any) => absentDozentIds.add(a.dozent_id));
+      }
+
       // 2) Teilnehmer: additional_roles contains 'videobesprechung'
       const { data: teilnehmerProfiles } = await supabase
         .from('profiles')
@@ -284,6 +299,7 @@ export const VbAdminDashboard: React.FC = () => {
         vb_springer: d.vb_springer,
         vacation_start_date: d.vacation_start_date,
         vacation_end_date: d.vacation_end_date,
+        isAbsentToday: absentDozentIds.has(d.id),
         openCases: openCasesByDozent.get(d.id) || 0,
       }));
       setDozenten(dozentenList);
@@ -410,7 +426,7 @@ export const VbAdminDashboard: React.FC = () => {
             dozent_id: req.dozent_id,
             start_date: req.start_date,
             end_date: req.end_date,
-            reason: req.reason || 'Kurzfristige Abwesenheit (genehmigt)',
+            note: req.reason || 'Kurzfristige Abwesenheit (genehmigt)',
           });
         if (absError) {
           console.error('Error creating absence record:', absError);
@@ -742,6 +758,7 @@ export const VbAdminDashboard: React.FC = () => {
                   {dozenten.map(d => {
                     const onVacation = isCurrentlyOnVacation(d.vacation_start_date, d.vacation_end_date);
                     const unavailable = d.vb_available === false;
+                    const absent = d.isAbsentToday;
                     return (
                       <tr key={d.id} className="hover:bg-gray-50">
                         <td className="py-2 pr-3">
@@ -763,7 +780,11 @@ export const VbAdminDashboard: React.FC = () => {
                           </div>
                         </td>
                         <td className="py-2 pr-3">
-                          {onVacation ? (
+                          {absent ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                              <Clock className="w-3 h-3" /> Abwesend
+                            </span>
+                          ) : onVacation ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
                               <Clock className="w-3 h-3" /> Urlaub
                             </span>

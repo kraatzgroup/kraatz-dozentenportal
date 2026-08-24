@@ -127,6 +127,17 @@ const storagePathFromUrl = (url: string): string | null => {
   return null
 }
 
+// Fetch the set of dozent IDs that are absent today (based on dozent_absences table)
+async function fetchAbsentDozentIds(): Promise<Set<string>> {
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const { data } = await supabase
+    .from('dozent_absences')
+    .select('dozent_id')
+    .lte('start_date', todayStr)
+    .gte('end_date', todayStr)
+  return new Set((data || []).map((a: any) => a.dozent_id))
+}
+
 export const VbKorrekturDashboard: React.FC = () => {
   const user = useAuthStore(state => state.user)
   const vbLegalAreas = useAuthStore(state => state.vbLegalAreas)
@@ -241,11 +252,12 @@ export const VbKorrekturDashboard: React.FC = () => {
         .or('vb_springer.is.null,vb_springer.eq.false')
         .contains('vb_legal_areas', [c.legal_area])
       const today = new Date()
+      const absentIds = await fetchAbsentDozentIds()
       const withAvailability = (regulars || []).map(r => {
         const vs = r.vacation_start_date ? new Date(r.vacation_start_date) : null
         const ve = r.vacation_end_date ? new Date(r.vacation_end_date) : null
         const onVacation = !!(vs && ve && today >= vs && today <= ve)
-        return { id: r.id, name: r.full_name || r.email, available: r.vb_available !== false && !onVacation }
+        return { id: r.id, name: r.full_name || r.email, available: r.vb_available !== false && !onVacation && !absentIds.has(r.id) }
       })
       console.log('↩️ VbKorrektur: Candidates:', withAvailability)
       const target = withAvailability.find(r => r.available) || withAvailability[0] || null
@@ -449,13 +461,23 @@ export const VbKorrekturDashboard: React.FC = () => {
       setDozentLegalAreas(areas)
       console.log('📚 VbKorrekturDashboard: Dozent legal areas:', areas)
 
-      // Check if dozent is on vacation
+      // Check if dozent is on vacation or absent today
       const today = new Date()
       const vacationStart = profile?.vacation_start_date ? new Date(profile.vacation_start_date) : null
       const vacationEnd = profile?.vacation_end_date ? new Date(profile.vacation_end_date) : null
       const isCurrentlyOnVacation = vacationStart && vacationEnd && today >= vacationStart && today <= vacationEnd
-      setIsOnVacation(isCurrentlyOnVacation || profile?.email_notifications_enabled === false)
-      console.log('🏖️ VbKorrekturDashboard: Vacation status:', isCurrentlyOnVacation, 'Email notifications:', profile?.email_notifications_enabled)
+      // Also check dozent_absences table for today
+      const todayStr = today.toISOString().slice(0, 10)
+      const { data: ownAbsence } = await supabase
+        .from('dozent_absences')
+        .select('id')
+        .eq('dozent_id', user?.id)
+        .lte('start_date', todayStr)
+        .gte('end_date', todayStr)
+        .limit(1)
+      const isCurrentlyAbsent = (ownAbsence || []).length > 0
+      setIsOnVacation(isCurrentlyOnVacation || isCurrentlyAbsent || profile?.email_notifications_enabled === false)
+      console.log('🏖️ VbKorrekturDashboard: Vacation status:', isCurrentlyOnVacation, 'Absent:', isCurrentlyAbsent, 'Email notifications:', profile?.email_notifications_enabled)
 
       // Springer mode: determine which legal areas open (unclaimed) cases are visible for.
       // null = no restriction (regular available dozent)
@@ -470,14 +492,16 @@ export const VbKorrekturDashboard: React.FC = () => {
         // Springer only sees open cases for areas where NO regular dozent is available
         const { data: regulars } = await supabase
           .from('profiles')
-          .select('vb_legal_areas, vb_available, vacation_start_date, vacation_end_date')
+          .select('id, vb_legal_areas, vb_available, vacation_start_date, vacation_end_date')
           .eq('role', 'dozent')
           .or('vb_springer.is.null,vb_springer.eq.false')
           .not('vb_legal_areas', 'is', null)
 
+        const absentIds = await fetchAbsentDozentIds()
         const covered = new Set<string>()
         for (const r of (regulars || [])) {
           if (r.vb_available === false) continue
+          if (absentIds.has(r.id)) continue
           const vs = r.vacation_start_date ? new Date(r.vacation_start_date) : null
           const ve = r.vacation_end_date ? new Date(r.vacation_end_date) : null
           if (vs && ve && today >= vs && today <= ve) continue
@@ -610,14 +634,16 @@ export const VbKorrekturDashboard: React.FC = () => {
       } else if (isSpringer) {
         const { data: regulars } = await supabase
           .from('profiles')
-          .select('vb_legal_areas, vb_available, vacation_start_date, vacation_end_date')
+          .select('id, vb_legal_areas, vb_available, vacation_start_date, vacation_end_date')
           .eq('role', 'dozent')
           .or('vb_springer.is.null,vb_springer.eq.false')
           .not('vb_legal_areas', 'is', null)
         const today = new Date()
+        const absentIds = await fetchAbsentDozentIds()
         const covered = new Set<string>()
         for (const r of (regulars || [])) {
           if (r.vb_available === false) continue
+          if (absentIds.has(r.id)) continue
           const vs = r.vacation_start_date ? new Date(r.vacation_start_date) : null
           const ve = r.vacation_end_date ? new Date(r.vacation_end_date) : null
           if (vs && ve && today >= vs && today <= ve) continue
