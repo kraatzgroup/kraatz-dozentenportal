@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { MessageSquare, LogOut, Users, Clock, FileText, Calendar, Edit2, X, Check, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Receipt, Search, Download, Eye, Mail, Send, Trash2, Settings, TrendingUp, GraduationCap, LayoutDashboard, Zap, Bell, Upload, UserPlus, HelpCircle, BookOpen } from 'lucide-react';
+import { MessageSquare, LogOut, Users, Clock, FileText, Calendar, Edit2, X, Check, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Receipt, Search, Download, Eye, Mail, Send, Trash2, Settings, TrendingUp, GraduationCap, LayoutDashboard, Zap, Bell, Upload, UserPlus, HelpCircle, BookOpen, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
 import { useFileStore } from '../store/fileStore';
@@ -208,6 +208,10 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   const [emailBody, setEmailBody] = useState('');
   const [emailTemplates, setEmailTemplates] = useState<any[]>([]);
   const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
+  const [notificationLogs, setNotificationLogs] = useState<any[]>([]);
+  const [notificationLogsLoading, setNotificationLogsLoading] = useState(false);
+  const [notificationLogsFilter, setNotificationLogsFilter] = useState<'all' | 'sent' | 'failed'>('all');
+  const [notificationLogsSearch, setNotificationLogsSearch] = useState('');
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
   const [allRechnungen, setAllRechnungen] = useState<any[]>([]);
   const [submittedInvoices, setSubmittedInvoices] = useState<any[]>([]);
@@ -461,6 +465,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
         break;
       case 'emails':
         fetchEmailTemplates();
+        fetchNotificationLogs();
         break;
       case 'rechnungen':
         fetchAllRechnungen();
@@ -593,6 +598,24 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
       setEmailTemplates(data || []);
     } catch (error) {
       console.error('Error fetching email templates:', error);
+    }
+  };
+
+  const fetchNotificationLogs = async () => {
+    setNotificationLogsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('notification_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      setNotificationLogs(data || []);
+    } catch (error) {
+      console.error('Error fetching notification logs:', error);
+      setNotificationLogs([]);
+    } finally {
+      setNotificationLogsLoading(false);
     }
   };
 
@@ -4330,6 +4353,125 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Mail Logs */}
+            <div className="mt-6 bg-white rounded-lg shadow">
+              <div className="p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                  <h2 className="text-lg font-medium text-gray-900">Mail-Versand-Protokoll</h2>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => fetchNotificationLogs()}
+                      className="p-2 text-gray-500 hover:text-primary border border-gray-200 rounded-md hover:bg-gray-50"
+                      title="Aktualisieren"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filters */}
+                <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                  <div className="flex gap-2">
+                    {(['all', 'sent', 'failed'] as const).map(f => (
+                      <button
+                        key={f}
+                        onClick={() => setNotificationLogsFilter(f)}
+                        className={`px-3 py-1.5 text-sm font-medium rounded-md ${
+                          notificationLogsFilter === f
+                            ? 'bg-primary text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        {f === 'all' ? 'Alle' : f === 'sent' ? 'Versendet' : 'Fehlgeschlagen'}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="text"
+                    value={notificationLogsSearch}
+                    onChange={(e) => setNotificationLogsSearch(e.target.value)}
+                    placeholder="Suche nach E-Mail, Betreff, Function…"
+                    className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+
+                {/* Table */}
+                {notificationLogsLoading ? (
+                  <div className="py-12 text-center text-gray-500">
+                    <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" />
+                    Lade Protokoll…
+                  </div>
+                ) : (() => {
+                  const filtered = notificationLogs
+                    .filter(log => notificationLogsFilter === 'all' || log.status === notificationLogsFilter)
+                    .filter(log => {
+                      if (!notificationLogsSearch.trim()) return true;
+                      const q = notificationLogsSearch.toLowerCase();
+                      return (
+                        log.recipient_email?.toLowerCase().includes(q) ||
+                        log.subject?.toLowerCase().includes(q) ||
+                        log.edge_function?.toLowerCase().includes(q) ||
+                        log.recipient_name?.toLowerCase().includes(q)
+                      );
+                    });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="py-12 text-center text-gray-400">
+                        <Mail className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        Keine Einträge gefunden.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Zeit</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Function</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Empfänger</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Betreff</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fehler</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {filtered.map((log) => (
+                            <tr key={log.id} className="hover:bg-gray-50">
+                              <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
+                                {new Date(log.created_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </td>
+                              <td className="px-3 py-2 whitespace-nowrap">
+                                {log.status === 'sent' ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    <CheckCircle className="h-3 w-3 mr-1" />Versendet
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                    <AlertCircle className="h-3 w-3 mr-1" />Fehler
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-xs text-gray-700 font-mono whitespace-nowrap">{log.edge_function}</td>
+                              <td className="px-3 py-2 text-xs text-gray-900 whitespace-nowrap">
+                                <div className="font-medium">{log.recipient_name || '—'}</div>
+                                <div className="text-gray-500">{log.recipient_email}</div>
+                              </td>
+                              <td className="px-3 py-2 text-xs text-gray-700 max-w-xs truncate" title={log.subject}>{log.subject}</td>
+                              <td className="px-3 py-2 text-xs text-red-600 max-w-xs truncate" title={log.error_message || ''}>{log.error_message || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <p className="mt-3 text-xs text-gray-400">{filtered.length} Einträge (max. 200, neueste zuerst)</p>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </div>
