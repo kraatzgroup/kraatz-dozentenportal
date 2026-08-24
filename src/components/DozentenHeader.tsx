@@ -22,7 +22,7 @@ export const DozentenHeader: React.FC = () => {
 
   const isVbDozent = additionalRoles?.includes('videobesprechung_dozent');
 
-  const unreadMessages = messages.filter(message => !message.read);
+  const unreadMessages = messages.filter(message => message.read_at === null);
 
   useEffect(() => {
     if (!user) return;
@@ -163,8 +163,6 @@ export const DozentenHeader: React.FC = () => {
 
   const handleToggleVbAvailability = async () => {
     if (!user || vbAvailable === null || isTogglingAvailability) return;
-    // Springer-Dozenten können sich nicht auf "Nicht verfügbar" stellen
-    if (isVbSpringer) return;
     const newValue = !vbAvailable;
     setIsTogglingAvailability(true);
     try {
@@ -174,8 +172,25 @@ export const DozentenHeader: React.FC = () => {
         .eq('id', user.id);
       if (error) throw error;
       setVbAvailable(newValue);
-      // Notify springer about handed-over cases when going unavailable
+      // Notify admin when an area becomes completely uncovered
+      // (regular dozent AND springer both unavailable)
       if (newValue === false) {
+        try {
+          console.log('📧 DozentenHeader: Invoking vb-notify-admin-uncovered...');
+          const { error: adminUncoveredError } = await supabase.functions.invoke('vb-notify-admin-uncovered', {
+            body: { dozentId: user.id }
+          });
+          if (adminUncoveredError) {
+            console.error('❌ DozentenHeader: Admin uncovered notification failed:', adminUncoveredError);
+          } else {
+            console.log('✅ DozentenHeader: Admin uncovered notification succeeded');
+          }
+        } catch (e) {
+          console.error('❌ DozentenHeader: Admin uncovered notification exception:', e);
+        }
+      }
+      // Notify springer about handed-over cases when a regular dozent goes unavailable
+      if (newValue === false && !isVbSpringer) {
         try {
           console.log('📧 DozentenHeader: Invoking vb-notify-springer-handover...');
           const { data: handoverResult, error: handoverError } = await supabase.functions.invoke('vb-notify-springer-handover', {
@@ -225,25 +240,23 @@ export const DozentenHeader: React.FC = () => {
           </div>
           <div className="hidden md:flex items-center space-x-2 sm:space-x-4">
             {isVbDozent ? (
-              isVbSpringer ? null : (
-                <button
-                  onClick={handleOpenAvailabilityConfirm}
-                  disabled={vbAvailable === null || isTogglingAvailability}
-                  className={`inline-flex items-center px-2 sm:px-3 py-1.5 rounded-full text-xs font-medium border transition cursor-pointer disabled:opacity-60 ${
-                    vbAvailable === false
-                      ? 'bg-red-100 text-red-800 border-red-300 hover:bg-red-200'
-                      : 'bg-green-100 text-green-800 border-green-300 hover:bg-green-200'
-                  }`}
-                  title="Verfügbarkeit für Videoklausurenkorrektur umschalten"
-                >
-                  {vbAvailable === false ? (
-                    <XCircle className="h-3.5 w-3.5 mr-1" />
-                  ) : (
-                    <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                  )}
-                  <span className="hidden sm:inline">{vbAvailable === false ? 'Nicht verfügbar' : 'Verfügbar'}</span>
-                </button>
-              )
+              <button
+                onClick={handleOpenAvailabilityConfirm}
+                disabled={vbAvailable === null || isTogglingAvailability}
+                className={`inline-flex items-center px-2 sm:px-3 py-1.5 rounded-full text-xs font-medium border transition cursor-pointer disabled:opacity-60 ${
+                  vbAvailable === false
+                    ? 'bg-red-100 text-red-800 border-red-300 hover:bg-red-200'
+                    : 'bg-green-100 text-green-800 border-green-300 hover:bg-green-200'
+                }`}
+                title="Verfügbarkeit für Videoklausurenkorrektur umschalten"
+              >
+                {vbAvailable === false ? (
+                  <XCircle className="h-3.5 w-3.5 mr-1" />
+                ) : (
+                  <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                )}
+                <span className="hidden sm:inline">{vbAvailable === false ? 'Nicht verfügbar' : 'Verfügbar'}</span>
+              </button>
             ) : (
               <button
                 className="inline-flex items-center px-2 sm:px-3 py-1.5 rounded-full text-xs font-medium border transition cursor-pointer bg-yellow-100 text-yellow-800 border-yellow-300 hover:bg-yellow-200"
@@ -293,7 +306,7 @@ export const DozentenHeader: React.FC = () => {
             </button>
           </div>
           <div className="md:hidden flex items-center space-x-2">
-            {isVbDozent && !isVbSpringer && (
+            {isVbDozent && (
               <button
                 onClick={handleOpenAvailabilityConfirm}
                 disabled={vbAvailable === null || isTogglingAvailability}
@@ -488,7 +501,11 @@ export const DozentenHeader: React.FC = () => {
               <div className="text-sm text-gray-600 space-y-2 mb-6">
                 <p>Wenn Sie sich auf <strong>Nicht verfügbar</strong> stellen:</p>
                 <ul className="list-disc pl-5 space-y-1">
-                  <li>Neue Sachverhalt-Anfragen für die Videoklausurenkorrektur werden automatisch an den Springer-Dozenten weitergeleitet.</li>
+                  <li>
+                    {isVbSpringer
+                      ? 'Sie erhalten keine neuen Sachverhalt-Anfragen mehr, bis Sie sich wieder als verfügbar stellen.'
+                      : 'Neue Sachverhalt-Anfragen für die Videoklausurenkorrektur werden automatisch an den Springer-Dozenten weitergeleitet.'}
+                  </li>
                   <li>Sie sehen keine neuen offenen Anfragen mehr in den Tabs „Anfragen" und „Materialien versendet".</li>
                   <li>Bereits von Ihnen übernommene Klausuren bleiben bei Ihnen und können weiter bearbeitet werden.</li>
                 </ul>
@@ -529,9 +546,17 @@ export const DozentenHeader: React.FC = () => {
               <div className="text-sm text-gray-600 space-y-2 mb-6">
                 <p>Wenn Sie sich auf <strong>Verfügbar</strong> stellen:</p>
                 <ul className="list-disc pl-5 space-y-1">
-                  <li>Sie erhalten wieder neue Sachverhalt-Anfragen für Ihre Rechtsgebiete (E-Mail und Benachrichtigung).</li>
+                  <li>
+                    {isVbSpringer
+                      ? 'Sie erhalten wieder Sachverhalt-Anfragen, sofern für ein Rechtsgebiet kein regulärer Dozent verfügbar ist.'
+                      : 'Sie erhalten wieder neue Sachverhalt-Anfragen für Ihre Rechtsgebiete (E-Mail und Benachrichtigung).'}
+                  </li>
                   <li>Offene Anfragen werden Ihnen wieder in den Tabs „Anfragen" und „Materialien versendet" angezeigt.</li>
-                  <li>Der Springer-Dozent erhält für Ihre Rechtsgebiete keine neuen Anfragen mehr.</li>
+                  <li>
+                    {isVbSpringer
+                      ? 'Reguläre Dozenten für Ihre Rechtsgebiete erhalten weiterhin bevorzugt die neuen Anfragen.'
+                      : 'Der Springer-Dozent erhält für Ihre Rechtsgebiete keine neuen Anfragen mehr.'}
+                  </li>
                 </ul>
               </div>
             )}
