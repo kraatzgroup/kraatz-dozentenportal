@@ -6,6 +6,9 @@ import {
   Trash2,
   Users,
   AlertCircle,
+  Clock,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react';
 import {
   format,
@@ -54,6 +57,7 @@ const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChange, hideMaxParticipants = false }: AbsenceCalendarProps) {
   const { addToast } = useToastStore();
   const [absences, setAbsences] = useState<Absence[]>([]);
+  const [absenceRequests, setAbsenceRequests] = useState<{ start_date: string; end_date: string; status: 'pending' | 'approved' | 'rejected' }[]>([]);
   const [capacity, setCapacity] = useState<MonthCapacity | null>(null);
   const [maxParticipants, setMaxParticipants] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
@@ -84,11 +88,11 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
   const navigate = useCallback((dir: 'prev' | 'next') => {
     setCursor((c) => {
       const next = dir === 'prev' ? subMonths(c, 1) : addMonths(c, 1);
-      // Don't navigate to months entirely before the 14-day buffer
-      if (dir === 'prev' && endOfMonth(next) < minBookableDate) return c;
+      // Don't navigate to months entirely in the past (before today)
+      if (dir === 'prev' && endOfMonth(next) < startOfDay(today)) return c;
       return next;
     });
-  }, [minBookableDate]);
+  }, []);
 
   // Wheel-driven month switching with cooldown so one gesture advances one month
   const handleCalendarWheel = (e: React.WheelEvent) => {
@@ -145,6 +149,14 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
       return date >= startOfDay(s) && date <= endOfDaySafe(e);
     });
 
+  const isDateRequested = (date: Date, status?: 'pending' | 'approved' | 'rejected') =>
+    absenceRequests.some((r) => {
+      if (status && r.status !== status) return false;
+      const s = parseISO(r.start_date);
+      const e = parseISO(r.end_date);
+      return date >= startOfDay(s) && date <= endOfDaySafe(e);
+    });
+
   const isDateInDrag = (date: Date) => {
     if (!dragStart || !dragEnd) return false;
     const s = startOfDay(dateMin([dragStart, dragEnd]));
@@ -197,6 +209,16 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
       } else {
         setAbsences(absData || []);
       }
+
+      // Fetch all absence requests for this month (pending, approved, rejected)
+      const { data: reqData } = await supabase
+        .from('dozent_absence_requests')
+        .select('start_date, end_date, status')
+        .eq('dozent_id', targetDozentId)
+        .in('status', ['pending', 'approved', 'rejected'])
+        .lte('start_date', monthEnd)
+        .gte('end_date', monthStart);
+      setAbsenceRequests(reqData || []);
 
       // Fetch monthly capacity (max_participants) for the visible month
       const { data: capData, error: capError } = await supabase
@@ -518,6 +540,13 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
         body: { requestId: data.id },
       }).catch((e) => console.error('Failed to notify admin:', e));
 
+      // Optimistically add to absence requests so it shows immediately
+      setAbsenceRequests((prev) => [...prev, {
+        start_date: format(requestRange.start, 'yyyy-MM-dd'),
+        end_date: format(requestRange.end, 'yyyy-MM-dd'),
+        status: 'pending' as const,
+      }]);
+
       addToast('Anfrage eingereicht — Admin wird benachrichtigt', 'success');
       setRequestRange(null);
       setRequestReason('');
@@ -669,6 +698,8 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
               const inMonth = isSameMonth(date, cursor);
               const isToday = isSameDay(date, today);
               const absent = isDateAbsent(date);
+              const requestedPending = isDateRequested(date, 'pending');
+              const requestedRejected = isDateRequested(date, 'rejected');
               const inDrag = isDateInDrag(date);
               const isInBuffer = isDateDisabled(date);
               const disabled = isAdmin || isInBuffer;
@@ -679,6 +710,8 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
               if (!inMonth) cls += 'text-gray-300 bg-gray-50 ';
               else if (inDrag) cls += 'bg-red-500 text-white border-red-500 ';
               else if (absent) cls += 'bg-red-100 text-red-800 border-red-300 ';
+              else if (requestedPending) cls += 'bg-orange-50 text-orange-700 border-orange-300 border-dashed ';
+              else if (requestedRejected) cls += 'bg-gray-100 text-gray-400 border-gray-300 line-through ';
               else if (isToday) cls += 'bg-primary-50 text-primary border-primary ';
               else if (isInBuffer) cls += 'text-gray-300 bg-gray-50 ';
               else cls += 'text-gray-700 hover:bg-gray-100 ';
@@ -745,10 +778,46 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
         {/* Existing absences in this month */}
         <div className="mt-6">
           <h4 className="text-sm font-medium text-gray-700 mb-2">Abwesenheiten in diesem Monat</h4>
-          {visibleAbsences.length === 0 ? (
+          {visibleAbsences.length === 0 && absenceRequests.length === 0 ? (
             <p className="text-sm text-gray-400">Keine Abwesenheiten eingetragen.</p>
           ) : (
             <ul className="space-y-2">
+              {absenceRequests.map((r, i) => {
+                const s = parseISO(r.start_date);
+                const e = parseISO(r.end_date);
+                const range = s.getTime() === e.getTime()
+                  ? format(s, 'dd.MM.yyyy', { locale: de })
+                  : `${format(s, 'dd.MM.yyyy', { locale: de })} – ${format(e, 'dd.MM.yyyy', { locale: de })}`;
+                const isPending = r.status === 'pending';
+                const isRejected = r.status === 'rejected';
+                const isApproved = r.status === 'approved';
+                return (
+                  <li
+                    key={`req-${i}`}
+                    className={`flex items-center justify-between rounded-md px-3 py-2 border ${
+                      isPending ? 'bg-orange-50 border-orange-300 border-dashed' :
+                      isRejected ? 'bg-gray-100 border-gray-300' :
+                      'bg-green-50 border-green-300'
+                    }`}
+                  >
+                    <div className={`flex items-center text-sm ${
+                      isPending ? 'text-orange-700' :
+                      isRejected ? 'text-gray-500' :
+                      'text-green-700'
+                    }`}>
+                      {isPending && <Clock className="h-4 w-4 mr-2 text-orange-500" />}
+                      {isApproved && <CheckCircle className="h-4 w-4 mr-2 text-green-600" />}
+                      {isRejected && <XCircle className="h-4 w-4 mr-2 text-gray-400" />}
+                      <span className={`font-medium ${isRejected ? 'line-through' : ''}`}>{range}</span>
+                      <span className="ml-2">
+                        {isPending && <span className="text-orange-500">— Anfrage ausstehend</span>}
+                        {isApproved && <span className="text-green-600">— Genehmigt</span>}
+                        {isRejected && <span className="text-gray-400">— Abgelehnt</span>}
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
               {visibleAbsences.map((a) => (
                 <li
                   key={a.id}
@@ -792,12 +861,38 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
               Dieser Zeitraum liegt innerhalb der 14-Tage-Frist und muss vom Admin bestätigt werden.
             </p>
             <div className="bg-gray-50 rounded-md p-3 mb-4">
-              <p className="text-sm text-gray-700">
-                <strong>Zeitraum:</strong>{' '}
-                {format(requestRange.start, 'dd.MM.yyyy', { locale: de })}
-                {requestRange.start.getTime() !== requestRange.end.getTime() &&
-                  ` – ${format(requestRange.end, 'dd.MM.yyyy', { locale: de })}`}
-              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Von</label>
+                  <input
+                    type="date"
+                    value={format(requestRange.start, 'yyyy-MM-dd')}
+                    min={format(startOfDay(today), 'yyyy-MM-dd')}
+                    onChange={(e) => {
+                      const newStart = e.target.value ? new Date(e.target.value + 'T00:00:00') : requestRange.start;
+                      if (newStart > requestRange.end) return;
+                      setRequestRange({ ...requestRange, start: newStart });
+                    }}
+                    disabled={isSubmittingRequest}
+                    className="w-full text-sm px-2 py-1.5 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Bis</label>
+                  <input
+                    type="date"
+                    value={format(requestRange.end, 'yyyy-MM-dd')}
+                    min={format(requestRange.start, 'yyyy-MM-dd')}
+                    onChange={(e) => {
+                      const newEnd = e.target.value ? new Date(e.target.value + 'T00:00:00') : requestRange.end;
+                      if (newEnd < requestRange.start) return;
+                      setRequestRange({ ...requestRange, end: newEnd });
+                    }}
+                    disabled={isSubmittingRequest}
+                    className="w-full text-sm px-2 py-1.5 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
             </div>
             <div className="mb-4">
               <label className="block text-xs text-gray-500 mb-1">Grund (optional)</label>

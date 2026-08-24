@@ -96,9 +96,13 @@ Deno.serve(async (req) => {
     const redirectUrl = 'https://portal.kraatz-group.de/klausurenbesprechung/korrektur?tab=absence-requests';
 
     const dozentLabel = dozent.full_name || dozent.email || 'Ein Dozent';
+    const fmtDate = (d: string) => {
+      const [y, m, day] = d.split('-');
+      return `${day}.${m}.${y}`;
+    };
     const dateRange = absRequest.start_date === absRequest.end_date
-      ? absRequest.start_date
-      : `${absRequest.start_date} – ${absRequest.end_date}`;
+      ? fmtDate(absRequest.start_date)
+      : `${fmtDate(absRequest.start_date)} – ${fmtDate(absRequest.end_date)}`;
 
     const results: any[] = [];
 

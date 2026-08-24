@@ -13,6 +13,9 @@ import {
   Plus,
   X,
   Trash2,
+  Search,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { SchwerpunktTagsInput } from './SchwerpunktTagsInput';
 
@@ -155,6 +158,8 @@ export const VbAdminDashboard: React.FC = () => {
   const [refundCredit, setRefundCredit] = useState(true);
   const [absenceRequests, setAbsenceRequests] = useState<AbsenceRequest[]>([]);
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
+  const [teilnehmerSearch, setTeilnehmerSearch] = useState('');
+  const [teilnehmerExpanded, setTeilnehmerExpanded] = useState(false);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -694,9 +699,13 @@ export const VbAdminDashboard: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {absenceRequests.map(r => {
+                  const fmtDate = (d: string) => {
+                    const [y, m, day] = d.split('-');
+                    return `${day}.${m}.${y}`;
+                  };
                   const dateRange = r.start_date === r.end_date
-                    ? r.start_date
-                    : `${r.start_date} – ${r.end_date}`;
+                    ? fmtDate(r.start_date)
+                    : `${fmtDate(r.start_date)} – ${fmtDate(r.end_date)}`;
                   return (
                     <tr key={r.id} className="hover:bg-gray-50">
                       <td className="py-2 pr-3">
@@ -818,47 +827,96 @@ export const VbAdminDashboard: React.FC = () => {
           {teilnehmer.length === 0 ? (
             <p className="text-gray-500 text-sm py-6 text-center">Keine Klausurenbesprechung-Teilnehmer gefunden.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-gray-500 border-b border-gray-200">
-                    <th className="py-2 pr-3 font-medium">Teilnehmer</th>
-                    <th className="py-2 pr-1 font-medium text-center w-8"></th>
-                    <th className="py-2 pr-3 font-medium text-right bg-blue-50">Verbleibend</th>
-                    <th className="py-2 pr-3 font-medium text-right">Credits gesamt</th>
-                    <th className="py-2 pr-3 font-medium text-right">Benutzt</th>
-                    <th className="py-2 pr-3 font-medium text-right">Offene Fälle</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {teilnehmer.map(t => (
-                    <tr key={t.id} className="hover:bg-gray-50">
-                      <td className="py-2 pr-3">
-                        <div className="font-medium text-gray-900">{t.full_name || t.email || 'Unbekannt'}</div>
-                        {t.full_name && t.email && <div className="text-xs text-gray-500">{t.email}</div>}
-                      </td>
-                      <td className="py-2 pr-1 text-center">
-                        <button
-                          onClick={() => { setAddCreditsFor(t); setCreditsAmount(String(t.remainingCredits)); }}
-                          className="flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors mx-auto"
-                          title="Credits hinzufügen"
-                        >
-                          <Plus className="h-3 w-3" />
-                        </button>
-                      </td>
-                      <td className="py-2 pr-3 text-right bg-blue-50">
-                        <span className={`font-medium ${t.remainingCredits < 0 ? 'text-red-600' : t.remainingCredits === 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                          {t.remainingCredits}
-                        </span>
-                      </td>
-                      <td className="py-2 pr-3 text-right text-gray-700">{t.totalCredits}</td>
-                      <td className="py-2 pr-3 text-right text-gray-700">{t.usedCredits}</td>
-                      <td className="py-2 pr-3 text-right font-medium text-gray-900">{t.openCases}</td>
+            <>
+              {/* Search */}
+              <div className="relative mb-3">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Teilnehmer suchen (Name oder E-Mail)..."
+                  value={teilnehmerSearch}
+                  onChange={(e) => { setTeilnehmerSearch(e.target.value); setTeilnehmerExpanded(true); }}
+                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b border-gray-200">
+                      <th className="py-2 pr-3 font-medium">Teilnehmer</th>
+                      <th className="py-2 pr-1 font-medium text-center w-8"></th>
+                      <th className="py-2 pr-3 font-medium text-right bg-blue-50">Verbleibend</th>
+                      <th className="py-2 pr-3 font-medium text-right">Credits gesamt</th>
+                      <th className="py-2 pr-3 font-medium text-right">Benutzt</th>
+                      <th className="py-2 pr-3 font-medium text-right">Offene Fälle</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {(() => {
+                      const search = teilnehmerSearch.trim().toLowerCase();
+                      const filtered = search
+                        ? teilnehmer.filter(t =>
+                            (t.full_name || '').toLowerCase().includes(search) ||
+                            (t.email || '').toLowerCase().includes(search))
+                        : teilnehmer;
+                      const visible = teilnehmerExpanded || search ? filtered : filtered.slice(0, 3);
+                      return (
+                        <>
+                          {visible.map(t => (
+                            <tr key={t.id} className="hover:bg-gray-50">
+                              <td className="py-2 pr-3">
+                                <div className="font-medium text-gray-900">{t.full_name || t.email || 'Unbekannt'}</div>
+                                {t.full_name && t.email && <div className="text-xs text-gray-500">{t.email}</div>}
+                              </td>
+                              <td className="py-2 pr-1 text-center">
+                                <button
+                                  onClick={() => { setAddCreditsFor(t); setCreditsAmount(String(t.remainingCredits)); }}
+                                  className="flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors mx-auto"
+                                  title="Credits hinzufügen"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </button>
+                              </td>
+                              <td className="py-2 pr-3 text-right bg-blue-50">
+                                <span className={`font-medium ${t.remainingCredits < 0 ? 'text-red-600' : t.remainingCredits === 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                                  {t.remainingCredits}
+                                </span>
+                              </td>
+                              <td className="py-2 pr-3 text-right text-gray-700">{t.totalCredits}</td>
+                              <td className="py-2 pr-3 text-right text-gray-700">{t.usedCredits}</td>
+                              <td className="py-2 pr-3 text-right font-medium text-gray-900">{t.openCases}</td>
+                            </tr>
+                          ))}
+                          {!search && filtered.length > 3 && (
+                            <tr>
+                              <td colSpan={6} className="py-2 text-center">
+                                <button
+                                  onClick={() => setTeilnehmerExpanded(!teilnehmerExpanded)}
+                                  className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                                >
+                                  {teilnehmerExpanded ? (
+                                    <>Weniger anzeigen <ChevronUp className="h-4 w-4" /></>
+                                  ) : (
+                                    <>Alle {filtered.length} anzeigen <ChevronDown className="h-4 w-4" /></>
+                                  )}
+                                </button>
+                              </td>
+                            </tr>
+                          )}
+                          {search && filtered.length === 0 && (
+                            <tr>
+                              <td colSpan={6} className="py-4 text-center text-gray-400 text-sm">
+                                Keine Teilnehmer gefunden für „{teilnehmerSearch}"
+                              </td>
+                            </tr>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       </div>
