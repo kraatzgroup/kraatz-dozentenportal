@@ -2,27 +2,26 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { exceedsDocumentUploadLimit, MAX_DOCUMENT_UPLOAD_LABEL } from '../../lib/uploadLimits'
 import { useAuthStore } from '../../store/authStore'
-import { BookOpen, Clock, Download, Edit3, CheckCircle, AlertTriangle, FolderOpen, Upload, X, Search, ChevronDown, ChevronRight, Undo2 } from 'lucide-react'
+import { BookOpen, Download, Edit3, CheckCircle, AlertTriangle, Upload, X, ChevronDown, ChevronRight, Undo2 } from 'lucide-react'
 import { KorrekturModal } from '../shared/korrektur/KorrekturModal'
 import { VB_FIELD_CONFIG } from '../shared/korrektur/types'
 import type { KorrekturItem, KorrekturSavePayload } from '../shared/korrektur/types'
 import { SchwerpunktTagsInput } from './SchwerpunktTagsInput'
 
 // DraggableFolder component from DozentenDashboard - exact copy
-function DraggableFolder({ folder, isExpanded, onToggle, materialCount, isSelected, onToggleSelection }: {
+function DraggableFolder({ folder, isExpanded, onToggle, isSelected, onToggleSelection }: {
   folder: MaterialFolder;
   isExpanded: boolean;
   onToggle: (id: string) => void;
-  materialCount: number;
   isSelected?: boolean;
   onToggleSelection?: () => void;
 }) {
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = () => {
     console.log('🔘 Folder clicked:', folder.name, 'id:', folder.id)
     onToggle(folder.id)
   }
   
-  const handleCheckboxClick = (e: React.MouseEvent) => {
+  const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.stopPropagation()
     onToggleSelection?.()
   }
@@ -35,10 +34,11 @@ function DraggableFolder({ folder, isExpanded, onToggle, materialCount, isSelect
       <input
         type="checkbox"
         checked={isSelected}
+        onChange={handleCheckboxChange}
+        onClick={(e) => e.stopPropagation()}
         className={`w-4 h-4 text-primary rounded transition-opacity ${
           isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
         }`}
-        onClick={handleCheckboxClick}
       />
       <div className="text-2xl flex-shrink-0">📁</div>
       <span className="flex-1 text-sm font-medium text-gray-700 group-hover:text-primary truncate">
@@ -104,13 +104,6 @@ interface VbCase {
   grade_text?: string | null
 }
 
-const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
-  submitted: { label: 'Abgegeben', cls: 'bg-yellow-100 text-yellow-800' },
-  under_review: { label: 'In Korrektur', cls: 'bg-blue-100 text-blue-800' },
-  corrected: { label: 'Korrigiert', cls: 'bg-green-100 text-green-800' },
-  completed: { label: 'Abgeschlossen', cls: 'bg-green-100 text-green-800' },
-}
-
 const BUCKET = 'case-studies'
 
 // Convert a public storage URL back into the object path for download.
@@ -154,12 +147,11 @@ export const VbKorrekturDashboard: React.FC = () => {
   const [isOnVacation, setIsOnVacation] = useState(false)
   const [legalAreaFilter, setLegalAreaFilter] = useState<string>('all')
   const [dozentLegalAreas, setDozentLegalAreas] = useState<string[]>([])
-  const [materialFolders, setMaterialFolders] = useState<MaterialFolder[]>([])
   const [teachingMaterials, setTeachingMaterials] = useState<TeachingMaterial[]>([])
   const [showMaterialSelector, setShowMaterialSelector] = useState(false)
-  const [selectedTeachingMaterial, setSelectedTeachingMaterial] = useState<TeachingMaterial | null>(null)
-  const [materialSearchTerm, setMaterialSearchTerm] = useState('')
-  const [materialSortBy, setMaterialSortBy] = useState<'title' | 'date'>('title')
+  const [, setSelectedTeachingMaterial] = useState<TeachingMaterial | null>(null)
+  const materialSearchTerm = ''
+  const materialSortBy: 'title' | 'date' = 'title'
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [folderStructure, setFolderStructure] = useState<MaterialFolder[]>([])
   const [selectedMaterials, setSelectedMaterials] = useState<Set<string>>(new Set())
@@ -688,20 +680,6 @@ export const VbKorrekturDashboard: React.FC = () => {
     }
   }, [user?.id, refreshKey])
 
-  const fetchMaterialFolders = useCallback(async () => {
-    try {
-      const { data } = await supabase
-        .from('material_folders')
-        .select('*')
-        .eq('is_active', true)
-        .order('position')
-      
-      setMaterialFolders(data || [])
-    } catch (err) {
-      console.error('Error fetching material folders:', err)
-    }
-  }, [])
-
   const fetchTeachingMaterials = useCallback(async () => {
     try {
       console.log('🔍 fetchTeachingMaterials called - loading ALL materials with batching')
@@ -799,10 +777,9 @@ export const VbKorrekturDashboard: React.FC = () => {
   useEffect(() => {
     fetchCases()
     fetchAllCasesForTabs()
-    fetchMaterialFolders()
     fetchTeachingMaterials()
     fetchFolderStructure() // Load all folders on mount
-  }, [fetchCases, fetchAllCasesForTabs, fetchMaterialFolders, fetchTeachingMaterials, fetchFolderStructure])
+  }, [fetchCases, fetchAllCasesForTabs, fetchTeachingMaterials, fetchFolderStructure])
 
   const studentName = (c: VbCase) => {
     const s = c.student
@@ -1127,7 +1104,6 @@ export const VbKorrekturDashboard: React.FC = () => {
           folder={folder}
           isExpanded={isExpanded}
           onToggle={toggleFolder}
-          materialCount={folderMaterials.length}
           isSelected={folderSelected}
           onToggleSelection={() => selectAllMaterialsInFolder(folder.id)}
         />
@@ -1301,7 +1277,6 @@ export const VbKorrekturDashboard: React.FC = () => {
 
       // 3) Notify student if correction is completed (status -> corrected or completed)
       const previousStatus = selected.status
-      const newStatus = isComplete ? 'completed' : 'corrected'
       if (previousStatus !== 'corrected' && previousStatus !== 'completed') {
         console.log('📧 Sending correction notification to student')
         const { error: notificationError } = await supabase.functions.invoke('vb-notify-student', {
@@ -1524,7 +1499,6 @@ export const VbKorrekturDashboard: React.FC = () => {
             <>
               <div className="space-y-3">
                 {filtered.map(c => {
-                  const st = STATUS_LABELS[c.status] || { label: c.status, cls: 'bg-gray-100 text-gray-700' }
                   return (
                     <div key={c.id} className="border border-gray-200 rounded-lg p-4">
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
@@ -1571,7 +1545,7 @@ export const VbKorrekturDashboard: React.FC = () => {
                           </div>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap lg:flex-shrink-0">
                         {c.submission_url && (
                           <button
                             onClick={() => downloadFile(c.submission_url!, `Klausur_${c.case_study_number}_Abgabe.pdf`)}
@@ -1588,15 +1562,6 @@ export const VbKorrekturDashboard: React.FC = () => {
                           >
                             <Download className="w-4 h-4" />
                             Punkteschema herunterladen
-                          </button>
-                        )}
-                        {(c.status === 'corrected' && !c.video_correction_url) && (
-                          <button
-                            onClick={() => setSelected(c)}
-                            className="flex items-center gap-1 px-3 py-2 text-sm border border-blue-400 text-blue-600 rounded-lg hover:bg-blue-50"
-                          >
-                            <Clock className="w-4 h-4" />
-                            Video hinzufügen
                           </button>
                         )}
                         {(c.status === 'materials_ready') && (
