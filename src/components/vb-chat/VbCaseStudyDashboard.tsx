@@ -913,11 +913,19 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
     try {
       console.log('Starting upload for case study:', caseStudyId)
       console.log('File details:', { name: uploadFile.name, size: uploadFile.size, type: uploadFile.type })
-      
-      const fileName = uploadFile.name
-      
+
+      // Sanitize filename for storage: special characters like #, ?, spaces
+      // and umlauts break storage paths and public URLs.
+      const ext = uploadFile.name.split('.').pop() || ''
+      const base = uploadFile.name.replace(/\.[^.]+$/, '')
+      const safeBase = base
+        .replace(/[äÄ]/g, 'ae').replace(/[öÖ]/g, 'oe').replace(/[üÜ]/g, 'ue').replace(/[ß]/g, 'ss')
+        .replace(/[^a-zA-Z0-9._-]/g, '_')
+        .replace(/_+/g, '_')
+      const fileName = ext ? `${safeBase}.${ext}` : safeBase
+
       console.log('Uploading to storage with filename:', fileName)
-      
+
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('case-studies')
         .upload(fileName, uploadFile, { upsert: true })

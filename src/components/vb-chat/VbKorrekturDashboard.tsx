@@ -872,11 +872,19 @@ export const VbKorrekturDashboard: React.FC = () => {
     if (exceedsDocumentUploadLimit(file)) {
       throw new Error(`Die Datei "${file.name}" ist zu groß. Maximal ${MAX_DOCUMENT_UPLOAD_LABEL} erlaubt.`)
     }
-    // Keep original filename exactly as uploaded
-    const fileName = file.name
-    const filePath = `korrekturen/${caseId}/${fileName}`
+    // Sanitize filename for storage path: special characters like #, ?, spaces
+    // and umlauts break storage paths and public URLs (# is the URL fragment
+    // delimiter and truncates everything after it).
+    const ext = file.name.split('.').pop() || ''
+    const base = file.name.replace(/\.[^.]+$/, '')
+    const safeBase = base
+      .replace(/[äÄ]/g, 'ae').replace(/[öÖ]/g, 'oe').replace(/[üÜ]/g, 'ue').replace(/[ß]/g, 'ss')
+      .replace(/[^a-zA-Z0-9._-]/g, '_')
+      .replace(/_+/g, '_')
+    const safeFileName = ext ? `${safeBase}.${ext}` : safeBase
+    const filePath = `korrekturen/${caseId}/${kind}_${safeFileName}`
     console.log('📤 Uploading to path:', filePath)
-    const { error } = await supabase.storage.from(BUCKET).upload(filePath, file)
+    const { error } = await supabase.storage.from(BUCKET).upload(filePath, file, { upsert: true })
     if (error) {
       console.error('❌ Upload error:', error)
       throw error
