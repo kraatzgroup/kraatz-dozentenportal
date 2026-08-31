@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { LogOut, Settings, Upload, FileText, PenTool, Calendar, CheckCircle, Clock, AlertCircle, Download, ChevronDown, ChevronUp, Users, ChevronLeft, ChevronRight, Lock, Unlock, BookOpen, Award, Video, FolderOpen, Menu, Info, MessageSquare, HelpCircle, Bell, X, GraduationCap } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { exceedsDocumentUploadLimit, MAX_DOCUMENT_UPLOAD_LABEL } from '../lib/uploadLimits';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
 import { Logo } from './Logo';
@@ -910,6 +911,11 @@ export function EliteKleingruppeDashboard() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (exceedsDocumentUploadLimit(file)) {
+        alert(`Die Datei ist zu groß. Maximal ${MAX_DOCUMENT_UPLOAD_LABEL} erlaubt.`);
+        e.target.value = '';
+        return;
+      }
       setUploadFile(file);
     }
   };

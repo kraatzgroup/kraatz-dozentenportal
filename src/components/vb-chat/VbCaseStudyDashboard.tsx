@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuthStore } from '../../store/authStore'
 import { supabase } from '../../lib/supabase'
+import { exceedsDocumentUploadLimit, MAX_DOCUMENT_UPLOAD_LABEL } from '../../lib/uploadLimits'
 import { CreditCard, BookOpen, Plus, Download, Upload, FileText, Video, X, Clock, CheckCircle, ChevronDown, ChevronUp, Star, MessageSquare, Table, Edit3, Eye, Trash2, Lightbulb, HelpCircle, Calendar, Mail } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -902,6 +903,12 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
     const uploadFile = file || uploadFiles.get(caseStudyId)
     if (!uploadFile) return
 
+    if (exceedsDocumentUploadLimit(uploadFile)) {
+      alert(`Die Datei "${uploadFile.name}" ist zu groß. Maximal ${MAX_DOCUMENT_UPLOAD_LABEL} erlaubt.`)
+      setUploadFiles(prev => { const next = new Map(prev); next.delete(caseStudyId); return next })
+      return
+    }
+
     setUploadingCaseId(caseStudyId)
     try {
       console.log('Starting upload for case study:', caseStudyId)
@@ -1413,7 +1420,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                 </label>
                               </p>
                               <p className="text-xs text-gray-500 mt-1">
-                                PDF, DOC oder DOCX (max. 50MB)
+                                PDF, DOC oder DOCX (max. 100MB)
                               </p>
                             </div>
                           </div>

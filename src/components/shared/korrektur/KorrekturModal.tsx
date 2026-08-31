@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { X, FileText, Upload, Download, Save, Edit3 } from 'lucide-react'
 import type { KorrekturFieldConfig, KorrekturItem, KorrekturSavePayload } from './types'
+import { exceedsDocumentUploadLimit, MAX_DOCUMENT_UPLOAD_LABEL } from '../../../lib/uploadLimits'
 
 interface FileFieldProps {
   label: string
@@ -156,6 +157,11 @@ const FileField: React.FC<FileFieldProps> = ({
                 onChange={e => {
                   const selectedFile = e.target.files?.[0] || null
                   console.log('📁 FileField - File selected:', selectedFile?.name, 'for label:', label)
+                  if (selectedFile && exceedsDocumentUploadLimit(selectedFile)) {
+                    alert(`Die Datei "${selectedFile.name}" ist zu groß. Maximal ${MAX_DOCUMENT_UPLOAD_LABEL} erlaubt.`)
+                    e.target.value = ''
+                    return
+                  }
                   onSelect(selectedFile)
                 }}
               />
@@ -184,6 +190,11 @@ const FileField: React.FC<FileFieldProps> = ({
               onChange={e => {
                 const selectedFile = e.target.files?.[0] || null
                 console.log('📁 FileField - File selected (no existing):', selectedFile?.name, 'for label:', label)
+                if (selectedFile && exceedsDocumentUploadLimit(selectedFile)) {
+                  alert(`Die Datei "${selectedFile.name}" ist zu groß. Maximal ${MAX_DOCUMENT_UPLOAD_LABEL} erlaubt.`)
+                  e.target.value = ''
+                  return
+                }
                 onSelect(selectedFile)
               }}
             />

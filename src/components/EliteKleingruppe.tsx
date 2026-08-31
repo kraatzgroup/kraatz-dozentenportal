@@ -31,6 +31,7 @@ import {
   GripVertical
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { exceedsDocumentUploadLimit, MAX_DOCUMENT_UPLOAD_LABEL } from '../lib/uploadLimits';
 import { useAuthStore } from '../store/authStore';
 import {
   DndContext,
@@ -842,6 +843,10 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   // Video Functions
   const handleSaveVideo = async () => {
     if (!videoForm.title.trim() || !videoForm.video_url.trim()) return;
+    if (videoFile && exceedsDocumentUploadLimit(videoFile)) {
+      alert(`Die Video-Datei ist zu groß. Maximal ${MAX_DOCUMENT_UPLOAD_LABEL} erlaubt.`);
+      return;
+    }
     setIsUploadingVideo(true);
     try {
       let videoUrl = videoForm.video_url;
@@ -1181,6 +1186,10 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
     // Validation: title is always required, unit_type only for 'einheit' events
     if (!selectedDate || !releaseTitle.trim()) return;
     if (releaseEventType === 'einheit' && !releaseUnitType) return;
+    if (additionalDocument && exceedsDocumentUploadLimit(additionalDocument)) {
+      alert(`Das Zusatzdokument ist zu groß. Maximal ${MAX_DOCUMENT_UPLOAD_LABEL} erlaubt.`);
+      return;
+    }
     
     // Check for conflicts
     const eliteGroupId = selectedEliteGroupId || (eliteGroups.length === 1 ? eliteGroups[0].id : null);
@@ -1424,14 +1433,18 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       releaseId: editingRelease?.id 
     });
     if (!editAdditionalDocument || !editAdditionalDocumentTitle.trim() || !editingRelease) {
-      console.warn('handleUploadEditDocument: guard failed', { 
-        hasFile: !!editAdditionalDocument, 
-        hasTitle: !!editAdditionalDocumentTitle.trim(), 
-        hasRelease: !!editingRelease 
+      console.warn('handleUploadEditDocument: guard failed', {
+        hasFile: !!editAdditionalDocument,
+        hasTitle: !!editAdditionalDocumentTitle.trim(),
+        hasRelease: !!editingRelease
       });
       return;
     }
-    
+    if (exceedsDocumentUploadLimit(editAdditionalDocument)) {
+      alert(`Das Zusatzdokument ist zu groß. Maximal ${MAX_DOCUMENT_UPLOAD_LABEL} erlaubt.`);
+      return;
+    }
+
     setIsUploadingEditDocument(true);
     try {
       const fileExt = editAdditionalDocument.name.split('.').pop();
@@ -2262,6 +2275,14 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
 
   const handleSaveKorrektur = async () => {
     if (!selectedKlausur || !user) return;
+    if (korrekturFile && exceedsDocumentUploadLimit(korrekturFile)) {
+      alert(`Die Korrektur-Datei ist zu groß. Maximal ${MAX_DOCUMENT_UPLOAD_LABEL} erlaubt.`);
+      return;
+    }
+    if (korrekturExcelFile && exceedsDocumentUploadLimit(korrekturExcelFile)) {
+      alert(`Die Bewertungs-Datei ist zu groß. Maximal ${MAX_DOCUMENT_UPLOAD_LABEL} erlaubt.`);
+      return;
+    }
     setIsUploadingKorrektur(true);
     try {
       let correctedFileUrl = selectedKlausur.corrected_file_url || null;

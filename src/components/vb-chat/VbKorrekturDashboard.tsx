@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { exceedsDocumentUploadLimit, MAX_DOCUMENT_UPLOAD_LABEL } from '../../lib/uploadLimits'
 import { useAuthStore } from '../../store/authStore'
 import { BookOpen, Clock, Download, Edit3, CheckCircle, AlertTriangle, FolderOpen, Upload, X, Search, ChevronDown, ChevronRight, Undo2 } from 'lucide-react'
 import { KorrekturModal } from '../shared/korrektur/KorrekturModal'
@@ -34,7 +35,6 @@ function DraggableFolder({ folder, isExpanded, onToggle, materialCount, isSelect
       <input
         type="checkbox"
         checked={isSelected}
-        onChange={handleCheckboxClick}
         className={`w-4 h-4 text-primary rounded transition-opacity ${
           isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
         }`}
@@ -69,6 +69,7 @@ interface TeachingMaterial {
   file_url: string
   file_name: string
   folder_id: string
+  created_at?: string
 }
 
 interface VbStudent {
@@ -868,6 +869,9 @@ export const VbKorrekturDashboard: React.FC = () => {
 
   const uploadCorrectionFile = async (file: File, caseId: string, kind: string): Promise<string> => {
     console.log('📤 uploadCorrectionFile called:', { fileName: file.name, caseId, kind })
+    if (exceedsDocumentUploadLimit(file)) {
+      throw new Error(`Die Datei "${file.name}" ist zu groß. Maximal ${MAX_DOCUMENT_UPLOAD_LABEL} erlaubt.`)
+    }
     // Keep original filename exactly as uploaded
     const fileName = file.name
     const filePath = `korrekturen/${caseId}/${fileName}`
@@ -1020,7 +1024,7 @@ export const VbKorrekturDashboard: React.FC = () => {
       if (materialSortBy === 'title') {
         return a.title.localeCompare(b.title)
       } else {
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
       }
     })
 
