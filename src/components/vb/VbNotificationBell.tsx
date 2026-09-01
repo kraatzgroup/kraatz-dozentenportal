@@ -184,6 +184,12 @@ export const VbNotificationBell: React.FC<VbNotificationBellProps> = ({ variant 
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  // Sort: unread first (newest first), then read (newest first)
+  const sortedNotifications = [...notifications].sort((a, b) => {
+    if (a.read !== b.read) return a.read ? 1 : -1;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
   const handleClickNotification = async (n: VbNotification) => {
     console.log('🔔 Notification clicked:', {
       id: n.id,
@@ -194,11 +200,19 @@ export const VbNotificationBell: React.FC<VbNotificationBellProps> = ({ variant 
       related_conversation_id: n.related_conversation_id,
       additionalRoles,
     });
+    // Optimistically mark as read in local state immediately so the
+    // badge count drops without waiting for the DB round-trip / refetch.
     if (!n.read) {
-      await supabase
+      setNotifications(prev => prev.map(item =>
+        item.id === n.id ? { ...item, read: true } : item
+      ));
+      supabase
         .from('vb_notifications')
         .update({ read: true })
-        .eq('id', n.id);
+        .eq('id', n.id)
+        .then(({ error }) => {
+          if (error) console.error('Error marking notification as read:', error);
+        });
     }
     setOpen(false);
     if (n.related_conversation_id) {
@@ -267,12 +281,12 @@ export const VbNotificationBell: React.FC<VbNotificationBellProps> = ({ variant 
       </div>
 
       <div className="max-h-96 overflow-y-auto">
-        {notifications.length === 0 ? (
+        {sortedNotifications.length === 0 ? (
           <div className="px-4 py-8 text-center text-sm text-gray-500">
             Keine Benachrichtigungen
           </div>
         ) : (
-          notifications.map(n => (
+          sortedNotifications.map(n => (
             <button
               key={n.id}
               onClick={() => handleClickNotification(n)}
