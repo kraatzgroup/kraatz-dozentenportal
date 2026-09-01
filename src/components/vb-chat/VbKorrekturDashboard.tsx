@@ -28,6 +28,7 @@ function DraggableFolder({ folder, isExpanded, onToggle, isSelected, onToggleSel
   
   return (
     <div
+      id={`selector-folder-${folder.id}`}
       onClick={handleClick}
       className="group relative bg-white rounded-xl shadow-sm border hover:shadow-md hover:border-primary/30 transition-all cursor-pointer touch-manipulation border-gray-100 flex items-center gap-3 px-3 py-5"
     >
@@ -163,6 +164,8 @@ export const VbKorrekturDashboard: React.FC = () => {
   const [editingCorrectionField, setEditingCorrectionField] = useState<'solution' | 'schema' | null>(null)
   const [selectedCorrectionMaterialUrls, setSelectedCorrectionMaterialUrls] = useState<{ solution?: string; schema?: string }>({})
   const [selectedCorrectionMaterialFileNames, setSelectedCorrectionMaterialFileNames] = useState<{ solution?: string; schema?: string }>({})
+  // Zusatzmaterial selected from the teaching material selector (multi-file)
+  const [selectedCorrectionSchemaMaterials, setSelectedCorrectionSchemaMaterials] = useState<{ url: string; fileName: string }[]>([])
   const [completedPage, setCompletedPage] = useState(1)
   const [completedTotal, setCompletedTotal] = useState(0)
   const [materialSelectorLegalArea, setMaterialSelectorLegalArea] = useState<string | null>(null)
@@ -308,7 +311,7 @@ export const VbKorrekturDashboard: React.FC = () => {
     setSelectedCaseForMaterial(null) // Not assigning to a case, just selecting materials
     setSelectedMaterials(new Set())
     setMaterialSelectorLegalArea(selected?.legal_area || null)
-    
+
     // Only fetch if materials are not already loaded
     if (teachingMaterials.length === 0) {
       await fetchTeachingMaterials()
@@ -316,14 +319,14 @@ export const VbKorrekturDashboard: React.FC = () => {
     if (folderStructure.length === 0) {
       await fetchFolderStructure()
     }
-    
+
     // Find the current case study's assigned material and expand its parent folder
     const expandedSet = new Set<string>()
     if (selected?.case_study_material_url) {
       const currentMaterial = teachingMaterials.find(m => m.file_url === selected.case_study_material_url)
       if (currentMaterial && currentMaterial.folder_id) {
         expandedSet.add(currentMaterial.folder_id)
-        
+
         // Recursively expand parent folders
         let currentFolderId = currentMaterial.folder_id
         while (currentFolderId) {
@@ -337,9 +340,43 @@ export const VbKorrekturDashboard: React.FC = () => {
         }
       }
     }
-    
+
+    // For Zusatzmaterial (schema): find a subfolder containing "Zusatzmaterial"
+    // in its name within the expanded hierarchy and scroll to it after render.
+    let zusatzmaterialFolderId: string | null = null
+    if (field === 'schema') {
+      const zusatzFolder = folderStructure.find(f =>
+        f.name.toLowerCase().includes('zusatzmaterial')
+      )
+      if (zusatzFolder) {
+        zusatzmaterialFolderId = zusatzFolder.id
+        // Expand the parent chain so the folder is visible
+        expandedSet.add(zusatzFolder.id)
+        let currentFolderId = zusatzFolder.parent_id
+        while (currentFolderId) {
+          expandedSet.add(currentFolderId)
+          const parentFolder = folderStructure.find(f => f.id === currentFolderId)
+          if (parentFolder && parentFolder.parent_id) {
+            currentFolderId = parentFolder.parent_id
+          } else {
+            break
+          }
+        }
+      }
+    }
+
     setExpandedFolders(expandedSet)
     setShowMaterialSelector(true)
+
+    // Scroll to the Zusatzmaterial folder after the modal renders
+    if (zusatzmaterialFolderId) {
+      setTimeout(() => {
+        const el = document.getElementById(`selector-folder-${zusatzmaterialFolderId}`)
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+      }, 300)
+    }
   }
 
   const fetchAssignedMaterialsForUser = async (profileId: string) => {
@@ -362,6 +399,7 @@ export const VbKorrekturDashboard: React.FC = () => {
     if (selected) {
       setSelectedCorrectionMaterialUrls({})
       setSelectedCorrectionMaterialFileNames({})
+      setSelectedCorrectionSchemaMaterials([])
     }
   }, [selected?.id])
 
@@ -385,6 +423,7 @@ export const VbKorrekturDashboard: React.FC = () => {
         updateData.scoring_schema_url = null
         setSelectedCorrectionMaterialUrls(prev => ({ ...prev, schema: undefined }))
         setSelectedCorrectionMaterialFileNames(prev => ({ ...prev, schema: undefined }))
+        setSelectedCorrectionSchemaMaterials([])
         break
     }
 
@@ -416,20 +455,36 @@ export const VbKorrekturDashboard: React.FC = () => {
     ).filter(Boolean) as TeachingMaterial[]
 
     if (materials.length > 0) {
-      const material = materials[0]
-      setSelectedCorrectionMaterialUrls(prev => ({
-        ...prev,
-        [editingCorrectionField]: material.file_url,
-      }))
-      setSelectedCorrectionMaterialFileNames(prev => ({
-        ...prev,
-        [editingCorrectionField]: material.file_name,
-      }))
+      if (editingCorrectionField === 'schema') {
+        // Zusatzmaterial supports multiple files: add all selected materials
+        setSelectedCorrectionSchemaMaterials(prev => {
+          const existingUrls = new Set(prev.map(m => m.url))
+          const additions = materials
+            .filter(m => !existingUrls.has(m.file_url))
+            .map(m => ({ url: m.file_url, fileName: m.file_name }))
+          return [...prev, ...additions]
+        })
+      } else {
+        // Solution: single file only
+        const material = materials[0]
+        setSelectedCorrectionMaterialUrls(prev => ({
+          ...prev,
+          [editingCorrectionField]: material.file_url,
+        }))
+        setSelectedCorrectionMaterialFileNames(prev => ({
+          ...prev,
+          [editingCorrectionField]: material.file_name,
+        }))
+      }
     }
 
     setShowMaterialSelector(false)
     setEditingCorrectionField(null)
     setSelectedMaterials(new Set())
+  }
+
+  const handleRemoveSchemaMaterial = (url: string) => {
+    setSelectedCorrectionSchemaMaterials(prev => prev.filter(m => m.url !== url))
   }
 
   const fetchCases = useCallback(async () => {
@@ -1283,6 +1338,19 @@ export const VbKorrekturDashboard: React.FC = () => {
         const url = await uploadCorrectionFile(f, selected.id, 'schema')
         newSchemaUrls.push(url)
       }
+      // Download + re-upload Zusatzmaterial selected from the teaching material selector
+      for (const m of payload.selectedSchemaMaterialUrls || []) {
+        try {
+          const resp = await fetch(m.url)
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+          const blob = await resp.blob()
+          const file = new File([blob], m.fileName, { type: blob.type || 'application/pdf' })
+          const url = await uploadCorrectionFile(file, selected.id, 'schema')
+          newSchemaUrls.push(url)
+        } catch (err) {
+          console.error('Error copying teaching material to schema storage:', m.url, err)
+        }
+      }
       // Delete removed Zusatzmaterial files from storage
       for (const url of payload.deletedSchemaUrls || []) {
         try {
@@ -1434,6 +1502,7 @@ export const VbKorrekturDashboard: React.FC = () => {
       // Reset material selection state
       setSelectedCorrectionMaterialUrls({})
       setSelectedCorrectionMaterialFileNames({})
+      setSelectedCorrectionSchemaMaterials([])
       
       // If no video was provided and status is corrected, stay on submissions tab
       if (!videoUrl) {
@@ -1835,6 +1904,8 @@ export const VbKorrekturDashboard: React.FC = () => {
           onOpenMaterialSelector={handleOpenCorrectionMaterialSelector}
           selectedMaterialUrls={selectedCorrectionMaterialUrls}
           selectedMaterialFileNames={selectedCorrectionMaterialFileNames}
+          selectedSchemaMaterialUrls={selectedCorrectionSchemaMaterials}
+          onRemoveSchemaMaterial={handleRemoveSchemaMaterial}
           onClearFile={handleClearFile}
         />
       )}
@@ -1899,7 +1970,7 @@ export const VbKorrekturDashboard: React.FC = () => {
             <div className="sticky top-0 bg-white border-b border-gray-200 p-6 z-10 rounded-t-lg">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">
-                  {editingCorrectionField ? `${editingCorrectionField === 'solution' ? 'Lösungsskizze' : 'Bewertungsschema'} aus Materialien auswählen` : (selectedCaseForMaterial?.status === 'materials_ready' ? 'Material ändern' : 'Sachverhalt auswählen')}
+                  {editingCorrectionField ? `${editingCorrectionField === 'solution' ? 'Lösungsskizze' : 'Zusatzmaterial'} aus Materialien auswählen` : (selectedCaseForMaterial?.status === 'materials_ready' ? 'Material ändern' : 'Sachverhalt auswählen')}
                 </h3>
                 <div className="flex items-center gap-2">
                   {editingCorrectionField ? (
@@ -1908,7 +1979,9 @@ export const VbKorrekturDashboard: React.FC = () => {
                       disabled={selectedMaterials.size === 0}
                       className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Auswählen
+                      {selectedMaterials.size > 0
+                        ? `Auswählen (${selectedMaterials.size})`
+                        : 'Auswählen'}
                     </button>
                   ) : (
                     (selectedMaterials.size > 0 || selectedCaseForMaterial?.status === 'materials_ready') && (
@@ -1950,9 +2023,14 @@ export const VbKorrekturDashboard: React.FC = () => {
                 </div>
               </div>
             </div>
-            
+
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-6 rounded-b-lg">
+              {editingCorrectionField === 'schema' && (
+                <p className="text-xs text-gray-500 mb-3">
+                  Sie können mehrere Dateien gleichzeitig auswählen.
+                </p>
+              )}
               <div className="space-y-2">
                 {/* Show folder hierarchy - only top-level folders initially */}
                 {filteredFolders.map(folder => renderFolder(folder))}

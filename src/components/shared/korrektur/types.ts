@@ -77,6 +77,8 @@ export interface KorrekturSavePayload {
   schemaFiles: File[]
   /** VB only: URLs of existing Zusatzmaterial files to delete. */
   deletedSchemaUrls?: string[]
+  /** VB only: Zusatzmaterial selected from the teaching material selector (multi). */
+  selectedSchemaMaterialUrls?: { url: string; fileName: string }[]
 }
 
 export const ELITE_FIELD_CONFIG: KorrekturFieldConfig = {

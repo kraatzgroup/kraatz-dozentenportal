@@ -216,6 +216,12 @@ interface MultiFileFieldProps {
   onRemoveFile: (index: number) => void
   onRemoveExisting: (url: string) => void
   onDownload?: (url: string, filename: string) => void
+  /** When true, the add button opens the material selector instead of the native file picker. */
+  useMaterialSelector?: boolean
+  onOpenMaterialSelector?: () => void
+  /** Materials selected from the teaching material selector (displayed as blue items). */
+  selectedMaterialUrls?: { url: string; fileName: string }[]
+  onRemoveSelectedMaterial?: (url: string) => void
 }
 
 const MultiFileField: React.FC<MultiFileFieldProps> = ({
@@ -227,6 +233,10 @@ const MultiFileField: React.FC<MultiFileFieldProps> = ({
   onRemoveFile,
   onRemoveExisting,
   onDownload,
+  useMaterialSelector = false,
+  onOpenMaterialSelector,
+  selectedMaterialUrls = [],
+  onRemoveSelectedMaterial,
 }) => {
   return (
     <div>
@@ -258,6 +268,29 @@ const MultiFileField: React.FC<MultiFileFieldProps> = ({
             </div>
           )
         })}
+        {/* Materials selected from the teaching material selector */}
+        {selectedMaterialUrls.map((m) => (
+          <div key={m.url} className="flex items-center p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <FileText className="h-5 w-5 text-blue-600 flex-shrink-0" />
+            <span className="ml-2 text-sm text-gray-700 truncate flex-1" title={m.fileName}>{m.fileName}</span>
+            {onDownload && (
+              <button
+                onClick={() => onDownload(m.url, m.fileName)}
+                className="ml-2 p-1 text-primary hover:bg-primary/10 rounded flex-shrink-0"
+                title="Datei herunterladen"
+              >
+                <Download className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              onClick={() => onRemoveSelectedMaterial?.(m.url)}
+              className="ml-2 p-1 text-red-500 hover:bg-red-50 rounded flex-shrink-0"
+              title="Datei entfernen"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ))}
         {/* New files selected for upload */}
         {files.map((file, index) => (
           <div key={index} className="flex items-center p-3 bg-primary/5 border border-primary/20 rounded-lg">
@@ -272,31 +305,41 @@ const MultiFileField: React.FC<MultiFileFieldProps> = ({
             </button>
           </div>
         ))}
-        {/* Upload button */}
-        <label className="cursor-pointer block">
-          <div className="flex items-center justify-center px-3 py-2 border-2 border-dashed border-gray-300 hover:border-primary/50 rounded-lg transition-colors">
+        {/* Add button: material selector or native file picker */}
+        {useMaterialSelector && onOpenMaterialSelector ? (
+          <button
+            onClick={onOpenMaterialSelector}
+            className="flex items-center justify-center px-3 py-2 border-2 border-dashed border-gray-300 hover:border-primary/50 rounded-lg transition-colors w-full"
+          >
             <Plus className="h-4 w-4 mr-2 text-gray-400" />
-            <span className="text-sm text-gray-500">Zusatzmaterial hinzufügen</span>
-          </div>
-          <input
-            type="file"
-            accept={accept}
-            multiple
-            className="hidden"
-            onChange={e => {
-              const selectedFiles = Array.from(e.target.files || [])
-              const validFiles = selectedFiles.filter(f => {
-                if (exceedsDocumentUploadLimit(f)) {
-                  alert(`Die Datei "${f.name}" ist zu groß. Maximal ${MAX_DOCUMENT_UPLOAD_LABEL} erlaubt.`)
-                  return false
-                }
-                return true
-              })
-              if (validFiles.length > 0) onAddFiles(validFiles)
-              e.target.value = ''
-            }}
-          />
-        </label>
+            <span className="text-sm text-gray-500">Zusatzmaterial aus Materialien hinzufügen</span>
+          </button>
+        ) : (
+          <label className="cursor-pointer block">
+            <div className="flex items-center justify-center px-3 py-2 border-2 border-dashed border-gray-300 hover:border-primary/50 rounded-lg transition-colors">
+              <Plus className="h-4 w-4 mr-2 text-gray-400" />
+              <span className="text-sm text-gray-500">Zusatzmaterial hinzufügen</span>
+            </div>
+            <input
+              type="file"
+              accept={accept}
+              multiple
+              className="hidden"
+              onChange={e => {
+                const selectedFiles = Array.from(e.target.files || [])
+                const validFiles = selectedFiles.filter(f => {
+                  if (exceedsDocumentUploadLimit(f)) {
+                    alert(`Die Datei "${f.name}" ist zu groß. Maximal ${MAX_DOCUMENT_UPLOAD_LABEL} erlaubt.`)
+                    return false
+                  }
+                  return true
+                })
+                if (validFiles.length > 0) onAddFiles(validFiles)
+                e.target.value = ''
+              }}
+            />
+          </label>
+        )}
       </div>
     </div>
   )
@@ -315,6 +358,9 @@ interface KorrekturModalProps {
   onOpenMaterialSelector?: (field: 'solution' | 'schema') => void
   selectedMaterialUrls?: { solution?: string; schema?: string }
   selectedMaterialFileNames?: { solution?: string; schema?: string }
+  /** VB only: Zusatzmaterial selected from the teaching material selector (multi). */
+  selectedSchemaMaterialUrls?: { url: string; fileName: string }[]
+  onRemoveSchemaMaterial?: (url: string) => void
   /** Callback to clear a file URL immediately (for delete functionality) */
   onClearFile?: (field: 'pdf' | 'excel' | 'solution' | 'schema') => void
 }
@@ -330,6 +376,8 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
   onOpenMaterialSelector,
   selectedMaterialUrls,
   selectedMaterialFileNames,
+  selectedSchemaMaterialUrls,
+  onRemoveSchemaMaterial,
   onClearFile,
 }) => {
   const [score, setScore] = useState('')
@@ -384,6 +432,7 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
       schemaFile,
       schemaFiles,
       deletedSchemaUrls,
+      selectedSchemaMaterialUrls,
     } as KorrekturSavePayload)
   }
 
@@ -519,6 +568,10 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
                     onRemoveFile={(index) => setSchemaFiles(prev => prev.filter((_, i) => i !== index))}
                     onRemoveExisting={(url) => setDeletedSchemaUrls(prev => [...prev, url])}
                     onDownload={onDownloadFile}
+                    useMaterialSelector
+                    onOpenMaterialSelector={() => onOpenMaterialSelector?.('schema')}
+                    selectedMaterialUrls={selectedSchemaMaterialUrls}
+                    onRemoveSelectedMaterial={onRemoveSchemaMaterial}
                   />
                 )}
               </div>
