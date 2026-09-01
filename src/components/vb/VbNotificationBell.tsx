@@ -195,9 +195,17 @@ export const VbNotificationBell: React.FC<VbNotificationBellProps> = ({ variant 
     if (n.related_conversation_id) {
       navigate('/klausurenbesprechung/chat');
     } else if (n.related_case_study_id) {
-      // Dozents go to the correction workspace; everyone else to results
+      // Dozents go to the correction workspace
       const isDozent = additionalRoles?.includes('videobesprechung_dozent') || additionalRoles?.includes('admin');
-      navigate(isDozent ? '/klausurenbesprechung/korrektur' : '/klausurenbesprechung/ergebnisse');
+      if (isDozent) {
+        navigate('/klausurenbesprechung/korrektur');
+      } else {
+        // Teilnehmer: "Sachverhalt verfügbar" / "Material geändert" → dashboard
+        // (where they can start working / view the material).
+        // "Korrektur verfügbar" / "Klausur abgeschlossen" → ergebnisse (results).
+        const isCorrection = n.title.toLowerCase().includes('korrektur') || n.title.toLowerCase().includes('abgeschlossen');
+        navigate(isCorrection ? '/klausurenbesprechung/ergebnisse' : '/klausurenbesprechung/dashboard');
+      }
     }
     fetchNotifications();
   };
