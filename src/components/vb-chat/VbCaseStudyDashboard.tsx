@@ -174,20 +174,28 @@ export const VbCaseStudyDashboard: React.FC = () => {
     }
   }
 
-  // Track PDF download
+  // Track PDF download — also marks the correction as viewed
   const handlePdfDownload = async (caseStudyId: string) => {
     try {
+      const now = new Date().toISOString()
+      const updateData: Record<string, string> = { pdf_downloaded_at: now }
+      // Mark correction as viewed if not already
+      const cs = caseStudies.find(c => c.id === caseStudyId)
+      if (cs && !cs.correction_viewed_at) {
+        updateData.correction_viewed_at = now
+      }
+
       const { error } = await supabase
         .from('vb_case_study_requests')
-        .update({ pdf_downloaded_at: new Date().toISOString() })
+        .update(updateData)
         .eq('id', caseStudyId)
-      
+
       if (!error) {
         // Update local state immediately for instant UI feedback
-        setCaseStudies(prevCases => 
-          prevCases.map(cs => 
-            cs.id === caseStudyId 
-              ? { ...cs, pdf_downloaded_at: new Date().toISOString() }
+        setCaseStudies(prevCases =>
+          prevCases.map(cs =>
+            cs.id === caseStudyId
+              ? { ...cs, ...updateData }
               : cs
           )
         )
@@ -292,7 +300,9 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
     })
   }
 
-  // Expand case study and scroll to its correction section
+  // Expand case study and scroll to its correction section.
+  // Also marks the correction as "viewed" so it moves out of the
+  // "Neue Korrektur" section and sinks down in the dashboard.
   const expandAndScrollToCorrection = useCallback((caseId: string) => {
     setExpandedCases(prev => {
       const next = new Set(prev)
@@ -305,7 +315,30 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
         element.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }
     }, 100)
-  }, [])
+
+    // Mark correction as viewed (only sets timestamp if not already set)
+    const caseStudy = caseStudies.find(cs => cs.id === caseId)
+    if (caseStudy && !caseStudy.correction_viewed_at) {
+      const now = new Date().toISOString()
+      supabase
+        .from('vb_case_study_requests')
+        .update({ correction_viewed_at: now })
+        .eq('id', caseId)
+        .then(({ error }) => {
+          if (error) {
+            console.error('Error marking correction as viewed:', error)
+          } else {
+            console.log('✅ Marked correction as viewed:', caseId)
+          }
+        })
+      // Update local state immediately so the UI re-sorts without a refetch
+      setCaseStudies(prev =>
+        prev.map(cs =>
+          cs.id === caseId ? { ...cs, correction_viewed_at: now } : cs
+        )
+      )
+    }
+  }, [caseStudies])
 
   // Fetch ratings for completed case studies
   const fetchRatings = async () => {
@@ -650,14 +683,15 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
     const hasPdf = !!caseStudy.written_correction_url
     const videoViewed = !!caseStudy.video_viewed_at
     const pdfDownloaded = !!caseStudy.pdf_downloaded_at
+    const correctionViewed = !!caseStudy.correction_viewed_at
     const isRated = ratings.has(caseStudy.id)
-    
-    // Check if it's a new correction (completed recently and not accessed)
-    const isNew = !videoViewed && !pdfDownloaded
-    
+
+    // "New" = correction not yet viewed by the student
+    const isNew = !correctionViewed
+
     // Check if fully accessed
     const fullyAccessed = (!hasVideo || videoViewed) && (!hasPdf || pdfDownloaded)
-    
+
     // Check if partially accessed
     const partiallyAccessed = (videoViewed || pdfDownloaded) && !fullyAccessed
     
@@ -723,14 +757,16 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
       if (hash.startsWith('#case-study-')) {
         const caseStudyId = hash.replace('#case-study-', '')
         const caseStudy = caseStudies.find(cs => cs.id === caseStudyId)
-        
-        if (caseStudy && caseStudy.video_correction_url) {
+
+        if (caseStudy) {
           // Highlight the case study
           setHighlightedCaseId(caseStudyId)
-          
-          // Expand and scroll to the correction section
-          expandAndScrollToCorrection(caseStudyId)
-          
+
+          // Expand and scroll to the correction section (if correction exists)
+          if (caseStudy.video_correction_url || caseStudy.written_correction_url) {
+            expandAndScrollToCorrection(caseStudyId)
+          }
+
           // Clear the hash and highlight after opening
           setTimeout(() => {
             window.location.hash = ''
@@ -1044,12 +1080,15 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
   const endIndex = startIndex + itemsPerPage
   const paginatedCompletedCases = filteredCompletedCases.slice(startIndex, endIndex)
   
-  // Calculate new corrections and viewed corrections based on pagination
-  const paginatedNewCorrections = paginatedCompletedCases.filter(cs => 
-    !cs.video_viewed_at && !cs.correction_viewed_at
+  // Calculate new corrections and viewed corrections based on pagination.
+  // A correction is "new" until the student has viewed it (correction_viewed_at
+  // set via expandAndScrollToCorrection or PDF download). Once viewed, it sinks
+  // down into the viewed section.
+  const paginatedNewCorrections = paginatedCompletedCases.filter(cs =>
+    !cs.correction_viewed_at
   )
-  const paginatedViewedCorrections = paginatedCompletedCases.filter(cs => 
-    cs.video_viewed_at || cs.correction_viewed_at
+  const paginatedViewedCorrections = paginatedCompletedCases.filter(cs =>
+    cs.correction_viewed_at
   )
   
   // Reset to page 1 when filter changes
@@ -1066,6 +1105,36 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
     console.log('Case studies with video_correction_url:', caseStudies.filter(cs => cs.video_correction_url))
     console.log('Case studies with corrected status:', caseStudies.filter(cs => cs.status === 'corrected'))
   }, [caseStudies, completedCases, newCorrections, viewedCorrections])
+
+  // Auto-mark the top "Neue Korrektur" as viewed when it's rendered in the
+  // highlighted section — the correction details (video, grade, downloads) are
+  // already visible there without the user needing to click "Video ansehen".
+  useEffect(() => {
+    if (newCorrections.length === 0) return
+    const firstNew = newCorrections[0]
+    if (!firstNew || firstNew.correction_viewed_at) return
+    // Small delay so the user actually sees the section before it's marked
+    const timer = setTimeout(() => {
+      const now = new Date().toISOString()
+      supabase
+        .from('vb_case_study_requests')
+        .update({ correction_viewed_at: now })
+        .eq('id', firstNew.id)
+        .then(({ error }) => {
+          if (error) {
+            console.error('Error auto-marking correction as viewed:', error)
+          } else {
+            console.log('✅ Auto-marked correction as viewed:', firstNew.id)
+          }
+        })
+      setCaseStudies(prev =>
+        prev.map(cs =>
+          cs.id === firstNew.id ? { ...cs, correction_viewed_at: now } : cs
+        )
+      )
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [newCorrections])
 
   if (loading) {
     return (

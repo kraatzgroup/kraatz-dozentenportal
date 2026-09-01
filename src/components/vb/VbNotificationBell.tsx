@@ -185,6 +185,15 @@ export const VbNotificationBell: React.FC<VbNotificationBellProps> = ({ variant 
   const unreadCount = notifications.filter(n => !n.read).length;
 
   const handleClickNotification = async (n: VbNotification) => {
+    console.log('🔔 Notification clicked:', {
+      id: n.id,
+      title: n.title,
+      type: n.type,
+      read: n.read,
+      related_case_study_id: n.related_case_study_id,
+      related_conversation_id: n.related_conversation_id,
+      additionalRoles,
+    });
     if (!n.read) {
       await supabase
         .from('vb_notifications')
@@ -193,19 +202,24 @@ export const VbNotificationBell: React.FC<VbNotificationBellProps> = ({ variant 
     }
     setOpen(false);
     if (n.related_conversation_id) {
+      console.log('🔔 Redirecting to chat (related_conversation_id)');
       navigate('/klausurenbesprechung/chat');
     } else if (n.related_case_study_id) {
       // Dozents go to the correction workspace
       const isDozent = additionalRoles?.includes('videobesprechung_dozent') || additionalRoles?.includes('admin');
+      console.log('🔔 related_case_study_id branch - isDozent:', isDozent, 'additionalRoles:', additionalRoles);
       if (isDozent) {
+        console.log('🔔 Redirecting dozent to korrektur');
         navigate('/klausurenbesprechung/korrektur');
       } else {
-        // Teilnehmer: "Sachverhalt verfügbar" / "Material geändert" → dashboard
-        // (where they can start working / view the material).
-        // "Korrektur verfügbar" / "Klausur abgeschlossen" → ergebnisse (results).
-        const isCorrection = n.title.toLowerCase().includes('korrektur') || n.title.toLowerCase().includes('abgeschlossen');
-        navigate(isCorrection ? '/klausurenbesprechung/ergebnisse' : '/klausurenbesprechung/dashboard');
+        // Teilnehmer: immer zum dashboard, wo sie den Sachverhalt, das
+        // Zusatzmaterial und die Korrektur (Video, PDF, Note) sehen können.
+        // Deep-link via #case-study-{id} scrollt direkt zur jeweiligen Klausur.
+        console.log('🔔 Redirecting teilnehmer to dashboard with case-study hash:', n.related_case_study_id);
+        navigate(`/klausurenbesprechung/dashboard#case-study-${n.related_case_study_id}`);
       }
+    } else {
+      console.log('🔔 No related_case_study_id or related_conversation_id - no redirect');
     }
     fetchNotifications();
   };
