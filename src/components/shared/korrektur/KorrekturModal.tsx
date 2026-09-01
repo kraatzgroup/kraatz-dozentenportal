@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { X, FileText, Upload, Download, Save, Edit3 } from 'lucide-react'
+import { X, FileText, Upload, Download, Save, Edit3, Plus } from 'lucide-react'
 import type { KorrekturFieldConfig, KorrekturItem, KorrekturSavePayload } from './types'
 import { exceedsDocumentUploadLimit, MAX_DOCUMENT_UPLOAD_LABEL } from '../../../lib/uploadLimits'
 
@@ -205,6 +205,103 @@ const FileField: React.FC<FileFieldProps> = ({
   )
 }
 
+// Multi-file upload field for Zusatzmaterial (multiple files).
+// Shows existing uploaded files (with download/delete) + new files to upload.
+interface MultiFileFieldProps {
+  label: string
+  files: File[]
+  existingUrls: string[]
+  accept: string
+  onAddFiles: (files: File[]) => void
+  onRemoveFile: (index: number) => void
+  onRemoveExisting: (url: string) => void
+  onDownload?: (url: string, filename: string) => void
+}
+
+const MultiFileField: React.FC<MultiFileFieldProps> = ({
+  label,
+  files,
+  existingUrls,
+  accept,
+  onAddFiles,
+  onRemoveFile,
+  onRemoveExisting,
+  onDownload,
+}) => {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <div className="space-y-2">
+        {/* Existing uploaded files */}
+        {existingUrls.map((url) => {
+          const fileName = getFileNameFromUrl(url)
+          return (
+            <div key={url} className="flex items-center p-3 bg-green-50 border border-green-200 rounded-lg">
+              <FileText className="h-5 w-5 text-green-600 flex-shrink-0" />
+              <span className="ml-2 text-sm text-gray-700 truncate flex-1" title={fileName}>{fileName}</span>
+              {onDownload && (
+                <button
+                  onClick={() => onDownload(url, fileName)}
+                  className="ml-2 p-1 text-primary hover:bg-primary/10 rounded flex-shrink-0"
+                  title="Datei herunterladen"
+                >
+                  <Download className="h-4 w-4" />
+                </button>
+              )}
+              <button
+                onClick={() => onRemoveExisting(url)}
+                className="ml-2 p-1 text-red-500 hover:bg-red-50 rounded flex-shrink-0"
+                title="Datei entfernen"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )
+        })}
+        {/* New files selected for upload */}
+        {files.map((file, index) => (
+          <div key={index} className="flex items-center p-3 bg-primary/5 border border-primary/20 rounded-lg">
+            <FileText className="h-5 w-5 text-primary flex-shrink-0" />
+            <span className="ml-2 text-sm text-gray-700 truncate flex-1" title={file.name}>{file.name}</span>
+            <button
+              onClick={() => onRemoveFile(index)}
+              className="ml-2 p-1 text-red-500 hover:bg-red-50 rounded flex-shrink-0"
+              title="Datei entfernen"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ))}
+        {/* Upload button */}
+        <label className="cursor-pointer block">
+          <div className="flex items-center justify-center px-3 py-2 border-2 border-dashed border-gray-300 hover:border-primary/50 rounded-lg transition-colors">
+            <Plus className="h-4 w-4 mr-2 text-gray-400" />
+            <span className="text-sm text-gray-500">Zusatzmaterial hinzufügen</span>
+          </div>
+          <input
+            type="file"
+            accept={accept}
+            multiple
+            className="hidden"
+            onChange={e => {
+              const selectedFiles = Array.from(e.target.files || [])
+              const validFiles = selectedFiles.filter(f => {
+                if (exceedsDocumentUploadLimit(f)) {
+                  alert(`Die Datei "${f.name}" ist zu groß. Maximal ${MAX_DOCUMENT_UPLOAD_LABEL} erlaubt.`)
+                  return false
+                }
+                return true
+              })
+              if (validFiles.length > 0) onAddFiles(validFiles)
+              e.target.value = ''
+            }}
+          />
+        </label>
+      </div>
+    </div>
+  )
+}
+
 interface KorrekturModalProps {
   item: KorrekturItem
   config: KorrekturFieldConfig
@@ -243,8 +340,16 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
   const [excelFile, setExcelFile] = useState<File | null>(null)
   const [solutionFile, setSolutionFile] = useState<File | null>(null)
   const [schemaFile, setSchemaFile] = useState<File | null>(null)
+  // Multi-file Zusatzmaterial (VB only)
+  const [schemaFiles, setSchemaFiles] = useState<File[]>([])
+  const [deletedSchemaUrls, setDeletedSchemaUrls] = useState<string[]>([])
 
-  // Initialise inputs from the item whenever a new item is opened.
+  // Initialise inputs from the item whenever a NEW item is opened (different id).
+  // We intentionally only depend on item.id (and defaultDurationHours) so that
+  // in-place updates to the item (e.g. clearing a file URL from the DB while the
+  // modal is open) do NOT wipe the user's in-progress inputs such as the Loom
+  // video link, score, feedback or newly selected files. File URL changes are
+  // reflected via the existingUrl props of FileField/MultiFileField directly.
   useEffect(() => {
     setScore(item.score !== null && item.score !== undefined ? String(item.score) : '')
     setFeedback(item.feedback || '')
@@ -255,7 +360,9 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
     setExcelFile(null)
     setSolutionFile(null)
     setSchemaFile(null)
-  }, [item.id, item.correctedFileUrl, item.correctedExcelUrl, item.solutionPdfUrl, item.scoringSchemaUrl, item.correctionDurationHours, defaultDurationHours]) // eslint-disable-line react-hooks/exhaustive-deps
+    setSchemaFiles([])
+    setDeletedSchemaUrls([])
+  }, [item.id, defaultDurationHours]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = () => {
     console.log('💾 KorrekturModal handleSave - File states:', {
@@ -263,6 +370,8 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
       excelFile: excelFile?.name,
       solutionFile: solutionFile?.name,
       schemaFile: schemaFile?.name,
+      schemaFiles: schemaFiles.map(f => f.name),
+      deletedSchemaUrls,
     })
     onSave({
       score,
@@ -273,7 +382,9 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
       videoUrl,
       solutionFile,
       schemaFile,
-    })
+      schemaFiles,
+      deletedSchemaUrls,
+    } as KorrekturSavePayload)
   }
 
   return (
@@ -396,19 +507,18 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
                   />
                 )}
                 {config.showSchema && (
-                  <FileField
+                  <MultiFileField
                     label={config.schemaLabel || 'Zusatzmaterial'}
-                    file={schemaFile}
-                    existingUrl={item.scoringSchemaUrl}
+                    files={schemaFiles}
+                    existingUrls={(item.scoringSchemaUrls && item.scoringSchemaUrls.length > 0
+                      ? item.scoringSchemaUrls
+                      : item.scoringSchemaUrl ? [item.scoringSchemaUrl] : []
+                    ).filter(u => !deletedSchemaUrls.includes(u))}
                     accept=".pdf"
-                    downloadName={`${item.title}_Schema.pdf`}
-                    onSelect={setSchemaFile}
+                    onAddFiles={(newFiles) => setSchemaFiles(prev => [...prev, ...newFiles])}
+                    onRemoveFile={(index) => setSchemaFiles(prev => prev.filter((_, i) => i !== index))}
+                    onRemoveExisting={(url) => setDeletedSchemaUrls(prev => [...prev, url])}
                     onDownload={onDownloadFile}
-                    useMaterialSelector={true}
-                    onOpenMaterialSelector={() => onOpenMaterialSelector?.('schema')}
-                    selectedMaterialUrl={selectedMaterialUrls?.schema}
-                    selectedMaterialFileName={selectedMaterialFileNames?.schema}
-                    onDelete={() => onClearFile?.('schema')}
                   />
                 )}
               </div>

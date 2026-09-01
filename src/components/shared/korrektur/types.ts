@@ -26,8 +26,10 @@ export interface KorrekturItem {
   videoCorrectionUrl?: string | null
   /** VB only: solution sketch PDF. */
   solutionPdfUrl?: string | null
-  /** VB only: scoring schema file. */
+  /** VB only: scoring schema file (legacy single-file, still used by Elite). */
   scoringSchemaUrl?: string | null
+  /** VB only: multiple Zusatzmaterial URLs (new multi-file support). */
+  scoringSchemaUrls?: string[]
   /** VB only: solution sketch file name (for display). */
   solutionFileName?: string | null
   /** VB only: scoring schema file name (for display). */
@@ -71,6 +73,10 @@ export interface KorrekturSavePayload {
   videoUrl: string
   solutionFile: File | null
   schemaFile: File | null
+  /** VB only: additional Zusatzmaterial files (multi-upload). */
+  schemaFiles: File[]
+  /** VB only: URLs of existing Zusatzmaterial files to delete. */
+  deletedSchemaUrls?: string[]
 }
 
 export const ELITE_FIELD_CONFIG: KorrekturFieldConfig = {

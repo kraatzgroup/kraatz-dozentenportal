@@ -136,6 +136,8 @@ export const VbCaseStudyDashboard: React.FC = () => {
   const [currentPDFData, setCurrentPDFData] = useState<string>('')
   const [currentPDFFilename, setCurrentPDFFilename] = useState<string>('')
   const [submissions, setSubmissions] = useState<Map<string, {grade: number | null, grade_text: string | null}>>(new Map())
+  // Maps caseId → array of file names in the korrekturen storage folder
+  const [correctionFiles, setCorrectionFiles] = useState<Map<string, string[]>>(new Map())
   const [legalAreaFilter, setLegalAreaFilter] = useState<string>('all')
   const [availableCredits, setAvailableCredits] = useState<number>(0)
   const [nextExpiry, setNextExpiry] = useState<{ date: string; credits: number } | null>(null)
@@ -863,6 +865,22 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
         }
       }
 
+      // Fetch correction files from storage for each case study
+      const filesMap = new Map<string, string[]>()
+      await Promise.all((caseStudyData || []).map(async (cs) => {
+        try {
+          const { data: files } = await supabase.storage
+            .from('case-studies')
+            .list(`korrekturen/${cs.id}`)
+          if (files && files.length > 0) {
+            filesMap.set(cs.id, files.map(f => f.name))
+          }
+        } catch (err) {
+          console.error('Error listing correction files for case', cs.id, err)
+        }
+      }))
+      setCorrectionFiles(filesMap)
+
     } catch (error) {
       console.error('Error fetching user data:', error)
     } finally {
@@ -1128,12 +1146,30 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                             <span>Sachverhalt</span>
                           </button>
                         )}
-                        {caseStudy.case_study_material_url && (
-                          <button onClick={() => downloadFileAsPDF(caseStudy.case_study_material_url!, `Zusatzmaterial_${caseStudy.case_study_number}.pdf`, caseStudy.id)} className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2 bg-[#2e83c2] hover:bg-[#0a1f44]">
-                            <FileText className="w-4 h-4" />
-                            <span>Zusatzmaterial</span>
-                          </button>
-                        )}
+                        {/* Zusatzmaterial: show all schema_* files from storage (uploaded via "Zusatzmaterial" field in KorrekturModal) */}
+                        {(() => {
+                          const folderFiles = correctionFiles.get(caseStudy.id) || []
+                          // Only files uploaded as "Zusatzmaterial" (schema_ prefix from uploadCorrectionFile)
+                          const schemaFiles = folderFiles.filter(f => f.startsWith('schema_'))
+                          // Also include scoring_schema_url from DB if its file isn't already in schemaFiles
+                          const dbUrl = caseStudy.scoring_schema_url
+                          const dbFileName = dbUrl ? decodeURIComponent(dbUrl.split('/').pop() || '') : null
+                          const urls: { url: string; label: string }[] = []
+                          if (dbUrl && dbFileName && !schemaFiles.includes(dbFileName)) {
+                            urls.push({ url: dbUrl, label: 'Zusatzmaterial' })
+                          }
+                          schemaFiles.forEach((f) => {
+                            const { data: urlData } = supabase.storage.from('case-studies').getPublicUrl(`korrekturen/${caseStudy.id}/${f}`)
+                            urls.push({ url: urlData.publicUrl, label: f.replace(/^schema_/, '').replace(/\.[^.]+$/, '').replace(/_/g, ' ') })
+                          })
+                          if (urls.length === 0) return null
+                          return urls.map((u, i) => (
+                            <button key={i} onClick={() => downloadFileAsPDF(u.url, `Zusatzmaterial_${caseStudy.case_study_number}_${i + 1}.pdf`, caseStudy.id)} className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2 bg-[#2e83c2] hover:bg-[#0a1f44]">
+                              <FileText className="w-4 h-4" />
+                              <span>{urls.length > 1 ? `Zusatzmaterial ${i + 1}` : 'Zusatzmaterial'}</span>
+                            </button>
+                          ))
+                        })()}
                         {caseStudy.submission_url && (
                           <a href={caseStudy.submission_url} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2 bg-[#2e83c2] hover:bg-[#0a1f44]">
                             <Upload className="w-4 h-4" />

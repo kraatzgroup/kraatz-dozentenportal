@@ -157,17 +157,22 @@ export const VbKorrekturDashboard: React.FC = () => {
   const [selectedMaterials, setSelectedMaterials] = useState<Set<string>>(new Set())
   const [refreshKey, setRefreshKey] = useState(0)
   const [allCases, setAllCases] = useState<VbCase[]>([])
+  // Maps caseId → array of schema_* file URLs in the korrekturen storage folder
+  const [schemaFilesMap, setSchemaFilesMap] = useState<Map<string, string[]>>(new Map())
   const [isAssigningMaterial, setIsAssigningMaterial] = useState(false)
   const [editingCorrectionField, setEditingCorrectionField] = useState<'solution' | 'schema' | null>(null)
   const [selectedCorrectionMaterialUrls, setSelectedCorrectionMaterialUrls] = useState<{ solution?: string; schema?: string }>({})
   const [selectedCorrectionMaterialFileNames, setSelectedCorrectionMaterialFileNames] = useState<{ solution?: string; schema?: string }>({})
-  const [modalRefreshKey, setModalRefreshKey] = useState(0)
   const [completedPage, setCompletedPage] = useState(1)
   const [completedTotal, setCompletedTotal] = useState(0)
   const [materialSelectorLegalArea, setMaterialSelectorLegalArea] = useState<string | null>(null)
   const [assignedMaterialUrls, setAssignedMaterialUrls] = useState<Set<string>>(new Set())
   const [isSpringerUser, setIsSpringerUser] = useState(false)
   const initialTabSelected = useRef(false)
+  // Tracks whether we've completed at least one successful fetch. Used to
+  // suppress the loading spinner on background refetches so an open
+  // KorrekturModal is not unmounted (which would lose user inputs).
+  const hasInitialLoaded = useRef(false)
   const [returnCase, setReturnCase] = useState<VbCase | null>(null)
   const [returnTarget, setReturnTarget] = useState<{ id: string; name: string; available: boolean } | null>(null)
   const [isReturning, setIsReturning] = useState(false)
@@ -391,10 +396,12 @@ export const VbKorrekturDashboard: React.FC = () => {
 
       if (error) throw error
 
-      // Update the selected state immediately to reflect the change
+      // Update the selected state immediately to reflect the change.
+      // NOTE: We deliberately do NOT bump modalRefreshKey here. Changing the
+      // modal's `key` would remount the whole component and wipe the user's
+      // in-progress inputs (Loom video link, score, feedback, selected files).
+      // The updated URL flows into the modal via the existingUrl props instead.
       setSelected(prev => prev ? { ...prev, ...updateData } : null)
-      // Force modal re-render
-      setModalRefreshKey(prev => prev + 1)
     } catch (err) {
       console.error('Error clearing file:', err)
       alert('Fehler beim Löschen der Datei')
@@ -426,7 +433,13 @@ export const VbKorrekturDashboard: React.FC = () => {
   }
 
   const fetchCases = useCallback(async () => {
-    setLoading(true)
+    // Only show the loading spinner on the very first fetch. Background
+    // refetches (e.g. triggered by useSessionValidator updating vbLegalAreas)
+    // must NOT set loading=true, because that would unmount the dashboard
+    // (including any open KorrekturModal) and destroy the user's inputs.
+    if (!hasInitialLoaded.current) {
+      setLoading(true)
+    }
     try {
       console.log('🔍 VbKorrekturDashboard: Fetching cases for user:', user?.id)
       
@@ -602,9 +615,32 @@ export const VbKorrekturDashboard: React.FC = () => {
       }
 
       setCases(rows)
+
+      // Fetch schema_* files (Zusatzmaterial) from storage for each case
+      const schemaMap = new Map<string, string[]>()
+      await Promise.all(rows.map(async (r) => {
+        try {
+          const { data: files } = await supabase.storage.from(BUCKET).list(`korrekturen/${r.id}`)
+          if (files) {
+            const schemaFileNames = files.filter(f => f.name.startsWith('schema_')).map(f => f.name)
+            if (schemaFileNames.length > 0) {
+              const urls = schemaFileNames.map(fn => {
+                const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(`korrekturen/${r.id}/${fn}`)
+                return urlData.publicUrl
+              })
+              schemaMap.set(r.id, urls)
+            }
+          }
+        } catch (err) {
+          console.error('Error listing schema files for case', r.id, err)
+        }
+      }))
+      setSchemaFilesMap(schemaMap)
+
     } catch (err) {
       console.error('Error fetching VB cases for correction:', err)
     } finally {
+      hasInitialLoaded.current = true
       setLoading(false)
     }
   }, [activeTab, user?.id, legalAreaFilter, vbLegalAreas, refreshKey])
@@ -1221,6 +1257,8 @@ export const VbKorrekturDashboard: React.FC = () => {
         excelFile: payload.excelFile?.name,
         solutionFile: payload.solutionFile?.name,
         schemaFile: payload.schemaFile?.name,
+        schemaFiles: payload.schemaFiles?.map(f => f.name),
+        deletedSchemaUrls: payload.deletedSchemaUrls,
       })
       console.log('📁 Existing URLs:', {
         written_correction_url: selected.written_correction_url,
@@ -1238,9 +1276,31 @@ export const VbKorrekturDashboard: React.FC = () => {
       const solutionUrl = payload.solutionFile
         ? await uploadCorrectionFile(payload.solutionFile, selected.id, 'loesung')
         : selectedCorrectionMaterialUrls.solution || selected.solution_pdf_url || null
-      const schemaUrl = payload.schemaFile
-        ? await uploadCorrectionFile(payload.schemaFile, selected.id, 'schema')
-        : selectedCorrectionMaterialUrls.schema || selected.scoring_schema_url || null
+
+      // Upload new Zusatzmaterial files (multi-upload)
+      const newSchemaUrls: string[] = []
+      for (const f of payload.schemaFiles || []) {
+        const url = await uploadCorrectionFile(f, selected.id, 'schema')
+        newSchemaUrls.push(url)
+      }
+      // Delete removed Zusatzmaterial files from storage
+      for (const url of payload.deletedSchemaUrls || []) {
+        try {
+          const path = storagePathFromUrl(url)
+          if (path) {
+            await supabase.storage.from(BUCKET).remove([path])
+          }
+        } catch (err) {
+          console.error('Error deleting schema file:', url, err)
+        }
+      }
+      // Combine existing (not deleted) + new schema URLs
+      const existingSchemaUrls = (schemaFilesMap.get(selected.id) || []).filter(
+        u => !(payload.deletedSchemaUrls || []).includes(u)
+      )
+      const allSchemaUrls = [...existingSchemaUrls, ...newSchemaUrls]
+      // For DB backward compat: store first URL in scoring_schema_url
+      const schemaUrl = allSchemaUrls[0] || null
 
       const videoUrl = payload.videoUrl?.trim() || selected.video_correction_url || null
 
@@ -1400,13 +1460,19 @@ export const VbKorrekturDashboard: React.FC = () => {
       videoCorrectionUrl: c.video_correction_url,
       solutionPdfUrl: c.solution_pdf_url,
       scoringSchemaUrl: c.scoring_schema_url,
+      scoringSchemaUrls: schemaFilesMap.get(c.id) || [],
       correctionDurationHours: c.correction_duration_hours?.toString() || '',
     }
   }
 
   const filtered = cases // Tab filtering is now done in fetchCases
 
-  if (loading) {
+  // Only show the full-screen loading spinner on the very first load (when we
+  // have no cases yet). On background refetches (e.g. triggered by
+  // useSessionValidator updating vbLegalAreas on window focus / periodically),
+  // we keep the existing content — including any open KorrekturModal — visible
+  // so the user's in-progress inputs are not destroyed by an unmount/remount.
+  if (loading && cases.length === 0) {
     return (
       <div className="flex justify-center items-center min-h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
@@ -1759,7 +1825,6 @@ export const VbKorrekturDashboard: React.FC = () => {
 
       {selected && (
         <KorrekturModal
-          key={modalRefreshKey}
           item={toItem(selected)}
           config={VB_FIELD_CONFIG}
           isSaving={isSaving}
