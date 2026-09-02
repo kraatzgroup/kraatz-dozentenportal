@@ -10,6 +10,8 @@ const CAL_NAMESPACE = 'beratungsgesprach'
 interface UpsellVideoProps {
   /** Optional click handler to stop event propagation in expandable cards */
   onOpen?: () => void
+  /** Called when the user clicks "Beratungstermin buchen" inside the modal */
+  onBookConsultation?: () => void
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -87,11 +89,10 @@ function loadCalEmbed(containerSelector: string, namespace: string = CAL_NAMESPA
  * Öffnet das Video in einem Modal-Overlay und startet es immer von vorne.
  * Unter dem Video ist der Cal.com-Kalender zum Buchen eines Beratungsgesprächs eingebettet.
  */
-export const UpsellVideo = ({ onOpen }: UpsellVideoProps) => {
+export const UpsellVideo = ({ onOpen, onBookConsultation }: UpsellVideoProps) => {
   const [showModal, setShowModal] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
-  const calContainerId = 'my-cal-inline-beratungsgesprach-modal'
-  const calNamespace = 'beratungsgesprach-modal'
+  const videoContainerRef = useRef<HTMLDivElement>(null)
 
   const openModal = () => {
     onOpen?.()
@@ -106,24 +107,19 @@ export const UpsellVideo = ({ onOpen }: UpsellVideoProps) => {
     }
   }
 
-  // Wenn das Modal geöffnet wird: Video von vorne starten + Cal-Kalender laden
+  // Wenn das Modal geöffnet wird: Video von vorne starten + Video zentrieren
   useEffect(() => {
     if (!showModal) return
 
-    // Video von vorne starten
     const v = videoRef.current
     if (v) {
       v.currentTime = 0
       v.play().catch(() => {})
     }
 
-    // Cal-Kalender laden – kurze Verzögerung, damit der Container im DOM ist
+    // Video-Container in die Mitte des Viewports scrollen
     const timer = setTimeout(() => {
-      try {
-        loadCalEmbed(`#${calContainerId}`, calNamespace)
-      } catch (e) {
-        console.error('Cal.com embed failed:', e)
-      }
+      videoContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }, 100)
 
     return () => clearTimeout(timer)
@@ -182,14 +178,13 @@ export const UpsellVideo = ({ onOpen }: UpsellVideoProps) => {
         </div>
       </button>
 
-      {/* Video-Modal mit Kalender */}
+      {/* Video-Modal */}
       {showModal && (
         <div
-          className="fixed inset-0 bg-black/80 flex items-start justify-center z-[60] p-4 overflow-y-auto"
-          onClick={closeModal}
+          className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4 overflow-y-auto"
         >
           <div
-            className="relative w-full max-w-4xl my-8 bg-white rounded-2xl shadow-2xl overflow-hidden"
+            className="relative w-full max-w-4xl max-h-[90vh] my-auto bg-white rounded-2xl shadow-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Schließen-Button */}
@@ -202,7 +197,7 @@ export const UpsellVideo = ({ onOpen }: UpsellVideoProps) => {
             </button>
 
             {/* Video-Container */}
-            <div className="aspect-video w-full bg-black">
+            <div ref={videoContainerRef} className="aspect-video w-full bg-black">
               <video
                 ref={videoRef}
                 controls
@@ -214,34 +209,17 @@ export const UpsellVideo = ({ onOpen }: UpsellVideoProps) => {
               </video>
             </div>
 
-            {/* Cal.com Inline-Kalender – responsive */}
-            <div className="p-4 sm:p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-1 text-center">
-                Kostenloses Beratungsgespräch buchen
-              </h3>
-              <p className="text-sm text-gray-500 mb-4 text-center">
-                Wähle einen passenden Termin direkt im Kalender
-              </p>
-              <div
-                id={calContainerId}
-                className="w-full min-h-[500px] sm:min-h-[600px] overflow-y-auto rounded-lg border border-gray-200"
-                style={{ width: '100%', height: '100%' }}
-              />
-
-              {/* Link zur Landingpage als Alternative */}
-              <div className="mt-5 text-center">
-                <p className="text-xs text-gray-500 mb-2">
-                  Oder buche direkt über unsere Beratungsseite:
-                </p>
-                <a
-                  href="https://beratung.kraatz-group.de/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-white text-[#2e83c2] text-sm font-bold rounded-lg hover:bg-gray-100 transition-colors shadow-lg"
-                >
-                  Kostenlosen Beratungstermin buchen
-                </a>
-              </div>
+            {/* CTA-Button unter dem Video */}
+            <div className="p-4 sm:p-6 text-center">
+              <button
+                onClick={() => {
+                  closeModal()
+                  onBookConsultation?.()
+                }}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-[#2e83c2] text-white text-sm font-bold rounded-lg hover:bg-[#0a1f44] transition-colors shadow-lg"
+              >
+                Kostenlosen Beratungstermin buchen
+              </button>
             </div>
           </div>
         </div>
@@ -276,10 +254,19 @@ const CalInline = ({ namespace, selector }: { namespace: string; selector: strin
  */
 export const UpsellBlock = ({ onOpen }: { onOpen?: () => void }) => {
   const [calExpanded, setCalExpanded] = useState(false)
+  const calRef = useRef<HTMLDivElement>(null)
+
+  const handleBookConsultation = () => {
+    setCalExpanded(true)
+    // Kurz warten, bis der Kalender gerendert ist, dann dorthin scrollen
+    setTimeout(() => {
+      calRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 150)
+  }
 
   return (
-    <div className="mt-3 bg-[#2e83c2] rounded-lg p-4 sm:p-5 shadow-lg text-white">
-      <div className="flex items-center gap-2 mb-3">
+    <div className="mt-3 bg-[#2e83c2] rounded-lg p-4 sm:p-5 shadow-lg text-white text-center">
+      <div className="flex items-center justify-center gap-2 mb-3">
         <Sparkles className="w-7 h-7 text-white" />
         <h4 className="text-xl sm:text-2xl font-bold">
           Du kannst mehr erreichen – und ich zeige Dir genau, wie!
@@ -294,8 +281,8 @@ export const UpsellBlock = ({ onOpen }: { onOpen?: () => void }) => {
       </p>
 
       {/* Video-Thumbnail – immer sichtbar */}
-      <div className="mb-4">
-        <UpsellVideo onOpen={onOpen} />
+      <div className="mb-4 flex justify-center">
+        <UpsellVideo onOpen={onOpen} onBookConsultation={handleBookConsultation} />
       </div>
 
       {/* CTA-Button – immer sichtbar */}
@@ -332,6 +319,7 @@ export const UpsellBlock = ({ onOpen }: { onOpen?: () => void }) => {
       {/* Cal.com Inline-Kalender – nur ausgeklappt */}
       {calExpanded && (
         <div
+          ref={calRef}
           id="upsell-cal-inline"
           className="mt-4 w-full min-h-[500px] sm:min-h-[600px] overflow-y-auto rounded-lg border border-white/30 bg-white animate-in slide-in-from-top-2 duration-300"
         >
