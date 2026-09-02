@@ -158,7 +158,7 @@ export const VbPackagesPage: React.FC = () => {
     },
     {
       question: "Kann ich besondere Wünsche mitteilen?",
-      answer: "Klar! Du definierst in erster Linie das Rechtsgebeit und das Teilrechtsgebiet. Im Anschluss kannst Du einen Problemschwerpunkt pro Klausur mitteilen. Somit kann Deine Anforderung wie folgt aussehen: Zivilrecht, BGB AT, Stellvertretung. Alternativ kannst Du Dich auch überraschen lassen und eine beliebige Klausur von Deinem Dozenten erhalten."
+      answer: "Klar! Du definierst in erster Linie das Rechtsgebiet und das Teilrechtsgebiet. Im Anschluss kannst Du einen Problemschwerpunkt pro Klausur mitteilen. Somit kann Deine Anforderung wie folgt aussehen: Zivilrecht, BGB AT, Stellvertretung. Alternativ kannst Du Dich auch überraschen lassen und eine beliebige Klausur von Deinem Dozenten erhalten."
     },
     {
       question: "Welche Zahlungsmethoden werden akzeptiert?",

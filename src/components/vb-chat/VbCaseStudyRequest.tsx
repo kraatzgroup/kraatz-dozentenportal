@@ -5,7 +5,7 @@ import { useVbCaseStudies } from '../../hooks/useVbCaseStudies';
 import { useAuthStore } from '../../store/authStore';
 
 const LEGAL_AREAS = {
-  'Zivilrecht': ['BGB AT', 'BGB BT', 'Schuldrecht AT', 'Schuldrecht BT', 'Sachenrecht', 'Familienrecht', 'Erbrecht'],
+  'Zivilrecht': ['BGB AT', 'Schuldrecht AT', 'Schuldrecht BT', 'Sachenrecht', 'Familienrecht', 'Erbrecht', 'Handels- und Gesellschaftsrecht', 'ZPO'],
   'Strafrecht': ['Strafrecht AT', 'Strafrecht BT'],
   'Öffentliches Recht': ['Staatsorganisationsrecht', 'Grundrechte', 'Verwaltungsrecht AT', 'Verwaltungsrecht BT', 'Baurecht', 'Kommunalrecht']
 };
