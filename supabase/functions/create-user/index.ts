@@ -87,6 +87,11 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Vor- und Nachnamen aus full_name extrahieren
+    const nameParts = fullName.trim().split(/\s+/);
+    const firstName = nameParts.length > 1 ? nameParts[0] : fullName;
+    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null;
+
     let userId: string;
     let isNewUser = false;
     let shouldSendEmail = false;
@@ -123,6 +128,8 @@ Deno.serve(async (req) => {
         email_confirm: true,
         user_metadata: { 
           full_name: fullName,
+          first_name: firstName,
+          last_name: lastName,
           role: role
         }
       });
@@ -170,6 +177,8 @@ Deno.serve(async (req) => {
           email_confirm: true,
           user_metadata: { 
             full_name: fullName,
+            first_name: firstName,
+            last_name: lastName,
             role: role
           }
         });
@@ -267,6 +276,8 @@ Deno.serve(async (req) => {
       id: userId,
       email: email,
       full_name: oldProfileData.full_name || fullName,
+      first_name: oldProfileData.first_name || firstName,
+      last_name: oldProfileData.last_name || lastName,
       role: oldProfileData.role || role,
       additional_roles: oldProfileData.additional_roles || (additionalRoles.length > 0 ? additionalRoles : null),
       hourly_rate_unterricht: oldProfileData.hourly_rate_unterricht,
@@ -285,6 +296,8 @@ Deno.serve(async (req) => {
       id: userId,
       email: email,
       full_name: fullName,
+      first_name: firstName,
+      last_name: lastName,
       role: role,
       additional_roles: additionalRoles.length > 0 ? additionalRoles : null
     };

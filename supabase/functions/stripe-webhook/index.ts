@@ -155,13 +155,18 @@ async function ensureUser(
     email.split('@')[0] ||
     'Teilnehmer';
 
+  // Vor- und Nachnamen aus full_name extrahieren
+  const nameParts = fullName.trim().split(/\s+/);
+  const firstName = nameParts.length > 1 ? nameParts[0] : fullName;
+  const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null;
+
   // 2. Auth-User anlegen (oder bestehenden finden)
   let authUserId: string | null = null;
   const { data: createdUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
     email,
     password: generateSecurePassword(),
     email_confirm: true,
-    user_metadata: { full_name: fullName, role: 'teilnehmer' },
+    user_metadata: { full_name: fullName, first_name: firstName, last_name: lastName, role: 'teilnehmer' },
   });
 
   if (createError) {
@@ -196,6 +201,8 @@ async function ensureUser(
     id: authUserId,
     email,
     full_name: fullName,
+    first_name: firstName,
+    last_name: lastName,
     role: 'teilnehmer',
     additional_roles: ['videobesprechung'],
   });

@@ -5,6 +5,7 @@ import { exceedsDocumentUploadLimit, MAX_DOCUMENT_UPLOAD_LABEL } from '../../lib
 import { CreditCard, BookOpen, Plus, Download, Upload, FileText, Video, X, Clock, CheckCircle, ChevronDown, ChevronUp, Star, MessageSquare, Table, Edit3, Eye, Trash2, Lightbulb, HelpCircle, Calendar, Mail } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import { Link, useSearchParams } from 'react-router-dom'
+import { UpsellBlock } from './UpsellVideo'
 
 interface UserProfile {
   account_credits?: number
@@ -1150,7 +1151,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
         {/* Header */}
         <div className="mb-6 sm:mb-8">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
-            Willkommen, {profile?.first_name || user?.user_metadata?.first_name || 'Benutzer'}!
+            Willkommen, {profile?.first_name || user?.user_metadata?.first_name || (user?.user_metadata?.full_name?.split(' ')[0]) || 'Benutzer'}!
           </h1>
           <p className="text-gray-600 text-sm sm:text-base">Hier ist dein persönliches Dashboard für Klausurbearbeitungen.</p>
         </div>
@@ -1292,6 +1293,11 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                       </div>
                     </div>
                     <div className="text-xs text-gray-500 bg-gray-50/80 backdrop-blur-sm p-2 rounded shadow-sm">💡 Schaue Dir sowohl die Video-Korrektur, als auch die schriftliche Bewertung Deines Dozenten an, um einen maximalen Mehrwert in der Nachbereitung zu erhalten!</div>
+                    {(() => {
+                      const grade = submissions.get(caseStudy.id)?.grade
+                      if (grade === null || grade === undefined || grade >= 9) return null
+                      return <UpsellBlock />
+                    })()}
                     <div className="bg-yellow-50/80 backdrop-blur-sm border border-yellow-200 rounded-lg p-4 shadow-sm">
                       <div className="flex items-center justify-between mb-3">
                         <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
@@ -2064,6 +2070,13 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                               <div className="text-xs text-gray-500 bg-gray-50/80 backdrop-blur-sm p-2 rounded shadow-sm">
                                 💡 Schaue Dir sowohl die Video-Korrektur, als auch die schriftliche Bewertung Deines Dozenten an, um einen maximalen Mehrwert in der Nachbereitung zu erhalten!
                               </div>
+
+                              {/* Upsell bei Note unter 9 Punkten */}
+                              {(() => {
+                                const grade = submissions.get(caseStudy.id)?.grade
+                                if (grade === null || grade === undefined || grade >= 9) return null
+                                return <UpsellBlock onOpen={() => {}} />
+                              })()}
                             </div>
                           )}
                         </div>
@@ -2414,6 +2427,13 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                               <div className="text-xs text-gray-500 bg-gray-50/80 backdrop-blur-sm p-2 rounded shadow-sm">
                                 💡 Schaue Dir sowohl die Video-Korrektur, als auch die schriftliche Bewertung Deines Dozenten an, um einen maximalen Mehrwert in der Nachbereitung zu erhalten!
                               </div>
+
+                              {/* Upsell bei Note unter 9 Punkten */}
+                              {(() => {
+                                const grade = submissions.get(caseStudy.id)?.grade
+                                if (grade === null || grade === undefined || grade >= 9) return null
+                                return <UpsellBlock onOpen={() => {}} />
+                              })()}
                               
                               {/* Rating Section */}
                               <div className="bg-yellow-50/80 backdrop-blur-sm border border-yellow-200 rounded-lg p-4 shadow-sm">

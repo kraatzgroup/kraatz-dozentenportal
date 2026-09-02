@@ -194,12 +194,19 @@ export function AuthComponent() {
               
               console.log('Creating profile with role:', role);
               
+              const fullName = session.user.user_metadata?.full_name || 
+                          session.user.email?.split('@')[0] || 
+                          'User';
+              const nameParts = fullName.trim().split(/\s+/);
+              const firstName = nameParts.length > 1 ? nameParts[0] : fullName;
+              const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null;
+              
               const profileData = {
                 id: session.user.id,
                 email: session.user.email || '',
-                full_name: session.user.user_metadata?.full_name || 
-                          session.user.email?.split('@')[0] || 
-                          'User',
+                full_name: fullName,
+                first_name: firstName,
+                last_name: lastName,
                 role: role
               };
               

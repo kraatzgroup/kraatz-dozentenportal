@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { supabase } from '../../lib/supabase';
-import { User, CreditCard, LogOut, MessageCircle, Menu, X, LayoutDashboard, Award, GraduationCap, Settings, CalendarDays, ClipboardList, Trophy } from 'lucide-react';
+import { User, CreditCard, LogOut, MessageCircle, Menu, X, LayoutDashboard, Award, GraduationCap, Settings, CalendarDays, ClipboardList, Trophy, HelpCircle } from 'lucide-react';
 import { VbNotificationBell } from './VbNotificationBell';
 
 const LOGO_URL = 'https://kraatz-group.de/wp-content/uploads/2023/05/KraatzGroup_Logo_web.png';
@@ -121,6 +121,19 @@ const SidebarNavLink: React.FC<NavLinkItemProps> = ({ to, icon, label, onClick }
   </Link>
 );
 
+const SidebarExternalLink: React.FC<{ href: string; icon?: React.ReactNode; label: string; onClick?: () => void }> = ({ href, icon, label, onClick }) => (
+  <a
+    href={href}
+    target="_blank"
+    rel="noopener noreferrer"
+    onClick={onClick}
+    className="flex items-center gap-2 px-3 py-2 rounded-md text-gray-600 hover:bg-gray-100 hover:text-primary transition-colors text-sm font-medium"
+  >
+    {icon}
+    <span>{label}</span>
+  </a>
+);
+
 // Desktop: left sidebar with navigation on top, settings/user at the bottom.
 // Collapsible via hamburger button (logo left, hamburger right when open).
 export const VbHeader: React.FC = () => {
@@ -235,6 +248,7 @@ export const VbHeader: React.FC = () => {
             {isAdmin && (
               <SidebarNavLink to="/klausurenbesprechung" icon={<ClipboardList className="w-4 h-4 text-primary" />} label="Admin-Übersicht" />
             )}
+            <SidebarExternalLink href="https://beratung.kraatz-group.de/" icon={<HelpCircle className="w-4 h-4 text-primary" />} label="Mehr Unterstützung?" />
           </nav>
 
           {/* Settings + user (bottom) */}
@@ -348,6 +362,7 @@ export const VbMobileHeader: React.FC = () => {
               {isAdmin && (
                 <SidebarNavLink to="/klausurenbesprechung" icon={<ClipboardList className="w-4 h-4 text-primary" />} label="Admin-Übersicht" onClick={closeMenu} />
               )}
+              <SidebarExternalLink href="https://beratung.kraatz-group.de/" icon={<HelpCircle className="w-4 h-4 text-primary" />} label="Mehr Unterstützung?" onClick={closeMenu} />
               <SidebarNavLink to="/klausurenbesprechung/einstellungen" icon={<Settings className="w-4 h-4 text-primary" />} label="Einstellungen" onClick={closeMenu} />
 
               <div className="border-t border-gray-200 pt-3 mt-3 space-y-2">
