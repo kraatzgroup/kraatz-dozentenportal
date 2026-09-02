@@ -212,6 +212,11 @@ export function AuthComponent() {
               
               console.log('Profile data to insert:', profileData);
               
+              // Auth-Metadaten aktualisieren (first_name/last_name für bestehende User)
+              await supabase.auth.updateUser({
+                data: { full_name: fullName, first_name: firstName, last_name: lastName }
+              });
+              
               const { data: newProfile, error: insertError } = await supabase
                 .from('profiles')
                 .upsert([profileData], { 

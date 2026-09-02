@@ -165,6 +165,10 @@ Deno.serve(async (req) => {
         // User already exists - just update the profile
         console.log(`ℹ️ [${requestId}] User already exists, updating profile...`);
         userId = existingProfiles[0].id;
+        // Auth-Metadaten bei bestehendem User aktualisieren
+        await supabaseAdmin.auth.admin.updateUserById(userId, {
+          user_metadata: { full_name: fullName, first_name: firstName, last_name: lastName, role: role },
+        });
         // Send welcome email for existing profile (re-invitation)
         shouldSendEmail = true;
       } else {
@@ -193,6 +197,10 @@ Deno.serve(async (req) => {
               userId = existingAuthUser.id;
               isNewUser = true;
               shouldSendEmail = true;
+              // Auth-Metadaten bei bestehendem User aktualisieren
+              await supabaseAdmin.auth.admin.updateUserById(userId, {
+                user_metadata: { full_name: fullName, first_name: firstName, last_name: lastName, role: role },
+              });
               console.log(`ℹ️ [${requestId}] Found existing auth user, will create profile: ${userId}`);
             } else {
               throw createUserError;

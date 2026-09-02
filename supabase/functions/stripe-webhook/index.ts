@@ -174,6 +174,10 @@ async function ensureUser(
       console.log(`ℹ️ Auth-User für ${email} existiert bereits – wird gesucht`);
       authUserId = await findAuthUserIdByEmail(supabaseAdmin, email);
       if (!authUserId) throw new Error(`Auth-User für ${email} nicht gefunden`);
+      // Auth-Metadaten bei bestehendem User aktualisieren
+      await supabaseAdmin.auth.admin.updateUserById(authUserId, {
+        user_metadata: { full_name: fullName, first_name: firstName, last_name: lastName, role: 'teilnehmer' },
+      });
     } else {
       throw createError;
     }

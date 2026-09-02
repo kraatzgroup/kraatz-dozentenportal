@@ -14,6 +14,8 @@ export function Settings({ hideChrome = false }: { hideChrome?: boolean } = {}) 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [profile, setProfile] = useState({
+    first_name: '',
+    last_name: '',
     full_name: '',
     email: '',
     profile_picture_url: null as string | null,
@@ -46,7 +48,7 @@ export function Settings({ hideChrome = false }: { hideChrome?: boolean } = {}) 
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('full_name, email, profile_picture_url, phone, street, house_number, postal_code, city, tax_id, bank_name, iban, bic, role, additional_roles')
+        .select('first_name, last_name, full_name, email, profile_picture_url, phone, street, house_number, postal_code, city, tax_id, bank_name, iban, bic, role, additional_roles')
         .eq('id', user.id)
         .single();
 
@@ -58,6 +60,8 @@ export function Settings({ hideChrome = false }: { hideChrome?: boolean } = {}) 
         : null;
       
       setProfile({
+        first_name: data.first_name || '',
+        last_name: data.last_name || '',
         full_name: data.full_name || '',
         email: data.email || '',
         profile_picture_url: pictureUrl,
@@ -98,11 +102,16 @@ export function Settings({ hideChrome = false }: { hideChrome?: boolean } = {}) 
         }
       }
 
+      // full_name aus first_name + last_name ableiten
+      const computedFullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ') || profile.full_name;
+
       // Update profile in database
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
-          full_name: profile.full_name,
+          first_name: profile.first_name,
+          last_name: profile.last_name,
+          full_name: computedFullName,
           email: profile.email,
           phone: profile.phone,
           street: profile.street,
@@ -117,6 +126,11 @@ export function Settings({ hideChrome = false }: { hideChrome?: boolean } = {}) 
         .eq('id', user.id);
 
       if (profileError) throw profileError;
+
+      // Auth-Metadaten synchronisieren
+      await supabase.auth.updateUser({
+        data: { full_name: computedFullName, first_name: profile.first_name, last_name: profile.last_name }
+      });
 
       // Update email in auth if it changed
       if (profile.email !== user.email) {
@@ -146,7 +160,7 @@ export function Settings({ hideChrome = false }: { hideChrome?: boolean } = {}) 
       }
 
       // Keep the global auth store in sync so the greeting updates immediately
-      setFullName(profile.full_name || null);
+      setFullName(computedFullName || null);
 
       setSuccess('Profil erfolgreich aktualisiert');
       
@@ -266,21 +280,37 @@ export function Settings({ hideChrome = false }: { hideChrome?: boolean } = {}) 
                   </div>
                 </div>
 
-                {/* Full Name */}
-                <div>
-                  <label htmlFor="full_name" className="block text-sm font-medium text-gray-700 mb-1">
-                    <User className="h-4 w-4 inline mr-2" />
-                    Vollständiger Name
-                  </label>
-                  <input
-                    type="text"
-                    id="full_name"
-                    value={profile.full_name}
-                    onChange={(e) => setProfile(prev => ({ ...prev, full_name: e.target.value }))}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
-                    placeholder="Ihr vollständiger Name"
-                    required
-                  />
+                {/* First Name + Last Name */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="first_name" className="block text-sm font-medium text-gray-700 mb-1">
+                      <User className="h-4 w-4 inline mr-2" />
+                      Vorname
+                    </label>
+                    <input
+                      type="text"
+                      id="first_name"
+                      value={profile.first_name}
+                      onChange={(e) => setProfile(prev => ({ ...prev, first_name: e.target.value }))}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                      placeholder="Vorname"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="last_name" className="block text-sm font-medium text-gray-700 mb-1">
+                      <User className="h-4 w-4 inline mr-2" />
+                      Nachname
+                    </label>
+                    <input
+                      type="text"
+                      id="last_name"
+                      value={profile.last_name}
+                      onChange={(e) => setProfile(prev => ({ ...prev, last_name: e.target.value }))}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                      placeholder="Nachname"
+                    />
+                  </div>
                 </div>
 
                 {/* Email */}
