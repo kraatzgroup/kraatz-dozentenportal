@@ -17,6 +17,8 @@ interface DialogState {
     email: string;
     originalEmail?: string;
     fullName: string;
+    firstName: string;
+    lastName: string;
     password?: string;
     role?: string;
     additional_roles?: string[];
@@ -58,7 +60,7 @@ export function UserManagement() {
   const [localLoading, setLocalLoading] = useState(false);
   const [dialog, setDialog] = useState<DialogState>({
     type: null,
-    userData: { email: '', fullName: '', password: '', vb_legal_areas: [] }
+    userData: { email: '', fullName: '', firstName: '', lastName: '', password: '', vb_legal_areas: [] }
   });
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
@@ -151,8 +153,9 @@ export function UserManagement() {
     console.log('Creating user with data:', dialog.userData);
     
     // Validate input
-    if (!dialog.userData.email || !dialog.userData.fullName) {
-      setLocalError('E-Mail und Name sind erforderlich');
+    const computedFullName = [dialog.userData.firstName, dialog.userData.lastName].filter(Boolean).join(' ');
+    if (!dialog.userData.email || !computedFullName) {
+      setLocalError('E-Mail und Vorname sind erforderlich');
       return;
     }
     
@@ -183,7 +186,7 @@ export function UserManagement() {
         },
         body: JSON.stringify({
           email: dialog.userData.email,
-          fullName: dialog.userData.fullName,
+          fullName: computedFullName,
           role: dialog.userData.role || 'dozent',
           eliteKleingruppe: dialog.userData.eliteKleingruppe || undefined,
           additionalRoles: additionalRoles.length > 0 ? additionalRoles : undefined
@@ -233,9 +236,9 @@ export function UserManagement() {
                 id: newId,
                 profile_id: profile.id,
                 tn_nummer: tnNummer || 'TN0001',
-                first_name: dialog.userData.fullName.split(' ')[0] || '',
-                last_name: dialog.userData.fullName.split(' ').slice(1).join(' ') || '',
-                name: dialog.userData.fullName,
+                first_name: dialog.userData.firstName || dialog.userData.fullName.split(' ')[0] || '',
+                last_name: dialog.userData.lastName || dialog.userData.fullName.split(' ').slice(1).join(' ') || '',
+                name: computedFullName,
                 email: dialog.userData.email,
                 is_vb: dialog.userData.isVideobesprechung || false,
                 is_elite_kleingruppe: !!dialog.userData.eliteKleingruppe,
@@ -282,7 +285,7 @@ export function UserManagement() {
         await createUser({
           email: dialog.userData.email,
           password: '', // Will trigger password reset email
-          fullName: dialog.userData.fullName,
+          fullName: computedFullName,
           role: dialog.userData.role || 'dozent',
           additional_roles: additionalRoles.length > 0 ? additionalRoles : undefined
         });
@@ -347,8 +350,9 @@ export function UserManagement() {
     e.preventDefault();
     setDialogError(null);
 
-    if (!dialog.userData.id || !dialog.userData.fullName) {
-      setDialogError('Name ist erforderlich');
+    const computedFullName = [dialog.userData.firstName, dialog.userData.lastName].filter(Boolean).join(' ');
+    if (!dialog.userData.id || !computedFullName) {
+      setDialogError('Vorname ist erforderlich');
       return;
     }
 
@@ -356,7 +360,9 @@ export function UserManagement() {
       setLocalLoading(true);
       const emailChanged = dialog.userData.email !== dialog.userData.originalEmail;
       await updateUser(dialog.userData.id, {
-        fullName: dialog.userData.fullName,
+        fullName: computedFullName,
+        firstName: dialog.userData.firstName,
+        lastName: dialog.userData.lastName,
         email: emailChanged ? dialog.userData.email : undefined,
         role: dialog.userData.role,
         additional_roles: dialog.userData.additional_roles || [],
@@ -644,7 +650,7 @@ export function UserManagement() {
     setDialogError(null);
     setDialog({
       type: null,
-      userData: { email: '', fullName: '', role: 'dozent' }
+      userData: { email: '', fullName: '', firstName: '', lastName: '', role: 'dozent' }
     });
   };
 
@@ -1023,6 +1029,8 @@ export function UserManagement() {
                                     email: user.email,
                                     originalEmail: user.email,
                                     fullName: user.full_name,
+                                    firstName: (user as any).first_name || '',
+                                    lastName: (user as any).last_name || '',
                                     role: user.role,
                                     additional_roles: user.additional_roles || [],
                                     vb_legal_areas: (user as any).vb_legal_areas || [],
@@ -1214,20 +1222,36 @@ export function UserManagement() {
                         </p>
                       ) : (
                         <div className="space-y-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Vollständiger Name
-                            </label>
-                            <input
-                              type="text"
-                              value={dialog.userData.fullName}
-                              onChange={(e) => setDialog({
-                                ...dialog,
-                                userData: { ...dialog.userData, fullName: e.target.value }
-                              })}
-                              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
-                              required
-                            />
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Vorname
+                              </label>
+                              <input
+                                type="text"
+                                value={dialog.userData.firstName}
+                                onChange={(e) => setDialog({
+                                  ...dialog,
+                                  userData: { ...dialog.userData, firstName: e.target.value }
+                                })}
+                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                                required
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Nachname
+                              </label>
+                              <input
+                                type="text"
+                                value={dialog.userData.lastName}
+                                onChange={(e) => setDialog({
+                                  ...dialog,
+                                  userData: { ...dialog.userData, lastName: e.target.value }
+                                })}
+                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                              />
+                            </div>
                           </div>
                           {(dialog.type === 'edit' || dialog.type === 'new') && (
                             <div>
@@ -1711,7 +1735,7 @@ export function UserManagement() {
                       setShowRoleSelection(false);
                       setDialog({
                         type: 'new',
-                        userData: { email: '', fullName: '', password: '', role: 'teilnehmer', isVideobesprechung: false, eliteKleingruppe: eliteKleingruppen[0]?.name || '' }
+                        userData: { email: '', fullName: '', firstName: '', lastName: '', password: '', role: 'teilnehmer', isVideobesprechung: false, eliteKleingruppe: eliteKleingruppen[0]?.name || '' }
                       });
                       setDialogError(null);
                     }}
@@ -1725,7 +1749,7 @@ export function UserManagement() {
                       setShowRoleSelection(false);
                       setDialog({
                         type: 'new',
-                        userData: { email: '', fullName: '', password: '', role: 'teilnehmer', isVideobesprechung: true }
+                        userData: { email: '', fullName: '', firstName: '', lastName: '', password: '', role: 'teilnehmer', isVideobesprechung: true }
                       });
                       setDialogError(null);
                     }}
@@ -1739,7 +1763,7 @@ export function UserManagement() {
                       setShowRoleSelection(false);
                       setDialog({
                         type: 'new',
-                        userData: { email: '', fullName: '', password: '', role: 'verwaltung' }
+                        userData: { email: '', fullName: '', firstName: '', lastName: '', password: '', role: 'verwaltung' }
                       });
                       setDialogError(null);
                     }}

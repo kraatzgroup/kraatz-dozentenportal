@@ -18,7 +18,7 @@ interface UserState {
   error: string | null;
   fetchUsers: () => Promise<void>;
   createUser: (userData: { email: string; password: string; fullName: string; role?: string; additional_roles?: string[] }) => Promise<void>;
-  updateUser: (id: string, data: { fullName: string; email?: string; role?: string; additional_roles?: string[]; vb_legal_areas?: string[] }) => Promise<void>;
+  updateUser: (id: string, data: { fullName: string; firstName?: string; lastName?: string; email?: string; role?: string; additional_roles?: string[]; vb_legal_areas?: string[] }) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
 }
@@ -110,10 +110,16 @@ export const useUserStore = create<UserState>((set, get) => ({
     }
   },
 
-  updateUser: async (id: string, data: { fullName: string; email?: string; role?: string; additional_roles?: string[]; vb_legal_areas?: string[] }) => {
+  updateUser: async (id: string, data: { fullName: string; firstName?: string; lastName?: string; email?: string; role?: string; additional_roles?: string[]; vb_legal_areas?: string[] }) => {
     set({ isLoading: true, error: null });
     try {
       const updateData: any = { full_name: data.fullName };
+      if (data.firstName !== undefined) {
+        updateData.first_name = data.firstName;
+      }
+      if (data.lastName !== undefined) {
+        updateData.last_name = data.lastName;
+      }
       if (data.role) {
         updateData.role = data.role;
       }
