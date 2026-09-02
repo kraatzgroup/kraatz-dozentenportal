@@ -39,7 +39,7 @@ export const VbPackagesPage: React.FC = () => {
   const [guestName, setGuestName] = useState<string>('');
 
   // Bereits gekaufte Pakete (nur für eingeloggte User prüfbar)
-  const [purchasedPackageKeys, setPurchasedPackageKeys] = useState<Set<string>>(new Set());
+  const [, setPurchasedPackageKeys] = useState<Set<string>>(new Set());
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   const isLoggedIn = !!user;
@@ -229,13 +229,14 @@ export const VbPackagesPage: React.FC = () => {
 
   const renderPackageCard = (pkg: VbPackage) => {
     const isProcessing = processingPayment === pkg.id;
+    const isDisabledIntro = pkg.isIntro;
 
     return (
       <div
         key={pkg.id}
         className={`bg-white rounded-lg shadow-lg p-6 relative flex flex-col ${
           pkg.popular ? 'ring-2 ring-blue-600 transform scale-105' : ''
-        }`}
+        } ${isDisabledIntro ? 'opacity-60 grayscale' : ''}`}
       >
         {pkg.popular && (
           <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
@@ -299,27 +300,33 @@ export const VbPackagesPage: React.FC = () => {
           </div>
 
           <div className="mt-auto">
-            <button
-              onClick={() => handlePurchase(pkg)}
-              disabled={isProcessing}
-              className={`w-full py-2 px-4 rounded-lg font-semibold transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-                pkg.popular
-                  ? 'bg-blue-600 text-white hover:bg-blue-700'
-                  : 'border border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white'
-              }`}
-            >
-              {isProcessing ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Weiterleitung...</span>
-                </>
-              ) : (
-                <>
-                  <CreditCard className="w-4 h-4" />
-                  <span>{user ? 'Jetzt kaufen' : 'Jetzt durchstarten!'}</span>
-                </>
-              )}
-            </button>
+            {isDisabledIntro ? (
+              <div className="w-full py-2 px-4 rounded-lg font-semibold flex items-center justify-center space-x-2 bg-gray-200 text-gray-500 cursor-not-allowed">
+                <span>Nicht mehr verfügbar</span>
+              </div>
+            ) : (
+              <button
+                onClick={() => handlePurchase(pkg)}
+                disabled={isProcessing}
+                className={`w-full py-2 px-4 rounded-lg font-semibold transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  pkg.popular
+                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                    : 'border border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white'
+                }`}
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Weiterleitung...</span>
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="w-4 h-4" />
+                    <span>{user ? 'Jetzt kaufen' : 'Jetzt durchstarten!'}</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -385,8 +392,8 @@ export const VbPackagesPage: React.FC = () => {
       )}
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
-        {/* Neukunden-Angebot nur zeigen, solange es noch nicht genutzt wurde */}
-        {introPackage && !purchasedPackageKeys.has('neukunden') && renderPackageCard(introPackage)}
+        {/* Neukunden-Angebot wird ausgegraut angezeigt (nicht mehr buchbar) */}
+        {introPackage && renderPackageCard(introPackage)}
         {regularPackages.map(renderPackageCard)}
       </div>
 
