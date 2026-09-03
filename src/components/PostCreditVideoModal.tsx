@@ -36,7 +36,7 @@ export const PostCreditVideoModal: React.FC = () => {
     }
   };
 
-  const handleClose = async () => {
+  const handleClose = async (redirect = false) => {
     if (closing) return;
     setClosing(true);
 
@@ -54,6 +54,10 @@ export const PostCreditVideoModal: React.FC = () => {
 
     await dismiss(watchSeconds);
     setClosing(false);
+
+    if (redirect) {
+      window.location.href = '/klausurenbesprechung/pakete';
+    }
   };
 
   if (loading || !shouldShow) return null;
@@ -90,6 +94,7 @@ export const PostCreditVideoModal: React.FC = () => {
           disablePictureInPicture
           onClick={(e) => e.stopPropagation()}
           onPlay={handlePlay}
+          onEnded={() => handleClose(true)}
           className="max-w-full max-h-full object-contain"
           style={{ outline: 'none' }}
         />
