@@ -43,7 +43,8 @@ const corsHeaders = {
 const BASE_URL = 'https://portal.kraatz-group.de';
 const VIDEO_URL = 'https://gkkveloqajxghhflkfru.supabase.co/storage/v1/object/public/Videos-Portal/nach%20dem%20ersten%20Creditmp4.mp4';
 const THUMBNAIL_URL = 'https://gkkveloqajxghhflkfru.supabase.co/storage/v1/object/public/Videos-Portal/post_credit_thumbnail.jpg';
-const HEADER_LOGO_URL = 'https://flgf3.img.bh.d.sendibt3.com/im/sh/vejLekvQvWoH.png?u=7126MWSP0tEIBco8FM04ntiyIRc';
+const HEADER_LOGO_URL = 'https://gkkveloqajxghhflkfru.supabase.co/storage/v1/object/public/Videos-Portal/vXY0jbZ4i0KI.png';
+const FOOTER_LOGO_URL = 'https://flgf3.img.bh.d.sendibt3.com/im/sh/vejLekvQvWoH.png?u=7126MWSP0tEIBco8FM04ntiyIRc';
 
 // TEST MODE: Only send to these email addresses. Empty array = send to all eligible users.
 const TEST_EMAIL_WHITELIST: string[] = [];
@@ -546,7 +547,7 @@ function buildEmailHtml(firstName: string, magicLink: string): string {
                        <tbody>
                         <tr>
                          <td style="color: #3b3f44; font-family: Arial, Helvetica, sans-serif; font-size: 0; line-height: 0; padding-bottom: 15px; padding-top: 15px;">
-                          <img src="${HEADER_LOGO_URL}" width="82" border="0" style="display: block; width: 100%;">
+                          <img src="${FOOTER_LOGO_URL}" width="82" border="0" style="display: block; width: 100%;">
                          </td>
                         </tr>
                        </tbody>
