@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Play } from 'lucide-react';
 import { usePostCreditVideo, POST_CREDIT_VIDEO_URL } from '../hooks/usePostCreditVideo';
 
 /**
@@ -19,6 +19,7 @@ export const PostCreditVideoModal: React.FC = () => {
   const startTimeRef = useRef<number | null>(null);
   const [closing, setClosing] = useState(false);
   const [muted, setMuted] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   // Lock body scroll while the modal is open
   useEffect(() => {
@@ -53,6 +54,21 @@ export const PostCreditVideoModal: React.FC = () => {
   const handlePlay = () => {
     if (startTimeRef.current === null) {
       startTimeRef.current = Date.now();
+    }
+    setIsPlaying(true);
+  };
+
+  const handlePause = () => {
+    setIsPlaying(false);
+  };
+
+  const togglePlayPause = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) {
+      v.play().catch(() => {});
+    } else {
+      v.pause();
     }
   };
 
@@ -116,28 +132,48 @@ export const PostCreditVideoModal: React.FC = () => {
             disablePictureInPicture
             onClick={(e) => {
               e.stopPropagation();
-              // Click on video toggles mute
-              const v = videoRef.current;
-              if (v) {
-                v.muted = !v.muted;
-                setMuted(v.muted);
-              }
+              togglePlayPause();
             }}
             onPlay={handlePlay}
+            onPause={handlePause}
             onEnded={() => handleClose(true)}
             className="w-full h-auto object-contain cursor-pointer rounded-lg"
             style={{ outline: 'none' }}
           />
-          {muted && (
+          {/* Pulsing play button — shown when paused, hidden when playing */}
+          {!isPlaying && (
             <div
-              className="absolute inset-0 flex items-center justify-center pointer-events-none rounded-lg"
+              className="absolute inset-0 flex items-center justify-center rounded-lg"
+              style={{ zIndex: 1, pointerEvents: 'none' }}
+            >
+              <div
+                className="flex items-center justify-center rounded-full bg-white/30 backdrop-blur-sm"
+                style={{
+                  width: '80px',
+                  height: '80px',
+                  animation: 'pulse 1.5s ease-in-out infinite',
+                }}
+              >
+                <Play className="h-10 w-10 text-white fill-white" style={{ marginLeft: '4px' }} />
+              </div>
+            </div>
+          )}
+          {muted && isPlaying && (
+            <div
+              className="absolute bottom-3 left-1/2 -translate-x-1/2 pointer-events-none rounded-lg"
               style={{ zIndex: 1 }}
             >
-              <div className="bg-black/60 text-white px-6 py-3 rounded-lg text-sm">
+              <div className="bg-black/60 text-white px-4 py-2 rounded-lg text-xs">
                 Klicken, um Ton anzuschalten
               </div>
             </div>
           )}
+          <style>{`
+            @keyframes pulse {
+              0%, 100% { transform: scale(1); opacity: 0.8; }
+              50% { transform: scale(1.1); opacity: 1; }
+            }
+          `}</style>
         </div>
       </div>
     </div>
