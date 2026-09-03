@@ -34,6 +34,15 @@ const getFileNameFromUrl = (url: string): string => {
   }
 }
 
+// Helper to extract the file extension from a URL (without the leading dot).
+// Falls back to 'xlsx' for backward compatibility when no extension is found.
+const getExtFromUrl = (url: string | null | undefined): string => {
+  if (!url) return 'xlsx'
+  const fileName = getFileNameFromUrl(url)
+  const ext = fileName.split('.').pop()
+  return ext && ext !== fileName ? ext.toLowerCase() : 'xlsx'
+}
+
 // Reusable upload/preview block: shows selected file, or an existing uploaded
 // file with download + replace, or an empty picker.
 const FileField: React.FC<FileFieldProps> = ({
@@ -523,11 +532,11 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
                 )}
                 {config.showExcel && (
                   <FileField
-                    label={config.excelLabel || 'Bewertungstabelle (Excel)'}
+                    label={config.excelLabel || 'Bewertungstabelle (Excel/PDF/Word)'}
                     file={excelFile}
                     existingUrl={item.correctedExcelUrl}
-                    accept=".xlsx,.xls,.csv"
-                    downloadName={`${item.title}_Bewertung.xlsx`}
+                    accept=".xlsx,.xls,.csv,.pdf,.doc,.docx"
+                    downloadName={`${item.title}_Bewertung.${getExtFromUrl(item.correctedExcelUrl)}`}
                     onSelect={setExcelFile}
                     onDownload={onDownloadFile}
                     onDelete={() => onClearFile?.('excel')}
