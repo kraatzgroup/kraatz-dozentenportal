@@ -12,6 +12,23 @@
 //      (video not yet shown) AND no row with email_sent_at IS NOT NULL
 //      (email not already sent)
 //
+// Deduplication: the vb_post_credit_video_views table with email_sent_at
+// ensures each user gets the email at most once. All sends are logged to
+// notification_logs for the admin email dashboard.
+//
+// For each eligible user:
+//   - Generates a Supabase magic link (logs in + redirects to dashboard)
+//   - Sends a personalized email from "Mario Kraatz" <postmaster@kraatz-group.de>
+//   - Inserts a row in vb_post_credit_video_views with email_sent_at = NOW()
+//   - Logs the send to notification_logs
+console.log('🚀 vb-post-credit-video-check edge function loaded');
+
+import { createClient } from 'npm:@supabase/supabase-js@2';
+import { logNotification } from '../_shared/notification-log.ts';
+//   4. No row in vb_post_credit_video_views with shown_at IS NOT NULL
+//      (video not yet shown) AND no row with email_sent_at IS NOT NULL
+//      (email not already sent)
+//
 // For each eligible user:
 //   - Generates a Supabase magic link (logs in + redirects to dashboard)
 //   - Sends a personalized email from "Mario Kraatz" <postmaster@kraatz-group.de>
@@ -66,6 +83,10 @@ Deno.serve(async (req) => {
     if (!mailgunApiKey) {
       throw new Error('MAILGUN_API_KEY not configured');
     }
+
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
 
     // ─── 1. Find all eligible users ───────────────────────────────────
     // Step 1: Get all VB users with test credits
@@ -249,8 +270,36 @@ Deno.serve(async (req) => {
         if (!mailgunResponse.ok) {
           const errorText = await mailgunResponse.text();
           console.error(`❌ [${requestId}] Mailgun error for ${user.email}:`, errorText);
+          await logNotification({
+            edgeFunction: 'vb-post-credit-video-check',
+            supabaseAdmin,
+            recipientEmail: user.email,
+            recipientName: user.first_name || user.full_name || undefined,
+            subject: 'Eine persönliche Nachricht von Mario Kraatz für dich',
+            sender: 'Mario Kraatz <postmaster@kraatz-group.de>',
+            status: 'failed',
+            errorMessage: errorText,
+            context: { profileId: user.profile_id, type: 'post-credit-upsell' },
+            payload: { email: user.email },
+          });
           continue;
         }
+
+        const emailResult = await mailgunResponse.json();
+
+        // ─── Log to notification_logs ────────────────────────────────
+        await logNotification({
+          edgeFunction: 'vb-post-credit-video-check',
+          supabaseAdmin,
+          recipientEmail: user.email,
+          recipientName: user.first_name || user.full_name || undefined,
+          subject: 'Eine persönliche Nachricht von Mario Kraatz für dich',
+          sender: 'Mario Kraatz <postmaster@kraatz-group.de>',
+          status: 'sent',
+          providerMessageId: emailResult?.id,
+          context: { profileId: user.profile_id, type: 'post-credit-upsell' },
+          payload: { email: user.email },
+        });
 
         // ─── Record email_sent_at in tracking table ──────────────────
         await fetch(`${supabaseUrl}/rest/v1/vb_post_credit_video_views`, {

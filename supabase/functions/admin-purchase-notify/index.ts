@@ -5,8 +5,14 @@
 // Includes: buyer info (new vs existing user), product/package details, value,
 // timestamps, Stripe session ID, and credit count.
 //
+// Deduplication: checks notification_logs for an existing entry with the same
+// checkoutSessionId in the context — if already sent, skips silently.
+//
 // Called by stripe-webhook after a successful purchase is recorded.
 console.log('🚀 admin-purchase-notify edge function loaded');
+
+import { createClient } from 'npm:@supabase/supabase-js@2';
+import { logNotification } from '../_shared/notification-log.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -80,6 +86,10 @@ Deno.serve(async (req) => {
       throw new Error('MAILGUN_API_KEY not configured');
     }
 
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
     const body: PurchaseNotifyRequest = await req.json();
     const {
       email,
@@ -104,23 +114,36 @@ Deno.serve(async (req) => {
 
     console.log(`📋 [${requestId}] Purchase: ${email} - ${packageName} - ${formatEuro(totalCents)} - ${isNewUser ? 'NEW' : 'EXISTING'} user`);
 
+    // ─── Deduplication: check if already notified for this checkout session ──
+    const { data: existingLog } = await supabaseAdmin
+      .from('notification_logs')
+      .select('id')
+      .eq('edge_function', 'admin-purchase-notify')
+      .contains('context', { checkoutSessionId })
+      .limit(1);
+
+    if (existingLog && existingLog.length > 0) {
+      console.log(`ℹ️ [${requestId}] Already notified for checkout session ${checkoutSessionId} — skipping`);
+      return new Response(
+        JSON.stringify({ success: true, message: 'Already notified for this purchase', sent: 0, deduplicated: true }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // ─── Load all admins ──────────────────────────────────────────────
-    // Fetch profiles with role=admin (service role bypasses RLS)
-    const adminsResponse = await fetch(
-      `${supabaseUrl}/rest/v1/profiles?select=id,full_name,email,role,additional_roles&role=eq.admin`,
-      {
-        headers: {
-          'apikey': serviceRoleKey,
-          'Authorization': `Bearer ${serviceRoleKey}`,
-        },
-      }
-    );
-    const adminProfiles = await adminsResponse.json();
+    const { data: adminProfiles, error: adminError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, full_name, email, role, additional_roles')
+      .eq('role', 'admin')
+      .not('email', 'is', null);
+
+    if (adminError) throw adminError;
+
     const admins = Array.isArray(adminProfiles)
       ? adminProfiles.filter((p: any) => p.email)
       : [];
 
-    if (!Array.isArray(admins) || admins.length === 0) {
+    if (admins.length === 0) {
       console.log(`ℹ️ [${requestId}] No admins found — skipping notification`);
       return new Response(
         JSON.stringify({ success: true, message: 'No admins to notify', sent: 0 }),
@@ -150,13 +173,17 @@ Deno.serve(async (req) => {
       now,
     });
 
+    const emailSubject = `[Kauf] ${isNewUser ? 'Neukunde' : 'Bestandskunde'}: ${fullName} – ${packageName} (${formatEuro(totalCents)})`;
+    const sender = 'Kraatz Group Portal <postmaster@kraatz-group.de>';
+    const logContext = { checkoutSessionId, buyerEmail: email, packageName, totalCents, isNewUser };
+
     let sentCount = 0;
     for (const admin of admins) {
       try {
         const formData = new FormData();
-        formData.append('from', 'Kraatz Group Portal <postmaster@kraatz-group.de>');
+        formData.append('from', sender);
         formData.append('to', admin.email);
-        formData.append('subject', `[Kauf] ${isNewUser ? 'Neukunde' : 'Bestandskunde'}: ${fullName} – ${packageName} (${formatEuro(totalCents)})`);
+        formData.append('subject', emailSubject);
         formData.append('h:Reply-To', 'postmaster@kraatz-group.de');
         formData.append('o:tracking', 'false');
         formData.append('html', emailHtml);
@@ -172,13 +199,52 @@ Deno.serve(async (req) => {
         if (!mailgunResponse.ok) {
           const errorText = await mailgunResponse.text();
           console.error(`❌ [${requestId}] Mailgun error for ${admin.email}:`, errorText);
+          await logNotification({
+            edgeFunction: 'admin-purchase-notify',
+            supabaseAdmin,
+            recipientEmail: admin.email,
+            recipientName: admin.full_name,
+            subject: emailSubject,
+            sender,
+            status: 'failed',
+            errorMessage: errorText,
+            context: logContext,
+            payload: { buyerEmail: email, fullName, packageName, totalCents },
+          });
           continue;
         }
+
+        const emailResult = await mailgunResponse.json();
+
+        await logNotification({
+          edgeFunction: 'admin-purchase-notify',
+          supabaseAdmin,
+          recipientEmail: admin.email,
+          recipientName: admin.full_name,
+          subject: emailSubject,
+          sender,
+          status: 'sent',
+          providerMessageId: emailResult?.id,
+          context: logContext,
+          payload: { buyerEmail: email, fullName, packageName, totalCents },
+        });
 
         sentCount++;
         console.log(`✅ [${requestId}] Admin notification sent to ${admin.email}`);
       } catch (adminErr) {
         console.error(`❌ [${requestId}] Error sending to admin ${admin.email}:`, adminErr);
+        await logNotification({
+          edgeFunction: 'admin-purchase-notify',
+          supabaseAdmin,
+          recipientEmail: admin.email,
+          recipientName: admin.full_name,
+          subject: emailSubject,
+          sender,
+          status: 'failed',
+          errorMessage: adminErr instanceof Error ? adminErr.message : String(adminErr),
+          context: logContext,
+          payload: { buyerEmail: email, fullName, packageName, totalCents },
+        });
       }
     }
 
