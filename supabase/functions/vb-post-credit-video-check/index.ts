@@ -220,6 +220,20 @@ Deno.serve(async (req) => {
 
     for (const user of filteredUsers) {
       try {
+        // ─── Dedup: skip if already logged as sent in notification_logs ──
+        const { data: existingLog } = await supabaseAdmin
+          .from('notification_logs')
+          .select('id')
+          .eq('edge_function', 'vb-post-credit-video-check')
+          .eq('recipient_email', user.email)
+          .eq('status', 'sent')
+          .limit(1);
+
+        if (existingLog && existingLog.length > 0) {
+          console.log(`ℹ️ [${requestId}] ${user.email} already sent (notification_logs) — skipping`);
+          continue;
+        }
+
         // ─── Generate magic link ──────────────────────────────────────
         const magicLinkResponse = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
           method: 'POST',
