@@ -294,6 +294,52 @@ async function sendOrderConfirmation(
   }
 }
 
+async function sendAdminPurchaseNotify(
+  email: string,
+  fullName: string,
+  isNewUser: boolean,
+  packageName: string,
+  caseStudyCount: number,
+  totalCents: number,
+  checkoutSessionId: string,
+  stripeCustomerId: string | null,
+  stripePaymentIntentId: string | null,
+  expiresAt: string | null | undefined
+): Promise<void> {
+  try {
+    const response = await fetch(
+      `${Deno.env.get('SUPABASE_URL')}/functions/v1/admin-purchase-notify`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY') ?? ''}`,
+        },
+        body: JSON.stringify({
+          email,
+          fullName,
+          isNewUser,
+          packageName,
+          caseStudyCount,
+          totalCents,
+          checkoutSessionId,
+          stripeCustomerId,
+          stripePaymentIntentId,
+          expiresAt,
+          purchaseTimestamp: new Date().toISOString(),
+        }),
+      }
+    );
+    if (!response.ok) {
+      console.warn(`⚠️ admin-purchase-notify fehlgeschlagen (Status ${response.status})`);
+    } else {
+      console.log(`📧 Admin-Kaufbenachrichtigung versendet`);
+    }
+  } catch (error) {
+    console.warn('⚠️ admin-purchase-notify Exception:', error);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -485,6 +531,20 @@ Deno.serve(async (req) => {
         session.id,
         purchaseResult.expires_at,
         isNewUser
+      );
+
+      // Admin über den Kauf benachrichtigen
+      await sendAdminPurchaseNotify(
+        email,
+        fullName,
+        isNewUser,
+        packageName ?? 'Video-Klausurenkorrektur',
+        caseStudyCount,
+        totalCents,
+        session.id,
+        customerId,
+        typeof session.payment_intent === 'string' ? session.payment_intent : null,
+        purchaseResult.expires_at
       );
     } else {
       console.log(`ℹ️ Session ${sessionId} bereits verarbeitet (idempotent übersprungen)`);
