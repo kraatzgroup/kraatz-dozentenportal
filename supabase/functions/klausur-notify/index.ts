@@ -58,10 +58,9 @@ Deno.serve(async (req) => {
     const { dozentEmail, dozentName, teilnehmerName, klausurTitle, legalArea, dozentId } = await req.json() as KlausurNotifyRequest;
     console.log(`📋 [${requestId}] Request data:`, { dozentEmail, dozentName, teilnehmerName, klausurTitle, legalArea, dozentId });
 
-    // Determine redirect URL based on origin (localhost vs production)
-    const origin = req.headers.get('origin') || '';
-    const redirectUrl = origin.includes('localhost') ? `${origin}/elite-kleingruppe` : 'https://portal.kraatz-group.de/elite-kleingruppe';
-    console.log(`🌐 [${requestId}] Origin: ${origin}, Redirect URL: ${redirectUrl}`);
+    // Always use the production URL in notification emails (never localhost)
+    const redirectUrl = 'https://portal.kraatz-group.de/elite-kleingruppe';
+    console.log(`🌐 [${requestId}] Redirect URL: ${redirectUrl}`);
 
     // Validate input
     if (!dozentEmail || !dozentName || !teilnehmerName || !klausurTitle || !legalArea || !dozentId) {
@@ -120,8 +119,7 @@ Deno.serve(async (req) => {
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff;">
         <!-- Header -->
         <div style="background-color: #ffffff; padding: 30px 20px; text-align: center; border-bottom: 1px solid #e9ecef;">
-          <h1 style="margin: 0; font-size: 22px; color: #333;">Kraatz Group</h1>
-          <p style="margin: 5px 0 0 0; font-size: 14px; color: #666;">Portal</p>
+          <img src="https://flgf3.img.bh.d.sendibt3.com/im/sh/vejLekvQvWoH.png?u=7126MWSP0tEIBco8FM04ntiyIRc" alt="Kraatz Group" style="height: 60px; margin: 0 auto; display: block;">
         </div>
         
         <!-- Main Content -->

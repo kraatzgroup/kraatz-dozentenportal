@@ -36,11 +36,10 @@ serve(async (req) => {
     const body = await req.json()
     console.log('Received VB notification payload:', body)
 
-    // Determine redirect URL based on origin (localhost vs production)
-    const origin = req.headers.get('origin') || ''
-    const baseUrl = origin.includes('localhost') ? origin : 'https://portal.kraatz-group.de'
+    // Always use the production URL in notification emails (never localhost)
+    const baseUrl = 'https://portal.kraatz-group.de'
     const redirectUrl = `${baseUrl}/klausurenbesprechung`
-    console.log('Origin:', origin, 'Redirect URL:', redirectUrl)
+    console.log('Redirect URL:', redirectUrl)
 
     // Check if this is a direct call (not a webhook trigger)
     if (body.profile_id && body.case_study_id) {
@@ -141,8 +140,7 @@ serve(async (req) => {
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff;">
           <!-- Header -->
           <div style="background-color: #ffffff; padding: 30px 20px; text-align: center; border-bottom: 1px solid #e9ecef;">
-            <h1 style="margin: 0; font-size: 22px; color: #333;">Kraatz Group</h1>
-            <p style="margin: 5px 0 0 0; font-size: 14px; color: #666;">Portal</p>
+            <img src="https://flgf3.img.bh.d.sendibt3.com/im/sh/vejLekvQvWoH.png?u=7126MWSP0tEIBco8FM04ntiyIRc" alt="Kraatz Group" style="height: 60px; margin: 0 auto; display: block;">
           </div>
           
           <!-- Main Content -->
@@ -465,8 +463,7 @@ serve(async (req) => {
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff;">
         <!-- Header -->
         <div style="background-color: #ffffff; padding: 30px 20px; text-align: center; border-bottom: 1px solid #e9ecef;">
-          <h1 style="margin: 0; font-size: 22px; color: #333;">Kraatz Group</h1>
-          <p style="margin: 5px 0 0 0; font-size: 14px; color: #666;">Portal</p>
+          <img src="https://flgf3.img.bh.d.sendibt3.com/im/sh/vejLekvQvWoH.png?u=7126MWSP0tEIBco8FM04ntiyIRc" alt="Kraatz Group" style="height: 60px; margin: 0 auto; display: block;">
         </div>
         
         <!-- Main Content -->

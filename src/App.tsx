@@ -34,6 +34,7 @@ const DozentenPortalTutorials = lazy(() => import('./components/DozentenTutorial
 })));
 const TypeformSurvey = lazy(() => import('./components/TypeformSurvey').then(m => ({ default: m.TypeformSurvey })));
 const FeedbackAdmin = lazy(() => import('./components/FeedbackAdmin').then(m => ({ default: m.FeedbackAdmin })));
+const AGBPage = lazy(() => import('./components/AGBPage').then(m => ({ default: m.AGBPage })));
 
 import { useAuthStore } from './store/authStore';
 import { usePreviewStore } from './store/previewStore';
@@ -42,6 +43,7 @@ import { RoleGuard } from './components/RoleGuard';
 import { useSessionValidator } from './hooks/useSessionValidator';
 import { Footer } from './components/Footer';
 import { ToastContainer } from './components/Toast';
+import { PostCreditVideoModal } from './components/PostCreditVideoModal';
 
 const SuspenseFallback = (
   <div className="flex-1 flex items-center justify-center">
@@ -99,8 +101,19 @@ function App() {
     );
   }
 
-  // Not authenticated → show login
+  // Not authenticated → show login. Ausnahme: die AGB sind öffentlich
+  // einsehbar (der Footer öffnet /agbs in einem neuen Tab).
   if (!user) {
+    if (window.location.pathname === '/agbs') {
+      return (
+        <div className="min-h-screen bg-background flex flex-col">
+          <Suspense fallback={SuspenseFallback}>
+            <AGBPage />
+          </Suspense>
+          <Footer />
+        </div>
+      );
+    }
     return <AuthComponent />;
   }
 
@@ -125,6 +138,9 @@ function App() {
           <Route path="/accounting" element={<Navigate to="/dashboard" replace />} />
           <Route path="/vertrieb" element={<Navigate to="/dashboard" replace />} />
           <Route path="/elite-kleingruppe" element={<Navigate to="/dashboard" replace />} />
+
+          {/* AGB (öffentlich, wird aus dem Footer in neuem Tab geöffnet) */}
+          <Route path="/agbs" element={<AGBPage />} />
 
           {/* Login route */}
           <Route path="/login" element={<Navigate to="/dashboard" replace />} />
@@ -204,6 +220,7 @@ function App() {
         <Footer />
       </div>
       <ToastContainer />
+      <PostCreditVideoModal />
     </Router>
   );
 }

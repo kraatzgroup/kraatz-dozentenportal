@@ -126,7 +126,7 @@ serve(async (req) => {
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff;">
           <!-- Header -->
           <div style="background-color: #ffffff; padding: 30px 20px; text-align: center; border-bottom: 1px solid #e9ecef;">
-            <img src="https://gkkveloqajxghhflkfru.supabase.co/storage/v1/object/public/images/logos/9674199.png" 
+            <img src="https://flgf3.img.bh.d.sendibt3.com/im/sh/vejLekvQvWoH.png?u=7126MWSP0tEIBco8FM04ntiyIRc" 
                  alt="Kraatz-Club Logo" 
                  style="height: 60px; margin: 0 auto; display: block;">
           </div>
@@ -156,7 +156,7 @@ serve(async (req) => {
             
             <!-- Action Button -->
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${Deno.env.get('SITE_URL') || 'https://portal.kraatz-group.de'}/klausurenbesprechung/chat" 
+              <a href="https://portal.kraatz-group.de/klausurenbesprechung/chat" 
                  style="display: inline-block; background-color: #2e83c2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500;">
                 Zum Chat
               </a>
