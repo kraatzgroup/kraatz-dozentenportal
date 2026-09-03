@@ -978,12 +978,19 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
         .replace(/[^a-zA-Z0-9._-]/g, '_')
         .replace(/_+/g, '_')
       const fileName = ext ? `${safeBase}.${ext}` : safeBase
+      // Prefix with the case study ID so that different students (and
+      // different case studies) never collide on the same storage path.
+      // Without this, a second student uploading "Sachverhalt_21.pdf"
+      // would try to upsert over a file owned by another user, which
+      // Supabase Storage rejects with "new row violates row-level
+      // security policy".
+      const filePath = `${caseStudyId}/${fileName}`
 
-      console.log('Uploading to storage with filename:', fileName)
+      console.log('Uploading to storage with path:', filePath)
 
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('case-studies')
-        .upload(fileName, uploadFile, { upsert: true })
+        .upload(filePath, uploadFile, { upsert: true })
 
       if (uploadError) {
         console.error('Storage upload error:', uploadError)
@@ -994,7 +1001,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
 
       const { data: urlData } = supabase.storage
         .from('case-studies')
-        .getPublicUrl(fileName)
+        .getPublicUrl(filePath)
 
       console.log('Public URL generated:', urlData.publicUrl)
 
