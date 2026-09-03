@@ -104,39 +104,41 @@ export const PostCreditVideoModal: React.FC = () => {
 
       {/* Video — starts muted (autoplay policy), unmutes after 500ms */}
       <div className="relative w-full h-full flex items-center justify-center p-4">
-        <video
-          ref={videoRef}
-          src={POST_CREDIT_VIDEO_URL}
-          autoPlay
-          muted={muted}
-          playsInline
-          controls={false}
-          controlsList="nodownload noplaybackrate"
-          disablePictureInPicture
-          onClick={(e) => {
-            e.stopPropagation();
-            // Click on video toggles mute
-            const v = videoRef.current;
-            if (v) {
-              v.muted = !v.muted;
-              setMuted(v.muted);
-            }
-          }}
-          onPlay={handlePlay}
-          onEnded={() => handleClose(true)}
-          className="max-w-full max-h-full object-contain cursor-pointer"
-          style={{ outline: 'none' }}
-        />
-        {muted && (
-          <div
-            className="absolute inset-0 flex items-center justify-center pointer-events-none"
-            style={{ zIndex: 1 }}
-          >
-            <div className="bg-black/60 text-white px-6 py-3 rounded-lg text-sm">
-              Klicken, um Ton anzuschalten
+        <div className="relative" style={{ width: '50vw', maxWidth: '50%' }}>
+          <video
+            ref={videoRef}
+            src={POST_CREDIT_VIDEO_URL}
+            autoPlay
+            muted={muted}
+            playsInline
+            controls={false}
+            controlsList="nodownload noplaybackrate"
+            disablePictureInPicture
+            onClick={(e) => {
+              e.stopPropagation();
+              // Click on video toggles mute
+              const v = videoRef.current;
+              if (v) {
+                v.muted = !v.muted;
+                setMuted(v.muted);
+              }
+            }}
+            onPlay={handlePlay}
+            onEnded={() => handleClose(true)}
+            className="w-full h-auto object-contain cursor-pointer rounded-lg"
+            style={{ outline: 'none' }}
+          />
+          {muted && (
+            <div
+              className="absolute inset-0 flex items-center justify-center pointer-events-none rounded-lg"
+              style={{ zIndex: 1 }}
+            >
+              <div className="bg-black/60 text-white px-6 py-3 rounded-lg text-sm">
+                Klicken, um Ton anzuschalten
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
