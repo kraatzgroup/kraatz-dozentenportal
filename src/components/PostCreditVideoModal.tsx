@@ -18,6 +18,7 @@ export const PostCreditVideoModal: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const startTimeRef = useRef<number | null>(null);
   const [closing, setClosing] = useState(false);
+  const [muted, setMuted] = useState(true);
 
   // Lock body scroll while the modal is open
   useEffect(() => {
@@ -27,6 +28,25 @@ export const PostCreditVideoModal: React.FC = () => {
     return () => {
       document.body.style.overflow = prevOverflow;
     };
+  }, [shouldShow, loading]);
+
+  // Start muted to satisfy browser autoplay policies, then try to
+  // unmute after a short delay (works if the user interacted via login)
+  useEffect(() => {
+    if (!shouldShow || loading) return;
+    const timer = setTimeout(() => {
+      const v = videoRef.current;
+      if (!v) return;
+      v.muted = false;
+      v.play().then(() => {
+        setMuted(false);
+      }).catch(() => {
+        // Unmute blocked — stay muted, user can click to unmute
+        v.muted = true;
+        setMuted(true);
+      });
+    }, 500);
+    return () => clearTimeout(timer);
   }, [shouldShow, loading]);
 
   // Record start time when video begins playing
@@ -82,22 +102,41 @@ export const PostCreditVideoModal: React.FC = () => {
         <X className="h-7 w-7" />
       </button>
 
-      {/* Video — no controls, autoplay, muted not needed (user interacted via login) */}
+      {/* Video — starts muted (autoplay policy), unmutes after 500ms */}
       <div className="relative w-full h-full flex items-center justify-center p-4">
         <video
           ref={videoRef}
           src={POST_CREDIT_VIDEO_URL}
           autoPlay
+          muted={muted}
           playsInline
           controls={false}
           controlsList="nodownload noplaybackrate"
           disablePictureInPicture
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            // Click on video toggles mute
+            const v = videoRef.current;
+            if (v) {
+              v.muted = !v.muted;
+              setMuted(v.muted);
+            }
+          }}
           onPlay={handlePlay}
           onEnded={() => handleClose(true)}
-          className="max-w-full max-h-full object-contain"
+          className="max-w-full max-h-full object-contain cursor-pointer"
           style={{ outline: 'none' }}
         />
+        {muted && (
+          <div
+            className="absolute inset-0 flex items-center justify-center pointer-events-none"
+            style={{ zIndex: 1 }}
+          >
+            <div className="bg-black/60 text-white px-6 py-3 rounded-lg text-sm">
+              Klicken, um Ton anzuschalten
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
