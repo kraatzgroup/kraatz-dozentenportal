@@ -173,7 +173,7 @@ Deno.serve(async (req) => {
       now,
     });
 
-    const emailSubject = `[Kauf] ${isNewUser ? 'Neukunde' : 'Bestandskunde'}: ${fullName} – ${packageName} (${formatEuro(totalCents)})`;
+    const emailSubject = `[Kauf] ${formatEuro(totalCents)} – ${fullName} – ${packageName}`;
     const sender = 'Kraatz Group Portal <postmaster@kraatz-group.de>';
     const logContext = { checkoutSessionId, buyerEmail: email, packageName, totalCents, isNewUser };
 
