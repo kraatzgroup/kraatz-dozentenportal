@@ -74,7 +74,7 @@ export const PostCreditVideoModal: React.FC = () => {
     >
       {/* Close button */}
       <button
-        onClick={handleClose}
+        onClick={() => handleClose()}
         className="absolute top-4 right-4 z-[101] p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors"
         title="Video schließen"
         aria-label="Video schließen"
