@@ -2,39 +2,47 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { exceedsDocumentUploadLimit, MAX_DOCUMENT_UPLOAD_LABEL } from '../../lib/uploadLimits'
 import { useAuthStore } from '../../store/authStore'
-import { BookOpen, Download, Edit3, CheckCircle, AlertTriangle, Upload, X, ChevronDown, ChevronRight, Undo2 } from 'lucide-react'
+import { BookOpen, Download, Edit3, CheckCircle, AlertTriangle, Upload, X, ChevronDown, ChevronRight, Undo2, Search, Eye } from 'lucide-react'
 import { KorrekturModal } from '../shared/korrektur/KorrekturModal'
 import { VB_FIELD_CONFIG } from '../shared/korrektur/types'
 import type { KorrekturItem, KorrekturSavePayload } from '../shared/korrektur/types'
 import { SchwerpunktTagsInput } from './SchwerpunktTagsInput'
+import { SuggestedKlausuren, PdfPreviewModal } from './SuggestedKlausuren'
+import type { SuggestedMaterial, SuggestedFolder, SuggestedCaseInfo } from './SuggestedKlausuren'
 
 // DraggableFolder component from DozentenDashboard - exact copy
-function DraggableFolder({ folder, isExpanded, onToggle, isSelected, onToggleSelection }: {
+function DraggableFolder({ folder, isExpanded, onToggle, isSelected, onToggleSelection, isFullyAssigned }: {
   folder: MaterialFolder;
   isExpanded: boolean;
   onToggle: (id: string) => void;
   isSelected?: boolean;
   onToggleSelection?: () => void;
+  isFullyAssigned?: boolean;
 }) {
   const handleClick = () => {
     console.log('🔘 Folder clicked:', folder.name, 'id:', folder.id)
     onToggle(folder.id)
   }
-  
+
   const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.stopPropagation()
     onToggleSelection?.()
   }
-  
+
   return (
     <div
       id={`selector-folder-${folder.id}`}
       onClick={handleClick}
-      className="group relative bg-white rounded-xl shadow-sm border hover:shadow-md hover:border-primary/30 transition-all cursor-pointer touch-manipulation border-gray-100 flex items-center gap-3 px-3 py-5"
+      className={`group relative bg-white rounded-xl shadow-sm border transition-all touch-manipulation flex items-center gap-3 px-3 py-5 ${
+        isFullyAssigned
+          ? 'border-gray-200 bg-gray-100 opacity-50 cursor-not-allowed'
+          : 'hover:shadow-md hover:border-primary/30 cursor-pointer border-gray-100'
+      }`}
     >
       <input
         type="checkbox"
         checked={isSelected}
+        disabled={isFullyAssigned}
         onChange={handleCheckboxChange}
         onClick={(e) => e.stopPropagation()}
         className={`w-4 h-4 text-primary rounded transition-opacity ${
@@ -42,10 +50,16 @@ function DraggableFolder({ folder, isExpanded, onToggle, isSelected, onToggleSel
         }`}
       />
       <div className="text-2xl flex-shrink-0">📁</div>
-      <span className="flex-1 text-sm font-medium text-gray-700 group-hover:text-primary truncate">
-        {folder.name}
-      </span>
+      <div className="flex-1 min-w-0">
+        <span className={`text-sm font-medium truncate block ${isFullyAssigned ? 'text-gray-500' : 'text-gray-700 group-hover:text-primary'}`}>
+          {folder.name}
+        </span>
+        {isFullyAssigned && (
+          <span className="text-xs text-orange-600 font-medium">Bereits für diesen Teilnehmer genutzt</span>
+        )}
+      </div>
       <div className="flex items-center gap-1.5 flex-shrink-0">
+        {isFullyAssigned && <AlertTriangle className="w-4 h-4 text-orange-500" />}
         {isExpanded ? (
           <ChevronDown className="w-4 h-4 text-gray-400" />
         ) : (
@@ -62,6 +76,7 @@ interface MaterialFolder {
   parent_id: string | null
   position: number
   is_active: boolean
+  schwerpunkt_tags?: string[] | null
 }
 
 interface TeachingMaterial {
@@ -88,6 +103,7 @@ interface VbCase {
   sub_area: string
   focus_area: string | null
   admin_focus_tags: string[] | null
+  study_phase: string | null
   status: string
   submission_url: string | null
   video_correction_url: string | null
@@ -151,8 +167,9 @@ export const VbKorrekturDashboard: React.FC = () => {
   const [teachingMaterials, setTeachingMaterials] = useState<TeachingMaterial[]>([])
   const [showMaterialSelector, setShowMaterialSelector] = useState(false)
   const [, setSelectedTeachingMaterial] = useState<TeachingMaterial | null>(null)
-  const materialSearchTerm = ''
+  const [materialSearchTerm, setMaterialSearchTerm] = useState('')
   const materialSortBy: 'title' | 'date' = 'title'
+  const [showFolderBrowser, setShowFolderBrowser] = useState(true)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [folderStructure, setFolderStructure] = useState<MaterialFolder[]>([])
   const [selectedMaterials, setSelectedMaterials] = useState<Set<string>>(new Set())
@@ -161,6 +178,8 @@ export const VbKorrekturDashboard: React.FC = () => {
   // Maps caseId → array of schema_* file URLs in the korrekturen storage folder
   const [schemaFilesMap, setSchemaFilesMap] = useState<Map<string, string[]>>(new Map())
   const [isAssigningMaterial, setIsAssigningMaterial] = useState(false)
+  const [loadingMaterialCaseId, setLoadingMaterialCaseId] = useState<string | null>(null)
+  const [previewMaterial, setPreviewMaterial] = useState<SuggestedMaterial | null>(null)
   const [editingCorrectionField, setEditingCorrectionField] = useState<'solution' | 'schema' | null>(null)
   const [selectedCorrectionMaterialUrls, setSelectedCorrectionMaterialUrls] = useState<{ solution?: string; schema?: string }>({})
   const [selectedCorrectionMaterialFileNames, setSelectedCorrectionMaterialFileNames] = useState<{ solution?: string; schema?: string }>({})
@@ -831,7 +850,7 @@ export const VbKorrekturDashboard: React.FC = () => {
       while (hasMore) {
         const { data, error } = await supabase
           .from('material_folders')
-          .select('*')
+          .select('id, name, parent_id, position, is_active, schwerpunkt_tags')
           .eq('is_active', true)
           .order('position')
           .range(offset, offset + batchSize - 1)
@@ -871,6 +890,24 @@ export const VbKorrekturDashboard: React.FC = () => {
     fetchTeachingMaterials()
     fetchFolderStructure() // Load all folders on mount
   }, [fetchCases, fetchAllCasesForTabs, fetchTeachingMaterials, fetchFolderStructure])
+
+  // Lock background scroll while any modal overlay is open.
+  // Both <html> and <body> must be locked: index.css sets overflow-x:hidden
+  // on html, so the html element remains vertically scrollable even when
+  // body is locked.
+  useEffect(() => {
+    const anyModalOpen = showMaterialSelector || !!punkteschemaCase || !!returnCase || !!selected
+    if (anyModalOpen) {
+      const prevBody = document.body.style.overflow
+      const prevHtml = document.documentElement.style.overflow
+      document.body.style.overflow = 'hidden'
+      document.documentElement.style.overflow = 'hidden'
+      return () => {
+        document.body.style.overflow = prevBody
+        document.documentElement.style.overflow = prevHtml
+      }
+    }
+  }, [showMaterialSelector, punkteschemaCase, returnCase, selected])
 
   const studentName = (c: VbCase) => {
     const s = c.student
@@ -1090,6 +1127,39 @@ export const VbKorrekturDashboard: React.FC = () => {
     }
   }
 
+  // Quick-assign a suggested Klausur directly (from the SuggestedKlausuren component)
+  const handleQuickAssignSuggestion = async (suggested: SuggestedMaterial) => {
+    const material = teachingMaterials.find(m => m.id === suggested.id)
+    if (!material) return
+    await handleAssignMaterials(material)
+  }
+
+  // Build case info for suggestions (only when assigning Sachverhalt, not editing correction materials)
+  const suggestionCaseInfo: SuggestedCaseInfo | null =
+    !editingCorrectionField && selectedCaseForMaterial
+      ? {
+          legal_area: selectedCaseForMaterial.legal_area,
+          sub_area: selectedCaseForMaterial.sub_area,
+          focus_area: selectedCaseForMaterial.focus_area,
+          study_phase: selectedCaseForMaterial.study_phase,
+        }
+      : null
+
+  // Map teaching materials and folders to the lighter suggestion types
+  const suggestionMaterials: SuggestedMaterial[] = teachingMaterials.map(m => ({
+    id: m.id,
+    title: m.title,
+    file_url: m.file_url,
+    file_name: m.file_name,
+    folder_id: m.folder_id,
+  }))
+  const suggestionFolders: SuggestedFolder[] = folderStructure.map(f => ({
+    id: f.id,
+    name: f.name,
+    parent_id: f.parent_id,
+    schwerpunkt_tags: f.schwerpunkt_tags,
+  }))
+
   // Filter and sort teaching materials
   const filteredAndSortedMaterials = teachingMaterials
     .filter(material => 
@@ -1156,12 +1226,54 @@ export const VbKorrekturDashboard: React.FC = () => {
       ? []
       : materialsByFolder[folderId] || []
 
+  // Recursively check if a folder contains any material already assigned to this Teilnehmer.
+  // A Klausur folder typically contains Sachverhalt + Lösung + Zusatzmaterial, but only
+  // the Sachverhalt URL is tracked in assignedMaterialUrls — so we check if ANY material
+  // in the folder (or its subfolders) is assigned.
+  const isFolderFullyAssigned = (folderId: string): boolean => {
+    const folderMaterials = getSelectableFolderMaterials(folderId)
+    const hasAssignedMaterial = folderMaterials.some(m => assignedMaterialUrls.has(m.file_url))
+
+    const subFolders = folderStructure.filter(f => f.parent_id === folderId)
+    const hasAssignedSubFolder = subFolders.some(sf => isFolderFullyAssigned(sf.id))
+
+    return hasAssignedMaterial || hasAssignedSubFolder
+  }
+
   // Show only top-level folders (parent_id is null), and filter by legal area if set
-  const filteredFolders = folderStructure.filter(f => 
-    f.parent_id === null && 
+  const filteredFolders = folderStructure.filter(f =>
+    f.parent_id === null &&
     (!materialSelectorLegalArea || f.name === materialSelectorLegalArea) &&
     (!crashkursVisibleFolderIds || crashkursVisibleFolderIds.has(f.id))
   )
+
+  // Build a folder path string for a material (e.g. "Strafrecht › Examensklausuren › Klausur 13")
+  const getFolderpathForMaterial = (material: TeachingMaterial): string => {
+    if (!material.folder_id) return ''
+    const parts: string[] = []
+    let currentFolderId: string | null = material.folder_id
+    const visited = new Set<string>()
+    while (currentFolderId && !visited.has(currentFolderId)) {
+      visited.add(currentFolderId)
+      const folder = folderStructure.find(f => f.id === currentFolderId)
+      if (!folder) break
+      parts.unshift(folder.name)
+      currentFolderId = folder.parent_id
+    }
+    return parts.join(' › ')
+  }
+
+  // Flat list of materials matching the search term (used when searching)
+  const searchResults = materialSearchTerm.trim()
+    ? filteredAndSortedMaterials.filter(m => {
+        const term = materialSearchTerm.toLowerCase()
+        return (
+          m.title.toLowerCase().includes(term) ||
+          m.file_name?.toLowerCase().includes(term) ||
+          getFolderpathForMaterial(m).toLowerCase().includes(term)
+        )
+      })
+    : []
 
   const toggleFolder = (folderId: string) => {
     setExpandedFolders(prev => {
@@ -1197,6 +1309,7 @@ export const VbKorrekturDashboard: React.FC = () => {
           onToggle={toggleFolder}
           isSelected={folderSelected}
           onToggleSelection={() => selectAllMaterialsInFolder(folder.id)}
+          isFullyAssigned={isFolderFullyAssigned(folder.id)}
         />
         
         {isExpanded && (
@@ -1208,13 +1321,12 @@ export const VbKorrekturDashboard: React.FC = () => {
             {folderMaterials.length > 0 && folderMaterials.map(material => {
               const isAssigned = assignedMaterialUrls.has(material.file_url)
               return (
-                <button
+                <div
                   key={material.id}
                   onClick={() => !isAssigned && toggleMaterialSelection(material.id)}
-                  disabled={isAssigned}
-                  className={`w-full text-left p-3 border rounded-lg transition-colors flex items-center justify-between group ${
-                    selectedMaterials.has(material.id) 
-                      ? 'border-primary bg-primary/5' 
+                  className={`w-full text-left p-3 border rounded-lg transition-colors flex items-center justify-between group cursor-pointer ${
+                    selectedMaterials.has(material.id)
+                      ? 'border-primary bg-primary/5'
                       : isAssigned
                       ? 'border-gray-200 bg-gray-100 opacity-50 cursor-not-allowed'
                       : 'border-gray-200 hover:bg-gray-50'
@@ -1235,17 +1347,35 @@ export const VbKorrekturDashboard: React.FC = () => {
                       <p className="font-medium text-gray-900 text-sm">{material.title}</p>
                       <p className="text-xs text-gray-500">{material.file_name}</p>
                       {isAssigned && (
-                        <p className="text-xs text-orange-600 font-medium mt-1">Bereits zugewiesen</p>
+                        <p className="text-xs text-orange-600 font-medium mt-1">Bereits für diesen Teilnehmer genutzt</p>
                       )}
                     </div>
                   </div>
-                  {selectedMaterials.has(material.id) && !isAssigned && (
-                    <CheckCircle className="w-4 h-4 text-primary" />
-                  )}
-                  {isAssigned && (
-                    <AlertTriangle className="w-4 h-4 text-orange-500" />
-                  )}
-                </button>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setPreviewMaterial({
+                          id: material.id,
+                          title: material.title,
+                          file_url: material.file_url,
+                          file_name: material.file_name || material.title,
+                          folder_id: material.folder_id,
+                        })
+                      }}
+                      className="text-gray-400 hover:text-primary transition-colors"
+                      title="Vorschau öffnen"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    {selectedMaterials.has(material.id) && !isAssigned && (
+                      <CheckCircle className="w-4 h-4 text-primary" />
+                    )}
+                    {isAssigned && (
+                      <AlertTriangle className="w-4 h-4 text-orange-500" />
+                    )}
+                  </div>
+                </div>
               )
             })}
           </div>
@@ -1756,30 +1886,38 @@ export const VbKorrekturDashboard: React.FC = () => {
                         <button
                           onClick={async () => {
                             if (c.status === 'requested') {
-                              setSelectedCaseForMaterial(c)
-                              setMaterialSelectorLegalArea(c.legal_area)
-                              setSelectedMaterials(new Set()) // Reset selected materials
-                              setExpandedFolders(new Set()) // Reset expanded folders
-                              
-                              // Fetch materials already assigned to this user
-                              await fetchAssignedMaterialsForUser(c.profile_id)
-                              
-                              // Only fetch if not already loaded
-                              if (teachingMaterials.length === 0) {
-                                await fetchTeachingMaterials()
+                              setLoadingMaterialCaseId(c.id)
+                              try {
+                                setSelectedCaseForMaterial(c)
+                                setMaterialSelectorLegalArea(c.legal_area)
+                                setSelectedMaterials(new Set()) // Reset selected materials
+                                setExpandedFolders(new Set()) // Reset expanded folders
+
+                                // Fetch materials already assigned to this user
+                                await fetchAssignedMaterialsForUser(c.profile_id)
+
+                                // Only fetch if not already loaded
+                                if (teachingMaterials.length === 0) {
+                                  await fetchTeachingMaterials()
+                                }
+                                if (folderStructure.length === 0) {
+                                  await fetchFolderStructure()
+                                }
+
+                                setShowMaterialSelector(true)
+                              } finally {
+                                setLoadingMaterialCaseId(null)
                               }
-                              if (folderStructure.length === 0) {
-                                await fetchFolderStructure()
-                              }
-                              
-                              setShowMaterialSelector(true)
                             } else {
                               setSelected(c)
                             }
                           }}
-                          className="flex items-center gap-1 px-3 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90"
+                          disabled={loadingMaterialCaseId === c.id}
+                          className="flex items-center gap-1 px-3 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-60 disabled:cursor-wait"
                         >
-                          {c.status === 'requested' ? (
+                          {loadingMaterialCaseId === c.id ? (
+                            <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />Lädt…</>
+                          ) : c.status === 'requested' ? (
                             <><Upload className="w-4 h-4" />Sachverhalt zuweisen</>
                           ) : c.status === 'corrected' || c.status === 'completed' ? (
                             <><Edit3 className="w-4 h-4" />Bearbeiten</>
@@ -1962,8 +2100,8 @@ export const VbKorrekturDashboard: React.FC = () => {
             }
           }}
         >
-          <div 
-            className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col overflow-hidden"
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[92vh] flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Sticky Header */}
@@ -2031,7 +2169,172 @@ export const VbKorrekturDashboard: React.FC = () => {
                   Sie können mehrere Dateien gleichzeitig auswählen.
                 </p>
               )}
+
+              {/* Selected from folder browser - preview at top */}
+              {!editingCorrectionField && selectedMaterials.size > 0 && (
+                <div className="mb-4 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium text-primary">
+                      Aus Ordner ausgewählt ({selectedMaterials.size})
+                    </p>
+                    <button
+                      onClick={() => setSelectedMaterials(new Set())}
+                      className="text-xs text-gray-500 hover:text-red-500 transition-colors"
+                    >
+                      Alle abwählen
+                    </button>
+                  </div>
+                  <div className="space-y-1.5">
+                    {Array.from(selectedMaterials).map(materialId => {
+                      const material = teachingMaterials.find(m => m.id === materialId)
+                      if (!material) return null
+                      const folderPath = getFolderpathForMaterial(material)
+                      return (
+                        <div
+                          key={materialId}
+                          className="flex items-center justify-between bg-white rounded-md px-3 py-2 border border-gray-200"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">{material.title}</p>
+                            {folderPath && (
+                              <p className="text-xs text-gray-400 break-words">{folderPath}</p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => toggleMaterialSelection(materialId)}
+                            className="ml-2 text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
+                            title="Auswahl entfernen"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Suggested Klausuren (only when assigning Sachverhalt, not editing correction materials,
+                  and no material is manually selected from folder/search) */}
+              {!editingCorrectionField && suggestionCaseInfo && selectedMaterials.size === 0 && (
+                <SuggestedKlausuren
+                  materials={suggestionMaterials}
+                  folders={suggestionFolders}
+                  caseInfo={suggestionCaseInfo}
+                  assignedUrls={assignedMaterialUrls}
+                  onAssign={handleQuickAssignSuggestion}
+                />
+              )}
+
+              {/* Search input */}
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={materialSearchTerm}
+                  onChange={(e) => setMaterialSearchTerm(e.target.value)}
+                  placeholder="Klausuren durchsuchen…"
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+              </div>
+
+              {/* Collapsible: Alle Klausuren durchsuchen */}
+              {!editingCorrectionField && suggestionCaseInfo && (
+                <button
+                  onClick={() => setShowFolderBrowser(s => !s)}
+                  className="w-full flex items-center justify-between px-4 py-3 mb-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors text-sm font-medium text-gray-700"
+                >
+                  <span>Alle Klausuren durchsuchen</span>
+                  {showFolderBrowser ? (
+                    <ChevronDown className="w-4 h-4 text-gray-400" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-gray-400" />
+                  )}
+                </button>
+              )}
+
+              {(!suggestionCaseInfo || editingCorrectionField || showFolderBrowser || materialSearchTerm) && (
               <div className="space-y-2">
+                {/* When searching, show a flat list of matching materials */}
+                {materialSearchTerm.trim() ? (
+                  <>
+                    {searchResults.length > 0 && (
+                      <p className="text-xs text-gray-500 mb-1">
+                        {searchResults.length} Treffer für „{materialSearchTerm.trim()}"
+                      </p>
+                    )}
+                    {searchResults.map(material => {
+                      const isAssigned = assignedMaterialUrls.has(material.file_url)
+                      const folderPath = getFolderpathForMaterial(material)
+                      return (
+                        <div
+                          key={material.id}
+                          onClick={() => !isAssigned && toggleMaterialSelection(material.id)}
+                          className={`w-full text-left p-3 border rounded-lg transition-colors flex items-center justify-between group cursor-pointer ${
+                            selectedMaterials.has(material.id)
+                              ? 'border-primary bg-primary/5'
+                              : isAssigned
+                              ? 'border-gray-200 bg-gray-100 opacity-50 cursor-not-allowed'
+                              : 'border-gray-200 hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={selectedMaterials.has(material.id)}
+                              onChange={() => !isAssigned && toggleMaterialSelection(material.id)}
+                              disabled={isAssigned}
+                              className={`w-4 h-4 text-primary rounded transition-opacity ${
+                                selectedMaterials.has(material.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                              }`}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <div>
+                              <p className="font-medium text-gray-900 text-sm">{material.title}</p>
+                              <p className="text-xs text-gray-500">{material.file_name}</p>
+                              {folderPath && (
+                                <p className="text-xs text-gray-400 mt-0.5 break-words">{folderPath}</p>
+                              )}
+                              {isAssigned && (
+                                <p className="text-xs text-orange-600 font-medium mt-1">Bereits für diesen Teilnehmer genutzt</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setPreviewMaterial({
+                                  id: material.id,
+                                  title: material.title,
+                                  file_url: material.file_url,
+                                  file_name: material.file_name || material.title,
+                                  folder_id: material.folder_id,
+                                })
+                              }}
+                              className="text-gray-400 hover:text-primary transition-colors"
+                              title="Vorschau öffnen"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            {selectedMaterials.has(material.id) && !isAssigned && (
+                              <CheckCircle className="w-4 h-4 text-primary" />
+                            )}
+                            {isAssigned && (
+                              <AlertTriangle className="w-4 h-4 text-orange-500" />
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {searchResults.length === 0 && (
+                      <p className="text-gray-500 text-center py-4">
+                        Keine passenden Materialien für „{materialSearchTerm.trim()}"
+                      </p>
+                    )}
+                  </>
+                ) : (
+                <>
                 {/* Show folder hierarchy - only top-level folders initially */}
                 {filteredFolders.map(folder => renderFolder(folder))}
                 
@@ -2069,13 +2372,12 @@ export const VbKorrekturDashboard: React.FC = () => {
                         {materialsByFolder['no-folder'].map(material => {
                           const isAssigned = assignedMaterialUrls.has(material.file_url)
                           return (
-                            <button
+                            <div
                               key={material.id}
                               onClick={() => !isAssigned && toggleMaterialSelection(material.id)}
-                              disabled={isAssigned}
-                              className={`w-full text-left p-3 border rounded-lg transition-colors flex items-center justify-between group ${
-                                selectedMaterials.has(material.id) 
-                                  ? 'border-primary bg-primary/5' 
+                              className={`w-full text-left p-3 border rounded-lg transition-colors flex items-center justify-between group cursor-pointer ${
+                                selectedMaterials.has(material.id)
+                                  ? 'border-primary bg-primary/5'
                                   : isAssigned
                                   ? 'border-gray-200 bg-gray-100 opacity-50 cursor-not-allowed'
                                   : 'border-gray-200 hover:bg-gray-50'
@@ -2096,17 +2398,35 @@ export const VbKorrekturDashboard: React.FC = () => {
                                   <p className="font-medium text-gray-900 text-sm">{material.title}</p>
                                   <p className="text-xs text-gray-500">{material.file_name}</p>
                                   {isAssigned && (
-                                    <p className="text-xs text-orange-600 font-medium mt-1">Bereits zugewiesen</p>
+                                    <p className="text-xs text-orange-600 font-medium mt-1">Bereits für diesen Teilnehmer genutzt</p>
                                   )}
                                 </div>
                               </div>
-                              {selectedMaterials.has(material.id) && !isAssigned && (
-                                <CheckCircle className="w-4 h-4 text-primary" />
-                              )}
-                              {isAssigned && (
-                                <AlertTriangle className="w-4 h-4 text-orange-500" />
-                              )}
-                            </button>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setPreviewMaterial({
+                                      id: material.id,
+                                      title: material.title,
+                                      file_url: material.file_url,
+                                      file_name: material.file_name || material.title,
+                                      folder_id: material.folder_id,
+                                    })
+                                  }}
+                                  className="text-gray-400 hover:text-primary transition-colors"
+                                  title="Vorschau öffnen"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                                {selectedMaterials.has(material.id) && !isAssigned && (
+                                  <CheckCircle className="w-4 h-4 text-primary" />
+                                )}
+                                {isAssigned && (
+                                  <AlertTriangle className="w-4 h-4 text-orange-500" />
+                                )}
+                              </div>
+                            </div>
                           )
                         })}
                       </div>
@@ -2116,15 +2436,26 @@ export const VbKorrekturDashboard: React.FC = () => {
                 
                 {filteredAndSortedMaterials.length === 0 && (
                   <p className="text-gray-500 text-center py-4">
-                    {teachingMaterials.length === 0 
-                      ? 'Keine Materialien verfügbar' 
+                    {teachingMaterials.length === 0
+                      ? 'Keine Materialien verfügbar'
                       : 'Keine passenden Materialien'}
                   </p>
                 )}
+                </>
+                )}
               </div>
+              )} {/* end conditional folder browser wrapper */}
             </div>
           </div>
         </div>
+      )}
+
+      {/* PDF Preview Modal (for materials from folder/search) */}
+      {showMaterialSelector && previewMaterial && (
+        <PdfPreviewModal
+          material={previewMaterial}
+          onClose={() => setPreviewMaterial(null)}
+        />
       )}
     </div>
   )
