@@ -28,7 +28,8 @@ import {
   Info,
   HelpCircle,
   Video,
-  GripVertical
+  GripVertical,
+  BookOpen
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { exceedsDocumentUploadLimit, MAX_DOCUMENT_UPLOAD_LABEL } from '../lib/uploadLimits';
@@ -491,11 +492,68 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   });
 
   // Elite-Kleingruppe state
-  const [eliteGroups, setEliteGroups] = useState<{id: string; name: string}[]>([]);
+  const [eliteGroups, setEliteGroups] = useState<{id: string; name: string; group_number?: string | null}[]>([]);
   const [selectedEliteGroupId, setSelectedEliteGroupId] = useState<string>('');
   const [showGroupsManager, setShowGroupsManager] = useState(false);
-  const [groupToDelete, setGroupToDelete] = useState<{id: string; name: string} | null>(null);
+  const [groupToDelete, setGroupToDelete] = useState<{id: string; name: string; group_number?: string | null} | null>(null);
   const [isDeletingGroup, setIsDeletingGroup] = useState(false);
+  const [deleteConfirmName, setDeleteConfirmName] = useState('');
+  const [deleteConfirmNumber, setDeleteConfirmNumber] = useState('');
+  const [showAddGroupForm, setShowAddGroupForm] = useState(false);
+  const [isAddingGroup, setIsAddingGroup] = useState(false);
+  const [newGroupForm, setNewGroupForm] = useState({
+    name: '',
+    group_number: '',
+    description: '',
+    start_date: '',
+    end_date: ''
+  });
+
+  // Auto-recommend new group values based on existing groups and current date
+  const computeRecommendedGroup = () => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // 1-12
+
+    // Academic year runs September to August
+    // Sep-Dec 2026 -> academic year 2026/2027
+    // Jan-Aug 2026 -> academic year 2025/2026
+    const acadYearStart = currentMonth >= 9 ? currentYear : currentYear - 1;
+    const acadYearEnd = acadYearStart + 1;
+    const suggestedName = `Elite-Kleingruppe ${acadYearStart}/${acadYearEnd}`;
+    // Default duration: 12 months from today
+    const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endDate = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
+    const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const suggestedStartDate = fmt(startDate);
+    const suggestedEndDate = fmt(endDate);
+
+    // Suggest next group number: find the highest existing number and increment
+    const existingNumbers = eliteGroups
+      .map(g => parseInt(g.group_number || '0', 10))
+      .filter(n => !isNaN(n) && n > 0);
+    const maxNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 100;
+    const suggestedGroupNumber = String(maxNumber + 1);
+
+    // Suggest description based on the academic year
+    const suggestedDescription = `Hauptgruppe für das Studienjahr ${acadYearStart}/${acadYearEnd}`;
+
+    return {
+      name: suggestedName,
+      group_number: suggestedGroupNumber,
+      description: suggestedDescription,
+      start_date: suggestedStartDate,
+      end_date: suggestedEndDate
+    };
+  };
+
+  // When the add-group form opens, auto-fill with recommended values
+  useEffect(() => {
+    if (showAddGroupForm && eliteGroups.length >= 0) {
+      const recommended = computeRecommendedGroup();
+      setNewGroupForm(recommended);
+    }
+  }, [showAddGroupForm]);
   
   // Unit duration settings state
   const [unitDurations, setUnitDurations] = useState({
@@ -574,6 +632,92 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       fetchDozentLegalAreas();
     }
   }, [user, isAdmin]);
+
+  // Lock body scroll when any modal is open
+  useEffect(() => {
+    const anyModalOpen = showReleaseModal || showEditModal || showKorrekturModal || showDozentModal ||
+      showCourseTimeModal || showGroupsManager || showFaqModal || showVideoModal || showZoomBgModal ||
+      showManageBgModal || showDeleteModal || showDeleteConfirmModal || showRescheduleModal ||
+      showRescheduleConfirmModal || showConflictModal || !!groupToDelete || !!klausurToDelete;
+    if (anyModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [showReleaseModal, showEditModal, showKorrekturModal, showDozentModal, showCourseTimeModal,
+      showGroupsManager, showFaqModal, showVideoModal, showZoomBgModal, showManageBgModal,
+      showDeleteModal, showDeleteConfirmModal, showRescheduleModal, showRescheduleConfirmModal,
+      showConflictModal, groupToDelete, klausurToDelete]);
+
+  // Reload group-specific data (course times, zoom links) when selected group changes
+  useEffect(() => {
+    if (!user) return;
+    // Only refetch when a group is already selected (skip initial load handled by fetchData)
+    if (selectedEliteGroupId) {
+      // Persist selection for admins so the last group is restored on reload
+      if (isAdmin) {
+        localStorage.setItem('elite_selected_group_id', selectedEliteGroupId);
+      }
+      fetchGroupSpecificData(selectedEliteGroupId);
+    }
+  }, [selectedEliteGroupId]);
+
+  const fetchGroupSpecificData = async (groupId: string) => {
+    try {
+      // Fetch course times for this group
+      const { data: courseTimesData } = await supabase
+        .from('elite_course_times')
+        .select('*')
+        .eq('is_active', true)
+        .eq('elite_kleingruppe_id', groupId)
+        .order('weekday')
+        .order('start_time');
+      setCourseTimes(courseTimesData || []);
+
+      // Fetch zoom links for this group
+      const { data: zoomLinksData } = await supabase
+        .from('elite_kleingruppe_settings')
+        .select('setting_value')
+        .eq('setting_key', 'zoom_links')
+        .eq('elite_kleingruppe_id', groupId)
+        .maybeSingle();
+      if (zoomLinksData?.setting_value) {
+        setZoomLinks(zoomLinksData.setting_value as any);
+      } else {
+        setZoomLinks({
+          Zivilrecht: { url: '', meetingId: '', passcode: '' },
+          Strafrecht: { url: '', meetingId: '', passcode: '' },
+          'Öffentliches Recht': { url: '', meetingId: '', passcode: '' }
+        });
+      }
+
+      // Extract zoom links from course times as fallback
+      if (courseTimesData && courseTimesData.length > 0) {
+        const extractedLinks = {
+          Zivilrecht: { url: '', meetingId: '', passcode: '' },
+          Strafrecht: { url: '', meetingId: '', passcode: '' },
+          'Öffentliches Recht': { url: '', meetingId: '', passcode: '' }
+        };
+        courseTimesData.forEach((ct: any) => {
+          if (ct.meeting_link && ct.legal_area) {
+            extractedLinks[ct.legal_area as keyof typeof extractedLinks] = {
+              url: ct.meeting_link,
+              meetingId: '',
+              passcode: ''
+            };
+          }
+        });
+        setZoomLinks(prev => ({
+          Zivilrecht: prev.Zivilrecht?.url ? prev.Zivilrecht : extractedLinks.Zivilrecht,
+          Strafrecht: prev.Strafrecht?.url ? prev.Strafrecht : extractedLinks.Strafrecht,
+          'Öffentliches Recht': prev['Öffentliches Recht']?.url ? prev['Öffentliches Recht'] : extractedLinks['Öffentliches Recht']
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching group-specific data:', error);
+    }
+  };
 
   // Reset pagination when search or filter changes
   useEffect(() => {
@@ -654,15 +798,16 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       setFolders(allFolders);
       const { data: releasesData } = await supabase.from('elite_kleingruppe_releases').select('*').order('release_date', { ascending: true });
       setScheduledReleases(releasesData || []);
-      const { data: teilnehmerData } = await supabase.from('teilnehmer').select('id, name, email, state_law, zoom_background_url').eq('elite_kleingruppe', true).order('name');
+      const { data: teilnehmerData } = await supabase.from('teilnehmer').select('id, name, email, state_law, zoom_background_url, elite_kleingruppe_id').eq('elite_kleingruppe', true).order('name');
       setTeilnehmer(teilnehmerData || []);
-      
-      // Fetch Klausuren with teilnehmer names
+
+      // Fetch Klausuren with teilnehmer names (group filtering applied client-side below)
       const { data: klausurenData } = await supabase.from('elite_kleingruppe_klausuren').select('*').order('submitted_at', { ascending: false });
       if (klausurenData && teilnehmerData) {
         const klausurenWithNames = klausurenData.map(k => ({
           ...k,
-          teilnehmer_name: teilnehmerData.find(t => t.id === k.teilnehmer_id)?.name || 'Unbekannt'
+          teilnehmer_name: teilnehmerData.find(t => t.id === k.teilnehmer_id)?.name || 'Unbekannt',
+          elite_kleingruppe_id: teilnehmerData.find(t => t.id === k.teilnehmer_id)?.elite_kleingruppe_id || null
         }));
         setKlausuren(klausurenWithNames);
       }
@@ -678,30 +823,54 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       // Fetch all dozenten for assignment
       const { data: dozentenData } = await supabase.from('profiles').select('id, full_name, email').eq('role', 'dozent').eq('is_archived', false).neq('vb_springer', true);
       setAllDozenten((dozentenData || []).map(d => ({ id: d.id, name: d.full_name || d.email, email: d.email })));
-      
-      // Fetch course times
-      const { data: courseTimesData } = await supabase.from('elite_course_times').select('*').eq('is_active', true).order('weekday').order('start_time');
+
+      // Fetch elite groups FIRST so we can auto-select before fetching group-specific data
+      const { data: eliteGroupsData } = await supabase.from('elite_kleingruppen').select('id, name, group_number').eq('is_active', true).order('created_at');
+      setEliteGroups(eliteGroupsData || []);
+      // Auto-select: prefer last selected group (from localStorage), otherwise first group
+      let effectiveGroupId = selectedEliteGroupId;
+      if (eliteGroupsData && eliteGroupsData.length > 0 && !effectiveGroupId) {
+        const lastSelectedId = isAdmin ? localStorage.getItem('elite_selected_group_id') : null;
+        effectiveGroupId = lastSelectedId && eliteGroupsData.some(g => g.id === lastSelectedId)
+          ? lastSelectedId
+          : eliteGroupsData[0].id;
+        setSelectedEliteGroupId(effectiveGroupId);
+      }
+
+      // Fetch course times for the selected group
+      const { data: courseTimesData } = await supabase
+        .from('elite_course_times')
+        .select('*')
+        .eq('is_active', true)
+        .eq('elite_kleingruppe_id', effectiveGroupId)
+        .order('weekday')
+        .order('start_time');
       setCourseTimes(courseTimesData || []);
 
-      // Fetch elite groups
-      const { data: eliteGroupsData } = await supabase.from('elite_kleingruppen').select('id, name').eq('is_active', true).order('created_at');
-      setEliteGroups(eliteGroupsData || []);
-      if (eliteGroupsData?.length === 1 && !selectedEliteGroupId) {
-        setSelectedEliteGroupId(eliteGroupsData[0].id);
-      }
-      
-      // Fetch unit duration settings
-      const { data: settingsData } = await supabase.from('elite_kleingruppe_settings').select('setting_value').eq('setting_key', 'unit_durations').maybeSingle();
+      // Fetch unit duration settings (global - not group-specific)
+      const { data: settingsData } = await supabase.from('elite_kleingruppe_settings').select('setting_value').eq('setting_key', 'unit_durations').is('elite_kleingruppe_id', null).maybeSingle();
       if (settingsData?.setting_value) {
         setUnitDurations(settingsData.setting_value as any);
       }
-      
-      // Fetch zoom links settings
-      const { data: zoomLinksData } = await supabase.from('elite_kleingruppe_settings').select('setting_value').eq('setting_key', 'zoom_links').maybeSingle();
+
+      // Fetch zoom links settings for the selected group
+      const { data: zoomLinksData } = await supabase
+        .from('elite_kleingruppe_settings')
+        .select('setting_value')
+        .eq('setting_key', 'zoom_links')
+        .eq('elite_kleingruppe_id', effectiveGroupId)
+        .maybeSingle();
       if (zoomLinksData?.setting_value) {
         setZoomLinks(zoomLinksData.setting_value as any);
+      } else {
+        // Reset to defaults if no settings found for this group
+        setZoomLinks({
+          Zivilrecht: { url: '', meetingId: '', passcode: '' },
+          Strafrecht: { url: '', meetingId: '', passcode: '' },
+          'Öffentliches Recht': { url: '', meetingId: '', passcode: '' }
+        });
       }
-      
+
       // Extract zoom links from course times if not in settings
       if (courseTimesData && courseTimesData.length > 0) {
         const extractedLinks = {
@@ -709,7 +878,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
           Strafrecht: { url: '', meetingId: '', passcode: '' },
           'Öffentliches Recht': { url: '', meetingId: '', passcode: '' }
         };
-        
+
         courseTimesData.forEach((ct: any) => {
           if (ct.meeting_link && ct.legal_area) {
             extractedLinks[ct.legal_area as keyof typeof extractedLinks] = {
@@ -719,7 +888,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
             };
           }
         });
-        
+
         // Update zoomLinks with extracted links (only if not already set from settings)
         setZoomLinks(prev => ({
           Zivilrecht: prev.Zivilrecht?.url ? prev.Zivilrecht : extractedLinks.Zivilrecht,
@@ -756,9 +925,10 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         .upsert({
           setting_key: 'unit_durations',
           setting_value: unitDurations,
+          elite_kleingruppe_id: null,
           updated_at: new Date().toISOString()
-        }, { onConflict: 'setting_key' });
-      
+        }, { onConflict: 'setting_key,elite_kleingruppe_id' });
+
       if (error) throw error;
       alert('Einheitenlängen erfolgreich gespeichert!');
       setShowDurationSettings(false);
@@ -770,14 +940,21 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
 
   const handleSaveZoomLinks = async () => {
     try {
+      // Determine the group id for this setting (must be set for zoom_links)
+      const groupId = selectedEliteGroupId || (eliteGroups.length === 1 ? eliteGroups[0].id : null);
+      if (!groupId) {
+        alert('Bitte wählen Sie zuerst eine Gruppe aus, bevor Sie Zoom-Links speichern.');
+        return;
+      }
       const { error } = await supabase
         .from('elite_kleingruppe_settings')
         .upsert({
           setting_key: 'zoom_links',
           setting_value: zoomLinks,
+          elite_kleingruppe_id: groupId,
           updated_at: new Date().toISOString()
-        }, { onConflict: 'setting_key' });
-      
+        }, { onConflict: 'setting_key,elite_kleingruppe_id' });
+
       if (error) throw error;
       alert('Zoom-Links erfolgreich gespeichert!');
       setShowZoomLinksSettings(false);
@@ -953,18 +1130,18 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year: number, month: number) => { const day = new Date(year, month, 1).getDay(); return day === 0 ? 6 : day - 1; };
   const filteredReleases = scheduledReleases.filter(r => {
-    // Filter by elite group
-    if (selectedEliteGroupId && (r as any).elite_kleingruppe_id !== selectedEliteGroupId) {
+    // Filter by elite group (always required - no "all groups" mode)
+    if ((r as any).elite_kleingruppe_id !== selectedEliteGroupId) {
       return false;
     }
-    
+
     // Filter by dozent's assigned legal areas (non-admin only, unless showAllLegalAreas is toggled)
     if (!isAdmin && !showAllLegalAreas && dozentLegalAreas.length > 0 && r.legal_area) {
       if (!dozentLegalAreas.includes(r.legal_area)) {
         return false;
       }
     }
-    
+
     return true;
   });
 
@@ -972,8 +1149,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   const releasesByDate = useMemo(() => {
     const map = new Map<string, ScheduledRelease[]>();
     
-    // Admins should see ALL releases in calendar, non-admins see filtered releases
-    const calendarReleases = isAdmin ? scheduledReleases : filteredReleases;
+    // All users see only releases for the selected group in the calendar
+    const calendarReleases = filteredReleases;
     
     for (const release of calendarReleases) {
       if (!release.end_date) {
@@ -1322,7 +1499,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
           hours: hours,
           description: `${category}: ${releaseTitle} (${releaseLegalArea || 'Allgemein'})`,
           category: category,
-          status: 'pending'
+          status: 'pending',
+          elite_kleingruppe_id: eliteGroupId
         });
         if (hoursError) {
           console.error('Error creating dozent_hours entry:', hoursError);
@@ -1368,7 +1546,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
               hours: hours,
               description: `${category}: ${release.title} (${releaseLegalArea || 'Allgemein'})`,
               category: category,
-              status: 'pending'
+              status: 'pending',
+              elite_kleingruppe_id: eliteGroupId
             }));
             const { error: recurringHoursError } = await supabase.from('dozent_hours').insert(hoursEntries);
             if (recurringHoursError) {
@@ -1646,7 +1825,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
             .update({
               hours: hours,
               description: description,
-              category: category
+              category: category,
+              elite_kleingruppe_id: editingRelease.elite_kleingruppe_id || selectedEliteGroupId
             })
             .eq('id', existingHours[0].id);
           if (updateHoursError) {
@@ -1660,7 +1840,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
             hours: hours,
             description: description,
             category: category,
-            status: 'pending'
+            status: 'pending',
+            elite_kleingruppe_id: editingRelease.elite_kleingruppe_id || selectedEliteGroupId
           });
           if (insertHoursError) {
             console.error('Error creating dozent_hours entry:', insertHoursError);
@@ -2214,7 +2395,10 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       if (error) throw error;
       setGroupToDelete(null);
       if (selectedEliteGroupId === group.id) {
-        setSelectedEliteGroupId('');
+        // Clear localStorage and select first remaining group
+        if (isAdmin) localStorage.removeItem('elite_selected_group_id');
+        const remainingGroups = eliteGroups.filter(g => g.id !== group.id);
+        setSelectedEliteGroupId(remainingGroups.length > 0 ? remainingGroups[0].id : '');
       }
       fetchData();
     } catch (error) {
@@ -2222,6 +2406,55 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       alert('Fehler beim Löschen der Gruppe');
     } finally {
       setIsDeletingGroup(false);
+    }
+  };
+
+  const handleAddGroup = async () => {
+    if (!isAdmin) return;
+    if (!newGroupForm.name.trim()) {
+      alert('Bitte geben Sie einen Gruppennamen ein.');
+      return;
+    }
+    if (!newGroupForm.group_number.trim()) {
+      alert('Bitte geben Sie eine Gruppennummer ein.');
+      return;
+    }
+    // Check group_number uniqueness client-side (DB has unique index too)
+    if (eliteGroups.some(g => g.group_number === newGroupForm.group_number.trim())) {
+      alert(`Gruppennummer "${newGroupForm.group_number.trim()}" ist bereits vergeben.`);
+      return;
+    }
+    setIsAddingGroup(true);
+    try {
+      const { data, error } = await supabase
+        .from('elite_kleingruppen')
+        .insert([{
+          name: newGroupForm.name.trim(),
+          group_number: newGroupForm.group_number.trim(),
+          description: newGroupForm.description.trim() || null,
+          start_date: newGroupForm.start_date || null,
+          end_date: newGroupForm.end_date || null,
+          is_active: true
+        }])
+        .select('id, name, group_number')
+        .single();
+      if (error) throw error;
+      // Reset form
+      setNewGroupForm({ name: '', group_number: '', description: '', start_date: '', end_date: '' });
+      setShowAddGroupForm(false);
+      // Select the new group and persist it
+      if (data) {
+        setSelectedEliteGroupId(data.id);
+        if (isAdmin) {
+          localStorage.setItem('elite_selected_group_id', data.id);
+        }
+      }
+      fetchData();
+    } catch (error: any) {
+      console.error('Error adding group:', error);
+      alert(error?.message || 'Fehler beim Hinzufügen der Gruppe');
+    } finally {
+      setIsAddingGroup(false);
     }
   };
 
@@ -2385,16 +2618,19 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       if (korrekturDuration && parseFloat(korrekturDuration) > 0) {
         // Determine the Elite-Kleingruppe course number via the participant's group
         let courseNumber = '';
+        let klausurGroupId: string | null = null;
         const { data: tnGroup } = await supabase
           .from('teilnehmer')
           .select('elite_kleingruppe_id')
           .eq('id', selectedKlausur.teilnehmer_id)
           .maybeSingle();
         if (tnGroup?.elite_kleingruppe_id) {
-          courseNumber = eliteGroups.find(g => g.id === tnGroup.elite_kleingruppe_id)?.name || '';
+          klausurGroupId = tnGroup.elite_kleingruppe_id;
+          const grp = eliteGroups.find(g => g.id === tnGroup.elite_kleingruppe_id);
+          courseNumber = grp ? (grp.group_number ? `${grp.name} - ${grp.group_number}` : grp.name) : '';
         }
         const description = `Klausurkorrektur: ${selectedKlausur.title} (${selectedKlausur.teilnehmer_name})${courseNumber ? ' - ' + courseNumber : ''} - ${korrekturScore ? korrekturScore + ' Punkte' : 'ohne Bewertung'}`;
-        
+
         // Prüfen, ob bereits ein Eintrag für diese Klausur existiert
         const { data: existingHours } = await supabase
           .from('dozent_hours')
@@ -2402,16 +2638,17 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
           .eq('dozent_id', user.id)
           .ilike('description', `Klausurkorrektur: ${selectedKlausur.title}%`)
           .single();
-        
+
         if (existingHours) {
           // Existierenden Eintrag aktualisieren
           const { error: updateError } = await supabase.from('dozent_hours').update({
             hours: parseFloat(korrekturDuration),
             description: description,
             category: 'Elite-Kleingruppe Korrektur',
-            status: 'pending'
+            status: 'pending',
+            elite_kleingruppe_id: klausurGroupId
           }).eq('id', existingHours.id);
-          
+
           if (updateError) {
             console.error('Error updating dozent_hours entry:', updateError);
           }
@@ -2423,7 +2660,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
             hours: parseFloat(korrekturDuration),
             description: description,
             category: 'Elite-Kleingruppe Korrektur',
-            status: 'pending'
+            status: 'pending',
+            elite_kleingruppe_id: klausurGroupId
           });
           
           if (hoursError) {
@@ -2488,6 +2726,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   };
 
   const filteredKlausuren = klausuren.filter(k => {
+    // Filter by selected elite group (always required - no "all groups" mode)
+    if ((k as any).elite_kleingruppe_id !== selectedEliteGroupId) return false;
     // Für Dozenten: nur Klausuren aus ihren zugewiesenen Rechtsgebieten anzeigen
     if (!isAdmin && dozentLegalAreas.length > 0 && !dozentLegalAreas.includes(k.legal_area)) return false;
     if (klausurenFilter !== 'alle' && k.legal_area !== klausurenFilter) return false;
@@ -2495,7 +2735,11 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
     return true;
   });
 
-  const filteredTeilnehmer = teilnehmer.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()) || t.email.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filteredTeilnehmer = teilnehmer.filter(t => {
+    // Filter by selected elite group (always required - no "all groups" mode)
+    if ((t as any).elite_kleingruppe_id !== selectedEliteGroupId) return false;
+    return t.name.toLowerCase().includes(searchTerm.toLowerCase()) || t.email.toLowerCase().includes(searchTerm.toLowerCase());
+  });
 
   // OPTIMIZED: Memoized calendar rendering
   const calendarDays = useMemo(() => {
@@ -2615,10 +2859,9 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
               onChange={(e) => setSelectedEliteGroupId(e.target.value)}
               className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white"
             >
-              <option value="">Alle Gruppen</option>
               {eliteGroups.map((group) => (
                 <option key={group.id} value={group.id}>
-                  {group.name}
+                  {group.group_number ? `${group.name} - ${group.group_number}` : group.name}
                 </option>
               ))}
             </select>
@@ -2632,7 +2875,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
             )}
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-500">{teilnehmer.length} Teilnehmer</span>
+            <span className="text-sm text-gray-500">{filteredTeilnehmer.length} Teilnehmer</span>
             <span className="text-sm text-gray-500">{filteredReleases.length} Einheiten geplant</span>
           </div>
         </div>
@@ -2643,10 +2886,98 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         <div className="bg-white rounded-lg shadow p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-medium text-gray-900">Aktive Gruppen ({eliteGroups.length})</h3>
-            <button onClick={() => setShowGroupsManager(false)} className="text-gray-400 hover:text-gray-600">
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowAddGroupForm(!showAddGroupForm)}
+                className="inline-flex items-center px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90"
+              >
+                <Plus className="h-3.5 w-3.5 mr-1.5" />Gruppe hinzufügen
+              </button>
+              <button onClick={() => setShowGroupsManager(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
+
+          {/* Formular: Neue Gruppe hinzufügen */}
+          {showAddGroupForm && (
+            <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
+              <p className="text-xs text-gray-500 italic">Werte wurden automatisch vorausgefüllt basierend auf bestehenden Gruppen und dem aktuellen Datum.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Gruppenname *</label>
+                  <input
+                    type="text"
+                    value={newGroupForm.name}
+                    onChange={(e) => setNewGroupForm({ ...newGroupForm, name: e.target.value })}
+                    placeholder="z.B. Elite-Kleingruppe 2026/2027"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Gruppennummer *</label>
+                  <input
+                    type="text"
+                    value={newGroupForm.group_number}
+                    onChange={(e) => setNewGroupForm({ ...newGroupForm, group_number: e.target.value })}
+                    placeholder="z.B. 102"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Startdatum</label>
+                  <input
+                    type="date"
+                    value={newGroupForm.start_date}
+                    onChange={(e) => setNewGroupForm({ ...newGroupForm, start_date: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Enddatum</label>
+                  <input
+                    type="date"
+                    value={newGroupForm.end_date}
+                    onChange={(e) => setNewGroupForm({ ...newGroupForm, end_date: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Beschreibung</label>
+                <input
+                  type="text"
+                  value={newGroupForm.description}
+                  onChange={(e) => setNewGroupForm({ ...newGroupForm, description: e.target.value })}
+                  placeholder="Optional, z.B. Hauptgruppe für das Studienjahr 2026/2027"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  onClick={() => {
+                    setShowAddGroupForm(false);
+                    setNewGroupForm({ name: '', group_number: '', description: '', start_date: '', end_date: '' });
+                  }}
+                  className="px-3 py-1.5 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  onClick={handleAddGroup}
+                  disabled={isAddingGroup}
+                  className="inline-flex items-center px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isAddingGroup ? (
+                    <><div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white mr-1.5"></div>Wird hinzugefügt...</>
+                  ) : (
+                    <><Plus className="h-3.5 w-3.5 mr-1.5" />Gruppe erstellen</>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
           {eliteGroups.length === 0 ? (
             <p className="text-sm text-gray-500 italic">Keine aktiven Gruppen vorhanden.</p>
           ) : (
@@ -2657,10 +2988,18 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                       <Users className="h-4 w-4 text-primary" />
                     </div>
-                    <span className="ml-3 text-sm font-medium text-gray-900 truncate">{group.name}</span>
+                    <div className="ml-3 min-w-0">
+                      <span className="text-sm font-medium text-gray-900 block truncate">
+                        {group.group_number ? `${group.name} - ${group.group_number}` : group.name}
+                      </span>
+                    </div>
                   </div>
                   <button
-                    onClick={() => setGroupToDelete(group)}
+                    onClick={() => {
+                      setGroupToDelete(group);
+                      setDeleteConfirmName('');
+                      setDeleteConfirmNumber('');
+                    }}
                     className="ml-4 p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors flex-shrink-0"
                     title="Gruppe löschen"
                   >
@@ -2753,8 +3092,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
               </div>
             </div>
             {(() => {
-              // When searching with 'alle' filter, search across ALL releases, not just dozent-filtered ones
-              const baseReleases = (legalAreaFilter === 'alle' || einheitenSearchQuery.trim()) ? scheduledReleases : filteredReleases;
+              // Always use filteredReleases (group-specific) as the base
+              const baseReleases = filteredReleases;
               
               let einheitenReleases = baseReleases.filter(r => r.event_type === 'einheit' && (legalAreaFilter === 'alle' || r.legal_area === legalAreaFilter));
               
@@ -3144,7 +3483,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                   {['Zivilrecht', 'Strafrecht', 'Öffentliches Recht'].map(area => {
                     const areaAssignments = dozentAssignments.filter(a =>
                       a.legal_area === area &&
-                      (!selectedEliteGroupId || a.elite_kleingruppe_id === selectedEliteGroupId)
+                      a.elite_kleingruppe_id === selectedEliteGroupId
                     );
                     return (
                       <div key={area} className="border border-gray-200 rounded-lg p-4">
@@ -3205,54 +3544,6 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                                   <button onClick={() => handleRemoveDozentAssignment(assignment.id)} className="text-red-500 hover:text-red-700 flex-shrink-0 ml-2" title="Zuweisung entfernen">
                                     <X className="h-4 w-4" />
                                   </button>
-                                </div>
-                                {/* Zoom-Link Bearbeitung */}
-                                <div className="pt-2 border-t border-gray-100">
-                                  <label className="block text-xs font-medium text-gray-500 mb-1">Zoom-Link</label>
-                                  {editingZoomLink === assignment.id ? (
-                                    <div className="flex items-center gap-2">
-                                      <input
-                                        type="url"
-                                        value={tempZoomLink}
-                                        onChange={(e) => setTempZoomLink(e.target.value)}
-                                        placeholder="https://zoom.us/j/..."
-                                        className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-primary focus:border-primary"
-                                      />
-                                      <button
-                                        onClick={() => handleSaveZoomLink(assignment.id, tempZoomLink)}
-                                        className="p-1 text-green-600 hover:bg-green-50 rounded"
-                                      >
-                                        <Save className="h-4 w-4" />
-                                      </button>
-                                      <button
-                                        onClick={() => { setEditingZoomLink(null); setTempZoomLink(''); }}
-                                        className="p-1 text-gray-400 hover:bg-gray-100 rounded"
-                                      >
-                                        <X className="h-4 w-4" />
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center justify-between">
-                                      {assignment.zoom_link ? (
-                                        <a
-                                          href={assignment.zoom_link}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="text-xs text-primary hover:underline truncate max-w-[150px]"
-                                        >
-                                          {assignment.zoom_link}
-                                        </a>
-                                      ) : (
-                                        <span className="text-xs text-gray-400 italic">Nicht hinterlegt</span>
-                                      )}
-                                      <button
-                                        onClick={() => { setEditingZoomLink(assignment.id); setTempZoomLink(assignment.zoom_link || ''); }}
-                                        className="p-1 text-gray-400 hover:text-primary hover:bg-primary/10 rounded"
-                                      >
-                                        <PenTool className="h-3 w-3" />
-                                      </button>
-                                    </div>
-                                  )}
                                 </div>
                               </div>
                             );
@@ -3468,7 +3759,20 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              
+
+              {/* Group indicator */}
+              {selectedEliteGroupId && (() => {
+                const grp = eliteGroups.find(g => g.id === selectedEliteGroupId);
+                return grp ? (
+                  <div className="mb-4 p-3 bg-primary/5 border border-primary/20 rounded-lg flex items-center gap-2">
+                    <BookOpen className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium text-gray-900">
+                      Elite-Kleingruppe: {grp.group_number ? `${grp.name} - ${grp.group_number}` : grp.name}
+                    </span>
+                  </div>
+                ) : null;
+              })()}
+
               <div className="space-y-6">
                 {/* Art des Eintrags - Wichtigste Auswahl zuerst */}
                 <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
@@ -3803,16 +4107,16 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     >
                       <option value="">{releaseLegalArea ? 'Kein Dozent zugewiesen' : 'Bitte zuerst Rechtsgebiet wählen...'}</option>
                       {releaseLegalArea && (() => {
-                        // Filtere Dozenten nach dem ausgewählten Rechtsgebiet
+                        // Filtere Dozenten nach dem ausgewählten Rechtsgebiet UND der ausgewählten Elite-Kleingruppe
                         const legalAreaMapping: Record<string, string> = {
                           'Zivilrecht': 'Zivilrecht',
                           'Strafrecht': 'Strafrecht',
                           'Öffentliches Recht': 'Öffentliches Recht'
                         };
                         const mappedLegalArea = legalAreaMapping[releaseLegalArea] || releaseLegalArea;
-                        
+
                         return dozentAssignments
-                          .filter(a => a.legal_area === mappedLegalArea)
+                          .filter(a => a.legal_area === mappedLegalArea && a.elite_kleingruppe_id === selectedEliteGroupId)
                           .map(assignment => {
                             const dozent = allDozenten.find(d => d.id === assignment.dozent_id);
                             return dozent ? (
@@ -4225,18 +4529,64 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       )}
 
       {/* Group Delete Confirmation Modal */}
-      {groupToDelete && (
+      {groupToDelete && (() => {
+        const expectedName = groupToDelete.name;
+        const expectedNumber = groupToDelete.group_number || '';
+        const fullDisplayName = expectedNumber ? `${expectedName} - ${expectedNumber}` : expectedName;
+        const nameMatches = deleteConfirmName.trim() === expectedName;
+        const numberMatches = deleteConfirmNumber.trim() === expectedNumber;
+        const canDelete = nameMatches && numberMatches && !isDeletingGroup;
+        return (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
-            <div className="fixed inset-0 bg-black/50" onClick={() => setGroupToDelete(null)} />
+            <div className="fixed inset-0 bg-black/50" onClick={() => !isDeletingGroup && setGroupToDelete(null)} />
             <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
               <h3 className="text-lg font-medium text-gray-900 mb-2">Gruppe löschen</h3>
               <p className="text-sm text-gray-500 mb-1">
-                Möchten Sie die Gruppe <strong>"{groupToDelete.name}"</strong> wirklich löschen?
+                Möchten Sie die Gruppe <strong>"{fullDisplayName}"</strong> wirklich löschen?
               </p>
               <p className="text-sm text-red-600 mb-4">
-                Die Gruppe wird deaktiviert und ist nicht mehr sichtbar.
+                Die Gruppe wird deaktiviert. Alle zugehörigen Daten (Einheiten, Klausuren, Kurszeiten, Zoom-Links, Dozenten-Stunden) bleiben in der Datenbank, sind aber nicht mehr sichtbar.
               </p>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                <p className="text-xs text-red-700 mb-2">
+                  <strong>Sicherheitshinweis:</strong> Bitte geben Sie zur Bestätigung den vollständigen Gruppennamen und die Gruppennummer manuell ein. Copy &amp; Paste ist blockiert.
+                </p>
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-xs font-medium text-red-700 mb-1">
+                      Gruppennamen eingeben: <span className="font-mono">{expectedName}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={deleteConfirmName}
+                      onChange={(e) => setDeleteConfirmName(e.target.value)}
+                      onPaste={(e) => e.preventDefault()}
+                      onDrop={(e) => e.preventDefault()}
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder={expectedName}
+                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 ${nameMatches ? 'border-green-500 focus:ring-green-500/20 bg-green-50' : 'border-red-300 focus:ring-red-500/20'}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-red-700 mb-1">
+                      Gruppennummer eingeben: <span className="font-mono">{expectedNumber}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={deleteConfirmNumber}
+                      onChange={(e) => setDeleteConfirmNumber(e.target.value)}
+                      onPaste={(e) => e.preventDefault()}
+                      onDrop={(e) => e.preventDefault()}
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder={expectedNumber}
+                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 ${numberMatches ? 'border-green-500 focus:ring-green-500/20 bg-green-50' : 'border-red-300 focus:ring-red-500/20'}`}
+                    />
+                  </div>
+                </div>
+              </div>
               <div className="flex justify-end space-x-3">
                 <button
                   onClick={() => setGroupToDelete(null)}
@@ -4247,8 +4597,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                 </button>
                 <button
                   onClick={() => handleDeleteGroup(groupToDelete)}
-                  disabled={isDeletingGroup}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                  disabled={!canDelete}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   {isDeletingGroup ? 'Wird gelöscht...' : 'Gruppe löschen'}
                 </button>
@@ -4256,7 +4606,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Delete Confirmation Modal */}
       {klausurToDelete && (
@@ -5608,13 +5959,19 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                 </button>
                 <button
                   onClick={async () => {
+                    const groupId = selectedEliteGroupId || (eliteGroups.length === 1 ? eliteGroups[0].id : null);
+                    if (!groupId) {
+                      alert('Bitte wählen Sie zuerst eine Gruppe aus.');
+                      return;
+                    }
                     const data = {
                       weekday: courseTimeForm.weekday,
                       start_time: courseTimeForm.start_time,
                       end_time: courseTimeForm.end_time,
                       legal_area: courseTimeForm.legal_area,
                       description: courseTimeForm.description || null,
-                      meeting_link: courseTimeForm.meeting_link || null
+                      meeting_link: courseTimeForm.meeting_link || null,
+                      elite_kleingruppe_id: groupId
                     };
                     if (editingCourseTime) {
                       await supabase.from('elite_course_times').update(data).eq('id', editingCourseTime.id);
@@ -5697,7 +6054,21 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              
+
+              {/* Group indicator */}
+              {(() => {
+                const releaseGroupId = (editingRelease as any).elite_kleingruppe_id || selectedEliteGroupId;
+                const grp = eliteGroups.find(g => g.id === releaseGroupId);
+                return grp ? (
+                  <div className="mb-4 p-3 bg-primary/5 border border-primary/20 rounded-lg flex items-center gap-2">
+                    <BookOpen className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium text-gray-900">
+                      Elite-Kleingruppe: {grp.group_number ? `${grp.name} - ${grp.group_number}` : grp.name}
+                    </span>
+                  </div>
+                ) : null;
+              })()}
+
               <div className={`space-y-6 ${isReadOnly ? 'pointer-events-none opacity-60' : ''}`}>
                 {/* Typ der Einheit */}
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -5843,16 +6214,17 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     >
                       <option value="">{editingRelease.legal_area ? 'Kein Dozent zugewiesen' : 'Bitte zuerst Rechtsgebiet wählen...'}</option>
                       {editingRelease.legal_area && (() => {
-                        // Filtere Dozenten nach dem ausgewählten Rechtsgebiet
+                        // Filtere Dozenten nach dem ausgewählten Rechtsgebiet UND der ausgewählten Elite-Kleingruppe
                         const legalAreaMapping: Record<string, string> = {
                           'Zivilrecht': 'Zivilrecht',
                           'Strafrecht': 'Strafrecht',
                           'Öffentliches Recht': 'Öffentliches Recht'
                         };
                         const mappedLegalArea = legalAreaMapping[editingRelease.legal_area] || editingRelease.legal_area;
-                        
+                        const releaseGroupId = (editingRelease as any).elite_kleingruppe_id || selectedEliteGroupId;
+
                         return dozentAssignments
-                          .filter(a => a.legal_area === mappedLegalArea)
+                          .filter(a => a.legal_area === mappedLegalArea && a.elite_kleingruppe_id === releaseGroupId)
                           .map(assignment => {
                             const dozent = allDozenten.find(d => d.id === assignment.dozent_id);
                             return dozent ? (
@@ -6599,7 +6971,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
               </p>
             </div>
             
-            {teilnehmer.length === 0 ? (
+            {filteredTeilnehmer.length === 0 ? (
               <div className="p-8 text-center">
                 <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
                 <h4 className="text-lg font-medium text-gray-900 mb-2">Keine Teilnehmer vorhanden</h4>
@@ -6629,7 +7001,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {teilnehmer.map((t) => {
+                    {filteredTeilnehmer.map((t) => {
                       const initials = t.full_name
                         ? t.full_name.split(' ')
                             .map((n: string) => n[0])

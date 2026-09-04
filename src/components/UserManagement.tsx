@@ -89,7 +89,7 @@ export function UserManagement() {
   const [searchQuery, setSearchQuery] = useState('');
   const [eliteTeilnehmerIds, setEliteTeilnehmerIds] = useState<Set<string>>(new Set());
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [eliteKleingruppen, setEliteKleingruppen] = useState<{ id: string; name: string }[]>([]);
+  const [eliteKleingruppen, setEliteKleingruppen] = useState<{ id: string; name: string; group_number?: string | null }[]>([]);
   const [generatingLinkForUserId, setGeneratingLinkForUserId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
@@ -127,7 +127,7 @@ export function UserManagement() {
     const fetchEliteKleingruppen = async () => {
       const { data } = await supabase
         .from('elite_kleingruppen')
-        .select('id, name')
+        .select('id, name, group_number')
         .eq('is_active', true)
         .order('name');
       if (data) setEliteKleingruppen(data);
@@ -242,6 +242,7 @@ export function UserManagement() {
                 email: dialog.userData.email,
                 is_vb: dialog.userData.isVideobesprechung || false,
                 is_elite_kleingruppe: !!dialog.userData.eliteKleingruppe,
+                elite_kleingruppe_id: dialog.userData.eliteKleingruppe || null,
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
               });
@@ -369,27 +370,24 @@ export function UserManagement() {
         vb_legal_areas: dialog.userData.vb_legal_areas || []
       });
 
-      // Update elite kleingruppe status in teilnehmer table
-      if (dialog.userData.role === 'teilnehmer') {
-        const isElite = !!dialog.userData.eliteKleingruppe;
-        const eliteGroup = eliteKleingruppen.find(g => g.name === dialog.userData.eliteKleingruppe);
-        await supabase
-          .from('teilnehmer')
-          .update({
-            is_elite_kleingruppe: isElite,
-            elite_kleingruppe_id: eliteGroup?.id || null,
-            updated_at: new Date().toISOString()
-          })
-          .eq('profile_id', dialog.userData.id);
+      // Update elite kleingruppe status in teilnehmer table (for any role that has a teilnehmer record)
+      const isElite = !!dialog.userData.eliteKleingruppe;
+      await supabase
+        .from('teilnehmer')
+        .update({
+          is_elite_kleingruppe: isElite,
+          elite_kleingruppe_id: dialog.userData.eliteKleingruppe || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('profile_id', dialog.userData.id);
 
-        // Refresh elite teilnehmer IDs
-        const { data: eliteData } = await supabase
-          .from('teilnehmer')
-          .select('profile_id')
-          .eq('is_elite_kleingruppe', true);
-        if (eliteData) {
-          setEliteTeilnehmerIds(new Set(eliteData.map(t => t.profile_id)));
-        }
+      // Refresh elite teilnehmer IDs
+      const { data: eliteData } = await supabase
+        .from('teilnehmer')
+        .select('profile_id')
+        .eq('is_elite_kleingruppe', true);
+      if (eliteData) {
+        setEliteTeilnehmerIds(new Set(eliteData.map(t => t.profile_id)));
       }
 
       setSuccessMessage('Benutzer wurde erfolgreich aktualisiert.');
@@ -963,7 +961,7 @@ export function UserManagement() {
                                 Ausstehend
                               </span>
                             )}
-                            {user.role === 'teilnehmer' && eliteTeilnehmerIds.has(user.id) && (
+                            {eliteTeilnehmerIds.has(user.id) && (
                               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
                                 Elite-Kleingruppe
                               </span>
@@ -1002,24 +1000,18 @@ export function UserManagement() {
                               } else {
                                 // Fetch elite kleingruppe status from teilnehmer table
                                 let eliteKleingruppe: string | undefined;
-                                if (user.role === 'teilnehmer') {
-                                  const { data: tnData } = await supabase
-                                    .from('teilnehmer')
-                                    .select('is_elite_kleingruppe, elite_kleingruppe_id')
-                                    .eq('profile_id', user.id)
-                                    .single();
-                                  if (tnData?.is_elite_kleingruppe) {
-                                    // Try to resolve the group name from elite_kleingruppe_id
-                                    if (tnData.elite_kleingruppe_id) {
-                                      const { data: grp } = await supabase
-                                        .from('elite_kleingruppen')
-                                        .select('name')
-                                        .eq('id', tnData.elite_kleingruppe_id)
-                                        .single();
-                                      eliteKleingruppe = grp?.name || eliteKleingruppen[0]?.name || '';
-                                    } else {
-                                      eliteKleingruppe = eliteKleingruppen[0]?.name || '';
-                                    }
+                                // Check elite status for any user (teilnehmer or dozent who is also an elite participant)
+                                const { data: tnData } = await supabase
+                                  .from('teilnehmer')
+                                  .select('is_elite_kleingruppe, elite_kleingruppe_id')
+                                  .eq('profile_id', user.id)
+                                  .single();
+                                if (tnData?.is_elite_kleingruppe) {
+                                  // Use the elite_kleingruppe_id directly
+                                  if (tnData.elite_kleingruppe_id) {
+                                    eliteKleingruppe = tnData.elite_kleingruppe_id;
+                                  } else {
+                                    eliteKleingruppe = eliteKleingruppen[0]?.id || '';
                                   }
                                 }
                                 setDialog({
@@ -1420,7 +1412,7 @@ export function UserManagement() {
                                       ...dialog,
                                       userData: {
                                         ...dialog.userData,
-                                        eliteKleingruppe: isChecked ? eliteKleingruppen[0]?.name || '' : ''
+                                        eliteKleingruppe: isChecked ? eliteKleingruppen[0]?.id || '' : ''
                                       }
                                     });
                                   }}
@@ -1444,8 +1436,8 @@ export function UserManagement() {
                                   >
                                     <option value="">Bitte wählen...</option>
                                     {eliteKleingruppen.map((gruppe) => (
-                                      <option key={gruppe.id} value={gruppe.name}>
-                                        {gruppe.name}
+                                      <option key={gruppe.id} value={gruppe.id}>
+                                        {gruppe.group_number ? `${gruppe.name} - ${gruppe.group_number}` : gruppe.name}
                                       </option>
                                     ))}
                                   </select>
@@ -1453,7 +1445,7 @@ export function UserManagement() {
                               )}
                             </div>
                           )}
-                          {dialog.type === 'edit' && dialog.userData.role === 'teilnehmer' && (
+                          {dialog.type === 'edit' && (
                             <div className="space-y-3 p-4 bg-purple-50 rounded-lg border border-purple-200">
                               <label className="flex items-center cursor-pointer">
                                 <input
@@ -1465,7 +1457,7 @@ export function UserManagement() {
                                       ...dialog,
                                       userData: {
                                         ...dialog.userData,
-                                        eliteKleingruppe: isChecked ? eliteKleingruppen[0]?.name || '' : ''
+                                        eliteKleingruppe: isChecked ? eliteKleingruppen[0]?.id || '' : ''
                                       }
                                     });
                                   }}
@@ -1488,8 +1480,8 @@ export function UserManagement() {
                                   >
                                     <option value="">Bitte wählen...</option>
                                     {eliteKleingruppen.map((gruppe) => (
-                                      <option key={gruppe.id} value={gruppe.name}>
-                                        {gruppe.name}
+                                      <option key={gruppe.id} value={gruppe.id}>
+                                        {gruppe.group_number ? `${gruppe.name} - ${gruppe.group_number}` : gruppe.name}
                                       </option>
                                     ))}
                                   </select>
@@ -1735,7 +1727,7 @@ export function UserManagement() {
                       setShowRoleSelection(false);
                       setDialog({
                         type: 'new',
-                        userData: { email: '', fullName: '', firstName: '', lastName: '', password: '', role: 'teilnehmer', isVideobesprechung: false, eliteKleingruppe: eliteKleingruppen[0]?.name || '' }
+                        userData: { email: '', fullName: '', firstName: '', lastName: '', password: '', role: 'teilnehmer', isVideobesprechung: false, eliteKleingruppe: eliteKleingruppen[0]?.id || '' }
                       });
                       setDialogError(null);
                     }}

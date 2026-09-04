@@ -82,6 +82,8 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
   const [createPreviewLoading, setCreatePreviewLoading] = useState(false);
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
   const [invoiceDeadlineDay, setInvoiceDeadlineDay] = useState<number>(5);
+  const [eliteGroups, setEliteGroups] = useState<{id: string; name: string; group_number?: string | null}[]>([]);
+  const [selectedEliteGroupId, setSelectedEliteGroupId] = useState<string>('');
 
   // Suppress unused variable warnings
   void onBack;
@@ -102,6 +104,15 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       .single()
       .then(({ data }) => {
         if (data?.value?.day) setInvoiceDeadlineDay(data.value.day);
+      });
+    // Fetch elite groups for group-specific billing
+    supabase
+      .from('elite_kleingruppen')
+      .select('id, name, group_number')
+      .eq('is_active', true)
+      .order('created_at')
+      .then(({ data }) => {
+        setEliteGroups(data || []);
       });
   }, [dozentId, fetchInvoices]);
 
@@ -259,7 +270,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
 
           const { data: monthDozentHours } = await supabase
             .from('dozent_hours')
-            .select('date, hours, description, category, exam_type')
+            .select('date, hours, description, category, exam_type, elite_kleingruppe_id')
             .eq('dozent_id', dozentId)
             .gte('date', monthStartDate)
             .lte('date', monthEndDate)
@@ -293,18 +304,22 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
           filteredDozentHours = allDozentHours.filter((h: any) => {
             const category = h.category?.toLowerCase() || '';
             const entryExamType = h.exam_type;
-            
-            if (category.includes('elite')) return true;
+
+            if (category.includes('elite')) {
+              // Elite-Kleingruppe hours: filter by selected group when set
+              if (selectedEliteGroupId && h.elite_kleingruppe_id !== selectedEliteGroupId) return false;
+              return true;
+            }
             if (entryExamType === '1. Staatsexamen') return true;
             if (!entryExamType) return true;
-            
+
             return false;
           });
         } else if (createFormData.examType === '2. Staatsexamen') {
           filteredDozentHours = allDozentHours.filter((h: any) => {
             const category = h.category?.toLowerCase() || '';
             const entryExamType = h.exam_type;
-            
+
             if (category.includes('elite')) return false;
             return entryExamType === '2. Staatsexamen';
           });
@@ -348,7 +363,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       // Fetch dozent hours with category and exam_type
       const { data: dozentHours, error: dhError } = await supabase
         .from('dozent_hours')
-        .select('date, hours, description, category, exam_type')
+        .select('date, hours, description, category, exam_type, elite_kleingruppe_id')
         .eq('dozent_id', dozentId)
         .gte('date', startDate)
         .lte('date', endDate)
@@ -386,18 +401,22 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
         filteredDozentHours = (dozentHours || []).filter((h: any) => {
           const category = h.category?.toLowerCase() || '';
           const examType = h.exam_type;
-          
-          if (category.includes('elite')) return true;
+
+          if (category.includes('elite')) {
+            // Elite-Kleingruppe hours: filter by selected group when set
+            if (selectedEliteGroupId && h.elite_kleingruppe_id !== selectedEliteGroupId) return false;
+            return true;
+          }
           if (examType === '1. Staatsexamen') return true;
           if (!examType) return true;
-          
+
           return false;
         });
       } else if (createFormData.examType === '2. Staatsexamen') {
         filteredDozentHours = (dozentHours || []).filter((h: any) => {
           const category = h.category?.toLowerCase() || '';
           const examType = h.exam_type;
-          
+
           if (category.includes('elite')) return false;
           return examType === '2. Staatsexamen';
         });
@@ -431,12 +450,12 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
     }
   };
 
-  // Fetch preview when dialog opens or month/year/examType changes
+  // Fetch preview when dialog opens or month/year/examType/group changes
   useEffect(() => {
     if (showCreateDialog) {
       fetchCreatePreviewHours();
     }
-  }, [showCreateDialog, createFormData.month, createFormData.year, createFormData.examType]);
+  }, [showCreateDialog, createFormData.month, createFormData.year, createFormData.examType, selectedEliteGroupId]);
 
   const handleCreateInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -724,7 +743,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
 
       const { data: dozentHours } = await supabase
         .from('dozent_hours')
-        .select('id, date, hours, description, category')
+        .select('id, date, hours, description, category, elite_kleingruppe_id')
         .eq('dozent_id', dozentId)
         .gte('date', `${createFormData.year}-${String(createFormData.month).padStart(2, '0')}-01`)
         .lte('date', `${createFormData.year}-${String(createFormData.month).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`);
@@ -748,7 +767,14 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
           teilnehmer: Array.isArray(h.teilnehmer) ? h.teilnehmer[0] : h.teilnehmer,
           type: 'participant' as const
         })),
-        ...(dozentHours || []).map(h => ({
+        ...(dozentHours || [])
+          .filter((h: any) => {
+            // Filter Elite-Kleingruppe hours by selected group
+            const isElite = h.category?.toLowerCase().includes('elite') || h.description?.includes('Elite-Kleingruppe');
+            if (isElite && selectedEliteGroupId && h.elite_kleingruppe_id !== selectedEliteGroupId) return false;
+            return true;
+          })
+          .map(h => ({
           id: h.id,
           date: h.date,
           hours: h.hours,
@@ -826,7 +852,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       // Fetch dozent hours with category and exam_type
       const { data: dozentHours } = await supabase
         .from('dozent_hours')
-        .select('date, hours, description, category, exam_type')
+        .select('date, hours, description, category, exam_type, elite_kleingruppe_id')
         .eq('dozent_id', invoiceData.dozent_id)
         .gte('date', invoiceData.period_start)
         .lte('date', invoiceData.period_end)
@@ -2224,6 +2250,29 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
                         <option value="2. Staatsexamen">2. Staatsexamen</option>
                       </select>
                     </div>
+
+                    {createFormData.examType === '1. Staatsexamen' && eliteGroups.length > 0 && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Elite-Kleingruppe
+                        </label>
+                        <select
+                          value={selectedEliteGroupId}
+                          onChange={(e) => setSelectedEliteGroupId(e.target.value)}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
+                        >
+                          <option value="">Alle Gruppen</option>
+                          {eliteGroups.map((group) => (
+                            <option key={group.id} value={group.id}>
+                              {group.group_number ? `${group.name} - ${group.group_number}` : group.name}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Wählen Sie eine Gruppe, um nur deren Stunden abzurechnen.
+                        </p>
+                      </div>
+                    )}
 
                     {/* Recipient Address Preview */}
                     <div className="border rounded-lg p-4 bg-blue-50">
