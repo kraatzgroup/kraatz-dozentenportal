@@ -88,6 +88,19 @@ export function UserManagement() {
   const [showRoleSelection, setShowRoleSelection] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [eliteTeilnehmerIds, setEliteTeilnehmerIds] = useState<Set<string>>(new Set());
+  const [eliteDozentIds, setEliteDozentIds] = useState<Set<string>>(new Set());
+
+  const refreshEliteIds = async () => {
+    const { data: tnData } = await supabase
+      .from('teilnehmer')
+      .select('profile_id')
+      .eq('is_elite_kleingruppe', true);
+    if (tnData) setEliteTeilnehmerIds(new Set(tnData.map(t => t.profile_id)));
+    const { data: dzData } = await supabase
+      .from('elite_kleingruppe_dozenten')
+      .select('dozent_id');
+    if (dzData) setEliteDozentIds(new Set(dzData.map(d => d.dozent_id)));
+  };
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [eliteKleingruppen, setEliteKleingruppen] = useState<{ id: string; name: string; group_number?: string | null }[]>([]);
   const [generatingLinkForUserId, setGeneratingLinkForUserId] = useState<string | null>(null);
@@ -110,6 +123,18 @@ export function UserManagement() {
       }
     };
     fetchEliteTeilnehmer();
+
+    // Fetch elite dozent IDs (dozenten assigned to elite kleingruppen)
+    const fetchEliteDozenten = async () => {
+      const { data } = await supabase
+        .from('elite_kleingruppe_dozenten')
+        .select('dozent_id');
+
+      if (data) {
+        setEliteDozentIds(new Set(data.map(d => d.dozent_id)));
+      }
+    };
+    fetchEliteDozenten();
 
     // Fetch dozenten for TeilnehmerForm
     const fetchDozenten = async () => {
@@ -261,14 +286,8 @@ export function UserManagement() {
       // Refresh the users list and elite teilnehmer IDs
       await fetchUsers();
 
-      // Re-fetch elite teilnehmer IDs to include the newly created one
-      const { data: eliteData } = await supabase
-        .from('teilnehmer')
-        .select('profile_id')
-        .eq('is_elite_kleingruppe', true);
-      if (eliteData) {
-        setEliteTeilnehmerIds(new Set(eliteData.map(t => t.profile_id)));
-      }
+      // Re-fetch elite IDs to include the newly created one
+      await refreshEliteIds();
     } catch (error) {
       console.error(`[${requestId}] Error in handleCreateUser:`, error);
 
@@ -329,15 +348,9 @@ export function UserManagement() {
           // Then delete the user from profiles
           await deleteUser(id);
           
-          // Refresh elite teilnehmer IDs
-          const { data: eliteData } = await supabase
-            .from('teilnehmer')
-            .select('profile_id')
-            .eq('is_elite_kleingruppe', true);
-          if (eliteData) {
-            setEliteTeilnehmerIds(new Set(eliteData.map(t => t.profile_id)));
-          }
-          
+          // Refresh elite IDs
+          await refreshEliteIds();
+
           setConfirmation(prev => ({ ...prev, show: false }));
           setConfirmationInput('');
         } catch (error) {
@@ -381,14 +394,8 @@ export function UserManagement() {
         })
         .eq('profile_id', dialog.userData.id);
 
-      // Refresh elite teilnehmer IDs
-      const { data: eliteData } = await supabase
-        .from('teilnehmer')
-        .select('profile_id')
-        .eq('is_elite_kleingruppe', true);
-      if (eliteData) {
-        setEliteTeilnehmerIds(new Set(eliteData.map(t => t.profile_id)));
-      }
+      // Refresh elite IDs
+      await refreshEliteIds();
 
       setSuccessMessage('Benutzer wurde erfolgreich aktualisiert.');
       closeDialog();
@@ -961,7 +968,7 @@ export function UserManagement() {
                                 Ausstehend
                               </span>
                             )}
-                            {eliteTeilnehmerIds.has(user.id) && (
+                            {(eliteTeilnehmerIds.has(user.id) || eliteDozentIds.has(user.id)) && (
                               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
                                 Elite-Kleingruppe
                               </span>
@@ -1689,16 +1696,10 @@ export function UserManagement() {
               }}
               onSaved={async () => {
                 await fetchUsers();
-                
-                // Re-fetch elite teilnehmer IDs to include newly created ones
-                const { data: eliteData } = await supabase
-                  .from('teilnehmer')
-                  .select('profile_id')
-                  .eq('is_elite_kleingruppe', true);
-                if (eliteData) {
-                  setEliteTeilnehmerIds(new Set(eliteData.map(t => t.profile_id)));
-                }
-                
+
+                // Re-fetch elite IDs to include newly created ones
+                await refreshEliteIds();
+
                 setShowTeilnehmerForm(false);
                 setSelectedTeilnehmerForEdit(null);
               }}

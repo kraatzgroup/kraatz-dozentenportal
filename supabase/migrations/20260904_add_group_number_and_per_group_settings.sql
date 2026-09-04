@@ -27,6 +27,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_elite_kleingruppen_group_number_unique
 COMMENT ON COLUMN elite_kleingruppen.group_number IS 'Short group number shown alongside the name (e.g. 101, 102)';
 
 -- =============================================================================
+-- Step 1b: Update unique constraint on elite_kleingruppe_dozenten to include group
+-- =============================================================================
+-- The old constraint UNIQUE(dozent_id, legal_area) prevented a dozent from being
+-- assigned to multiple groups for the same legal area. Replace with a 3-column constraint.
+ALTER TABLE elite_kleingruppe_dozenten
+  DROP CONSTRAINT IF EXISTS elite_kleingruppe_dozenten_dozent_id_legal_area_key;
+ALTER TABLE elite_kleingruppe_dozenten
+  ADD CONSTRAINT elite_kleingruppe_dozenten_dozent_id_legal_area_group_key
+  UNIQUE (dozent_id, legal_area, elite_kleingruppe_id);
+
+-- =============================================================================
 -- Step 2: Make elite_kleingruppe_settings group-specific for zoom_links
 --          (unit_durations stays global with elite_kleingruppe_id = NULL)
 -- =============================================================================

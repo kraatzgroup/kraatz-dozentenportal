@@ -18,6 +18,7 @@ interface EliteKleingruppe {
   id: string;
   name: string;
   description?: string;
+  group_number?: string | null;
 }
 
 interface EliteKleingruppeAssignment {
@@ -103,7 +104,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
   // Fetch Elite-Kleingruppen and assignments
   useEffect(() => {
     const fetchEliteKleingruppen = async () => {
-      const { data } = await supabase.from('elite_kleingruppen').select('id, name, description').order('name');
+      const { data } = await supabase.from('elite_kleingruppen').select('id, name, description, group_number').order('group_number');
       setEliteKleingruppen(data || []);
     };
     fetchEliteKleingruppen();
@@ -910,11 +911,12 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         }
       }
 
-      // Save Elite-Kleingruppe assignments if enabled
-      if (isEliteKleingruppeEnabled && Object.keys(eliteAssignments).length > 0) {
+      // Save Elite-Kleingruppe assignments
+      // Always run: delete already happened above, so we need to re-insert if enabled
+      if (isEliteKleingruppeEnabled) {
         // Flatten assignments: one row per legal area per kleingruppe
         const assignmentsToInsert: { dozent_id: string; elite_kleingruppe_id: string; legal_area: string }[] = [];
-        
+
         Object.entries(eliteAssignments)
           .filter(([_, areas]) => areas.length > 0)
           .forEach(([groupId, areas]) => {
@@ -931,9 +933,10 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
           const { error: assignmentError } = await supabase
             .from('elite_kleingruppe_dozenten')
             .insert(assignmentsToInsert);
-          
+
           if (assignmentError) {
-            console.error('Error saving assignments:', assignmentError);
+            console.error('Error saving elite assignments:', assignmentError);
+            addToast('Fehler beim Speichern der Elite-Kleingruppe-Zuweisungen: ' + assignmentError.message, 'error');
           }
         }
       }
@@ -1275,7 +1278,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
                             <BookOpen className="h-5 w-5 text-primary" />
                           </div>
                           <div>
-                            <p className="font-medium text-gray-900">{group.name}</p>
+                            <p className="font-medium text-gray-900">{group.group_number ? `${group.name} - ${group.group_number}` : group.name}</p>
                             {group.description && (
                               <p className="text-xs text-gray-500">{group.description}</p>
                             )}
