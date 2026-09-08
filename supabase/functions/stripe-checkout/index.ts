@@ -1,3 +1,4 @@
+/// <reference path="../deno.d.ts" />
 // Edge function: Stripe Checkout Session erstellen für Videoklausurenkorrektur
 // - Validiert Preis-ID serverseitig gegen vb_packages
 // - Neukunden-Angebot nur 1x pro Person (per E-Mail)
@@ -181,6 +182,8 @@ Deno.serve(async (req) => {
 
     // Checkout Session erstellen
     const origin = req.headers.get('origin') ?? FALLBACK_BASE_URL;
+    // Client-IP für Meta CAPI (server-side Tracking) erfassen
+    const clientIp = (req.headers.get('x-forwarded-for') ?? req.headers.get('x-real-ip') ?? '').split(',')[0].trim();
     const sessionParams = new URLSearchParams();
     sessionParams.set('mode', 'payment');
     sessionParams.set('customer', customerId);
@@ -200,6 +203,7 @@ Deno.serve(async (req) => {
     sessionParams.set('metadata[product_id]', pkg.product_id ?? '');
     sessionParams.set('metadata[email]', email);
     if (fullName) sessionParams.set('metadata[full_name]', fullName);
+    if (clientIp) sessionParams.set('metadata[client_ip]', clientIp);
     sessionParams.set('metadata[source]', 'vb');
 
     const session = await stripeFetch('/v1/checkout/sessions', { method: 'POST', body: sessionParams });

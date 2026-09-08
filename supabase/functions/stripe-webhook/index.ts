@@ -1,3 +1,4 @@
+/// <reference path="../deno.d.ts" />
 // Edge function: Stripe Webhook für Videoklausurenkorrektur-Käufe
 //
 // Verarbeitet checkout.session.completed und checkout.session.async_payment_succeeded:
@@ -18,6 +19,18 @@ const corsHeaders = {
 const SUPPORTED_EVENTS = new Set([
   'checkout.session.completed',
   'checkout.session.async_payment_succeeded',
+]);
+
+// Paketschlüssel, für die eine Admin-Kaufbenachrichtigung versendet wird.
+// Nur die Video-Klausurenkorrektur-Pakete (nicht z.B. Kraatz Club).
+const ADMIN_NOTIFY_PACKAGE_KEYS = new Set([
+  '5er',
+  '10er',
+  '15er',
+  '20er',
+  '25er',
+  '30er',
+  'neukunden',
 ]);
 
 interface StripeFetchOptions {
@@ -340,6 +353,107 @@ async function sendAdminPurchaseNotify(
   }
 }
 
+// ─── Meta Conversions API (server-side purchase tracking) ──────────────
+// Sends a Purchase event to the Meta Pixel via the Conversions API.
+// Requires env vars: META_PIXEL_ID and META_ACCESS_TOKEN.
+// If either is missing, the call is skipped silently.
+// All user_data fields (em, fn, ln, client_ip_address) are SHA-256 hashed
+// for privacy before sending to Meta.
+
+async function sha256Hex(value: string): Promise<string> {
+  const data = new TextEncoder().encode(value.trim().toLowerCase());
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function sendMetaPurchaseEvent(params: {
+  email: string;
+  fullName: string;
+  packageName: string;
+  totalCents: number;
+  caseStudyCount: number;
+  checkoutSessionId: string;
+  productId: string | null;
+  stripeCustomerId: string | null;
+  clientIp: string | null;
+  purchaseTimestamp: string;
+}): Promise<void> {
+  const pixelId = Deno.env.get('META_PIXEL_ID') ?? '';
+  const accessToken = Deno.env.get('META_ACCESS_TOKEN') ?? '';
+  const testEventCode = Deno.env.get('META_TEST_EVENT_CODE') ?? '';
+
+  if (!pixelId || !accessToken) {
+    console.log('ℹ️ Meta CAPI übersprungen – META_PIXEL_ID oder META_ACCESS_TOKEN nicht gesetzt');
+    return;
+  }
+
+  try {
+    // user_data: alle PII-Felder SHA-256 gehasht (Meta Vorgabe)
+    const hashedEmail = await sha256Hex(params.email);
+
+    // Full name in first/last aufteilen (gleiche Logik wie ensureUser)
+    const nameParts = params.fullName.trim().split(/\s+/);
+    const firstName = nameParts.length > 1 ? nameParts[0] : params.fullName;
+    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+
+    const userData: Record<string, unknown> = {
+      em: [hashedEmail],
+      external_id: params.stripeCustomerId ?? params.checkoutSessionId,
+    };
+    if (firstName) userData.fn = [await sha256Hex(firstName)];
+    if (lastName) userData.ln = [await sha256Hex(lastName)];
+    if (params.clientIp) userData.client_ip_address = await sha256Hex(params.clientIp);
+
+    const eventTime = Math.floor(new Date(params.purchaseTimestamp).getTime() / 1000);
+
+    const payload: Record<string, unknown> = {
+      data: [
+        {
+          event_name: 'Purchase',
+          event_time: eventTime,
+          event_id: params.checkoutSessionId,
+          action_source: 'website',
+          event_source_url: 'https://portal.kraatz-group.de',
+          user_data: userData,
+          custom_data: {
+            currency: 'EUR',
+            value: Number((params.totalCents / 100).toFixed(2)),
+            content_name: params.packageName,
+            content_type: 'product',
+            num_items: params.caseStudyCount,
+            contents: params.productId
+              ? [{ id: params.productId, quantity: 1 }]
+              : [],
+          },
+        },
+      ],
+    };
+
+    if (testEventCode) {
+      payload.test_event_code = testEventCode;
+    }
+
+    const url = `https://graph.facebook.com/v21.0/${pixelId}/events?access_token=${encodeURIComponent(accessToken)}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.warn(`⚠️ Meta CAPI fehlgeschlagen (Status ${response.status}):`, errorText);
+    } else {
+      const result = await response.json();
+      console.log(`📊 Meta CAPI Purchase-Event gesendet (events_received: ${result?.events_received ?? '?'})`);
+    }
+  } catch (error) {
+    console.warn('⚠️ Meta CAPI Exception:', error);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -533,19 +647,37 @@ Deno.serve(async (req) => {
         isNewUser
       );
 
-      // Admin über den Kauf benachrichtigen
-      await sendAdminPurchaseNotify(
+      // Admin über den Kauf benachrichtigen – nur für Video-Klausurenkorrektur-Pakete
+      if (packageKey && ADMIN_NOTIFY_PACKAGE_KEYS.has(packageKey)) {
+        await sendAdminPurchaseNotify(
+          email,
+          fullName,
+          isNewUser,
+          packageName ?? 'Video-Klausurenkorrektur',
+          caseStudyCount,
+          totalCents,
+          session.id,
+          customerId,
+          typeof session.payment_intent === 'string' ? session.payment_intent : null,
+          purchaseResult.expires_at
+        );
+      } else {
+        console.log(`ℹ️ Keine Admin-Benachrichtigung für Paket ${packageKey ?? '(unbekannt)'} – nicht in der Allowlist`);
+      }
+
+      // Meta Conversions API: Purchase-Event server-side an Meta senden
+      await sendMetaPurchaseEvent({
         email,
         fullName,
-        isNewUser,
-        packageName ?? 'Video-Klausurenkorrektur',
-        caseStudyCount,
+        packageName: packageName ?? 'Video-Klausurenkorrektur',
         totalCents,
-        session.id,
-        customerId,
-        typeof session.payment_intent === 'string' ? session.payment_intent : null,
-        purchaseResult.expires_at
-      );
+        caseStudyCount,
+        checkoutSessionId: session.id,
+        productId,
+        stripeCustomerId: customerId,
+        clientIp: session.metadata?.client_ip ?? null,
+        purchaseTimestamp: new Date().toISOString(),
+      });
     } else {
       console.log(`ℹ️ Session ${sessionId} bereits verarbeitet (idempotent übersprungen)`);
     }
