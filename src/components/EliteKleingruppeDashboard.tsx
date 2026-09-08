@@ -33,6 +33,8 @@ interface ScheduledRelease {
   start_time: string | null;
   end_time: string | null;
   zoom_link: string | null;
+  zoom_meeting_id: string | null;
+  zoom_passcode: string | null;
   klausur_folder_id: string | null;
   solution_material_ids: string[];
   solutions_released: boolean;
@@ -2705,6 +2707,12 @@ export function EliteKleingruppeDashboard() {
                                   Zoom beitreten
                                 </a>
                               )}
+                              {release.is_released && (release.zoom_meeting_id || release.zoom_passcode) && (
+                                <div className="flex flex-col text-xs text-gray-500">
+                                  {release.zoom_meeting_id && <span>ID: {release.zoom_meeting_id}</span>}
+                                  {release.zoom_passcode && <span>Code: {release.zoom_passcode}</span>}
+                                </div>
+                              )}
                               <span className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${release.is_released ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
                                 {release.is_released ? 'Verfügbar' : 'Geplant'}
                               </span>
@@ -3024,6 +3032,12 @@ export function EliteKleingruppeDashboard() {
                                   <Video className="h-3.5 w-3.5 mr-1.5" />
                                   Zoom beitreten
                                 </a>
+                              )}
+                              {(release.zoom_meeting_id || release.zoom_passcode) && (
+                                <div className="flex flex-col text-xs text-gray-600">
+                                  {release.zoom_meeting_id && <span>Meeting ID: <span className="font-medium">{release.zoom_meeting_id}</span></span>}
+                                  {release.zoom_passcode && <span>Passcode: <span className="font-medium">{release.zoom_passcode}</span></span>}
+                                </div>
                               )}
                             </div>
                           )}
@@ -3749,6 +3763,16 @@ export function EliteKleingruppeDashboard() {
                         <Video className="h-4 w-4 mr-2" />
                         Zoom-Meeting beitreten
                       </a>
+                    )}
+                    {(selectedReleaseForDetail.zoom_meeting_id || selectedReleaseForDetail.zoom_passcode) && (
+                      <div className="flex flex-col text-sm text-blue-800">
+                        {selectedReleaseForDetail.zoom_meeting_id && (
+                          <span>Meeting ID: <span className="font-medium">{selectedReleaseForDetail.zoom_meeting_id}</span></span>
+                        )}
+                        {selectedReleaseForDetail.zoom_passcode && (
+                          <span>Passcode: <span className="font-medium">{selectedReleaseForDetail.zoom_passcode}</span></span>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

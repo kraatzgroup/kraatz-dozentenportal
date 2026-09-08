@@ -263,6 +263,8 @@ interface ScheduledRelease {
   start_time: string | null;
   end_time: string | null;
   zoom_link: string | null;
+  zoom_meeting_id: string | null;
+  zoom_passcode: string | null;
   klausur_folder_id: string | null;
   solution_material_ids: string[];
   solutions_released: boolean;
@@ -434,6 +436,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
   const [releaseEndTime, setReleaseEndTime] = useState<string>('11:30');
   const [releaseDuration, setReleaseDuration] = useState<number>(150);
   const [releaseZoomLink, setReleaseZoomLink] = useState<string>('');
+  const [releaseZoomMeetingId, setReleaseZoomMeetingId] = useState<string>('');
+  const [releaseZoomPasscode, setReleaseZoomPasscode] = useState<string>('');
   const [releaseDozentId, setReleaseDozentId] = useState<string>('');
   const [releaseKlausurFolderId, setReleaseKlausurFolderId] = useState<string>('');
   const [releaseSolutionMaterialIds, setReleaseSolutionMaterialIds] = useState<string[]>([]);
@@ -573,6 +577,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
     'Öffentliches Recht': { url: '', meetingId: '', passcode: '' }
   });
   const [showZoomLinksSettings, setShowZoomLinksSettings] = useState(false);
+  const [applyZoomLinksToExisting, setApplyZoomLinksToExisting] = useState(true);
 
   // Support state
   const [faqs, setFaqs] = useState<FAQ[]>([]);
@@ -674,6 +679,17 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         .order('weekday')
         .order('start_time');
       setCourseTimes(courseTimesData || []);
+
+      // Fetch unit durations for this group
+      const { data: durationData } = await supabase
+        .from('elite_kleingruppe_settings')
+        .select('setting_value')
+        .eq('setting_key', 'unit_durations')
+        .eq('elite_kleingruppe_id', groupId)
+        .maybeSingle();
+      if (durationData?.setting_value) {
+        setUnitDurations(durationData.setting_value as any);
+      }
 
       // Fetch zoom links for this group
       const { data: zoomLinksData } = await supabase
@@ -847,8 +863,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         .order('start_time');
       setCourseTimes(courseTimesData || []);
 
-      // Fetch unit duration settings (global - not group-specific)
-      const { data: settingsData } = await supabase.from('elite_kleingruppe_settings').select('setting_value').eq('setting_key', 'unit_durations').is('elite_kleingruppe_id', null).maybeSingle();
+      // Fetch unit duration settings (group-specific)
+      const { data: settingsData } = await supabase.from('elite_kleingruppe_settings').select('setting_value').eq('setting_key', 'unit_durations').eq('elite_kleingruppe_id', effectiveGroupId).maybeSingle();
       if (settingsData?.setting_value) {
         setUnitDurations(settingsData.setting_value as any);
       }
@@ -920,12 +936,17 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
 
   const handleSaveUnitDurations = async () => {
     try {
+      const groupId = selectedEliteGroupId || (eliteGroups.length === 1 ? eliteGroups[0].id : null);
+      if (!groupId) {
+        alert('Bitte wählen Sie zuerst eine Gruppe aus.');
+        return;
+      }
       const { error } = await supabase
         .from('elite_kleingruppe_settings')
         .upsert({
           setting_key: 'unit_durations',
           setting_value: unitDurations,
-          elite_kleingruppe_id: null,
+          elite_kleingruppe_id: groupId,
           updated_at: new Date().toISOString()
         }, { onConflict: 'setting_key,elite_kleingruppe_id' });
 
@@ -942,10 +963,21 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
     try {
       // Determine the group id for this setting (must be set for zoom_links)
       const groupId = selectedEliteGroupId || (eliteGroups.length === 1 ? eliteGroups[0].id : null);
+      console.log('[handleSaveZoomLinks] Start', {
+        groupId,
+        selectedEliteGroupId,
+        eliteGroupsCount: eliteGroups.length,
+        applyZoomLinksToExisting,
+        zoomLinks
+      });
       if (!groupId) {
+        console.warn('[handleSaveZoomLinks] No groupId resolved, aborting');
         alert('Bitte wählen Sie zuerst eine Gruppe aus, bevor Sie Zoom-Links speichern.');
         return;
       }
+
+      // 1) Persist the zoom_links settings (per group)
+      console.log('[handleSaveZoomLinks] Upserting zoom_links setting for group', groupId);
       const { error } = await supabase
         .from('elite_kleingruppe_settings')
         .upsert({
@@ -955,9 +987,55 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
           updated_at: new Date().toISOString()
         }, { onConflict: 'setting_key,elite_kleingruppe_id' });
 
-      if (error) throw error;
-      alert('Zoom-Links erfolgreich gespeichert!');
+      if (error) {
+        console.error('[handleSaveZoomLinks] Settings upsert error', error);
+        throw error;
+      }
+      console.log('[handleSaveZoomLinks] Settings upsert OK');
+
+      // 2) Optional: apply zoom links retroactively to all existing Einheiten of the selected group
+      let retroMsg = '';
+      if (applyZoomLinksToExisting) {
+        const legalAreas: { area: string; url: string; meetingId: string; passcode: string }[] = [];
+        if (zoomLinks.Zivilrecht?.url) legalAreas.push({ area: 'Zivilrecht', url: zoomLinks.Zivilrecht.url, meetingId: zoomLinks.Zivilrecht.meetingId || '', passcode: zoomLinks.Zivilrecht.passcode || '' });
+        if (zoomLinks.Strafrecht?.url) legalAreas.push({ area: 'Strafrecht', url: zoomLinks.Strafrecht.url, meetingId: zoomLinks.Strafrecht.meetingId || '', passcode: zoomLinks.Strafrecht.passcode || '' });
+        if (zoomLinks['Öffentliches Recht']?.url) legalAreas.push({ area: 'Öffentliches Recht', url: zoomLinks['Öffentliches Recht'].url, meetingId: zoomLinks['Öffentliches Recht'].meetingId || '', passcode: zoomLinks['Öffentliches Recht'].passcode || '' });
+
+        console.log('[handleSaveZoomLinks] Retroactive update enabled. Legal areas to update:', legalAreas.map(l => ({ area: l.area, hasUrl: !!l.url, meetingId: l.meetingId, passcode: l.passcode })));
+
+        let totalUpdated = 0;
+        for (const { area, url, meetingId, passcode } of legalAreas) {
+          console.log(`[handleSaveZoomLinks] Updating releases for ${area} in group ${groupId}`, { url, meetingId, passcode });
+          const { data: updateData, error: updateError, count } = await supabase
+            .from('elite_kleingruppe_releases')
+            .update({
+              zoom_link: url,
+              zoom_meeting_id: meetingId || null,
+              zoom_passcode: passcode || null,
+              updated_at: new Date().toISOString()
+            })
+            .eq('elite_kleingruppe_id', groupId)
+            .eq('legal_area', area)
+            .select('id, legal_area, zoom_link, zoom_meeting_id, zoom_passcode');
+          if (updateError) {
+            console.error(`[handleSaveZoomLinks] Update error for ${area}:`, updateError);
+          } else {
+            const affected = updateData?.length ?? count ?? 0;
+            console.log(`[handleSaveZoomLinks] ${area}: updated ${affected} releases`, updateData);
+            totalUpdated++;
+          }
+        }
+        retroMsg = ` und ${totalUpdated} Rechtsgebiet(e) bestehender Einheiten aktualisiert`;
+        console.log('[handleSaveZoomLinks] Retroactive update done. Total legal areas updated:', totalUpdated);
+      } else {
+        console.log('[handleSaveZoomLinks] Retroactive update DISABLED via checkbox');
+      }
+
+      alert(`Zoom-Links erfolgreich gespeichert${retroMsg}!`);
       setShowZoomLinksSettings(false);
+      // Reload releases so the UI reflects the updated zoom_link / meeting_id / passcode
+      console.log('[handleSaveZoomLinks] Triggering fetchData() to refresh releases in UI');
+      await fetchData();
     } catch (error) {
       console.error('Error saving zoom links:', error);
       alert('Fehler beim Speichern der Zoom-Links');
@@ -1235,6 +1313,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       const legalArea = unitConfig.legalArea as keyof typeof zoomLinks;
       if (zoomLinks[legalArea]?.url) {
         setReleaseZoomLink(zoomLinks[legalArea].url);
+        setReleaseZoomMeetingId(zoomLinks[legalArea].meetingId || '');
+        setReleaseZoomPasscode(zoomLinks[legalArea].passcode || '');
       }
     }
   };
@@ -1465,6 +1545,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         start_time: (releaseEventType === 'einheit' || !isAllDay) ? (releaseStartTime || null) : null,
         end_time: (releaseEventType === 'einheit' || !isAllDay) ? (releaseEndTime || null) : null,
         zoom_link: releaseZoomLink || null,
+        zoom_meeting_id: releaseZoomMeetingId || null,
+        zoom_passcode: releaseZoomPasscode || null,
         klausur_folder_id: releaseKlausurFolderId || null,
         solution_material_ids: releaseSolutionMaterialIds,
         solutions_released: false,
@@ -1592,6 +1674,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
     const duration = calculateDuration(startTime, endTime);
     setReleaseDuration(duration);
     setReleaseZoomLink(release.zoom_link || '');
+    setReleaseZoomMeetingId(release.zoom_meeting_id || '');
+    setReleaseZoomPasscode(release.zoom_passcode || '');
     setReleaseKlausurFolderId(release.klausur_folder_id || '');
     setReleaseSolutionMaterialIds(release.solution_material_ids || []);
     setSelectedMaterials(release.material_ids || []);
@@ -1750,6 +1834,8 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       start_time: releaseStartTime || null,
       end_time: releaseEndTime || null,
       zoom_link: releaseZoomLink || null,
+      zoom_meeting_id: releaseZoomMeetingId || null,
+      zoom_passcode: releaseZoomPasscode || null,
       dozent_id: editingRelease.dozent_id || null,
       klausur_folder_id: releaseKlausurFolderId || null,
       solution_material_ids: releaseSolutionMaterialIds,
@@ -3984,6 +4070,28 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                   {releaseZoomLink && releaseEventType === 'einheit' && (
                     <p className="text-xs text-green-600 mt-1">✓ Zoom-Link wird automatisch vom zugewiesenen Dozenten übernommen</p>
                   )}
+                  <div className="grid grid-cols-2 gap-3 mt-2">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Meeting ID</label>
+                      <input
+                        type="text"
+                        value={releaseZoomMeetingId}
+                        onChange={(e) => setReleaseZoomMeetingId(e.target.value)}
+                        placeholder="z.B. 961 359 9764"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Passcode</label>
+                      <input
+                        type="text"
+                        value={releaseZoomPasscode}
+                        onChange={(e) => setReleaseZoomPasscode(e.target.value)}
+                        placeholder="z.B. b067p4"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {/* Alle folgenden Felder nur bei Einheiten */}
@@ -5290,7 +5398,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-medium text-gray-900">Einheitenlängen</h3>
-                <p className="text-sm text-gray-500 mt-1">Standard-Dauern für Unterrichts- und Wiederholungseinheiten</p>
+                <p className="text-sm text-gray-500 mt-1">Standard-Dauern für Unterrichts- und Wiederholungseinheiten (pro Elite-Kleingruppe)</p>
               </div>
               {isAdmin && (
                 <button
@@ -5767,7 +5875,20 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     </div>
                   </div>
 
-                  <div className="flex justify-end gap-3 pt-4 border-t">
+                  <div className="flex items-center gap-2 pt-4 border-t">
+                    <input
+                      type="checkbox"
+                      id="applyZoomRetro"
+                      checked={applyZoomLinksToExisting}
+                      onChange={(e) => setApplyZoomLinksToExisting(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20"
+                    />
+                    <label htmlFor="applyZoomRetro" className="text-sm text-gray-700">
+                      Auch auf alle bestehenden Einheiten dieser Gruppe anwenden
+                    </label>
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-4">
                     <button
                       onClick={() => setShowZoomLinksSettings(false)}
                       className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
@@ -6162,6 +6283,30 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                     disabled={isReadOnly}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-100 disabled:cursor-not-allowed" 
                   />
+                  <div className="grid grid-cols-2 gap-3 mt-2">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Meeting ID</label>
+                      <input
+                        type="text"
+                        value={releaseZoomMeetingId}
+                        onChange={(e) => setReleaseZoomMeetingId(e.target.value)}
+                        placeholder="z.B. 961 359 9764"
+                        disabled={isReadOnly}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Passcode</label>
+                      <input
+                        type="text"
+                        value={releaseZoomPasscode}
+                        onChange={(e) => setReleaseZoomPasscode(e.target.value)}
+                        placeholder="z.B. b067p4"
+                        disabled={isReadOnly}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {/* Klausur-Ordner Auswahl */}
