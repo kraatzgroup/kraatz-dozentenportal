@@ -21,16 +21,18 @@ const SUPPORTED_EVENTS = new Set([
   'checkout.session.async_payment_succeeded',
 ]);
 
-// Paketschlüssel, für die eine Admin-Kaufbenachrichtigung versendet wird.
-// Nur die Video-Klausurenkorrektur-Pakete (nicht z.B. Kraatz Club).
-const ADMIN_NOTIFY_PACKAGE_KEYS = new Set([
-  '5er',
-  '10er',
-  '15er',
-  '20er',
-  '25er',
-  '30er',
-  'neukunden',
+// Stripe-Produkt-IDs der Video-Klausurenkorrektur-Pakete.
+// Nur für diese Produkte werden Admin-Benachrichtigung und Meta CAPI gesendet
+// (nicht für Kraatz Club oder andere Produkte).
+// Quelle: Stripe API (line_items.data.price.product.id) bzw. session.metadata.product_id
+const VB_PRODUCT_IDS = new Set([
+  'prod_V4o2RKDiWgFYra', // 5er Paket
+  'prod_V4o2IyQlqh60Cc', // 10er Paket
+  'prod_V4o386DlBHiuWK', // 15er Paket
+  'prod_V4o4Y6fbCtDvTN', // 20er Paket
+  'prod_V4o4DNV3CpvGM4', // 25er Paket
+  'prod_V4o4xlulDVJ6mu', // 30er Paket
+  'prod_V4nudYBPQteL5P', // Neukunden-Angebot
 ]);
 
 interface StripeFetchOptions {
@@ -647,8 +649,8 @@ Deno.serve(async (req) => {
         isNewUser
       );
 
-      // Admin über den Kauf benachrichtigen – nur für Video-Klausurenkorrektur-Pakete
-      if (packageKey && ADMIN_NOTIFY_PACKAGE_KEYS.has(packageKey)) {
+      // Admin über den Kauf benachrichtigen – nur für Video-Klausurenkorrektur-Produkte
+      if (productId && VB_PRODUCT_IDS.has(productId)) {
         await sendAdminPurchaseNotify(
           email,
           fullName,
@@ -662,22 +664,27 @@ Deno.serve(async (req) => {
           purchaseResult.expires_at
         );
       } else {
-        console.log(`ℹ️ Keine Admin-Benachrichtigung für Paket ${packageKey ?? '(unbekannt)'} – nicht in der Allowlist`);
+        console.log(`ℹ️ Keine Admin-Benachrichtigung für Produkt ${productId ?? '(unbekannt)'} – nicht in der Allowlist`);
       }
 
       // Meta Conversions API: Purchase-Event server-side an Meta senden
-      await sendMetaPurchaseEvent({
-        email,
-        fullName,
-        packageName: packageName ?? 'Video-Klausurenkorrektur',
-        totalCents,
-        caseStudyCount,
-        checkoutSessionId: session.id,
-        productId,
-        stripeCustomerId: customerId,
-        clientIp: session.metadata?.client_ip ?? null,
-        purchaseTimestamp: new Date().toISOString(),
-      });
+      // (nur für Video-Klausurenkorrektur-Produkte)
+      if (productId && VB_PRODUCT_IDS.has(productId)) {
+        await sendMetaPurchaseEvent({
+          email,
+          fullName,
+          packageName: packageName ?? 'Video-Klausurenkorrektur',
+          totalCents,
+          caseStudyCount,
+          checkoutSessionId: session.id,
+          productId,
+          stripeCustomerId: customerId,
+          clientIp: session.metadata?.client_ip ?? null,
+          purchaseTimestamp: new Date().toISOString(),
+        });
+      } else {
+        console.log(`ℹ️ Kein Meta CAPI-Event für Produkt ${productId ?? '(unbekannt)'} – nicht in der Allowlist`);
+      }
     } else {
       console.log(`ℹ️ Session ${sessionId} bereits verarbeitet (idempotent übersprungen)`);
     }
