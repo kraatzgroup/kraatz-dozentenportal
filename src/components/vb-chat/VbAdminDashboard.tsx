@@ -76,6 +76,7 @@ interface VbCaseRow {
   scoring_schema_url: string | null;
   created_at: string;
   updated_at: string;
+  submitted_at: string | null;
   student?: { first_name: string | null; last_name: string | null; email: string | null } | null;
   dozent?: { full_name: string | null; email: string | null } | null;
   grade?: number | null;
@@ -988,6 +989,14 @@ export const VbAdminDashboard: React.FC = () => {
                           </div>
                           <p className="text-xs text-gray-700 truncate">TN: {displayStudentName(c)}</p>
                           <p className="text-xs text-gray-500 truncate">Schwerpunkt: {c.sub_area}{c.focus_area ? ` · ${c.focus_area}` : ''}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {c.status === 'requested'
+                              ? `Angefordert: ${new Date(c.created_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })} Uhr`
+                              : c.submitted_at
+                                ? `Eingereicht: ${new Date(c.submitted_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })} Uhr`
+                                : `Geändert: ${new Date(c.updated_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })} Uhr`
+                            }
+                          </p>
                           {c.admin_focus_tags && c.admin_focus_tags.length > 0 && (
                             <div className="mt-1 flex flex-wrap items-center gap-1">
                               {c.admin_focus_tags.map(tag => (
