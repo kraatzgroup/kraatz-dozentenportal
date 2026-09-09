@@ -47,6 +47,7 @@ interface CaseStudyRequest {
   pdf_downloaded_at?: string;
   case_study_downloaded_at?: string;
   correction_viewed_at?: string;
+  submitted_at?: string;
   created_at: string;
   updated_at: string;
   assigned_dozent_id?: string;
@@ -1009,7 +1010,8 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
         .from('vb_case_study_requests')
         .update({ 
           submission_url: urlData.publicUrl,
-          status: 'submitted'
+          status: 'submitted',
+          submitted_at: new Date().toISOString()
         })
         .eq('id', caseStudyId)
 
@@ -1628,7 +1630,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                     {caseStudy.submission_url && (
                       <div className="mt-3 pt-3 border-t border-green-200">
                         <p className="text-xs text-gray-600 mb-2">
-                          Eingereicht: {formatDate(caseStudy.created_at)}
+                          Eingereicht: {new Date(caseStudy.submitted_at || caseStudy.updated_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })} Uhr
                         </p>
                         <div className="flex flex-col gap-2">
                           <div className="flex items-center gap-2">

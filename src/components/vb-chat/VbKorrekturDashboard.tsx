@@ -116,6 +116,7 @@ interface VbCase {
   case_study_material_url: string | null
   created_at: string
   updated_at: string
+  submitted_at: string | null
   student?: VbStudent | null
   grade?: number | null
   grade_text?: string | null
@@ -1783,6 +1784,11 @@ export const VbKorrekturDashboard: React.FC = () => {
                         </div>
                         <p className="text-sm text-gray-700">{studentName(c)} · {c.sub_area}</p>
                         {c.focus_area && <p className="text-xs text-gray-500">Schwerpunkt: {c.focus_area}</p>}
+                        {c.submitted_at && (
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Eingereicht: {new Date(c.submitted_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })} Uhr
+                          </p>
+                        )}
                         {c.status === 'materials_ready' && c.case_study_material_url && (
                           <p className="text-xs text-gray-500 mt-1">
                             Material: {c.case_study_material_url.split('/').pop()}
