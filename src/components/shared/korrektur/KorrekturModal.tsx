@@ -60,15 +60,6 @@ const getFileNameFromUrl = (url: string): string => {
   }
 }
 
-// Helper to extract the file extension from a URL (without the leading dot).
-// Falls back to 'xlsx' for backward compatibility when no extension is found.
-const getExtFromUrl = (url: string | null | undefined): string => {
-  if (!url) return 'xlsx'
-  const fileName = getFileNameFromUrl(url)
-  const ext = fileName.split('.').pop()
-  return ext && ext !== fileName ? ext.toLowerCase() : 'xlsx'
-}
-
 // Returns Tailwind color classes for the file display box based on file type.
 // PDF → red, Word → blue, Excel/CSV → green, default → primary.
 const getFileTypeColors = (fileName: string): { bg: string; border: string; icon: string } => {
@@ -602,7 +593,7 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
                     file={excelFile}
                     existingUrl={item.correctedExcelUrl}
                     accept=".xlsx,.xls,.csv,.pdf,.doc,.docx"
-                    downloadName={`${item.title}_Bewertung.${getExtFromUrl(item.correctedExcelUrl)}`}
+                    downloadName={item.correctedExcelUrl ? getFileNameFromUrl(item.correctedExcelUrl) : `${item.title}_Bewertung`}
                     onSelect={setExcelFile}
                     onDownload={onDownloadFile}
                     onDelete={() => onClearFile?.('excel')}
@@ -620,7 +611,7 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
                     file={solutionFile}
                     existingUrl={item.solutionPdfUrl}
                     accept=".pdf,.xlsx,.xls"
-                    downloadName={`${item.title}_Loesungsskizze.${getExtFromUrl(item.solutionPdfUrl)}`}
+                    downloadName={item.solutionPdfUrl ? getFileNameFromUrl(item.solutionPdfUrl) : `${item.title}_Loesungsskizze`}
                     onSelect={setSolutionFile}
                     onDownload={onDownloadFile}
                     useMaterialSelector={true}
