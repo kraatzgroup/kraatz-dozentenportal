@@ -2012,7 +2012,8 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                       onClick={(e) => {
                                         e.stopPropagation()
                                         if (caseStudy.scoring_sheet_url) {
-                                          downloadFileAsPDF(caseStudy.scoring_sheet_url, `Korrekturbogen_${caseStudy.case_study_number}.xlsx`, caseStudy.id)
+                                          const fileName = caseStudy.scoring_sheet_url.split('/').pop()?.split('?')[0] || `Korrekturbogen_${caseStudy.case_study_number}`
+                                          downloadFileAsPDF(caseStudy.scoring_sheet_url, decodeURIComponent(fileName), caseStudy.id)
                                         }
                                       }}
                                       className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2"
@@ -2369,7 +2370,8 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                       onClick={(e) => {
                                         e.stopPropagation()
                                         if (caseStudy.scoring_sheet_url) {
-                                          downloadFileAsPDF(caseStudy.scoring_sheet_url, `Korrekturbogen_${caseStudy.case_study_number}.xlsx`, caseStudy.id)
+                                          const fileName = caseStudy.scoring_sheet_url.split('/').pop()?.split('?')[0] || `Korrekturbogen_${caseStudy.case_study_number}`
+                                          downloadFileAsPDF(caseStudy.scoring_sheet_url, decodeURIComponent(fileName), caseStudy.id)
                                         }
                                       }}
                                       className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2"
