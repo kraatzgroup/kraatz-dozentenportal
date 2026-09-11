@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { exceedsDocumentUploadLimit, MAX_DOCUMENT_UPLOAD_LABEL } from '../../lib/uploadLimits'
 import { useAuthStore } from '../../store/authStore'
@@ -1648,7 +1648,6 @@ export const VbKorrekturDashboard: React.FC = () => {
   }
 
   const toItem = (c: VbCase): KorrekturItem => {
-    console.log('🔄 toItem called with:', { id: c.id, grade: c.grade, grade_text: c.grade_text, video_correction_url: c.video_correction_url, correction_duration_hours: c.correction_duration_hours })
     return {
       id: c.id,
       title: c.sub_area,
@@ -1664,6 +1663,18 @@ export const VbKorrekturDashboard: React.FC = () => {
       correctionDurationHours: c.correction_duration_hours?.toString() || '',
     }
   }
+
+  // Memoize the KorrekturItem so it only changes when `selected` or
+  // `schemaFilesMap` actually changes — NOT on every parent re-render.
+  // Without this, `toItem(selected)` creates a new object every render,
+  // which can cause the KorrekturModal's useEffect (which resets file
+  // state) to fire spuriously and lose the user's in-progress file
+  // selections (e.g. Bewertungsbogen upload disappearing after selection).
+  const korrekturItem = useMemo(
+    () => selected ? toItem(selected) : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selected, schemaFilesMap]
+  )
 
   const filtered = cases // Tab filtering is now done in fetchCases
 
@@ -2038,7 +2049,7 @@ export const VbKorrekturDashboard: React.FC = () => {
 
       {selected && (
         <KorrekturModal
-          item={toItem(selected)}
+          item={korrekturItem!}
           config={VB_FIELD_CONFIG}
           isSaving={isSaving}
           onClose={() => setSelected(null)}

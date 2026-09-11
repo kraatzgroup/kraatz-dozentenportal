@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { X, FileText, Upload, Download, Save, Edit3, Plus } from 'lucide-react'
+import { X, FileText, Upload, Download, Save, Edit3, Plus, Folder } from 'lucide-react'
 import type { KorrekturFieldConfig, KorrekturItem, KorrekturSavePayload } from './types'
 import { exceedsDocumentUploadLimit, MAX_DOCUMENT_UPLOAD_LABEL } from '../../../lib/uploadLimits'
 
@@ -17,6 +17,32 @@ interface FileFieldProps {
   selectedMaterialUrl?: string | null
   selectedMaterialFileName?: string | null
   onDelete?: () => void
+  /** Small colored file-type badges rendered after the label (e.g. ['PDF','XLS','DOC']). */
+  fileTypeBadges?: string[]
+}
+
+// Small colored badges for file types, rendered inline after a field label.
+const FileTypeBadges: React.FC<{ types: string[] }> = ({ types }) => {
+  const colors: Record<string, string> = {
+    PDF: 'bg-red-100 text-red-700',
+    XLS: 'bg-green-100 text-green-700',
+    XLSX: 'bg-green-100 text-green-700',
+    DOC: 'bg-blue-100 text-blue-700',
+    DOCX: 'bg-blue-100 text-blue-700',
+    CSV: 'bg-orange-100 text-orange-700',
+  }
+  return (
+    <span className="inline-flex items-center gap-1 ml-1.5 align-middle">
+      {types.map(t => (
+        <span
+          key={t}
+          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${colors[t] || 'bg-gray-100 text-gray-700'}`}
+        >
+          {t}
+        </span>
+      ))}
+    </span>
+  )
 }
 
 // Helper to extract filename from URL
@@ -43,6 +69,16 @@ const getExtFromUrl = (url: string | null | undefined): string => {
   return ext && ext !== fileName ? ext.toLowerCase() : 'xlsx'
 }
 
+// Returns Tailwind color classes for the file display box based on file type.
+// PDF → red, Word → blue, Excel/CSV → green, default → primary.
+const getFileTypeColors = (fileName: string): { bg: string; border: string; icon: string } => {
+  const ext = (fileName.split('.').pop() || '').toLowerCase()
+  if (ext === 'pdf') return { bg: 'bg-red-50', border: 'border-red-200', icon: 'text-red-600' }
+  if (ext === 'doc' || ext === 'docx') return { bg: 'bg-blue-50', border: 'border-blue-200', icon: 'text-blue-600' }
+  if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') return { bg: 'bg-green-50', border: 'border-green-200', icon: 'text-green-600' }
+  return { bg: 'bg-primary/5', border: 'border-primary/20', icon: 'text-primary' }
+}
+
 // Reusable upload/preview block: shows selected file, or an existing uploaded
 // file with download + replace, or an empty picker.
 const FileField: React.FC<FileFieldProps> = ({
@@ -59,6 +95,7 @@ const FileField: React.FC<FileFieldProps> = ({
   selectedMaterialUrl,
   selectedMaterialFileName,
   onDelete,
+  fileTypeBadges,
 }) => {
   const dashed =
     accentColor === 'green'
@@ -68,16 +105,14 @@ const FileField: React.FC<FileFieldProps> = ({
 
   const displayName = selectedMaterialFileName || (selectedMaterialUrl ? getFileNameFromUrl(selectedMaterialUrl) : null)
 
-  const fileBgColor = accentColor === 'green' ? 'bg-green-50' : 'bg-primary/5'
-  const fileBorderColor = accentColor === 'green' ? 'border-green-200' : 'border-primary/20'
-  const fileIconColor = accentColor === 'green' ? 'text-green-600' : 'text-primary'
-
   return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+    <div className="flex flex-col h-full">
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        {label}
+      </label>
       {file ? (
-        <div className={`flex items-center p-3 ${fileBgColor} border ${fileBorderColor} rounded-lg`}>
-          <FileText className={`h-5 w-5 ${fileIconColor} flex-shrink-0`} />
+        <div className={`flex items-center p-3 ${getFileTypeColors(file.name).bg} border ${getFileTypeColors(file.name).border} rounded-lg`}>
+          <FileText className={`h-5 w-5 ${getFileTypeColors(file.name).icon} flex-shrink-0`} />
           <span className="ml-2 text-sm text-gray-700 truncate flex-1" title={file.name}>
             {file.name}
           </span>
@@ -119,9 +154,9 @@ const FileField: React.FC<FileFieldProps> = ({
           </button>
         </div>
       ) : existingUrl ? (
-        <div className="space-y-2">
-          <div className="flex items-center p-3 bg-green-50 border border-green-200 rounded-lg">
-            <FileText className="h-5 w-5 text-green-600 flex-shrink-0" />
+        <div className="space-y-2 flex-1 flex flex-col">
+          <div className={`flex items-center p-3 ${getFileTypeColors(getFileNameFromUrl(existingUrl)).bg} border ${getFileTypeColors(getFileNameFromUrl(existingUrl)).border} rounded-lg`}>
+            <FileText className={`h-5 w-5 ${getFileTypeColors(getFileNameFromUrl(existingUrl)).icon} flex-shrink-0`} />
             <span className="ml-2 text-sm text-gray-700 truncate flex-1" title={getFileNameFromUrl(existingUrl)}>
               {getFileNameFromUrl(existingUrl)}
             </span>
@@ -148,16 +183,22 @@ const FileField: React.FC<FileFieldProps> = ({
           {useMaterialSelector ? (
             <button
               onClick={onOpenMaterialSelector}
-              className={`flex items-center justify-center px-3 py-2 border-2 border-dashed rounded-lg transition-colors ${dashed}`}
+              className={`flex flex-col items-center justify-center px-3 py-3 border-2 border-dashed rounded-lg transition-colors flex-1 ${dashed}`}
             >
-              <Upload className={`h-4 w-4 mr-2 ${iconColor}`} />
-              <span className="text-sm text-gray-500">Aus Materialien auswählen</span>
+              <div className="flex items-center">
+                <Folder className="h-4 w-4 mr-2 text-gray-400" />
+                <span className="text-sm text-gray-500">Aus Materialien auswählen</span>
+              </div>
+              {fileTypeBadges && <div className="mt-1.5"><FileTypeBadges types={fileTypeBadges} /></div>}
             </button>
           ) : (
-            <label className="cursor-pointer block">
-              <div className={`flex items-center justify-center px-3 py-2 border-2 border-dashed rounded-lg transition-colors ${dashed}`}>
-                <Upload className={`h-4 w-4 mr-2 ${iconColor}`} />
-                <span className="text-sm text-gray-500">Neue Datei hochladen</span>
+            <label className="cursor-pointer block flex-1">
+              <div className={`flex flex-col items-center justify-center px-3 py-3 border-2 border-dashed rounded-lg transition-colors h-full ${dashed}`}>
+                <div className="flex items-center">
+                  <Upload className={`h-4 w-4 mr-2 ${iconColor}`} />
+                  <span className="text-sm text-gray-500">Neue Datei hochladen</span>
+                </div>
+                {fileTypeBadges && <div className="mt-1.5"><FileTypeBadges types={fileTypeBadges} /></div>}
               </div>
               <input
                 type="file"
@@ -181,16 +222,22 @@ const FileField: React.FC<FileFieldProps> = ({
         useMaterialSelector ? (
           <button
             onClick={onOpenMaterialSelector}
-            className={`flex items-center justify-center px-3 py-3 border-2 border-dashed rounded-lg transition-colors ${dashed}`}
+            className={`flex flex-col items-center justify-center px-3 py-3 border-2 border-dashed rounded-lg transition-colors flex-1 ${dashed}`}
           >
-            <Upload className={`h-4 w-4 mr-2 ${iconColor}`} />
-            <span className="text-sm text-gray-500">Aus Materialien auswählen</span>
+            <div className="flex items-center">
+              <Folder className="h-4 w-4 mr-2 text-gray-400" />
+              <span className="text-sm text-gray-500">Aus Materialien auswählen</span>
+            </div>
+            {fileTypeBadges && <div className="mt-1.5"><FileTypeBadges types={fileTypeBadges} /></div>}
           </button>
         ) : (
-          <label className="cursor-pointer block">
-            <div className={`flex items-center justify-center px-3 py-3 border-2 border-dashed rounded-lg transition-colors ${dashed}`}>
-              <Upload className={`h-4 w-4 mr-2 ${iconColor}`} />
-              <span className="text-sm text-gray-500">Datei auswählen</span>
+          <label className="cursor-pointer block flex-1">
+            <div className={`flex flex-col items-center justify-center px-3 py-3 border-2 border-dashed rounded-lg transition-colors h-full ${dashed}`}>
+              <div className="flex items-center">
+                <Upload className={`h-4 w-4 mr-2 ${iconColor}`} />
+                <span className="text-sm text-gray-500">Datei auswählen</span>
+              </div>
+              {fileTypeBadges && <div className="mt-1.5"><FileTypeBadges types={fileTypeBadges} /></div>}
             </div>
             <input
               type="file"
@@ -231,6 +278,8 @@ interface MultiFileFieldProps {
   /** Materials selected from the teaching material selector (displayed as blue items). */
   selectedMaterialUrls?: { url: string; fileName: string }[]
   onRemoveSelectedMaterial?: (url: string) => void
+  /** Small colored file-type badges rendered after the label (e.g. ['PDF','XLS']). */
+  fileTypeBadges?: string[]
 }
 
 const MultiFileField: React.FC<MultiFileFieldProps> = ({
@@ -246,17 +295,21 @@ const MultiFileField: React.FC<MultiFileFieldProps> = ({
   onOpenMaterialSelector,
   selectedMaterialUrls = [],
   onRemoveSelectedMaterial,
+  fileTypeBadges,
 }) => {
   return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-      <div className="space-y-2">
+    <div className="flex flex-col h-full">
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        {label}
+      </label>
+      <div className="space-y-2 flex-1 flex flex-col">
         {/* Existing uploaded files */}
         {existingUrls.map((url) => {
           const fileName = getFileNameFromUrl(url)
+          const colors = getFileTypeColors(fileName)
           return (
-            <div key={url} className="flex items-center p-3 bg-green-50 border border-green-200 rounded-lg">
-              <FileText className="h-5 w-5 text-green-600 flex-shrink-0" />
+            <div key={url} className={`flex items-center p-3 ${colors.bg} border ${colors.border} rounded-lg`}>
+              <FileText className={`h-5 w-5 ${colors.icon} flex-shrink-0`} />
               <span className="ml-2 text-sm text-gray-700 truncate flex-1" title={fileName}>{fileName}</span>
               {onDownload && (
                 <button
@@ -278,9 +331,11 @@ const MultiFileField: React.FC<MultiFileFieldProps> = ({
           )
         })}
         {/* Materials selected from the teaching material selector */}
-        {selectedMaterialUrls.map((m) => (
-          <div key={m.url} className="flex items-center p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <FileText className="h-5 w-5 text-blue-600 flex-shrink-0" />
+        {selectedMaterialUrls.map((m) => {
+          const colors = getFileTypeColors(m.fileName)
+          return (
+          <div key={m.url} className={`flex items-center p-3 ${colors.bg} border ${colors.border} rounded-lg`}>
+            <FileText className={`h-5 w-5 ${colors.icon} flex-shrink-0`} />
             <span className="ml-2 text-sm text-gray-700 truncate flex-1" title={m.fileName}>{m.fileName}</span>
             {onDownload && (
               <button
@@ -299,11 +354,14 @@ const MultiFileField: React.FC<MultiFileFieldProps> = ({
               <X className="h-4 w-4" />
             </button>
           </div>
-        ))}
+          )
+        })}
         {/* New files selected for upload */}
-        {files.map((file, index) => (
-          <div key={index} className="flex items-center p-3 bg-primary/5 border border-primary/20 rounded-lg">
-            <FileText className="h-5 w-5 text-primary flex-shrink-0" />
+        {files.map((file, index) => {
+          const colors = getFileTypeColors(file.name)
+          return (
+          <div key={index} className={`flex items-center p-3 ${colors.bg} border ${colors.border} rounded-lg`}>
+            <FileText className={`h-5 w-5 ${colors.icon} flex-shrink-0`} />
             <span className="ml-2 text-sm text-gray-700 truncate flex-1" title={file.name}>{file.name}</span>
             <button
               onClick={() => onRemoveFile(index)}
@@ -313,21 +371,28 @@ const MultiFileField: React.FC<MultiFileFieldProps> = ({
               <X className="h-4 w-4" />
             </button>
           </div>
-        ))}
+          )
+        })}
         {/* Add button: material selector or native file picker */}
         {useMaterialSelector && onOpenMaterialSelector ? (
           <button
             onClick={onOpenMaterialSelector}
-            className="flex items-center justify-center px-3 py-2 border-2 border-dashed border-gray-300 hover:border-primary/50 rounded-lg transition-colors w-full"
+            className="flex flex-col items-center justify-center px-3 py-3 border-2 border-dashed border-gray-300 hover:border-primary/50 rounded-lg transition-colors w-full flex-1"
           >
-            <Plus className="h-4 w-4 mr-2 text-gray-400" />
-            <span className="text-sm text-gray-500">Zusatzmaterial aus Materialien hinzufügen</span>
+            <div className="flex items-center">
+              <Folder className="h-4 w-4 mr-2 text-gray-400" />
+              <span className="text-sm text-gray-500">Aus Materialien auswählen</span>
+            </div>
+            {fileTypeBadges && <div className="mt-1.5"><FileTypeBadges types={fileTypeBadges} /></div>}
           </button>
         ) : (
-          <label className="cursor-pointer block">
-            <div className="flex items-center justify-center px-3 py-2 border-2 border-dashed border-gray-300 hover:border-primary/50 rounded-lg transition-colors">
-              <Plus className="h-4 w-4 mr-2 text-gray-400" />
-              <span className="text-sm text-gray-500">Zusatzmaterial hinzufügen</span>
+          <label className="cursor-pointer block flex-1">
+            <div className="flex flex-col items-center justify-center px-3 py-3 border-2 border-dashed border-gray-300 hover:border-primary/50 rounded-lg transition-colors h-full">
+              <div className="flex items-center">
+                <Plus className="h-4 w-4 mr-2 text-gray-400" />
+                <span className="text-sm text-gray-500">Zusatzmaterial hinzufügen</span>
+              </div>
+              {fileTypeBadges && <div className="mt-1.5"><FileTypeBadges types={fileTypeBadges} /></div>}
             </div>
             <input
               type="file"
@@ -520,7 +585,7 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 {config.showPdf && (
                   <FileField
-                    label={config.pdfLabel || 'Korrigierte Klausur (PDF)'}
+                    label={config.pdfLabel || 'Korrigierte Klausur'}
                     file={pdfFile}
                     existingUrl={item.correctedFileUrl}
                     accept=".pdf"
@@ -528,11 +593,12 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
                     onSelect={setPdfFile}
                     onDownload={onDownloadFile}
                     onDelete={() => onClearFile?.('pdf')}
+                    fileTypeBadges={['PDF']}
                   />
                 )}
                 {config.showExcel && (
                   <FileField
-                    label={config.excelLabel || 'Bewertungstabelle (Excel/PDF/Word)'}
+                    label={config.excelLabel || 'Bewertungstabelle'}
                     file={excelFile}
                     existingUrl={item.correctedExcelUrl}
                     accept=".xlsx,.xls,.csv,.pdf,.doc,.docx"
@@ -540,7 +606,7 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
                     onSelect={setExcelFile}
                     onDownload={onDownloadFile}
                     onDelete={() => onClearFile?.('excel')}
-                    accentColor="green"
+                    fileTypeBadges={['PDF', 'XLS', 'DOC']}
                   />
                 )}
               </div>
@@ -550,11 +616,11 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 {config.showSolution && (
                   <FileField
-                    label={config.solutionLabel || 'Lösungsskizze (PDF)'}
+                    label={config.solutionLabel || 'Lösungsskizze'}
                     file={solutionFile}
                     existingUrl={item.solutionPdfUrl}
-                    accept=".pdf"
-                    downloadName={`${item.title}_Loesungsskizze.pdf`}
+                    accept=".pdf,.xlsx,.xls"
+                    downloadName={`${item.title}_Loesungsskizze.${getExtFromUrl(item.solutionPdfUrl)}`}
                     onSelect={setSolutionFile}
                     onDownload={onDownloadFile}
                     useMaterialSelector={true}
@@ -562,6 +628,7 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
                     selectedMaterialUrl={selectedMaterialUrls?.solution}
                     selectedMaterialFileName={selectedMaterialFileNames?.solution}
                     onDelete={() => onClearFile?.('solution')}
+                    fileTypeBadges={['PDF', 'XLS']}
                   />
                 )}
                 {config.showSchema && (
@@ -572,7 +639,7 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
                       ? item.scoringSchemaUrls
                       : item.scoringSchemaUrl ? [item.scoringSchemaUrl] : []
                     ).filter(u => !deletedSchemaUrls.includes(u))}
-                    accept=".pdf"
+                    accept=".pdf,.xlsx,.xls"
                     onAddFiles={(newFiles) => setSchemaFiles(prev => [...prev, ...newFiles])}
                     onRemoveFile={(index) => setSchemaFiles(prev => prev.filter((_, i) => i !== index))}
                     onRemoveExisting={(url) => setDeletedSchemaUrls(prev => [...prev, url])}
@@ -581,6 +648,7 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
                     onOpenMaterialSelector={() => onOpenMaterialSelector?.('schema')}
                     selectedMaterialUrls={selectedSchemaMaterialUrls}
                     onRemoveSelectedMaterial={onRemoveSchemaMaterial}
+                    fileTypeBadges={['PDF', 'XLS']}
                   />
                 )}
               </div>
