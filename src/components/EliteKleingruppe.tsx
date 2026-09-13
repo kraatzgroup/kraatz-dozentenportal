@@ -814,7 +814,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       setFolders(allFolders);
       const { data: releasesData } = await supabase.from('elite_kleingruppe_releases').select('*').order('release_date', { ascending: true });
       setScheduledReleases(releasesData || []);
-      const { data: teilnehmerData } = await supabase.from('teilnehmer').select('id, name, email, state_law, zoom_background_url, elite_kleingruppe_id').eq('elite_kleingruppe', true).order('name');
+      const { data: teilnehmerData } = await supabase.from('teilnehmer').select('id, name, email, state_law, zoom_background_url, elite_kleingruppe_id').eq('is_elite_kleingruppe', true).order('name');
       setTeilnehmer(teilnehmerData || []);
 
       // Fetch Klausuren with teilnehmer names (group filtering applied client-side below)
@@ -2956,7 +2956,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                 onClick={() => setShowGroupsManager(!showGroupsManager)}
                 className="inline-flex items-center px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700"
               >
-                <Edit2 className="h-3.5 w-3.5 mr-1.5" />Verwalten
+                <Edit2 className="h-3.5 w-3.5" />
               </button>
             )}
           </div>

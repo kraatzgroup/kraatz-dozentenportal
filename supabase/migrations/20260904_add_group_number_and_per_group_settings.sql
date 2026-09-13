@@ -38,8 +38,7 @@ ALTER TABLE elite_kleingruppe_dozenten
   UNIQUE (dozent_id, legal_area, elite_kleingruppe_id);
 
 -- =============================================================================
--- Step 2: Make elite_kleingruppe_settings group-specific for zoom_links
---          (unit_durations stays global with elite_kleingruppe_id = NULL)
+-- Step 2: Make elite_kleingruppe_settings group-specific (zoom_links AND unit_durations)
 -- =============================================================================
 ALTER TABLE elite_kleingruppe_settings
   ADD COLUMN IF NOT EXISTS elite_kleingruppe_id UUID REFERENCES elite_kleingruppen(id) ON DELETE CASCADE;
@@ -47,7 +46,7 @@ ALTER TABLE elite_kleingruppe_settings
 CREATE INDEX IF NOT EXISTS idx_elite_kleingruppe_settings_group_id
   ON elite_kleingruppe_settings(elite_kleingruppe_id);
 
--- Assign existing zoom_links setting to the first (default) group
+-- Assign existing settings (zoom_links, unit_durations) to the first (default) group
 UPDATE elite_kleingruppe_settings
 SET elite_kleingruppe_id = (
   SELECT id FROM elite_kleingruppen
@@ -55,15 +54,21 @@ SET elite_kleingruppe_id = (
   ORDER BY created_at ASC
   LIMIT 1
 )
-WHERE setting_key = 'zoom_links'
-  AND elite_kleingruppe_id IS NULL;
+WHERE elite_kleingruppe_id IS NULL;
 
--- Composite unique constraint: one zoom_links row per group (and one global row for unit_durations)
+-- Make elite_kleingruppe_id NOT NULL (all settings are now group-specific)
+ALTER TABLE elite_kleingruppe_settings ALTER COLUMN elite_kleingruppe_id SET NOT NULL;
+
+-- Composite unique constraint: one row per setting_key per group
 DROP INDEX IF EXISTS idx_elite_kleingruppe_settings_key_unique;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_elite_kleingruppe_settings_key_group_unique
-  ON elite_kleingruppe_settings(setting_key, COALESCE(elite_kleingruppe_id, '00000000-0000-0000-0000-000000000000'));
+DROP INDEX IF EXISTS idx_elite_kleingruppe_settings_key_group_unique;
+ALTER TABLE elite_kleingruppe_settings
+  DROP CONSTRAINT IF EXISTS elite_kleingruppe_settings_setting_key_key;
+ALTER TABLE elite_kleingruppe_settings
+  ADD CONSTRAINT elite_kleingruppe_settings_setting_key_group_key
+  UNIQUE (setting_key, elite_kleingruppe_id);
 
-COMMENT ON COLUMN elite_kleingruppe_settings.elite_kleingruppe_id IS 'When set, the setting applies to a specific group. NULL means global (e.g. unit_durations).';
+COMMENT ON COLUMN elite_kleingruppe_settings.elite_kleingruppe_id IS 'The group this setting applies to (required - all settings are group-specific).';
 
 -- =============================================================================
 -- Step 3: Make elite_course_times group-specific
