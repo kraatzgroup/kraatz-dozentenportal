@@ -157,6 +157,7 @@ export function EliteKleingruppeDashboard() {
   const [teilnehmerId, setTeilnehmerId] = useState<string | null>(null);
   const [teilnehmerEliteKleingruppeId, setTeilnehmerEliteKleingruppeId] = useState<string | null>(null);
   const [teilnehmerStateLaw, setTeilnehmerStateLaw] = useState<string | null>(null);
+  const [klausurenQuota, setKlausurenQuota] = useState(60);
   const [dozenten, setDozenten] = useState<{id: string; name: string; email: string; profile_picture_url: string | null; legal_areas?: string[]}[]>([]);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [newPassword, setNewPassword] = useState('');
@@ -568,11 +569,12 @@ export function EliteKleingruppeDashboard() {
   const fetchTeilnehmerId = async () => {
     if (!user) return;
     // Finde den Teilnehmer-Eintrag für diesen Benutzer basierend auf der E-Mail
-    const { data } = await supabase.from('teilnehmer').select('id, elite_kleingruppe_id, state_law').eq('email', user.email).single();
+    const { data } = await supabase.from('teilnehmer').select('id, elite_kleingruppe_id, state_law, klausuren_quota').eq('email', user.email).single();
     if (data) {
       setTeilnehmerId(data.id);
       setTeilnehmerEliteKleingruppeId(data.elite_kleingruppe_id);
       setTeilnehmerStateLaw(data.state_law);
+      if (data.klausuren_quota) setKlausurenQuota(data.klausuren_quota);
       if (import.meta.env.DEV) {
         console.log('✅ Teilnehmer geladen:', { id: data.id, state_law: data.state_law, email: user.email });
       }
@@ -1818,16 +1820,16 @@ export function EliteKleingruppeDashboard() {
                         <span className="relative group">
                           <Info className="h-4 w-4 text-gray-400 cursor-help" />
                           <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-3 bg-gray-800 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-                            Dies ist dein verfügbares Kontingent. Du kannst bis zu 60 Klausuren in Rechtsgebieten deiner Wahl einreichen.
+                            Dies ist dein verfügbares Kontingent. Du kannst bis zu {klausurenQuota} Klausuren in Rechtsgebieten deiner Wahl einreichen.
                             <span className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-800"></span>
                           </span>
                         </span>
                       </p>
-                      <p className="text-2xl font-bold text-gray-900">{klausuren.length} <span className="text-sm font-normal text-gray-400">/ 60</span></p>
+                      <p className="text-2xl font-bold text-gray-900">{klausuren.length} <span className="text-sm font-normal text-gray-400">/ {klausurenQuota}</span></p>
                       <div className="w-full bg-gray-100 rounded-full h-1.5 mt-2">
                         <div 
                           className="bg-blue-500 h-1.5 rounded-full transition-all duration-500"
-                          style={{ width: `${Math.min((klausuren.length / 60) * 100, 100)}%` }}
+                          style={{ width: `${Math.min((klausuren.length / klausurenQuota) * 100, 100)}%` }}
                         />
                       </div>
                     </div>
@@ -1850,11 +1852,11 @@ export function EliteKleingruppeDashboard() {
                           </span>
                         </span>
                       </p>
-                      <p className="text-2xl font-bold text-gray-900">{klausuren.filter(k => k.status === 'completed').length} <span className="text-sm font-normal text-gray-400">/ 60</span></p>
+                      <p className="text-2xl font-bold text-gray-900">{klausuren.filter(k => k.status === 'completed').length} <span className="text-sm font-normal text-gray-400">/ {klausurenQuota}</span></p>
                       <div className="w-full bg-gray-100 rounded-full h-1.5 mt-2">
                         <div 
                           className="h-1.5 rounded-full transition-all duration-500"
-                          style={{ width: `${Math.min((klausuren.filter(k => k.status === 'completed').length / 60) * 100, 100)}%`, backgroundColor: '#2e83c2' }}
+                          style={{ width: `${Math.min((klausuren.filter(k => k.status === 'completed').length / klausurenQuota) * 100, 100)}%`, backgroundColor: '#2e83c2' }}
                         />
                       </div>
                     </div>
@@ -1893,18 +1895,18 @@ export function EliteKleingruppeDashboard() {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-gray-700">Klausuren-Kontingent</span>
                   <span className="text-sm font-bold text-gray-900">
-                    {klausuren.length > 0 ? `${60 - klausuren.length}/60` : '60/60'}
+                    {klausuren.length > 0 ? `${Math.max(klausurenQuota - klausuren.length, 0)}/${klausurenQuota}` : `${klausurenQuota}/${klausurenQuota}`}
                   </span>
                 </div>
                 <div className="relative w-full bg-gray-200 rounded-full h-3">
                   <div 
                     className="bg-gradient-to-r from-primary to-blue-500 h-3 rounded-full transition-all duration-500"
-                    style={{ width: `${klausuren.length > 0 ? ((60 - klausuren.length) / 60) * 100 : 100}%` }}
+                    style={{ width: `${klausuren.length > 0 ? Math.max((klausurenQuota - klausuren.length) / klausurenQuota, 0) * 100 : 100}%` }}
                   />
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
                   {klausuren.length > 0 
-                    ? `${klausuren.length} Klausur${klausuren.length === 1 ? '' : 'en'} eingereicht, ${60 - klausuren.length} verbleibend`
+                    ? `${klausuren.length} Klausur${klausuren.length === 1 ? '' : 'en'} eingereicht, ${Math.max(klausurenQuota - klausuren.length, 0)} verbleibend`
                     : 'Noch keine Klausuren eingereicht'
                   }
                 </p>
