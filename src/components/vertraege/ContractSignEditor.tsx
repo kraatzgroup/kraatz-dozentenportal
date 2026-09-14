@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Type, PenTool, Stamp, Trash2, Loader2, Plus, Minus, Save, Globe, Star } from 'lucide-react';
+import { X, MapPin, Calendar, PenTool, Stamp, Trash2, Loader2, Plus, Minus, Save, Globe, Star } from 'lucide-react';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { supabase } from '../../lib/supabase';
 import { useToastStore } from '../../store/toastStore';
@@ -253,18 +253,18 @@ export function ContractSignEditor({ document: doc, onClose, onSigned }: Props) 
     setSelectedId(a.id);
   };
 
-  // ---- Add Ort/Datum text ----
-  const addDateText = () => {
+  // ---- Add Ort / Datum text (separate, independently placeable elements) ----
+  const addTextAnnotation = (text: string, xPct: number, yPct: number) => {
     // Place on the currently visible page, in the lower area
     addAnnotation({
-      id: `ann_${Date.now()}`,
+      id: `ann_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       kind: 'text',
       page: visiblePage,
-      xPct: 0.1,
-      yPct: 0.85,
+      xPct,
+      yPct,
       wPct: 0,
       aspect: 1,
-      text: `Berlin, den ${todayDe()}`,
+      text,
       fontSize: 12,
       fontFamily: 'Arial',
     });
@@ -800,12 +800,20 @@ export function ContractSignEditor({ document: doc, onClose, onSigned }: Props) 
         </div>
 
         <div className="p-4 space-y-3">
-          <button
-            onClick={addDateText}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-md border border-gray-300 hover:bg-gray-50"
-          >
-            <Type className="w-4 h-4" /> Ort / Datum hinzufügen
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => addTextAnnotation('Berlin', 0.1, 0.85)}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-md border border-gray-300 hover:bg-gray-50"
+            >
+              <MapPin className="w-4 h-4" /> Ort
+            </button>
+            <button
+              onClick={() => addTextAnnotation(todayDe(), 0.55, 0.85)}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-md border border-gray-300 hover:bg-gray-50"
+            >
+              <Calendar className="w-4 h-4" /> Datum
+            </button>
+          </div>
 
           <button
             onClick={() => signatureInputRef.current?.click()}
