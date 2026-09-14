@@ -16,6 +16,7 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
+  CalendarOff,
 } from 'lucide-react';
 import { SchwerpunktTagsInput } from './SchwerpunktTagsInput';
 
@@ -52,6 +53,17 @@ interface AbsenceRequest {
   reason: string | null;
   status: 'pending' | 'approved' | 'rejected';
   created_at: string;
+  dozent_name: string;
+  dozent_email: string | null;
+}
+
+interface AbsenceOverviewRow {
+  id: string;
+  dozent_id: string;
+  start_date: string | null;
+  end_date: string | null;
+  note: string | null;
+  kind: 'absence' | 'vacation' | 'unavailable';
   dozent_name: string;
   dozent_email: string | null;
 }
@@ -141,6 +153,11 @@ const isCurrentlyOnVacation = (start: string | null, end: string | null): boolea
   return today >= new Date(start) && today <= new Date(end);
 };
 
+const fmtDateDE = (d: string): string => {
+  const [y, m, day] = d.split('-');
+  return `${day}.${m}.${y}`;
+};
+
 // ---- Component ----
 
 export const VbAdminDashboard: React.FC = () => {
@@ -158,6 +175,7 @@ export const VbAdminDashboard: React.FC = () => {
   const [deletingCase, setDeletingCase] = useState(false);
   const [refundCredit, setRefundCredit] = useState(true);
   const [absenceRequests, setAbsenceRequests] = useState<AbsenceRequest[]>([]);
+  const [absenceOverview, setAbsenceOverview] = useState<AbsenceOverviewRow[]>([]);
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
   const [teilnehmerSearch, setTeilnehmerSearch] = useState('');
   const [teilnehmerExpanded, setTeilnehmerExpanded] = useState(false);
@@ -172,18 +190,22 @@ export const VbAdminDashboard: React.FC = () => {
         .eq('role', 'dozent')
         .contains('additional_roles', ['videobesprechung_dozent']);
 
-      // 1b) Fetch current absences for all dozenten (today within start_date..end_date)
+      // 1b) Fetch current & upcoming absences for all dozenten
       const dozentIds = (dozentenData || []).map((d: any) => d.id);
+      const todayStr = new Date().toISOString().slice(0, 10);
       let absentDozentIds = new Set<string>();
+      let allAbsences: { id: string; dozent_id: string; start_date: string; end_date: string; note: string | null }[] = [];
       if (dozentIds.length > 0) {
-        const todayStr = new Date().toISOString().slice(0, 10);
         const { data: absences } = await supabase
           .from('dozent_absences')
-          .select('dozent_id')
-          .lte('start_date', todayStr)
+          .select('id, dozent_id, start_date, end_date, note')
           .gte('end_date', todayStr)
-          .in('dozent_id', dozentIds);
-        (absences || []).forEach((a: any) => absentDozentIds.add(a.dozent_id));
+          .in('dozent_id', dozentIds)
+          .order('start_date', { ascending: true });
+        allAbsences = absences || [];
+        allAbsences.forEach(a => {
+          if (a.start_date <= todayStr) absentDozentIds.add(a.dozent_id);
+        });
       }
 
       // 2) Teilnehmer: additional_roles contains 'videobesprechung'
@@ -309,6 +331,59 @@ export const VbAdminDashboard: React.FC = () => {
         openCases: openCasesByDozent.get(d.id) || 0,
       }));
       setDozenten(dozentenList);
+
+      // "Verhindert"-Übersicht: Kalender-Abwesenheiten, Urlaub aus dem Profil
+      // und manuell als nicht verfügbar markierte Dozenten (unbefristet zuletzt).
+      const dozentNameOf = (id: string) => {
+        const d = (dozentenData || []).find((x: any) => x.id === id);
+        return { name: d?.full_name || d?.email || 'Unbekannt', email: d?.email || null };
+      };
+      const overviewRows: AbsenceOverviewRow[] = allAbsences.map(a => {
+        const n = dozentNameOf(a.dozent_id);
+        return {
+          id: a.id,
+          dozent_id: a.dozent_id,
+          start_date: a.start_date,
+          end_date: a.end_date,
+          note: a.note,
+          kind: 'absence' as const,
+          dozent_name: n.name,
+          dozent_email: n.email,
+        };
+      });
+      (dozentenData || []).forEach((d: any) => {
+        const n = dozentNameOf(d.id);
+        if (d.vacation_start_date && d.vacation_end_date && d.vacation_end_date >= todayStr) {
+          overviewRows.push({
+            id: `vac-${d.id}`,
+            dozent_id: d.id,
+            start_date: d.vacation_start_date,
+            end_date: d.vacation_end_date,
+            note: null,
+            kind: 'vacation',
+            dozent_name: n.name,
+            dozent_email: n.email,
+          });
+        }
+        if (d.vb_available === false) {
+          overviewRows.push({
+            id: `unav-${d.id}`,
+            dozent_id: d.id,
+            start_date: null,
+            end_date: null,
+            note: null,
+            kind: 'unavailable',
+            dozent_name: n.name,
+            dozent_email: n.email,
+          });
+        }
+      });
+      overviewRows.sort((a, b) => {
+        if (!a.start_date) return 1;
+        if (!b.start_date) return -1;
+        return a.start_date.localeCompare(b.start_date) || a.dozent_name.localeCompare(b.dozent_name);
+      });
+      setAbsenceOverview(overviewRows);
 
       // Map teilnehmer
       const teilnehmerList: VbTeilnehmer[] = (teilnehmerProfiles || []).map(t => {
@@ -622,6 +697,7 @@ export const VbAdminDashboard: React.FC = () => {
     };
   }, []);
 
+  const todayStr = new Date().toISOString().slice(0, 10);
   const filteredCases = cases.filter(c => legalAreaFilter === 'all' || c.legal_area === legalAreaFilter);
 
   const columnCases = (colId: string): VbCaseRow[] => {
@@ -741,6 +817,72 @@ export const VbAdminDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Abwesenheiten-Übersicht: wann ist welcher Dozent verhindert */}
+      <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <CalendarOff className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-semibold text-gray-900">Abwesenheiten</h2>
+          <span className="ml-1 text-gray-400 text-sm">({absenceOverview.length})</span>
+        </div>
+        {absenceOverview.length === 0 ? (
+          <p className="text-gray-500 text-sm py-6 text-center">Keine aktuellen oder geplanten Abwesenheiten.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-500 border-b border-gray-200">
+                  <th className="py-2 pr-3 font-medium">Dozent</th>
+                  <th className="py-2 pr-3 font-medium">Zeitraum</th>
+                  <th className="py-2 pr-3 font-medium">Status</th>
+                  <th className="py-2 pr-3 font-medium">Notiz</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {absenceOverview.map(r => {
+                  const isActive = r.start_date !== null && r.start_date <= todayStr && (r.end_date || '') >= todayStr;
+                  const dateRange = r.start_date === null
+                    ? null
+                    : r.start_date === r.end_date
+                      ? fmtDateDE(r.start_date)
+                      : `${fmtDateDE(r.start_date)} – ${fmtDateDE(r.end_date!)}`;
+                  return (
+                    <tr key={r.id} className="hover:bg-gray-50">
+                      <td className="py-2 pr-3">
+                        <div className="font-medium text-gray-900">{r.dozent_name}</div>
+                        {r.dozent_email && <div className="text-xs text-gray-500">{r.dozent_email}</div>}
+                      </td>
+                      <td className="py-2 pr-3 text-gray-700 whitespace-nowrap">
+                        {dateRange ?? <span className="text-gray-400">unbefristet</span>}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {r.kind === 'unavailable' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                            <AlertTriangle className="w-3 h-3" /> Nicht verfügbar
+                          </span>
+                        ) : r.kind === 'vacation' ? (
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${isActive ? 'bg-orange-100 text-orange-700' : 'bg-orange-50 text-orange-600'}`}>
+                            <Clock className="w-3 h-3" /> {isActive ? 'Urlaub' : 'Urlaub geplant'}
+                          </span>
+                        ) : isActive ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                            <Clock className="w-3 h-3" /> Abwesend
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                            <Clock className="w-3 h-3" /> Geplant
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 pr-3 text-gray-600">{r.note || <span className="text-gray-400">–</span>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* Dozenten & Teilnehmer side-by-side */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
