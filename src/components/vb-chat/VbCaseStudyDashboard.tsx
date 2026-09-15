@@ -90,6 +90,25 @@ interface StudentFeedback {
   updated_at: string;
 }
 
+// A VB dozent counts as unavailable when the availability toggle is off, they
+// are on vacation today, or they disabled email notifications (the Korrektur
+// dashboard hides all open cases from them in that state). dozent_absences
+// cannot be checked here – students cannot read that table (RLS).
+const isVbDozentUnavailable = (d: {
+  vb_available?: boolean | null
+  email_notifications_enabled?: boolean | null
+  vacation_start_date?: string | null
+  vacation_end_date?: string | null
+}) => {
+  if (d.vb_available === false) return true
+  if (d.email_notifications_enabled === false) return true
+  if (d.vacation_start_date && d.vacation_end_date) {
+    const today = new Date()
+    if (today >= new Date(d.vacation_start_date) && today <= new Date(d.vacation_end_date)) return true
+  }
+  return false
+}
+
 export const VbCaseStudyDashboard: React.FC = () => {
   const user = useAuthStore(state => state.user)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -1006,14 +1025,74 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
 
       console.log('Public URL generated:', urlData.publicUrl)
 
-      const { error: updateError } = await supabase
+      // Find the case study to get details for notifications
+      const caseStudy = caseStudies.find(cs => cs.id === caseStudyId)
+      console.log('Case study for notification:', caseStudy)
+      console.log('Assigned dozent ID:', caseStudy?.assigned_dozent_id)
+
+      // Resolve which dozent should handle this submission. If the assigned
+      // dozent is currently unavailable, hand the case over to an available
+      // springer covering the legal area (or any other available dozent as
+      // fallback), so the submission always lands with someone who can act on
+      // it. The reassignment is written together with the status change so the
+      // notify_dozent_on_submission trigger notifies the receiving dozent.
+      let targetDozentId = caseStudy?.assigned_dozent_id ?? null
+      if (caseStudy?.assigned_dozent_id) {
+        try {
+          const { data: assigned } = await supabase
+            .from('profiles')
+            .select('id, email, vb_available, vb_springer, vacation_start_date, vacation_end_date, email_notifications_enabled')
+            .eq('id', caseStudy.assigned_dozent_id)
+            .single()
+
+          if (assigned && isVbDozentUnavailable(assigned)) {
+            const { data: candidates } = await supabase
+              .from('profiles')
+              .select('id, email, vb_available, vb_springer, vacation_start_date, vacation_end_date, email_notifications_enabled')
+              .eq('role', 'dozent')
+              .contains('vb_legal_areas', [caseStudy.legal_area])
+              .neq('id', assigned.id)
+
+            const available = (candidates || []).filter(d => !isVbDozentUnavailable(d))
+            const replacement = available.find(d => d.vb_springer === true) || available[0]
+            if (replacement) {
+              targetDozentId = replacement.id
+              console.log(`Assigned dozent unavailable – submission reassigned to ${replacement.email} (springer: ${replacement.vb_springer === true})`)
+            } else {
+              console.warn('Assigned dozent unavailable and no replacement found for legal area:', caseStudy.legal_area)
+            }
+          }
+        } catch (e) {
+          console.error('Failed to check dozent availability for submission:', e)
+        }
+      }
+
+      const updatePayload: Record<string, unknown> = {
+        submission_url: urlData.publicUrl,
+        status: 'submitted',
+        submitted_at: new Date().toISOString()
+      }
+      if (targetDozentId && targetDozentId !== caseStudy?.assigned_dozent_id) {
+        updatePayload.assigned_dozent_id = targetDozentId
+      }
+
+      let { error: updateError } = await supabase
         .from('vb_case_study_requests')
-        .update({ 
-          submission_url: urlData.publicUrl,
-          status: 'submitted',
-          submitted_at: new Date().toISOString()
-        })
+        .update(updatePayload)
         .eq('id', caseStudyId)
+
+      if (updateError && updatePayload.assigned_dozent_id) {
+        // If the reassignment is rejected, still record the submission so the
+        // upload is not lost.
+        console.error('Update with reassignment failed, retrying without it:', updateError)
+        delete updatePayload.assigned_dozent_id
+        const retry = await supabase
+          .from('vb_case_study_requests')
+          .update(updatePayload)
+          .eq('id', caseStudyId)
+        updateError = retry.error
+        if (!updateError) targetDozentId = caseStudy?.assigned_dozent_id ?? null
+      }
 
       if (updateError) {
         console.error('Database update error:', updateError)
@@ -1022,21 +1101,16 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
 
       console.log('Case study status updated successfully')
 
-      // Find the case study to get details for notifications
-      const caseStudy = caseStudies.find(cs => cs.id === caseStudyId)
-      console.log('Case study for notification:', caseStudy)
-      console.log('Assigned dozent ID:', caseStudy?.assigned_dozent_id)
-
-      // Send email notification to dozent about new submission
-      if (caseStudy?.assigned_dozent_id) {
+      // Send email notification to the dozent who received the submission
+      if (targetDozentId && caseStudy) {
         try {
           const { data: dozent } = await supabase
             .from('profiles')
             .select('email, first_name, last_name')
-            .eq('id', caseStudy.assigned_dozent_id)
+            .eq('id', targetDozentId)
             .single();
 
-          if (dozent) {
+          if (dozent?.email) {
             const dozentName = [dozent.first_name, dozent.last_name].filter(Boolean).join(' ') || dozent.email;
             const { error: notifyError } = await supabase.functions.invoke('vb-notify-dozent-submission', {
               body: {
