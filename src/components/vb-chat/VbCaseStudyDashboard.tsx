@@ -90,25 +90,6 @@ interface StudentFeedback {
   updated_at: string;
 }
 
-// A VB dozent counts as unavailable when the availability toggle is off, they
-// are on vacation today, or they disabled email notifications (the Korrektur
-// dashboard hides all open cases from them in that state). dozent_absences
-// cannot be checked here – students cannot read that table (RLS).
-const isVbDozentUnavailable = (d: {
-  vb_available?: boolean | null
-  email_notifications_enabled?: boolean | null
-  vacation_start_date?: string | null
-  vacation_end_date?: string | null
-}) => {
-  if (d.vb_available === false) return true
-  if (d.email_notifications_enabled === false) return true
-  if (d.vacation_start_date && d.vacation_end_date) {
-    const today = new Date()
-    if (today >= new Date(d.vacation_start_date) && today <= new Date(d.vacation_end_date)) return true
-  }
-  return false
-}
-
 export const VbCaseStudyDashboard: React.FC = () => {
   const user = useAuthStore(state => state.user)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -1030,34 +1011,35 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
       console.log('Case study for notification:', caseStudy)
       console.log('Assigned dozent ID:', caseStudy?.assigned_dozent_id)
 
-      // Resolve which dozent should handle this submission. If the assigned
-      // dozent is currently unavailable, hand the case over to an available
-      // springer covering the legal area (or any other available dozent as
-      // fallback), so the submission always lands with someone who can act on
-      // it. The reassignment is written together with the status change so the
-      // notify_dozent_on_submission trigger notifies the receiving dozent.
-      let targetDozentId = caseStudy?.assigned_dozent_id ?? null
+      // Resolve which dozent(en) should handle this submission. If the
+      // assigned dozent is currently unavailable, the case is released
+      // (unassigned) and broadcast to all available springers covering the
+      // legal area (or all other available dozenten as fallback). Whoever
+      // accepts the case first in the Korrektur dashboard gets it assigned,
+      // so the submission always lands with someone who can act on it.
+      let unassignForHandover = false
+      let notifyDozentIds: string[] = []
       if (caseStudy?.assigned_dozent_id) {
         try {
-          const { data: assigned } = await supabase
-            .from('profiles')
-            .select('id, email, vb_available, vb_springer, vacation_start_date, vacation_end_date, email_notifications_enabled')
-            .eq('id', caseStudy.assigned_dozent_id)
-            .single()
+          // Availability (incl. dozent_absences) is checked server-side –
+          // students cannot read dozent_absences due to RLS.
+          const { data: isAvailable, error: availError } = await supabase
+            .rpc('is_vb_dozent_available', { p_dozent_id: caseStudy.assigned_dozent_id })
 
-          if (assigned && isVbDozentUnavailable(assigned)) {
-            const { data: candidates } = await supabase
-              .from('profiles')
-              .select('id, email, vb_available, vb_springer, vacation_start_date, vacation_end_date, email_notifications_enabled')
-              .eq('role', 'dozent')
-              .contains('vb_legal_areas', [caseStudy.legal_area])
-              .neq('id', assigned.id)
+          if (availError) throw availError
 
-            const available = (candidates || []).filter(d => !isVbDozentUnavailable(d))
-            const replacement = available.find(d => d.vb_springer === true) || available[0]
-            if (replacement) {
-              targetDozentId = replacement.id
-              console.log(`Assigned dozent unavailable – submission reassigned to ${replacement.email} (springer: ${replacement.vb_springer === true})`)
+          if (isAvailable === false) {
+            const { data: candidates, error: candError } = await supabase
+              .rpc('get_available_vb_dozenten', { p_legal_area: caseStudy.legal_area })
+            if (candError) throw candError
+
+            const available = (candidates || []).filter((d: any) => d.id !== caseStudy.assigned_dozent_id)
+            const springers = available.filter((d: any) => d.vb_springer === true)
+            const recipients = springers.length > 0 ? springers : available
+            if (recipients.length > 0) {
+              unassignForHandover = true
+              notifyDozentIds = recipients.map((d: any) => d.id)
+              console.log(`Assigned dozent unavailable – broadcasting submission to ${recipients.length} dozent(en)`)
             } else {
               console.warn('Assigned dozent unavailable and no replacement found for legal area:', caseStudy.legal_area)
             }
@@ -1067,13 +1049,17 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
         }
       }
 
+      if (!unassignForHandover && caseStudy?.assigned_dozent_id) {
+        notifyDozentIds = [caseStudy.assigned_dozent_id]
+      }
+
       const updatePayload: Record<string, unknown> = {
         submission_url: urlData.publicUrl,
         status: 'submitted',
         submitted_at: new Date().toISOString()
       }
-      if (targetDozentId && targetDozentId !== caseStudy?.assigned_dozent_id) {
-        updatePayload.assigned_dozent_id = targetDozentId
+      if (unassignForHandover) {
+        updatePayload.assigned_dozent_id = null
       }
 
       let { error: updateError } = await supabase
@@ -1081,17 +1067,20 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
         .update(updatePayload)
         .eq('id', caseStudyId)
 
-      if (updateError && updatePayload.assigned_dozent_id) {
-        // If the reassignment is rejected, still record the submission so the
-        // upload is not lost.
-        console.error('Update with reassignment failed, retrying without it:', updateError)
+      if (updateError && updatePayload.assigned_dozent_id === null) {
+        // If clearing the assignment is rejected, still record the submission
+        // so the upload is not lost – it stays with the original dozent.
+        console.error('Update with unassign failed, retrying without it:', updateError)
         delete updatePayload.assigned_dozent_id
         const retry = await supabase
           .from('vb_case_study_requests')
           .update(updatePayload)
           .eq('id', caseStudyId)
         updateError = retry.error
-        if (!updateError) targetDozentId = caseStudy?.assigned_dozent_id ?? null
+        if (!updateError) {
+          unassignForHandover = false
+          notifyDozentIds = caseStudy?.assigned_dozent_id ? [caseStudy.assigned_dozent_id] : []
+        }
       }
 
       if (updateError) {
@@ -1101,35 +1090,37 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
 
       console.log('Case study status updated successfully')
 
-      // Send email notification to the dozent who received the submission
-      if (targetDozentId && caseStudy) {
-        try {
-          const { data: dozent } = await supabase
-            .from('profiles')
-            .select('email, first_name, last_name')
-            .eq('id', targetDozentId)
-            .single();
+      // Send email notification to the receiving dozent(en)
+      if (caseStudy && notifyDozentIds.length > 0) {
+        for (const dozentId of notifyDozentIds) {
+          try {
+            const { data: dozent } = await supabase
+              .from('profiles')
+              .select('email, first_name, last_name')
+              .eq('id', dozentId)
+              .single();
 
-          if (dozent?.email) {
-            const dozentName = [dozent.first_name, dozent.last_name].filter(Boolean).join(' ') || dozent.email;
-            const { error: notifyError } = await supabase.functions.invoke('vb-notify-dozent-submission', {
-              body: {
-                dozentEmail: dozent.email,
-                dozentName,
-                studentName: profile?.first_name || 'Teilnehmer',
-                legalArea: caseStudy.legal_area,
-                subArea: caseStudy.sub_area,
-                caseStudyId: caseStudy.id,
-              },
-            });
-            if (notifyError) {
-              console.error('Error notifying dozent about submission:', notifyError);
-            } else {
-              console.log('Dozent notified about new submission');
+            if (dozent?.email) {
+              const dozentName = [dozent.first_name, dozent.last_name].filter(Boolean).join(' ') || dozent.email;
+              const { error: notifyError } = await supabase.functions.invoke('vb-notify-dozent-submission', {
+                body: {
+                  dozentEmail: dozent.email,
+                  dozentName,
+                  studentName: profile?.first_name || 'Teilnehmer',
+                  legalArea: caseStudy.legal_area,
+                  subArea: caseStudy.sub_area,
+                  caseStudyId: caseStudy.id,
+                },
+              });
+              if (notifyError) {
+                console.error('Error notifying dozent about submission:', notifyError);
+              } else {
+                console.log('Dozent notified about new submission:', dozent.email);
+              }
             }
+          } catch (notifyErr) {
+            console.error('Failed to notify dozent:', notifyErr);
           }
-        } catch (notifyErr) {
-          console.error('Failed to notify dozent:', notifyErr);
         }
       }
       

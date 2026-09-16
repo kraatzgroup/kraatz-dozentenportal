@@ -179,6 +179,64 @@ export const VbAdminDashboard: React.FC = () => {
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
   const [teilnehmerSearch, setTeilnehmerSearch] = useState('');
   const [teilnehmerExpanded, setTeilnehmerExpanded] = useState(false);
+  const [assigningCaseId, setAssigningCaseId] = useState<string | null>(null);
+
+  // Dozenten a case can be assigned to: covering legal area first, then
+  // available (not toggled off / absent / on vacation), then alphabetically.
+  const assignableDozenten = (c: VbCaseRow): VbDozent[] => {
+    const covers = (d: VbDozent) => (d.vb_legal_areas || []).includes(c.legal_area);
+    const isAvail = (d: VbDozent) =>
+      d.vb_available !== false &&
+      !d.isAbsentToday &&
+      !isCurrentlyOnVacation(d.vacation_start_date, d.vacation_end_date);
+    return [...dozenten].sort((a, b) => {
+      const ca = covers(a) ? 0 : 1, cb = covers(b) ? 0 : 1;
+      if (ca !== cb) return ca - cb;
+      const aa = isAvail(a) ? 0 : 1, ab = isAvail(b) ? 0 : 1;
+      if (aa !== ab) return aa - ab;
+      return (a.full_name || a.email || '').localeCompare(b.full_name || b.email || '');
+    });
+  };
+
+  const dozentStatusSuffix = (d: VbDozent): string => {
+    const parts: string[] = [];
+    if (d.vb_springer) parts.push('Springer');
+    if (d.vb_available === false) parts.push('nicht verfügbar');
+    if (d.isAbsentToday) parts.push('abwesend');
+    if (isCurrentlyOnVacation(d.vacation_start_date, d.vacation_end_date)) parts.push('Urlaub');
+    return parts.length ? ` (${parts.join(', ')})` : '';
+  };
+
+  const handleAssignDozent = async (caseRow: VbCaseRow, dozentId: string | null) => {
+    if ((dozentId || null) === (caseRow.assigned_dozent_id || null)) return;
+    setAssigningCaseId(caseRow.id);
+    try {
+      const { error } = await supabase
+        .from('vb_case_study_requests')
+        .update({ assigned_dozent_id: dozentId || null })
+        .eq('id', caseRow.id);
+      if (error) throw error;
+
+      // Notify the receiving dozent (email + in-app via edge function; works
+      // for admin callers and verifies the assignment was already updated).
+      if (dozentId) {
+        try {
+          const { error: notifyError } = await supabase.functions.invoke('vb-notify-dozent-assigned', {
+            body: { caseId: caseRow.id, targetDozentId: dozentId },
+          });
+          if (notifyError) console.error('Error notifying dozent about assignment:', notifyError);
+        } catch (e) {
+          console.error('Failed to notify dozent about assignment:', e);
+        }
+      }
+      setRefreshKey(k => k + 1);
+    } catch (err) {
+      console.error('Error assigning dozent:', err);
+      alert('Fehler beim Zuweisen des Falls');
+    } finally {
+      setAssigningCaseId(null);
+    }
+  };
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -1151,9 +1209,25 @@ export const VbAdminDashboard: React.FC = () => {
                           <div className="mt-2 pt-2 border-t border-gray-100">
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-xs text-gray-500">Zuständig:</span>
-                              <span className={`text-xs font-medium truncate ${c.assigned_dozent_id ? 'text-gray-900' : 'text-orange-600'}`}>
-                                {c.dozent?.full_name || c.dozent?.email || 'Niemand'}
-                              </span>
+                              <select
+                                value={c.assigned_dozent_id || ''}
+                                disabled={assigningCaseId === c.id}
+                                onChange={(e) => handleAssignDozent(c, e.target.value || null)}
+                                className={`text-xs font-medium border border-gray-200 rounded px-1.5 py-1 max-w-[180px] bg-white disabled:opacity-50 ${c.assigned_dozent_id ? 'text-gray-900' : 'text-orange-600'}`}
+                                title="Fall einem Dozenten zuweisen"
+                              >
+                                <option value="">Niemand (freigeben)</option>
+                                {c.assigned_dozent_id && !dozenten.some(d => d.id === c.assigned_dozent_id) && (
+                                  <option value={c.assigned_dozent_id}>
+                                    {c.dozent?.full_name || c.dozent?.email} (aktuell)
+                                  </option>
+                                )}
+                                {assignableDozenten(c).map(d => (
+                                  <option key={d.id} value={d.id}>
+                                    {d.full_name || d.email}{dozentStatusSuffix(d)}
+                                  </option>
+                                ))}
+                              </select>
                             </div>
                             <div className="mt-2">
                               <SchwerpunktTagsInput

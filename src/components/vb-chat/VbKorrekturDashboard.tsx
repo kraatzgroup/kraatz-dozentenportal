@@ -139,17 +139,6 @@ const storagePathFromUrl = (url: string): string | null => {
   return null
 }
 
-// Fetch the set of dozent IDs that are absent today (based on dozent_absences table)
-async function fetchAbsentDozentIds(): Promise<Set<string>> {
-  const todayStr = new Date().toISOString().slice(0, 10)
-  const { data } = await supabase
-    .from('dozent_absences')
-    .select('dozent_id')
-    .lte('start_date', todayStr)
-    .gte('end_date', todayStr)
-  return new Set((data || []).map((a: any) => a.dozent_id))
-}
-
 export const VbKorrekturDashboard: React.FC = () => {
   const user = useAuthStore(state => state.user)
   const vbLegalAreas = useAuthStore(state => state.vbLegalAreas)
@@ -272,14 +261,12 @@ export const VbKorrekturDashboard: React.FC = () => {
         .eq('role', 'dozent')
         .or('vb_springer.is.null,vb_springer.eq.false')
         .contains('vb_legal_areas', [c.legal_area])
-      const today = new Date()
-      const absentIds = await fetchAbsentDozentIds()
-      const withAvailability = (regulars || []).map(r => {
-        const vs = r.vacation_start_date ? new Date(r.vacation_start_date) : null
-        const ve = r.vacation_end_date ? new Date(r.vacation_end_date) : null
-        const onVacation = !!(vs && ve && today >= vs && today <= ve)
-        return { id: r.id, name: r.full_name || r.email, available: r.vb_available !== false && !onVacation && !absentIds.has(r.id) }
-      })
+      // Availability incl. dozent_absences is resolved server-side – non-admin
+      // dozenten cannot read other dozenten's absences via RLS.
+      const withAvailability = await Promise.all((regulars || []).map(async r => {
+        const { data: avail } = await supabase.rpc('is_vb_dozent_available', { p_dozent_id: r.id })
+        return { id: r.id, name: r.full_name || r.email, available: avail === true }
+      }))
       console.log('↩️ VbKorrektur: Candidates:', withAvailability)
       const target = withAvailability.find(r => r.available) || withAvailability[0] || null
       setReturnTarget(target)
@@ -323,6 +310,30 @@ export const VbKorrekturDashboard: React.FC = () => {
       console.error('❌ VbKorrektur: Error returning case:', err)
     } finally {
       setIsReturning(false)
+    }
+  }
+
+  const handleClaimCase = async (c: VbCase) => {
+    if (!user) return
+    try {
+      // Atomic claim: the update only succeeds while the case is still
+      // unassigned, so when a submission was broadcast to multiple springers
+      // the first one to accept wins.
+      const { data, error } = await supabase
+        .from('vb_case_study_requests')
+        .update({ assigned_dozent_id: user.id })
+        .eq('id', c.id)
+        .is('assigned_dozent_id', null)
+        .select('id')
+      if (error) throw error
+      if (!data || data.length === 0) {
+        alert('Dieser Fall wurde bereits von einem anderen Dozenten übernommen.')
+      }
+      fetchCases()
+      fetchAllCasesForTabs()
+    } catch (err) {
+      console.error('Error claiming case:', err)
+      alert('Fehler beim Übernehmen des Falls')
     }
   }
 
@@ -570,25 +581,15 @@ export const VbKorrekturDashboard: React.FC = () => {
         // Not available: new/open cases go to the Springer, hide them here
         openCaseAreas = []
       } else if (isSpringer) {
-        // Springer only sees open cases for areas where NO regular dozent is available
-        const { data: regulars } = await supabase
-          .from('profiles')
-          .select('id, vb_legal_areas, vb_available, vacation_start_date, vacation_end_date')
-          .eq('role', 'dozent')
-          .or('vb_springer.is.null,vb_springer.eq.false')
-          .not('vb_legal_areas', 'is', null)
-
-        const absentIds = await fetchAbsentDozentIds()
-        const covered = new Set<string>()
-        for (const r of (regulars || [])) {
-          if (r.vb_available === false) continue
-          if (absentIds.has(r.id)) continue
-          const vs = r.vacation_start_date ? new Date(r.vacation_start_date) : null
-          const ve = r.vacation_end_date ? new Date(r.vacation_end_date) : null
-          if (vs && ve && today >= vs && today <= ve) continue
-          for (const a of (r.vb_legal_areas || [])) covered.add(a)
-        }
-        openCaseAreas = areas.filter(a => !covered.has(a))
+        // Springer only sees open cases for areas where NO regular dozent is
+        // available. Availability incl. dozent_absences is resolved server-side
+        // (non-admin dozenten cannot read other dozenten's absences via RLS).
+        const uncovered = await Promise.all(areas.map(async a => {
+          const { data } = await supabase.rpc('get_available_vb_dozenten', { p_legal_area: a })
+          const regularAvailable = (data || []).some((d: any) => d.vb_springer !== true)
+          return { a, regularAvailable }
+        }))
+        openCaseAreas = uncovered.filter(r => !r.regularAvailable).map(r => r.a)
         console.log('🤸 VbKorrekturDashboard: Springer mode, uncovered areas:', openCaseAreas)
       }
 
@@ -736,24 +737,12 @@ export const VbKorrekturDashboard: React.FC = () => {
       if (!isVbAvailable) {
         openCaseAreas = []
       } else if (isSpringer) {
-        const { data: regulars } = await supabase
-          .from('profiles')
-          .select('id, vb_legal_areas, vb_available, vacation_start_date, vacation_end_date')
-          .eq('role', 'dozent')
-          .or('vb_springer.is.null,vb_springer.eq.false')
-          .not('vb_legal_areas', 'is', null)
-        const today = new Date()
-        const absentIds = await fetchAbsentDozentIds()
-        const covered = new Set<string>()
-        for (const r of (regulars || [])) {
-          if (r.vb_available === false) continue
-          if (absentIds.has(r.id)) continue
-          const vs = r.vacation_start_date ? new Date(r.vacation_start_date) : null
-          const ve = r.vacation_end_date ? new Date(r.vacation_end_date) : null
-          if (vs && ve && today >= vs && today <= ve) continue
-          for (const a of (r.vb_legal_areas || [])) covered.add(a)
-        }
-        openCaseAreas = areas.filter(a => !covered.has(a))
+        const uncovered = await Promise.all(areas.map(async a => {
+          const { data } = await supabase.rpc('get_available_vb_dozenten', { p_legal_area: a })
+          const regularAvailable = (data || []).some((d: any) => d.vb_springer !== true)
+          return { a, regularAvailable }
+        }))
+        openCaseAreas = uncovered.filter(r => !r.regularAvailable).map(r => r.a)
       }
 
       const { data } = await supabase
@@ -1899,7 +1888,16 @@ export const VbKorrekturDashboard: React.FC = () => {
                             Material ändern
                           </button>
                         )}
-                        {c.status !== 'materials_ready' && (
+                        {activeTab === 'submissions' && !c.assigned_dozent_id && (
+                        <button
+                          onClick={() => handleClaimCase(c)}
+                          className="flex items-center gap-1 px-3 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          Fall übernehmen
+                        </button>
+                        )}
+                        {c.status !== 'materials_ready' && !(activeTab === 'submissions' && !c.assigned_dozent_id) && (
                         <button
                           onClick={async () => {
                             if (c.status === 'requested') {
