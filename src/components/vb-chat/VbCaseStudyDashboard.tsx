@@ -1019,6 +1019,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
       // so the submission always lands with someone who can act on it.
       let unassignForHandover = false
       let notifyDozentIds: string[] = []
+      let adminAlertNeeded = false
       if (caseStudy?.assigned_dozent_id) {
         try {
           // Availability (incl. dozent_absences) is checked server-side –
@@ -1036,11 +1037,15 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
             const available = (candidates || []).filter((d: any) => d.id !== caseStudy.assigned_dozent_id)
             const springers = available.filter((d: any) => d.vb_springer === true)
             const recipients = springers.length > 0 ? springers : available
+            // Always release the case when the assigned dozent is unavailable –
+            // nobody stays responsible. When no replacement exists the admin
+            // is alerted below so they can assign someone manually.
+            unassignForHandover = true
             if (recipients.length > 0) {
-              unassignForHandover = true
               notifyDozentIds = recipients.map((d: any) => d.id)
               console.log(`Assigned dozent unavailable – broadcasting submission to ${recipients.length} dozent(en)`)
             } else {
+              adminAlertNeeded = true
               console.warn('Assigned dozent unavailable and no replacement found for legal area:', caseStudy.legal_area)
             }
           }
@@ -1106,10 +1111,14 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                 body: {
                   dozentEmail: dozent.email,
                   dozentName,
+                  dozentId,
                   studentName: profile?.first_name || 'Teilnehmer',
                   legalArea: caseStudy.legal_area,
                   subArea: caseStudy.sub_area,
                   caseStudyId: caseStudy.id,
+                  // Only set on handover – marks the notification as a
+                  // broadcast for claiming and triggers the in-app bell.
+                  unavailableDozentId: unassignForHandover ? caseStudy.assigned_dozent_id : undefined,
                 },
               });
               if (notifyError) {
@@ -1123,7 +1132,24 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
           }
         }
       }
-      
+
+      // The assigned dozent was unavailable and no replacement could be found –
+      // the case is now unassigned, so alert the admins (bell + email).
+      if (adminAlertNeeded) {
+        try {
+          const { error: adminNotifyError } = await supabase.functions.invoke('vb-notify-admin-unassigned-submission', {
+            body: { caseId: caseStudy.id, unavailableDozentId: caseStudy.assigned_dozent_id },
+          });
+          if (adminNotifyError) {
+            console.error('Error notifying admin about unassigned submission:', adminNotifyError);
+          } else {
+            console.log('Admin notified about unassigned submission');
+          }
+        } catch (e) {
+          console.error('Failed to notify admin about unassigned submission:', e);
+        }
+      }
+
       setUploadFiles(prev => { const next = new Map(prev); next.delete(caseStudyId); return next })
       fetchUserData()
     } catch (error: any) {

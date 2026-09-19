@@ -18,7 +18,7 @@ serve(async (req) => {
     const body = await req.json()
     console.log('Received dozent notification payload for submission:', body)
 
-    const { dozentEmail, dozentName, studentName, legalArea, subArea, caseStudyId } = body
+    const { dozentEmail, dozentName, dozentId, studentName, legalArea, subArea, caseStudyId, unavailableDozentId } = body
 
     if (!dozentEmail || !studentName || !legalArea || !subArea || !caseStudyId) {
       return new Response(
@@ -35,6 +35,49 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
+
+    // Handover case: the originally assigned dozent is unavailable and the
+    // submission was broadcast for claiming. The DB trigger only creates an
+    // in-app notification when assigned_dozent_id is set, so we create the
+    // bell notification here instead (service role bypasses RLS).
+    if (unavailableDozentId) {
+      try {
+        let targetDozentId = dozentId
+        if (!targetDozentId) {
+          const { data: dp } = await supabaseClient
+            .from('profiles')
+            .select('id')
+            .eq('email', dozentEmail)
+            .maybeSingle()
+          targetDozentId = dp?.id
+        }
+        const { data: unavailableDozent } = await supabaseClient
+          .from('profiles')
+          .select('full_name, email')
+          .eq('id', unavailableDozentId)
+          .maybeSingle()
+        const unavailableName = unavailableDozent?.full_name || unavailableDozent?.email || 'der zuständige Dozent'
+        if (targetDozentId) {
+          const { error: notifError } = await supabaseClient
+            .from('vb_notifications')
+            .insert({
+              profile_id: targetDozentId,
+              title: 'Bearbeitung zur Übernahme freigegeben',
+              message: `${studentName} hat eine Bearbeitung (${legalArea} / ${subArea}) eingereicht. Sie wurde zur Übernahme freigegeben, da ${unavailableName} nicht verfügbar ist.`,
+              type: 'info',
+              related_case_study_id: caseStudyId,
+              read: false,
+            })
+          if (notifError) {
+            console.error(`❌ [${requestId}] Error creating in-app notification:`, notifError)
+          } else {
+            console.log(`✅ [${requestId}] In-app notification created for dozent ${dozentEmail}`)
+          }
+        }
+      } catch (notifErr) {
+        console.error(`❌ [${requestId}] Failed to create in-app notification:`, notifErr)
+      }
+    }
 
     const { data: linkData, error: linkError } = await supabaseClient.auth.admin.generateLink({
       type: 'magiclink',
@@ -75,7 +118,9 @@ serve(async (req) => {
           </p>
           
           <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
-            Ein Teilnehmer hat eine Bearbeitung für die Klausur eingereicht und steht zur Korrektur bereit.
+            ${unavailableDozentId
+              ? 'Ein Teilnehmer hat eine Bearbeitung eingereicht. Sie wurde zur Übernahme freigegeben, da die zuständige Person aktuell nicht verfügbar ist – wer zuerst übernimmt, korrigiert den Fall.'
+              : 'Ein Teilnehmer hat eine Bearbeitung für die Klausur eingereicht und steht zur Korrektur bereit.'}
           </p>
 
           <!-- Case Study Details -->
