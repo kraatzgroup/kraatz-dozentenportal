@@ -569,11 +569,13 @@ export const VbAdminDashboard: React.FC = () => {
           });
         if (absError) {
           console.error('Error creating absence record:', absError);
+          alert('Die Anfrage wurde genehmigt, aber der Abwesenheitseintrag konnte nicht erstellt werden. Bitte den Zeitraum manuell eintragen.\n\nFehler: ' + absError.message);
         }
       }
 
-      // Remove from list
+      // Remove from list and reload so the new absence shows up in the overview
       setAbsenceRequests(prev => prev.filter(r => r.id !== req.id));
+      setRefreshKey(k => k + 1);
     } catch (err) {
       console.error('Error processing absence request:', err);
       alert('Fehler beim Bearbeiten der Anfrage');
