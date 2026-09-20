@@ -383,11 +383,15 @@ export function UserManagement() {
         vb_legal_areas: dialog.userData.vb_legal_areas || []
       });
 
-      // Update elite kleingruppe status in teilnehmer table (for any role that has a teilnehmer record)
+      // Update teilnehmer record to stay in sync with the profile (name, email, elite kleingruppe status)
       const isElite = !!dialog.userData.eliteKleingruppe;
       await supabase
         .from('teilnehmer')
         .update({
+          first_name: dialog.userData.firstName || '',
+          last_name: dialog.userData.lastName || '',
+          name: computedFullName,
+          email: dialog.userData.email,
           is_elite_kleingruppe: isElite,
           elite_kleingruppe_id: dialog.userData.eliteKleingruppe || null,
           updated_at: new Date().toISOString()
