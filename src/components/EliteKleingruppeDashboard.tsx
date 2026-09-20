@@ -125,14 +125,13 @@ export function EliteKleingruppeDashboard() {
     if (tabParam && VALID_TABS.includes(tabParam as Tab)) {
       return tabParam as Tab;
     }
-    const saved = localStorage.getItem('eliteKleingruppeDashboardTab');
-    return saved && VALID_TABS.includes(saved as Tab) ? (saved as Tab) : 'dashboard';
+    // Immer mit dem Dashboard starten (kein Wiederherstellen des letzten Tabs)
+    return 'dashboard';
   });
 
   // Helper function to change tab and update URL
   const setActiveTab = useCallback((tab: Tab) => {
     setActiveTabState(tab);
-    localStorage.setItem('eliteKleingruppeDashboardTab', tab);
     setSearchParams({ tab });
   }, [setSearchParams]);
   
