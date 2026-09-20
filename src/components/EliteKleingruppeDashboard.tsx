@@ -568,8 +568,8 @@ export function EliteKleingruppeDashboard() {
 
   const fetchTeilnehmerId = async () => {
     if (!user) return;
-    // Finde den Teilnehmer-Eintrag für diesen Benutzer basierend auf der E-Mail
-    const { data } = await supabase.from('teilnehmer').select('id, elite_kleingruppe_id, state_law, klausuren_quota').eq('email', user.email).single();
+    // Finde den Teilnehmer-Eintrag für diesen Benutzer (über profile_id, robust gegenüber E-Mail-Änderungen/Groß-/Kleinschreibung)
+    const { data } = await supabase.from('teilnehmer').select('id, elite_kleingruppe_id, state_law, klausuren_quota').eq('profile_id', user.id).single();
     if (data) {
       setTeilnehmerId(data.id);
       setTeilnehmerEliteKleingruppeId(data.elite_kleingruppe_id);
@@ -633,7 +633,7 @@ export function EliteKleingruppeDashboard() {
         const { data: teilnehmerData } = await supabase
           .from('teilnehmer')
           .select('elite_kleingruppe_id, zoom_background_url')
-          .eq('email', user.email)
+          .eq('profile_id', user.id)
           .single();
         if (teilnehmerData?.elite_kleingruppe_id) {
           groupId = teilnehmerData.elite_kleingruppe_id;
