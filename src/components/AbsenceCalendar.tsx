@@ -903,7 +903,7 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
                 type="text"
                 value={requestReason}
                 onChange={(e) => setRequestReason(e.target.value)}
-                placeholder="z.B. Krankheit, familiäre Verpflichtung"
+                placeholder="z.B. familiäre Verpflichtung, Termin"
                 disabled={isSubmittingRequest}
                 className="w-full text-sm px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
               />

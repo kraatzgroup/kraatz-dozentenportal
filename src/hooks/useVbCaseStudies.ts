@@ -148,20 +148,18 @@ export const useVbCaseStudies = () => {
           .eq('role', 'dozent')
           .contains('vb_legal_areas', [requestData.legal_area]);
 
-        const today = new Date();
         const studentName = fullName || user.email || 'Teilnehmer';
 
-        const isOnVacation = (d: any) => {
-          if (d.vacation_start_date && d.vacation_end_date) {
-            const start = new Date(d.vacation_start_date);
-            const end = new Date(d.vacation_end_date);
-            if (today >= start && today <= end) return true;
-          }
-          return false;
-        };
+        // Availability (vb_available toggle, vacation AND dozent_absences) is
+        // resolved server-side via RPC — students cannot read dozent_absences
+        // due to RLS, so the client must not filter on it directly.
+        const { data: availableDozenten } = await supabase.rpc('get_available_vb_dozenten', {
+          p_legal_area: requestData.legal_area,
+        });
+        const availableIds = new Set((availableDozenten || []).map((d: any) => d.id));
 
-        // Eligible = available (toggle on) and not on vacation
-        const eligible = (dozenten || []).filter(d => d.vb_available !== false && !isOnVacation(d));
+        // Eligible = designated for this area AND currently available
+        const eligible = (dozenten || []).filter(d => availableIds.has(d.id));
         const regularDozenten = eligible.filter(d => d.vb_springer !== true);
         const springerDozenten = eligible.filter(d => d.vb_springer === true);
 
