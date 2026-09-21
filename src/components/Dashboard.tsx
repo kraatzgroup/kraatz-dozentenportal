@@ -560,6 +560,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
           .eq('dozent_id', user.id)
           .lte('start_date', todayStr)
           .gte('end_date', todayStr)
+          .limit(1)
           .maybeSingle();
 
         if (!absError && absData) {

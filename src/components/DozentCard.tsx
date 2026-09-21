@@ -67,6 +67,7 @@ export function DozentCard({ dozent, userRole, onEdit, onFolderClick, preloadedF
         .eq('dozent_id', dozent.id)
         .lte('start_date', todayStr)
         .gte('end_date', todayStr)
+        .limit(1)
         .maybeSingle();
 
       if (!absError && absData) {

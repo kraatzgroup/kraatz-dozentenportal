@@ -125,6 +125,7 @@ export const DozentenHeader: React.FC = () => {
         .eq('dozent_id', user.id)
         .lte('start_date', todayStr)
         .gte('end_date', todayStr)
+        .limit(1)
         .maybeSingle();
       if (absData) {
         setVbAvailable(false);
@@ -174,7 +175,7 @@ export const DozentenHeader: React.FC = () => {
                 ) : (
                   <CheckCircle className="h-3.5 w-3.5 mr-1" />
                 )}
-                <span className="hidden sm:inline">{vbAvailable === false ? 'Im Urlaub' : 'Verfügbar'}</span>
+                <span className="hidden sm:inline">{vbAvailable === false ? 'Nicht verfügbar' : 'Verfügbar'}</span>
               </button>
             ) : (
               <button

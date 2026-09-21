@@ -712,9 +712,12 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
               else if (absent) cls += 'bg-red-100 text-red-800 border-red-300 ';
               else if (requestedPending) cls += 'bg-orange-50 text-orange-700 border-orange-300 border-dashed ';
               else if (requestedRejected) cls += 'bg-gray-100 text-gray-400 border-gray-300 line-through ';
+              else if (requestedRejected) cls += 'bg-gray-100 text-gray-400 border-gray-300 line-through ';
               else if (isToday) cls += 'bg-primary-50 text-primary border-primary ';
               else if (isInBuffer) cls += 'text-gray-300 bg-gray-50 ';
               else cls += 'text-gray-700 hover:bg-gray-100 ';
+              // Today marker: inner ring applies on top of any state (absent, buffer, …)
+              if (isToday && inMonth) cls += 'ring-2 ring-inset ring-primary ';
 
               return (
                 <div
@@ -734,7 +737,7 @@ export function AbsenceCalendar({ dozentId, isAdmin = false, onAvailabilityChang
                   data-day={format(date, 'yyyy-MM-dd')}
                   className={`${base} ${cls} ${disabled ? 'cursor-default' : 'cursor-crosshair'}`}
                 >
-                  <span className={isToday && !inDrag && !absent ? 'font-bold' : ''}>
+                  <span className={isToday ? 'font-bold' : ''}>
                     {format(date, 'd')}
                   </span>
                   {absent && !inDrag && (

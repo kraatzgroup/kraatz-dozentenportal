@@ -152,6 +152,7 @@ export const VbKorrekturDashboard: React.FC = () => {
   const [selectedCaseForMaterial, setSelectedCaseForMaterial] = useState<VbCase | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isOnVacation, setIsOnVacation] = useState(false)
+  const [isSickMode, setIsSickMode] = useState(false)
   const [legalAreaFilter, setLegalAreaFilter] = useState<string>('all')
   const [dozentLegalAreas, setDozentLegalAreas] = useState<string[]>([])
   const [teachingMaterials, setTeachingMaterials] = useState<TeachingMaterial[]>([])
@@ -569,6 +570,7 @@ export const VbKorrekturDashboard: React.FC = () => {
         .limit(1)
       const isCurrentlyAbsent = (ownAbsence || []).length > 0
       setIsOnVacation(isCurrentlyOnVacation || isCurrentlyAbsent || profile?.email_notifications_enabled === false)
+      setIsSickMode(profile?.vb_available === false)
       console.log('🏖️ VbKorrekturDashboard: Vacation status:', isCurrentlyOnVacation, 'Absent:', isCurrentlyAbsent, 'Email notifications:', profile?.email_notifications_enabled)
 
       // Springer mode: determine which legal areas open (unclaimed) cases are visible for.
@@ -1688,15 +1690,18 @@ export const VbKorrekturDashboard: React.FC = () => {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Klausuren-Korrektur</h1>
         </div>
 
-        {/* Vacation Notification Banner */}
-        {isOnVacation && (
+        {/* Vacation / Sick-mode Notification Banner */}
+        {(isOnVacation || isSickMode) && (
           <div className="mb-4 bg-orange-50 border border-orange-200 rounded-lg p-4 flex items-start gap-3">
             <AlertTriangle className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
             <div>
-              <h3 className="font-medium text-orange-900">Urlaubsmodus aktiv</h3>
+              <h3 className="font-medium text-orange-900">
+                {isSickMode && !isOnVacation ? 'Krankheitsmodus aktiv' : 'Urlaubsmodus aktiv'}
+              </h3>
               <p className="text-sm text-orange-700 mt-1">
-                Sie befinden sich im Urlaubsmodus. Es werden nur abgeschlossene Klausuren angezeigt.
-                Neue Zuweisungen werden während Ihres Urlaubs pausiert.
+                {isSickMode && !isOnVacation
+                  ? 'Sie sind als krank gemeldet. Es werden keine neuen VB-Anfragen zugewiesen; offene Anfragen gehen an den Springer.'
+                  : 'Sie befinden sich im Urlaubsmodus. Es werden nur abgeschlossene Klausuren angezeigt. Neue Zuweisungen werden während Ihres Urlaubs pausiert.'}
               </p>
             </div>
           </div>
@@ -1732,8 +1737,8 @@ export const VbKorrekturDashboard: React.FC = () => {
             </nav>
           </div>
 
-          {/* Legal Area Filter - only show if dozent has legal areas and not on vacation */}
-          {!isOnVacation && dozentLegalAreas.length > 0 && (
+          {/* Legal Area Filter - only show if dozent has legal areas and not on vacation/sick */}
+          {!isOnVacation && !isSickMode && dozentLegalAreas.length > 0 && (
             <div className="mb-4 flex items-center gap-2">
               <span className="text-sm text-gray-600">Rechtsgebiet:</span>
               <select
