@@ -901,6 +901,19 @@ export const VbKorrekturDashboard: React.FC = () => {
     }
   }, [showMaterialSelector, punkteschemaCase, returnCase, selected])
 
+  // Debug: log material selector open/close lifecycle with timings
+  const selectorOpenAtRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (showMaterialSelector) {
+      selectorOpenAtRef.current = performance.now()
+      console.log('📂 Material selector OPENED (modal render committed), ms:', selectorOpenAtRef.current.toFixed(1))
+    } else if (selectorOpenAtRef.current !== null) {
+      const closeMs = performance.now() - selectorOpenAtRef.current
+      console.log('📂 Material selector CLOSED — effect ran after re-render, was open for ms:', closeMs.toFixed(1), 'at', new Date().toISOString())
+      selectorOpenAtRef.current = null
+    }
+  }, [showMaterialSelector])
+
   const studentName = (c: VbCase) => {
     const s = c.student
     if (!s) return 'Unbekannt'
@@ -1218,18 +1231,22 @@ export const VbKorrekturDashboard: React.FC = () => {
       ? []
       : materialsByFolder[folderId] || []
 
-  // Recursively check if a folder contains any material already assigned to this Teilnehmer.
-  // A Klausur folder typically contains Sachverhalt + Lösung + Zusatzmaterial, but only
-  // the Sachverhalt URL is tracked in assignedMaterialUrls — so we check if ANY material
-  // in the folder (or its subfolders) is assigned.
+  // Recursively check if ALL materials in a folder (and its subfolders) have already
+  // been assigned to this Teilnehmer. A folder is only blocked when NOTHING usable is
+  // left — individual already-used materials are locked separately per material, so a
+  // top-level folder (e.g. "Zivilrecht" with many Klausuren) stays selectable as long
+  // as any Klausur in it is still unused.
   const isFolderFullyAssigned = (folderId: string): boolean => {
     const folderMaterials = getSelectableFolderMaterials(folderId)
-    const hasAssignedMaterial = folderMaterials.some(m => assignedMaterialUrls.has(m.file_url))
-
     const subFolders = folderStructure.filter(f => f.parent_id === folderId)
-    const hasAssignedSubFolder = subFolders.some(sf => isFolderFullyAssigned(sf.id))
 
-    return hasAssignedMaterial || hasAssignedSubFolder
+    // Empty folder (no materials, no subfolders): nothing to block.
+    if (folderMaterials.length === 0 && subFolders.length === 0) return false
+
+    const allMaterialsAssigned = folderMaterials.every(m => assignedMaterialUrls.has(m.file_url))
+    const allSubFoldersAssigned = subFolders.every(sf => isFolderFullyAssigned(sf.id))
+
+    return allMaterialsAssigned && allSubFoldersAssigned
   }
 
   // Show only top-level folders (parent_id is null), and filter by legal area if set
@@ -2167,12 +2184,22 @@ export const VbKorrekturDashboard: React.FC = () => {
                   )}
                   <button
                     onClick={() => {
-                      console.log('❌ Closing material selector')
+                      const t0 = performance.now()
+                      console.log('❌ Closing material selector', {
+                        selectedCaseId: selectedCaseForMaterial?.id ?? null,
+                        selectedMaterials: selectedMaterials.size,
+                        editingCorrectionField,
+                        materialSearchTerm: materialSearchTerm || null,
+                        expandedFolders: expandedFolders.size,
+                        assignedMaterialUrls: assignedMaterialUrls.size,
+                        at: new Date().toISOString(),
+                      })
                       setShowMaterialSelector(false)
                       setSelectedCaseForMaterial(null)
                       setSelectedMaterials(new Set())
                       setEditingCorrectionField(null)
                       setMaterialSelectorLegalArea(null)
+                      console.log('❌ Material selector state reset done, handler ms:', (performance.now() - t0).toFixed(1))
                     }}
                     className="text-gray-500 hover:text-gray-700"
                   >
@@ -2356,7 +2383,12 @@ export const VbKorrekturDashboard: React.FC = () => {
                 ) : (
                 <>
                 {/* Show folder hierarchy - only top-level folders initially */}
-                {filteredFolders.map(folder => renderFolder(folder))}
+                {(() => {
+                  console.time('🗂️ renderFolder tree (incl. isFolderFullyAssigned)')
+                  const rendered = filteredFolders.map(folder => renderFolder(folder))
+                  console.timeEnd('🗂️ renderFolder tree (incl. isFolderFullyAssigned)')
+                  return rendered
+                })()}
                 
                 {/* Show materials without folder */}
                 {!isCrashkursMaterialSelection && materialsByFolder['no-folder'] && materialsByFolder['no-folder'].length > 0 && (

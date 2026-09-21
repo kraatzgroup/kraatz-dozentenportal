@@ -100,6 +100,26 @@ function isSachverhaltMaterial(
 }
 
 /**
+ * Study-phase filter: a "Grund- und Hauptstudium" request must not suggest
+ * Examensklausuren, and a "1. Examensvorbereitung" request must not suggest
+ * Grundsemester-Klausuren.
+ */
+function matchesStudyPhase(chain: SuggestedFolder[], studyPhase: string | null): boolean {
+  if (!studyPhase) return true;
+  const phase = studyPhase.toLowerCase();
+  const isExamensPhase = phase.includes('examen');
+  const isGrundPhase = phase.includes('grund') || phase.includes('hauptstudium');
+  if (!isExamensPhase && !isGrundPhase) return true; // unknown phase → no restriction
+
+  for (const f of chain) {
+    const name = f.name.toLowerCase();
+    if (isExamensPhase && name.includes('grundsemester')) return false;
+    if (isGrundPhase && name.includes('examensklausuren')) return false;
+  }
+  return true;
+}
+
+/**
  * Score a teaching material against the participant's case info.
  * Higher score = better match.
  */
@@ -121,6 +141,11 @@ export function scoreMaterial(
   const chain = getAncestorChain(folder.id, folders);
   const ancestorNames = chain.map(f => f.name.toLowerCase());
   const folderPath = chain.map(f => f.name);
+
+  // Study-phase filter: don't mix Grundsemester and Examensklausuren content
+  if (!matchesStudyPhase(chain, caseInfo.study_phase)) {
+    return { score: 0, matchedTags: [], folderName: '', folderPath: [] };
+  }
 
   let score = 0;
   const matchedTags: string[] = [];
