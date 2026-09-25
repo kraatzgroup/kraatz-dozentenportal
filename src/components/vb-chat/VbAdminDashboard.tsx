@@ -75,6 +75,7 @@ interface VbCaseRow {
   legal_area: string;
   sub_area: string;
   focus_area: string | null;
+  study_phase: string | null;
   admin_focus_tags: string[] | null;
   status: string;
   assigned_dozent_id: string | null;
@@ -1184,7 +1185,10 @@ export const VbAdminDashboard: React.FC = () => {
                             </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-1 mb-1">
-                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">{c.legal_area}</span>
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-primary text-white">{c.legal_area}</span>
+                            {c.study_phase && (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">{c.study_phase}</span>
+                            )}
                             {c.grade !== null && c.grade !== undefined && (
                               <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">{c.grade} Punkte</span>
                             )}
