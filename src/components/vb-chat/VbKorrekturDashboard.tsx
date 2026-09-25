@@ -1795,9 +1795,14 @@ export const VbKorrekturDashboard: React.FC = () => {
                           <h3 className="font-medium text-gray-900 text-sm sm:text-base">
                             Klausur #{c.case_study_number}
                           </h3>
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-primary text-white">
                             {c.legal_area}
                           </span>
+                          {c.study_phase && (
+                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                              {c.study_phase}
+                            </span>
+                          )}
                           {c.grade !== null && c.grade !== undefined && (
                             <span className="px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
                               {c.grade} Punkte
