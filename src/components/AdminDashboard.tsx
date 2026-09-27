@@ -1,19 +1,15 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { MessageSquare, LogOut, Users, Clock, FileText, Calendar, Edit2, X, Check, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Receipt, Search, Download, Eye, Mail, Send, Trash2, Settings, TrendingUp, GraduationCap, LayoutDashboard, Zap, Bell, Upload, UserPlus, HelpCircle, BookOpen, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
+import { MessageSquare, LogOut, Users, Clock, FileText, Calendar, Edit2, X, Check, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Receipt, Search, Download, Eye, Mail, Send, Trash2, Settings, TrendingUp, GraduationCap, LayoutDashboard, Bell, Upload, UserPlus, HelpCircle, BookOpen, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
 import { useFileStore } from '../store/fileStore';
 import { useToastStore } from '../store/toastStore';
-import { useInvoiceStore } from '../store/invoiceStore';
 import { supabase } from '../lib/supabase';
 import { PDFViewerModal } from './PDFViewerModal';
-import { useState as useReactState } from 'react';
 import { DozentCard } from './DozentCard';
-import { RecentUploads } from './RecentUploads';
 import { DozentPreviewModal } from './DozentPreviewModal';
 import { Logo } from './Logo';
-import { Chat } from './Chat';
 import { TeilnehmerForm } from './TeilnehmerForm';
 import { TeilnehmerDetailView } from './TeilnehmerDetailView';
 import { DozentForm } from './DozentForm';
@@ -110,13 +106,12 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   const isRestrictedMode = isAccountingMode || isVerwaltungMode;
   const navigate = useNavigate();
   const { signOut, user, fullName } = useAuthStore();
-  const { userRole, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isDozent } = useAuthStore();
+  const { userRole, isAdmin, isBuchhaltung, isDozent } = useAuthStore();
   const { unreadCount, fetchUnreadCount } = useChatStore();
-  const { undownloadedCount, fetchUndownloadedCount } = useFileStore();
+  const { fetchUndownloadedCount } = useFileStore();
   const { addToast } = useToastStore();
   const [dozenten, setDozenten] = useState<Profile[]>([]);
   const [teilnehmer, setTeilnehmer] = useState<any[]>([]);
-  const [eliteKleingruppen, setEliteKleingruppen] = useState<{id: string; name: string}[]>([]);
   const [eliteReleases, setEliteReleases] = useState<{ total: number; released: number }>({ total: 0, released: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDozent, setSelectedDozent] = useState<Profile | null>(null);
@@ -126,8 +121,6 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   const [teilnehmerNotes, setTeilnehmerNotes] = useState<any[]>([]);
   const [newNoteContent, setNewNoteContent] = useState('');
   const [isAddingNote, setIsAddingNote] = useState(false);
-  const [isCheckingDocuments, setIsCheckingDocuments] = useReactState(false);
-  const [checkResult, setCheckResult] = useReactState<any>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const accountingTabs = ['vertraege'];
@@ -140,6 +133,9 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
     // Check URL parameter first
     const tabParam = searchParams.get('tab');
     const allTabs = ['uebersicht', 'dozenten', 'teilnehmer', 'rechnungen', 'kalender', 'emails', 'vertrieb', 'integrationen', 'dozenten-dashboard', 'elite-kleingruppe', 'vertraege', 'klausurenkorrektur'];
+    if (tabParam === 'leads') {
+      return allowedTabs && !allowedTabs.includes('vertrieb') ? defaultTab : 'vertrieb';
+    }
     if (tabParam && allTabs.includes(tabParam)) {
       // In restricted mode, only allow permitted tabs
       if (allowedTabs && !allowedTabs.includes(tabParam)) {
@@ -213,7 +209,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   const [notificationLogsFilter, setNotificationLogsFilter] = useState<'all' | 'sent' | 'failed'>('all');
   const [notificationLogsSearch, setNotificationLogsSearch] = useState('');
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
-  const [allRechnungen, setAllRechnungen] = useState<any[]>([]);
+  const [, setAllRechnungen] = useState<any[]>([]);
   const [submittedInvoices, setSubmittedInvoices] = useState<any[]>([]);
   const [rechnungenFilter, setRechnungenFilter] = useState<string>('alle');
   const [rechnungenSearch, setRechnungenSearch] = useState<string>('');
@@ -261,10 +257,10 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   const [showDozentFiles, setShowDozentFiles] = useState(false);
   const [dozentAvailability, setDozentAvailability] = useState<Record<string, { status: string; notes?: string }>>({});
   const [showActivityLog, setShowActivityLog] = useState(false);
-  const [activityLogData, setActivityLogData] = useState<any[]>([]);
+  const [activityLogData] = useState<any[]>([]);
   const [showInvoicePreview, setShowInvoicePreview] = useState(false);
-  const [invoicePreviewData, setInvoicePreviewData] = useState<any>(null);
-  const [invoicePreviewItems, setInvoicePreviewItems] = useState<any[]>([]);
+  const [invoicePreviewData] = useState<any>(null);
+  const [invoicePreviewItems] = useState<any[]>([]);
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
   const [pdfViewerUrl, setPdfViewerUrl] = useState('');
   const [pdfViewerFileName, setPdfViewerFileName] = useState('');
@@ -457,7 +453,6 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
         break;
       case 'teilnehmer':
         fetchTeilnehmer();
-        fetchEliteKleingruppen();
         break;
       case 'kalender':
         fetchCalendarEntries();
@@ -479,7 +474,6 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   useEffect(() => {
     fetchDozenten();
     fetchTeilnehmer();
-    fetchEliteKleingruppen();
     fetchSubmittedInvoices(); // For overview KPIs
     fetchUnreadCount();
     fetchUndownloadedCount();
@@ -1138,21 +1132,6 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
     }
   };
 
-  const fetchEliteKleingruppen = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('elite_kleingruppen')
-        .select('id, name')
-        .eq('is_active', true)
-        .order('name');
-
-      if (error) throw error;
-      setEliteKleingruppen(data || []);
-    } catch (error) {
-      console.error('Error fetching elite kleingruppen:', error);
-    }
-  };
-
   const fetchDozenten = async () => {
     try {
       // Fetch dozenten profiles - include both primary role and additional roles
@@ -1208,12 +1187,6 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
-  };
-
-  const startEditingContract = (t: any) => {
-    setEditingTeilnehmer(t.id);
-    setEditContractStart(t.contract_start || '');
-    setEditContractEnd(t.contract_end || '');
   };
 
   const cancelEditingContract = () => {
@@ -1385,106 +1358,6 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
     }
   };
 
-  const fetchActivityLog = async () => {
-    try {
-      // Fetch files
-      const { data: filesData, error: filesError } = await supabase
-        .from('files')
-        .select(`
-          id, name, file_path, created_at, downloaded_at,
-          folder:folders(name),
-          uploaded_by_profile:profiles!files_uploaded_by_fkey(full_name)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (filesError) {
-        console.error('Error fetching files:', filesError);
-      }
-      console.log('Files fetched:', filesData?.length || 0);
-
-      // Fetch invoices - simplified query without join first
-      const { data: invoicesData, error: invoicesError } = await supabase
-        .from('invoices')
-        .select('id, month, year, status, submitted_at, dozent_id, total_amount, period_start, period_end')
-        .in('status', ['submitted', 'paid'])
-        .order('submitted_at', { ascending: false })
-        .limit(50);
-
-      if (invoicesError) {
-        console.error('Error fetching invoices:', invoicesError);
-      }
-      console.log('Invoices fetched:', invoicesData?.length || 0, invoicesData);
-
-      // Fetch dozent names separately
-      const dozentIds = [...new Set((invoicesData || []).map(inv => inv.dozent_id))];
-      const { data: dozentProfiles } = await supabase
-        .from('profiles')
-        .select('id, full_name')
-        .in('id', dozentIds);
-      
-      const dozentMap = new Map((dozentProfiles || []).map(p => [p.id, p.full_name]));
-
-      const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
-
-      const getInvoicePeriodDisplay = (invoice: any) => {
-        // Check if this is a quarterly invoice (period_start and period_end span multiple months)
-        if (invoice.period_start && invoice.period_end) {
-          const startDate = new Date(invoice.period_start);
-          const endDate = new Date(invoice.period_end);
-          
-          const startMonth = startDate.getMonth() + 1;
-          const endMonth = endDate.getMonth() + 1;
-          
-          // If it spans multiple months, display all months
-          if (startMonth !== endMonth) {
-            const months: string[] = [];
-            for (let m = startMonth; m <= endMonth; m++) {
-              months.push(monthNames[m - 1]);
-            }
-            return `${months.join(' & ')} ${invoice.year}`;
-          }
-        }
-        
-        // Otherwise, just show the single month
-        return `${monthNames[invoice.month - 1]} ${invoice.year}`;
-      };
-      
-      const files = (filesData || []).map(f => ({
-        ...f,
-        type: 'file'
-      }));
-
-      const invoices = (invoicesData || []).map(inv => {
-        const dozentName = dozentMap.get(inv.dozent_id) || 'Unbekannt';
-        return {
-          id: inv.id,
-          name: `Rechnung ${getInvoicePeriodDisplay(inv)}`,
-          file_path: '',
-          created_at: inv.submitted_at || new Date().toISOString(),
-          downloaded_at: null,
-          folder: { name: 'Rechnungen' },
-          uploaded_by_profile: { full_name: dozentName },
-          type: 'invoice',
-          invoice_data: {
-            dozent_id: inv.dozent_id,
-            month: inv.month,
-            year: inv.year,
-            total_amount: inv.total_amount,
-            dozent_name: dozentName
-          }
-        };
-      });
-
-      const combined = [...files, ...invoices]
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-      setActivityLogData(combined);
-    } catch (error) {
-      console.error('Error fetching activity log:', error);
-    }
-  };
-
   const handleDeleteInvoicePdf = async (invoice: any) => {
     try {
       // Fetch invoice to get file_path
@@ -1525,47 +1398,10 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
     }
   };
 
-  const handleMonthlyDocumentCheck = async () => {
-    setIsCheckingDocuments(true);
-    setCheckResult(null);
-    
-    try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-monthly-documents`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
-          forceCheck: true,
-          manualExecution: true
-        }),
-      });
-
-      const result = await response.json();
-      
-      if (response.ok) {
-        setCheckResult({
-          success: true,
-          data: result
-        });
-      } else {
-        throw new Error(result.error || 'Fehler beim Ausführen der Dokumentenprüfung');
-      }
-    } catch (error) {
-      console.error('Error running document check:', error);
-      setCheckResult({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unbekannter Fehler'
-      });
-    } finally {
-      setIsCheckingDocuments(false);
-    }
-  };
   return (
     <div className="min-h-screen bg-background">
       <nav className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
+        <div className={activeTab === 'vertrieb' ? 'w-full px-10' : 'max-w-7xl mx-auto px-2 sm:px-6 lg:px-8'}>
           <div className="flex justify-between items-center h-16">
             <div className="flex">
               <div className="flex-shrink-0 flex items-center">
@@ -1744,22 +1580,22 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto py-4 sm:py-6 px-2 sm:px-6 lg:px-8">
+      <main className={activeTab === 'vertrieb' ? 'w-full py-0 px-0' : 'max-w-7xl mx-auto py-4 sm:py-6 px-2 sm:px-6 lg:px-8'}>
         {/* Personalized Greeting */}
-        <div className="mb-4 sm:mb-6">
-          <h2 className="text-xl sm:text-2xl font-semibold text-gray-900">
+        <div className={activeTab === 'vertrieb' ? 'mb-4 sm:mb-6 px-10' : 'mb-4 sm:mb-6'}>
+          <h2 className="pt-5 text-xl sm:text-2xl font-semibold text-gray-900">
             Guten Tag, {fullName?.split(' ')[0] || 'Benutzer'}
           </h2>
         </div>
 
         {/* Tab Navigation */}
-        <div className="mb-6">
+        <div className={activeTab === 'vertrieb' ? 'mb-6 px-10' : 'mb-6'}>
           <div className="border-b border-gray-200 relative">
             {/* Left Arrow */}
             {showLeftArrow && (
               <button
                 onClick={() => scrollTabs('left')}
-                className="absolute left-0 top-0 bottom-0 z-10 flex items-center justify-center w-8 bg-gradient-to-r from-white via-white to-transparent"
+                className="absolute left-0 top-0 bottom-0 z-10 flex items-center justify-center w-6 bg-transparent"
               >
                 <ChevronLeft className="h-5 w-5 text-gray-500 hover:text-primary" />
               </button>
@@ -1768,7 +1604,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
             {showRightArrow && (
               <button
                 onClick={() => scrollTabs('right')}
-                className="absolute right-0 top-0 bottom-0 z-10 flex items-center justify-center w-8 bg-gradient-to-l from-white via-white to-transparent"
+                className="absolute right-0 top-0 bottom-0 z-10 flex items-center justify-center w-6 bg-transparent"
               >
                 <ChevronRight className="h-5 w-5 text-gray-500 hover:text-primary" />
               </button>
@@ -1778,7 +1614,14 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
               onScroll={checkScrollArrows}
               className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto scrollbar-hide scroll-smooth" 
               aria-label="Tabs"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+              style={{
+                scrollbarWidth: 'none',
+                msOverflowStyle: 'none',
+                ...(showRightArrow ? {
+                  WebkitMaskImage: 'linear-gradient(to right, black calc(100% - 48px), transparent 100%)',
+                  maskImage: 'linear-gradient(to right, black calc(100% - 48px), transparent 100%)',
+                } : {}),
+              }}
             >
               {!isRestrictedMode && (
               <button
@@ -2659,7 +2502,6 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
 
                           {/* Contract Progress Bar */}
                           {t.contract_start && t.contract_end && (() => {
-                            const progress = getContractProgress(t);
                             const hoursProgress = getHoursConsumption(t);
                             return (
                               <div className="pt-1">

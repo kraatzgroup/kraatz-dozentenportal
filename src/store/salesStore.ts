@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 
+const calBookingsFunctionUrl = import.meta.env.VITE_CAL_BOOKINGS_FUNCTION_URL ||
+  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cal-bookings`;
+
 export interface Package {
   id: string;
   name: string;
@@ -123,6 +126,9 @@ export interface CalBooking {
   meeting_url: string | null;
   location: string | null;
   event_type_id: string | null;
+  study_location?: string | null;
+  exam_goal?: string | null;
+  consultation_wishes?: string | null;
   last_synced_at: string;
   created_at: string;
 }
@@ -130,6 +136,7 @@ export interface CalBooking {
 export interface Lead {
   id: string;
   cal_booking_id: string | null;
+  teilnehmer_id: string | null;
   name: string;
   first_name: string | null;
   last_name: string | null;
@@ -421,33 +428,26 @@ export const useSalesStore = create<SalesState>((set, get) => ({
       }
       
       // If no data in DB, fetch fresh from Cal.com API via Edge Function
-      const calApiKey = import.meta.env.VITE_CAL_API_KEY;
-      if (calApiKey) {
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cal-bookings`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            },
-            body: JSON.stringify({ apiKey: calApiKey }),
-          }
-        );
-        
-        if (response.ok) {
-          const result = await response.json();
-          const bookings = (result.bookings || []).map((booking: any) => ({
-            ...booking,
-            last_synced_at: new Date().toISOString(),
-            created_at: new Date().toISOString(),
-          }));
-          
-          set({ calBookings: bookings });
-          return;
-        }
+      const response = await fetch(calBookingsFunctionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const bookings = (result.bookings || []).map((booking: any) => ({
+          ...booking,
+          last_synced_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+        }));
+
+        set({ calBookings: bookings });
+        return;
       }
-      
+
       set({ calBookings: [] });
     } catch (error: any) {
       console.error('Error fetching cal bookings:', error);
@@ -459,22 +459,13 @@ export const useSalesStore = create<SalesState>((set, get) => ({
     set({ isLoading: true });
     try {
       // Force refresh from Cal.com API via Edge Function
-      const calApiKey = import.meta.env.VITE_CAL_API_KEY;
-      if (!calApiKey) {
-        throw new Error('Cal.com API key not configured');
-      }
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cal-bookings`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({ apiKey: calApiKey }),
-        }
-      );
+      const response = await fetch(calBookingsFunctionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+      });
       
       if (response.ok) {
         const result = await response.json();

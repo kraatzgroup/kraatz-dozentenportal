@@ -1,17 +1,56 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Users, Phone, Mail, Calendar, Star, MessageSquare, CheckCircle } from 'lucide-react';
 import { Lead } from '../../store/salesStore';
+import { supabase } from '../../lib/supabase';
 
 interface AfterSalesListProps {
   leads: Lead[];
   onUpdateLead: (id: string, data: Partial<Lead>) => void;
 }
 
+interface AfterSalesEligibility {
+  lead_id: string;
+  teilnehmer_id: string;
+  teilnehmer_name: string;
+  contract_number: string;
+  contract_start: string | null;
+  contract_end: string | null;
+  total_hours: number;
+  used_hours: number;
+  remaining_hours: number;
+  duration_progress: number | null;
+  hours_used_percent: number | null;
+  trigger: 'both' | 'duration' | 'hours';
+}
+
 export function AfterSalesList({ leads, onUpdateLead }: AfterSalesListProps) {
   const [selectedLead, setSelectedLead] = useState<string | null>(null);
+  const [eligibilities, setEligibilities] = useState<AfterSalesEligibility[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
-  // Filter leads with contract_closed status (After Sales customers)
-  const afterSalesLeads = leads.filter(l => l.status === 'contract_closed');
+  useEffect(() => {
+    let isMounted = true;
+    const fetchEligibility = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('after-sales');
+        if (error) throw error;
+        const result = data as { eligible?: AfterSalesEligibility[] } | null;
+        if (isMounted) setEligibilities(Array.isArray(result?.eligible) ? result.eligible : []);
+      } catch {
+        if (isMounted) setLoadError(true);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+    void fetchEligibility();
+    return () => { isMounted = false; };
+  }, []);
+
+  const eligibilityByLeadId = new Map(eligibilities.map(eligibility => [eligibility.lead_id, eligibility]));
+  const afterSalesLeads = eligibilities
+    .map(eligibility => leads.find(lead => lead.id === eligibility.lead_id))
+    .filter((lead): lead is Lead => Boolean(lead));
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-';
@@ -36,19 +75,31 @@ export function AfterSalesList({ leads, onUpdateLead }: AfterSalesListProps) {
           </div>
         </div>
         <p className="mt-2 text-sm text-gray-500">
-          Kunden mit abgeschlossenem Vertrag. Pflegen Sie die Kundenbeziehung für Upsells und Empfehlungen.
+          Geschlossene, verknüpfte Leads mit aktivem Vertrag: ab 75 % Vertragslaufzeit oder höchstens 25 % Reststunden.
         </p>
       </div>
 
       {/* Customer Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {afterSalesLeads.length === 0 ? (
+        {isLoading ? (
+          <div className="col-span-full bg-white rounded-lg shadow p-6 text-center text-gray-500">Prüfe verknüpfte aktive Verträge …</div>
+        ) : loadError ? (
+          <div className="col-span-full bg-white rounded-lg shadow p-6 text-center text-red-600">After-Sales-Daten konnten nicht geladen werden.</div>
+        ) : afterSalesLeads.length === 0 ? (
           <div className="col-span-full bg-white rounded-lg shadow p-6 text-center">
             <Users className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500">Noch keine Kunden mit abgeschlossenem Vertrag</p>
+            <p className="text-gray-500">Aktuell keine Leads über der After-Sales-Schwelle</p>
           </div>
         ) : (
-          afterSalesLeads.map(lead => (
+          afterSalesLeads.map(lead => {
+            const eligibility = eligibilityByLeadId.get(lead.id);
+            if (!eligibility) return null;
+            const triggerLabel = eligibility.trigger === 'both'
+              ? 'Laufzeit und Reststunden'
+              : eligibility.trigger === 'duration'
+                ? '75 % der Vertragslaufzeit'
+                : '25 % oder weniger Reststunden';
+            return (
             <div 
               key={lead.id} 
               className="bg-white rounded-lg shadow hover:shadow-md transition-shadow"
@@ -82,6 +133,14 @@ export function AfterSalesList({ leads, onUpdateLead }: AfterSalesListProps) {
                       )}
                     </div>
                   </div>
+                </div>
+
+                <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50/60 p-3 text-sm text-gray-700">
+                  <p className="font-medium">Teilnehmer: {eligibility.teilnehmer_name}</p>
+                  <p className="mt-1 text-xs text-gray-600">Vertrag {eligibility.contract_number} · {formatDate(eligibility.contract_start)}–{formatDate(eligibility.contract_end)}</p>
+                  <p className="mt-2 text-xs">Vertragslaufzeit: {eligibility.duration_progress === null ? '—' : `${eligibility.duration_progress}%`}</p>
+                  <p className="text-xs">Stunden: {eligibility.used_hours} von {eligibility.total_hours} verbraucht · {eligibility.remaining_hours} übrig</p>
+                  <p className="mt-1 text-xs font-medium text-emerald-800">After-Sales-Auslöser: {triggerLabel}</p>
                 </div>
 
                 {/* Study Info */}
@@ -146,7 +205,8 @@ export function AfterSalesList({ leads, onUpdateLead }: AfterSalesListProps) {
                 )}
               </div>
             </div>
-          ))
+            );
+          })
         )}
       </div>
 

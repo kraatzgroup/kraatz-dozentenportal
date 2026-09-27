@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Users, Mail, Phone, MapPin, GraduationCap, Calendar, Search, Filter, Plus, X, Edit2, ChevronDown, MessageSquare, FileText, Clock, CheckCircle } from 'lucide-react';
 import { Lead, LeadNote, useSalesStore } from '../../store/salesStore';
 import { supabase } from '../../lib/supabase';
+import { LeadCreateModal } from './LeadCreateModal';
 
 interface LeadsListProps {
   leads: Lead[];
@@ -17,6 +18,13 @@ interface TrialLesson {
   status: string;
   dozent_name: string | null;
   rechtsgebiet: string | null;
+  lead_id?: string | null;
+}
+
+interface ParticipantSuggestion {
+  id: string;
+  name: string;
+  email: string;
 }
 
 interface ActivityItem {
@@ -37,8 +45,12 @@ export function LeadsList({ leads, onUpdateStatus, onCreateLead, onUpdateLead }:
   const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null);
   const [trialLessons, setTrialLessons] = useState<TrialLesson[]>([]);
   const [newNoteText, setNewNoteText] = useState('');
+  const [participantSuggestions, setParticipantSuggestions] = useState<Record<string, ParticipantSuggestion[]>>({});
+  const [participantSearchLeadId, setParticipantSearchLeadId] = useState<string | null>(null);
+  const [participantLinkLeadId, setParticipantLinkLeadId] = useState<string | null>(null);
+  const [participantLinkError, setParticipantLinkError] = useState<string | null>(null);
   
-  const { leadNotes, fetchLeadNotes, addLeadNote } = useSalesStore();
+  const { leadNotes, fetchLeadNotes, addLeadNote, fetchLeads } = useSalesStore();
   
   useEffect(() => {
     fetchLeadNotes();
@@ -49,13 +61,47 @@ export function LeadsList({ leads, onUpdateStatus, onCreateLead, onUpdateLead }:
     const { data } = await supabase.from('trial_lessons').select('id, teilnehmer_name, scheduled_date, status, dozent_name, rechtsgebiet, lead_id');
     if (data) setTrialLessons(data);
   };
+
+  const findParticipantSuggestions = async (lead: Lead) => {
+    setParticipantLinkError(null);
+    setParticipantSearchLeadId(lead.id);
+    const { data, error } = await supabase
+      .from('teilnehmer')
+      .select('id, name, email')
+      .ilike('email', lead.email)
+      .limit(10);
+
+    if (error) {
+      setParticipantLinkError('Teilnehmer konnten nicht gesucht werden.');
+    } else {
+      setParticipantSuggestions(previous => ({ ...previous, [lead.id]: (data || []) as ParticipantSuggestion[] }));
+    }
+    setParticipantSearchLeadId(null);
+  };
+
+  const confirmParticipantLink = async (lead: Lead, participant: ParticipantSuggestion) => {
+    setParticipantLinkError(null);
+    setParticipantLinkLeadId(lead.id);
+    const { error } = await supabase
+      .from('leads')
+      .update({ teilnehmer_id: participant.id })
+      .eq('id', lead.id);
+
+    if (error) {
+      setParticipantLinkError('Der Teilnehmer konnte nicht verknüpft werden.');
+    } else {
+      await fetchLeads();
+      setParticipantSuggestions(previous => ({ ...previous, [lead.id]: [] }));
+    }
+    setParticipantLinkLeadId(null);
+  };
   
   const getNotesForLead = (leadId: string): LeadNote[] => {
     return leadNotes.filter(n => n.lead_id === leadId);
   };
   
   const getTrialLessonsForLead = (leadId: string) => {
-    return trialLessons.filter((t: any) => t.lead_id === leadId);
+    return trialLessons.filter(t => t.lead_id === leadId);
   };
   
   const getActivityTimeline = (lead: Lead): ActivityItem[] => {
@@ -84,7 +130,7 @@ export function LeadsList({ leads, onUpdateStatus, onCreateLead, onUpdateLead }:
     }
     
     // Trial lessons
-    getTrialLessonsForLead(lead.id).forEach((lesson: any) => {
+    getTrialLessonsForLead(lead.id).forEach(lesson => {
       activities.push({
         type: 'trial_lesson',
         date: lesson.scheduled_date,
@@ -148,23 +194,6 @@ export function LeadsList({ leads, onUpdateStatus, onCreateLead, onUpdateLead }:
     }
   };
   
-  const [newLead, setNewLead] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    study_goal: '',
-    study_location: '',
-    notes: '',
-    booking_date: '',
-    source: '',
-    street: '',
-    house_number: '',
-    postal_code: '',
-    city: '',
-    state_law: '',
-    exam_date: '',
-    legal_areas: [] as string[],
-  });
   const [editFormData, setEditFormData] = useState({
     name: '',
     email: '',
@@ -203,11 +232,12 @@ export function LeadsList({ leads, onUpdateStatus, onCreateLead, onUpdateLead }:
   const statusOptions: { id: Lead['status']; label: string }[] = [
     { id: 'new', label: 'Beratungsgespräch' },
     { id: 'offer_sent', label: 'Angebot versendet' },
-    { id: 'post_offer_call', label: 'Gespräch nach Angebot' },
+    { id: 'post_offer_call', label: '2. Gespräch' },
     { id: 'trial_pending', label: 'Probestunde' },
-    { id: 'post_trial_call', label: 'Finalgespräch nach Probestunde' },
+    { id: 'post_trial_call', label: 'Finalgespräch' },
     { id: 'vertragsanforderung', label: 'Vertragsanforderung' },
     { id: 'downsell', label: 'Kraatz Club Downsell' },
+    { id: 'unqualified', label: 'Unqualifiziert' },
     { id: 'closed', label: 'Closed' },
     { id: 'contract_closed', label: 'Abgeschlossen' },
   ];
@@ -246,31 +276,6 @@ export function LeadsList({ leads, onUpdateStatus, onCreateLead, onUpdateLead }:
       month: '2-digit',
       year: 'numeric',
     });
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newLead.name || !newLead.email) return;
-    
-    setIsSubmitting(true);
-    try {
-      await onCreateLead({
-        name: newLead.name,
-        email: newLead.email,
-        phone: newLead.phone || null,
-        study_goal: newLead.study_goal || null,
-        study_location: newLead.study_location || null,
-        notes: newLead.notes || null,
-        booking_date: newLead.booking_date || null,
-        source: newLead.source || 'manual',
-      });
-      setNewLead({ name: '', email: '', phone: '', study_goal: '', study_location: '', notes: '', booking_date: '', source: '', street: '', house_number: '', postal_code: '', city: '', state_law: '', exam_date: '', legal_areas: [] });
-      setShowAddModal(false);
-    } catch (error) {
-      console.error('Error creating lead:', error);
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   const startEdit = (lead: Lead) => {
@@ -552,6 +557,44 @@ export function LeadsList({ leads, onUpdateStatus, onCreateLead, onUpdateLead }:
                       <tr>
                         <td colSpan={7} className="px-4 py-4 bg-gray-50 border-t border-b">
                           <div className="max-w-4xl">
+                            {(lead.status === 'closed' || lead.teilnehmer_id) && (
+                              <section className="mb-5 rounded-lg border border-blue-200 bg-blue-50/60 p-4">
+                                <h4 className="font-medium text-gray-900">Teilnehmer-Verknüpfung</h4>
+                                {lead.teilnehmer_id ? (
+                                  <p className="mt-2 text-sm text-green-700">Dieser Lead ist mit einem Teilnehmer verknüpft.</p>
+                                ) : (
+                                  <>
+                                    <p className="mt-1 text-sm text-gray-600">Passende Teilnehmer werden anhand der Lead-E-Mail gesucht. Die Verknüpfung erfolgt erst nach deiner Bestätigung.</p>
+                                    <button
+                                      type="button"
+                                      onClick={() => void findParticipantSuggestions(lead)}
+                                      disabled={participantSearchLeadId === lead.id}
+                                      className="mt-3 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                                    >
+                                      {participantSearchLeadId === lead.id ? 'Suche läuft …' : 'Teilnehmer vorschlagen'}
+                                    </button>
+                                    {participantLinkError && <p className="mt-2 text-sm text-red-600">{participantLinkError}</p>}
+                                    {participantSuggestions[lead.id]?.length === 0 && <p className="mt-2 text-sm text-gray-500">Kein Teilnehmer mit derselben E-Mail gefunden.</p>}
+                                    {participantSuggestions[lead.id]?.map(participant => (
+                                      <div key={participant.id} className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-blue-100 bg-white p-3">
+                                        <div>
+                                          <p className="font-medium text-gray-900">{participant.name}</p>
+                                          <p className="text-sm text-gray-500">{participant.email}</p>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => void confirmParticipantLink(lead, participant)}
+                                          disabled={participantLinkLeadId === lead.id}
+                                          className="rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                                        >
+                                          {participantLinkLeadId === lead.id ? 'Verknüpft …' : 'Vorschlag bestätigen'}
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </>
+                                )}
+                              </section>
+                            )}
                             <h4 className="font-medium text-gray-900 mb-3 flex items-center">
                               <Clock className="h-4 w-4 mr-2 text-primary" />
                               Aktivitätenprotokoll
@@ -633,124 +676,7 @@ export function LeadsList({ leads, onUpdateStatus, onCreateLead, onUpdateLead }:
       </div>
 
       {/* Add Lead Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="text-lg font-semibold text-gray-900">Neuen Lead hinzufügen</h3>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="p-1 text-gray-400 hover:text-gray-600 rounded"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <form onSubmit={handleSubmit} className="p-4 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={newLead.name}
-                  onChange={(e) => setNewLead({ ...newLead, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                  placeholder="Max Mustermann"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  E-Mail <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="email"
-                  value={newLead.email}
-                  onChange={(e) => setNewLead({ ...newLead, email: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                  placeholder="max@beispiel.de"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Telefon</label>
-                <input
-                  type="tel"
-                  value={newLead.phone}
-                  onChange={(e) => setNewLead({ ...newLead, phone: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                  placeholder="+49 123 456789"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Studienziel</label>
-                <input
-                  type="text"
-                  value={newLead.study_goal}
-                  onChange={(e) => setNewLead({ ...newLead, study_goal: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                  placeholder="z.B. Staatsexamen, Bachelor"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Standort</label>
-                <input
-                  type="text"
-                  value={newLead.study_location}
-                  onChange={(e) => setNewLead({ ...newLead, study_location: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                  placeholder="z.B. München, Berlin"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Quelle</label>
-                <input
-                  type="text"
-                  value={newLead.source}
-                  onChange={(e) => setNewLead({ ...newLead, source: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                  placeholder="z.B. Instagram, Empfehlung, Website"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Termin</label>
-                <input
-                  type="datetime-local"
-                  value={newLead.booking_date}
-                  onChange={(e) => setNewLead({ ...newLead, booking_date: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notizen</label>
-                <textarea
-                  value={newLead.notes}
-                  onChange={(e) => setNewLead({ ...newLead, notes: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                  rows={3}
-                  placeholder="Zusätzliche Informationen..."
-                />
-              </div>
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
-                >
-                  Abbrechen
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting || !newLead.name || !newLead.email}
-                  className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isSubmitting ? 'Speichern...' : 'Lead erstellen'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <LeadCreateModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} onCreateLead={onCreateLead} />
 
       {/* Edit Lead Modal */}
       {showEditModal && editingLead && (
