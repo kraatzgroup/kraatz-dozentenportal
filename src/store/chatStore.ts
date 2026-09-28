@@ -9,6 +9,10 @@ export interface Message {
   content: string;
   created_at: string;
   read_at: string | null;
+  file_url?: string | null;
+  file_name?: string | null;
+  file_type?: string | null;
+  file_size?: number | null;
   sender: {
     full_name: string;
   };
@@ -22,7 +26,7 @@ interface ChatState {
   fetchMessages: (contactId: string | null) => Promise<void>;
   fetchGroupMessages: (groupId: string) => Promise<void>;
   fetchUnreadCount: () => Promise<void>;
-  sendMessage: (message: { content: string; receiver_id: string }) => Promise<void>;
+  sendMessage: (message: { content: string; receiver_id: string; file_url?: string | null; file_name?: string | null; file_type?: string | null; file_size?: number | null }) => Promise<void>;
   sendGroupMessage: (message: { content: string; group_id: string; file_url?: string | null; file_name?: string | null; file_type?: string | null; file_size?: number | null }) => Promise<void>;
   markAsRead: (messageId: string) => Promise<void>;
 }
@@ -89,13 +93,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (!user) {
         throw new Error('No authenticated user');
       }
-
-      let query = supabase
-        .from('messages')
-        .select(`
-          *,
-          sender:profiles!messages_sender_id_fkey(full_name)
-        `);
 
       let data;
       let error;

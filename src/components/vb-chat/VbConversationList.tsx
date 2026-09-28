@@ -26,8 +26,8 @@ export const VbConversationList: React.FC<VbConversationListProps> = ({
   });
 
   return (
-    <div className="w-full md:w-80 bg-white border-r border-gray-200 flex flex-col h-full">
-      <div className="p-4 border-b border-gray-200">
+    <div className="w-full flex-shrink-0 min-h-0 bg-white border-r border-gray-200 flex flex-col h-full">
+      <div className="flex-shrink-0 p-4 border-b border-gray-200">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900">Chats</h2>
           <button
@@ -51,7 +51,7 @@ export const VbConversationList: React.FC<VbConversationListProps> = ({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center p-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -63,39 +63,44 @@ export const VbConversationList: React.FC<VbConversationListProps> = ({
           </div>
         ) : (
           filteredConversations.map(conversation => (
-            <div
+            <button
               key={conversation.id}
+              type="button"
               onClick={() => onSelectConversation(conversation.id)}
-              className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${
-                conversation.id === activeConversationId ? 'bg-primary/10' : ''
+              className={`w-full border-b border-l-4 border-gray-100 p-3 sm:p-4 text-left transition-colors ${
+                conversation.id === activeConversationId
+                  ? 'border-l-primary bg-primary/10'
+                  : conversation.unread_count > 0
+                  ? 'border-l-red-500 bg-red-50/30 hover:bg-red-50'
+                  : 'border-l-transparent hover:bg-gray-50'
               }`}
             >
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-medium text-gray-900 truncate">
-                    {conversation.title || 'Unterhaltung'}
-                  </h3>
-                  <p className="text-sm text-gray-500 truncate mt-1">
-                    {conversation.last_message || 'Keine Nachrichten'}
-                  </p>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className={`min-w-0 truncate text-gray-900 ${conversation.unread_count > 0 ? 'font-semibold' : 'font-medium'}`}>
+                  {conversation.title || 'Unterhaltung'}
+                </h3>
+                <div className="flex flex-shrink-0 items-center gap-2">
+                  {conversation.last_message_at && (
+                    <span className="whitespace-nowrap text-xs text-gray-500">
+                      {new Date(conversation.last_message_at).toLocaleDateString('de-DE', {
+                        day: 'numeric',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
+                  )}
+                  {conversation.unread_count > 0 && (
+                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-xs text-white">
+                      {conversation.unread_count > 99 ? '99+' : conversation.unread_count}
+                    </span>
+                  )}
                 </div>
-                {conversation.unread_count > 0 && (
-                  <div className="ml-2 bg-primary text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                    {conversation.unread_count}
-                  </div>
-                )}
               </div>
-              {conversation.last_message_at && (
-                <p className="text-xs text-gray-400 mt-2">
-                  {new Date(conversation.last_message_at).toLocaleDateString('de-DE', {
-                    day: 'numeric',
-                    month: 'short',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </p>
-              )}
-            </div>
+              <p className="mt-1 truncate text-sm text-gray-500">
+                {conversation.last_message || 'Keine Nachrichten'}
+              </p>
+            </button>
           ))
         )}
       </div>

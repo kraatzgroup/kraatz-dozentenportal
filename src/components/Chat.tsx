@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, Check, CheckCheck, Search, Plus, X, Users, Trash2, Paperclip, Download, FileText } from 'lucide-react';
+import { ArrowLeft, Send, Check, CheckCheck, Search, Plus, X, Users, Trash2, Paperclip, Download, FileText, Archive, ArchiveRestore } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore'; 
@@ -21,19 +21,27 @@ interface ChatGroup {
   created_by: string;
   created_at: string;
   member_count?: number;
+  last_message_at?: string | null;
+  unread_count?: number;
 }
+
+type ConversationFilter = 'chats' | 'groups' | 'unread' | 'archived';
+type ConversationActivity = { lastMessageAt: number; unreadCount: number };
+type ConversationListItem =
+  | { type: 'group'; id: string; group: ChatGroup; lastMessageAt: number; unreadCount: number }
+  | { type: 'contact'; id: string; contact: Contact; lastMessageAt: number; unreadCount: number };
 
 export function Chat() {
   const navigate = useNavigate();
-  const { user, isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, userRole, additionalRoles } = useAuthStore();
+  const { user, isAdmin, userRole, additionalRoles } = useAuthStore();
   const { messages, fetchMessages, sendMessage, fetchGroupMessages, sendGroupMessage, fetchUnreadCount } = useChatStore();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [groups, setGroups] = useState<ChatGroup[]>([]);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<ChatGroup | null>(null);
   const [newMessage, setNewMessage] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [conversationFilter, setConversationFilter] = useState<ConversationFilter>('chats');
   const [vbConversationId, setVbConversationId] = useState<string | null>(null);
   const [vbMessages, setVbMessages] = useState<any[]>([]);
   const [showNewChatModal, setShowNewChatModal] = useState(false);
@@ -49,8 +57,10 @@ export function Chat() {
   const [groupMembers, setGroupMembers] = useState<Contact[]>([]);
   const [availableMembers, setAvailableMembers] = useState<Contact[]>([]);
   const [allMessages, setAllMessages] = useState<any[]>([]);
-  const [showDeleteChatModal, setShowDeleteChatModal] = useState(false);
-  const [chatToDelete, setChatToDelete] = useState<Contact | null>(null);
+  const [vbActivityByContact, setVbActivityByContact] = useState<Record<string, ConversationActivity>>({});
+  const [showArchiveChatModal, setShowArchiveChatModal] = useState(false);
+  const [chatToArchive, setChatToArchive] = useState<Contact | null>(null);
+  const [archivedContactIds, setArchivedContactIds] = useState<Set<string>>(new Set());
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
@@ -59,6 +69,95 @@ export function Chat() {
   const [fileTypeWarning, setFileTypeWarning] = useState<string | null>(null);
   const [showMobileChat, setShowMobileChat] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatWindowRef = useRef<HTMLDivElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
+
+  const resizeMessageInput = React.useCallback(() => {
+    const textarea = messageInputRef.current;
+    const chatWindow = chatWindowRef.current;
+    if (!textarea || !chatWindow) return;
+
+    textarea.style.height = 'auto';
+    const contentHeight = textarea.scrollHeight;
+    const maxHeight = chatWindow.clientHeight * 0.5;
+    textarea.style.height = `${Math.min(contentHeight, maxHeight)}px`;
+    textarea.style.overflowY = contentHeight > maxHeight ? 'auto' : 'hidden';
+  }, []);
+
+  useEffect(() => {
+    resizeMessageInput();
+  }, [newMessage, resizeMessageInput]);
+
+  useEffect(() => {
+    const chatWindow = chatWindowRef.current;
+    if (!chatWindow) return;
+
+    const observer = new ResizeObserver(resizeMessageInput);
+    observer.observe(chatWindow);
+    return () => observer.disconnect();
+  }, [resizeMessageInput]);
+
+  const loadVbConversationActivity = React.useCallback(async () => {
+    if (!user?.id) {
+      setVbActivityByContact({});
+      return;
+    }
+
+    try {
+      const { data: conversations, error: conversationsError } = await supabase
+        .from('vb_conversation_details')
+        .select('id, last_message_at, unread_count');
+      if (conversationsError) throw conversationsError;
+
+      const conversationIds = (conversations || []).map(conversation => conversation.id);
+      if (conversationIds.length === 0) {
+        setVbActivityByContact({});
+        return;
+      }
+
+      const { data: participants, error: participantsError } = await supabase
+        .from('vb_conversation_participants')
+        .select('conversation_id, profile_id')
+        .in('conversation_id', conversationIds);
+      if (participantsError) throw participantsError;
+
+      const conversationById = new Map(conversations?.map(conversation => [conversation.id, conversation]));
+      const activityByContact = new Map<string, ConversationActivity>();
+      participants?.forEach(participant => {
+        if (participant.profile_id === user.id) return;
+        const conversation = conversationById.get(participant.conversation_id);
+        if (!conversation) return;
+
+        const activity = activityByContact.get(participant.profile_id) || { lastMessageAt: 0, unreadCount: 0 };
+        const lastMessageAt = conversation.last_message_at ? new Date(conversation.last_message_at).getTime() : 0;
+        activity.lastMessageAt = Math.max(activity.lastMessageAt, Number.isFinite(lastMessageAt) ? lastMessageAt : 0);
+        activity.unreadCount += conversation.unread_count || 0;
+        activityByContact.set(participant.profile_id, activity);
+      });
+      setVbActivityByContact(Object.fromEntries(activityByContact));
+    } catch (error) {
+      console.error('Error loading VB conversation activity:', error);
+    }
+  }, [user?.id]);
+
+  const loadArchivedContacts = React.useCallback(async () => {
+    if (!user?.id) {
+      setArchivedContactIds(new Set());
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('user_chat_archives')
+      .select('contact_id')
+      .eq('user_id', user.id);
+
+    if (error) {
+      console.error('Error loading archived chats:', error);
+      return;
+    }
+
+    setArchivedContactIds(new Set((data || []).map(archive => archive.contact_id)));
+  }, [user?.id]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -69,6 +168,31 @@ export function Chat() {
     fetchGroups();
     loadAllMessages();
   }, []);
+
+  useEffect(() => {
+    loadArchivedContacts();
+  }, [loadArchivedContacts]);
+
+  useEffect(() => {
+    loadVbConversationActivity();
+  }, [loadVbConversationActivity]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const subscription = supabase
+      .channel(`vb-chat-list-${user.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'vb_chat_messages'
+      }, () => loadVbConversationActivity())
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [user?.id, loadVbConversationActivity]);
 
   useEffect(() => {
     scrollToBottom();
@@ -175,6 +299,7 @@ export function Chat() {
           .update({ last_read_at: new Date().toISOString() })
           .eq('conversation_id', convId)
           .eq('profile_id', user.id);
+        await loadVbConversationActivity();
       } else {
         setVbMessages([]);
       }
@@ -231,37 +356,32 @@ export function Chat() {
 
   useEffect(() => {
     if (selectedGroup) {
-      fetchGroupMessages(selectedGroup.id);
+      fetchGroupMessages(selectedGroup.id).then(fetchGroups);
     } else if (selectedContact) {
-      fetchMessages(selectedContact.id);
+      fetchMessages(selectedContact.id).then(loadAllMessages);
     } else {
       fetchMessages(null);
     }
-    
+
     const subscription = supabase
       .channel('chat-changes')
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'messages',
-        filter: `receiver_id=eq.${user?.id}`,
-      }, () => {
-        if (selectedContact) {
-          fetchMessages(selectedContact.id);
-        } else {
-          fetchMessages(null);
-        }
-        loadAllMessages();
+      }, payload => {
+        const message = payload.new as { group_id?: string | null; sender_id?: string; receiver_id?: string | null };
         fetchUnreadCount();
-      })
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-        filter: `group_id=eq.${selectedGroup?.id}`,
-      }, () => {
-        if (selectedGroup) {
-          fetchGroupMessages(selectedGroup.id);
+        if (message.group_id) {
+          fetchGroups();
+          if (selectedGroup?.id === message.group_id) {
+            fetchGroupMessages(selectedGroup.id).then(fetchGroups);
+          }
+        } else {
+          loadAllMessages();
+          if (selectedContact && (message.sender_id === selectedContact.id || message.receiver_id === selectedContact.id)) {
+            fetchMessages(selectedContact.id).then(loadAllMessages);
+          }
         }
       })
       .subscribe();
@@ -301,7 +421,6 @@ export function Chat() {
   }, [vbConversationId]);
 
   const fetchContacts = async () => {
-    setIsLoading(true);
     try {
       // Determine who the user can message based on their role
       if (userRole === 'teilnehmer') {
@@ -531,12 +650,10 @@ export function Chat() {
       }
     } catch (error) {
       console.error('Error fetching contacts:', error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  const fetchGroups = async () => {
+  const fetchGroups = React.useCallback(async () => {
     if (!user) return;
     
     try {
@@ -577,26 +694,57 @@ export function Chat() {
         groupData = data;
       }
       
-      // Count members for each group
+      const groupIds = (groupData || []).map(group => group.id);
+      const unreadMessageCounts = new Map<string, number>();
+      if (groupIds.length > 0) {
+        const { data: unreadMessages, error: unreadError } = await supabase
+          .from('messages')
+          .select('group_id')
+          .in('group_id', groupIds)
+          .neq('sender_id', user.id)
+          .is('read_at', null);
+
+        if (unreadError) throw unreadError;
+        unreadMessages?.forEach(message => {
+          if (message.group_id) {
+            unreadMessageCounts.set(message.group_id, (unreadMessageCounts.get(message.group_id) || 0) + 1);
+          }
+        });
+      }
+
       const groupsWithCounts = await Promise.all(
-        (groupData || []).map(async (group) => {
-          const { count } = await supabase
-            .from('chat_group_members')
-            .select('*', { count: 'exact', head: true })
-            .eq('group_id', group.id);
-          
+        (groupData || []).map(async group => {
+          const [membersResult, latestMessageResult] = await Promise.all([
+            supabase
+              .from('chat_group_members')
+              .select('*', { count: 'exact', head: true })
+              .eq('group_id', group.id),
+            supabase
+              .from('messages')
+              .select('created_at')
+              .eq('group_id', group.id)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+          ]);
+
+          if (membersResult.error) throw membersResult.error;
+          if (latestMessageResult.error) throw latestMessageResult.error;
+
           return {
             ...group,
-            member_count: count || 0
+            member_count: membersResult.count || 0,
+            last_message_at: latestMessageResult.data?.created_at || null,
+            unread_count: unreadMessageCounts.get(group.id) || 0
           };
         })
       );
-      
+
       setGroups(groupsWithCounts);
     } catch (error) {
       console.error('Error fetching groups:', error);
     }
-  };
+  }, [user, isAdmin]);
 
   // Supported file types
   const supportedFileTypes = {
@@ -652,7 +800,7 @@ export function Chat() {
         // Use detected type if it's not the default, otherwise use browser type
         const contentType = (detectedType !== 'application/octet-stream') ? detectedType : (browserType || detectedType);
         
-        const { data: uploadData, error: uploadError } = await supabase.storage
+        const { error: uploadError } = await supabase.storage
           .from('chat-attachments')
           .upload(filePath, selectedFile, {
             contentType: contentType,
@@ -681,6 +829,7 @@ export function Chat() {
       // VB teilnehmer threads are stored in the VB chat tables
       if (isVbTeilnehmerContact(selectedContact)) {
         await sendVbMessage(newMessage.trim(), fileUrl, fileName, fileType, fileSize);
+        await loadVbConversationActivity();
         setNewMessage('');
         setSelectedFile(null);
         return;
@@ -698,7 +847,7 @@ export function Chat() {
 
       setNewMessage('');
       setSelectedFile(null);
-      loadAllMessages();
+      await loadAllMessages();
     } catch (error) {
       console.error('Error sending message:', error);
       alert('Fehler beim Senden der Nachricht.');
@@ -777,44 +926,48 @@ export function Chat() {
     }
   };
 
-  const handleDeleteChat = async (contact: Contact) => {
+  const handleArchiveChat = async (contact: Contact) => {
+    if (!user) return;
+
     try {
-      const { error: deleteError1 } = await supabase
-        .from('messages')
-        .delete()
-        .eq('sender_id', user?.id)
-        .eq('receiver_id', contact.id);
+      const { error } = await supabase
+        .from('user_chat_archives')
+        .insert({ user_id: user.id, contact_id: contact.id });
+      if (error) throw error;
 
-      const { error: deleteError2 } = await supabase
-        .from('messages')
-        .delete()
-        .eq('sender_id', contact.id)
-        .eq('receiver_id', user?.id);
-
-      if (deleteError1 || deleteError2) {
-        console.error('Error deleting messages:', deleteError1 || deleteError2);
-        return;
-      }
-
-      await loadAllMessages();
-      
+      setArchivedContactIds(current => new Set(current).add(contact.id));
       if (selectedContact?.id === contact.id) {
         setSelectedContact(null);
+        setShowMobileChat(false);
       }
-      
-      setShowDeleteChatModal(false);
-      setChatToDelete(null);
+      setShowArchiveChatModal(false);
+      setChatToArchive(null);
     } catch (error) {
-      console.error('Error deleting chat:', error);
+      console.error('Error archiving chat:', error);
+      alert('Chat konnte nicht archiviert werden.');
     }
   };
 
-  const hasUnreadMessages = (contactId: string) => {
-    return allMessages.some(msg => 
-      msg.sender_id === contactId && 
-      msg.receiver_id === user?.id && 
-      !msg.read_at
-    );
+  const handleUnarchiveChat = async (contact: Contact) => {
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from('user_chat_archives')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('contact_id', contact.id);
+      if (error) throw error;
+
+      setArchivedContactIds(current => {
+        const next = new Set(current);
+        next.delete(contact.id);
+        return next;
+      });
+    } catch (error) {
+      console.error('Error unarchiving chat:', error);
+      alert('Chat konnte nicht aus dem Archiv geholt werden.');
+    }
   };
 
   const formatMessageTime = (timestamp: string) => {
@@ -844,7 +997,7 @@ export function Chat() {
   };
 
   // Helper function to parse and render links in message content
-  const renderMessageContent = (content: string, isOwnMessage: boolean) => {
+  const renderMessageContent = (content: string) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const parts = content.split(urlRegex);
     
@@ -866,48 +1019,70 @@ export function Chat() {
     });
   };
 
-  // Get last message timestamp for a contact
-  const getLastMessageTime = (contactId: string) => {
-    const contactMessages = allMessages.filter(msg => 
-      msg.sender_id === contactId || msg.receiver_id === contactId
-    );
-    if (contactMessages.length === 0) return new Date(0);
-    const lastMessage = contactMessages[contactMessages.length - 1];
-    return new Date(lastMessage.created_at);
-  };
+  const { visibleConversations, unreadConversationCount } = useMemo(() => {
+    const contactActivity = new Map<string, { lastMessageAt: number; unreadCount: number }>();
+    allMessages.forEach(message => {
+      const contactId = message.sender_id === user?.id ? message.receiver_id : message.sender_id;
+      if (!contactId) return;
 
-  // Check if there are any messages with a contact
-  const hasMessagesWithContact = (contactId: string) => {
-    return allMessages.some(msg => 
-      msg.sender_id === contactId || msg.receiver_id === contactId
-    );
-  };
+      const activity = contactActivity.get(contactId) || { lastMessageAt: 0, unreadCount: 0 };
+      activity.lastMessageAt = Math.max(activity.lastMessageAt, new Date(message.created_at).getTime() || 0);
+      if (message.sender_id !== user?.id && message.receiver_id === user?.id && !message.read_at) {
+        activity.unreadCount += 1;
+      }
+      contactActivity.set(contactId, activity);
+    });
 
-  // Filter and separate contacts into unread and read, sorted by last message time
-  const { unreadContacts, readContacts } = useMemo(() => {
-    const filtered = contacts.filter(contact => 
-      contact.full_name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-    
-    // Only show contacts with existing messages UNLESS they are searching
-    // When searching, show all available contacts
-    const contactsToShow = !searchQuery.trim()
-      ? filtered.filter(contact => hasMessagesWithContact(contact.id))
-      : filtered;
-    
-    const unread = contactsToShow.filter(contact => hasUnreadMessages(contact.id));
-    const read = contactsToShow.filter(contact => !hasUnreadMessages(contact.id));
-    
-    // Sort by last message time (newest first)
-    unread.sort((a, b) => getLastMessageTime(b.id).getTime() - getLastMessageTime(a.id).getTime());
-    read.sort((a, b) => getLastMessageTime(b.id).getTime() - getLastMessageTime(a.id).getTime());
-    
-    return { unreadContacts: unread, readContacts: read };
-  }, [contacts, searchQuery, allMessages, user?.id]);
+    const conversations: ConversationListItem[] = [
+      ...contacts.map(contact => {
+        const messageActivity = contactActivity.get(contact.id) || { lastMessageAt: 0, unreadCount: 0 };
+        const vbActivity = vbActivityByContact[contact.id] || { lastMessageAt: 0, unreadCount: 0 };
+        return {
+          type: 'contact' as const,
+          id: contact.id,
+          contact,
+          lastMessageAt: Math.max(messageActivity.lastMessageAt, vbActivity.lastMessageAt),
+          unreadCount: messageActivity.unreadCount + vbActivity.unreadCount
+        };
+      }),
+      ...groups.map(group => ({
+        type: 'group' as const,
+        id: group.id,
+        group,
+        lastMessageAt: new Date(group.last_message_at || 0).getTime() || 0,
+        unreadCount: group.unread_count || 0
+      }))
+    ];
+
+    const unreadCount = conversations.filter(conversation =>
+      conversation.unreadCount > 0 && !(conversation.type === 'contact' && archivedContactIds.has(conversation.id))
+    ).length;
+    const filtered = conversations
+      .filter(conversation => {
+        const name = conversation.type === 'group' ? conversation.group.name : conversation.contact.full_name;
+        if (!name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+        const isArchived = conversation.type === 'contact' && archivedContactIds.has(conversation.id);
+        if (conversationFilter === 'archived') return isArchived;
+        if (isArchived) return false;
+        if (conversationFilter === 'groups' && conversation.type !== 'group') return false;
+        if (conversationFilter === 'unread' && conversation.unreadCount === 0) return false;
+        if (conversation.type === 'contact' && conversation.lastMessageAt === 0 && !searchQuery.trim()) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const activityOrder = b.lastMessageAt - a.lastMessageAt;
+        if (activityOrder !== 0) return activityOrder;
+        const aName = a.type === 'group' ? a.group.name : a.contact.full_name;
+        const bName = b.type === 'group' ? b.group.name : b.contact.full_name;
+        return aName.localeCompare(bName);
+      });
+
+    return { visibleConversations: filtered, unreadConversationCount: unreadCount };
+  }, [contacts, groups, allMessages, vbActivityByContact, archivedContactIds, searchQuery, conversationFilter, user?.id]);
 
   return (
-    <div className="min-h-screen bg-background">
-      <nav className="bg-white shadow-sm">
+    <div className="h-screen flex flex-col overflow-hidden bg-background">
+      <nav className="flex-shrink-0 bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
@@ -921,9 +1096,9 @@ export function Chat() {
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto py-4 sm:py-6 px-2 sm:px-6 lg:px-8">
-        <div className="py-4">
-          <div className="flex items-center gap-3 mb-4">
+      <div className="max-w-7xl mx-auto w-full flex-1 min-h-0 flex flex-col px-2 sm:px-6 lg:px-8 py-3 sm:py-4">
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div className="flex flex-shrink-0 items-center gap-3 mb-4">
             <button
               onClick={() => navigate('/dashboard')}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -933,13 +1108,13 @@ export function Chat() {
             </button>
             <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Nachrichten</h1>
           </div>
-          <div className="bg-white rounded-lg shadow">
-            <div className="grid grid-cols-1 sm:grid-cols-3">
+          <div className="flex-1 min-h-0 overflow-hidden rounded-lg bg-white shadow">
+            <div className="grid h-full min-h-0 grid-cols-1 sm:grid-cols-[2fr_3fr]">
               {/* Contacts List */}
-              <div className={`col-span-1 sm:border-r border-gray-200 border-b sm:border-b-0 flex flex-col ${showMobileChat ? 'hidden sm:flex' : 'flex'}`}>
+              <div className={`col-span-1 sm:border-r border-gray-200 border-b sm:border-b-0 flex min-h-0 flex-col ${showMobileChat ? 'hidden sm:flex' : 'flex'}`}>
                 <div className="p-4 border-b border-gray-200 flex-shrink-0">
                   <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-base sm:text-lg font-medium text-gray-900">Kontakte</h2>
+                    <h2 className="text-base sm:text-lg font-medium text-gray-900">Unterhaltungen</h2>
                     <button
                       onClick={() => setShowNewChatModal(true)}
                       className="p-1.5 rounded-full hover:bg-gray-100 text-primary transition-colors"
@@ -953,242 +1128,176 @@ export function Chat() {
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <input
                       type="text"
-                      placeholder="Kontakt suchen..."
+                      placeholder="Unterhaltungen suchen..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                     />
                   </div>
+                  <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Unterhaltungen filtern">
+                    <button
+                      type="button"
+                      aria-pressed={conversationFilter === 'chats'}
+                      onClick={() => setConversationFilter('chats')}
+                      className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${conversationFilter === 'chats' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                    >
+                      Chats
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={conversationFilter === 'groups'}
+                      onClick={() => setConversationFilter('groups')}
+                      className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${conversationFilter === 'groups' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                    >
+                      Gruppen
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={conversationFilter === 'unread'}
+                      onClick={() => setConversationFilter('unread')}
+                      className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${conversationFilter === 'unread' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                    >
+                      Ungelesen{unreadConversationCount > 0 ? ` (${unreadConversationCount})` : ''}
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={conversationFilter === 'archived'}
+                      onClick={() => setConversationFilter('archived')}
+                      className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${conversationFilter === 'archived' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                    >
+                      Archiviert{archivedContactIds.size > 0 ? ` (${archivedContactIds.size})` : ''}
+                    </button>
+                  </div>
                 </div>
-                <div className="overflow-y-auto flex-1 h-[calc(100vh-280px)] sm:max-h-[600px]">
-                  {/* Groups Section */}
-                  {groups.length > 0 && (
-                    <>
-                      <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
-                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                          Gruppen ({groups.length})
-                        </span>
-                      </div>
-                      {groups
-                        .filter(group => 
-                          group.name.toLowerCase().includes(searchQuery.toLowerCase())
-                        )
-                        .map(group => {
-                          const isSelected = selectedGroup?.id === group.id;
-                          
-                          return (
-                            <div key={group.id} className="relative group">
-                              <button
-                                onClick={() => {
-                                  setSelectedGroup(group);
-                                  setSelectedContact(null);
-                                  setShowMobileChat(true);
-                                }}
-                                className={`w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors duration-150 relative ${
-                                  isSelected ? 'bg-blue-50' : ''
-                                }`}
-                              >
-                                <div className="flex items-center min-w-0 gap-2">
-                                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                                    <Users className="h-5 w-5 text-primary" />
-                                  </div>
-                                  <div className="ml-2 sm:ml-3 flex-1 min-w-0">
-                                    <div className="font-medium text-gray-900">
-                                      <span className="truncate block">{group.name}</span>
-                                    </div>
-                                    <div className="text-xs sm:text-sm text-gray-500">
-                                      {group.member_count} Mitglieder
-                                    </div>
-                                  </div>
-                                </div>
-                              </button>
-                              {isAdmin && (
-                                <button
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    if (!confirm(`Gruppe "${group.name}" wirklich löschen? Alle Nachrichten werden ebenfalls gelöscht.`)) {
-                                      return;
-                                    }
-                                    try {
-                                      const { error } = await supabase
-                                        .from('chat_groups')
-                                        .delete()
-                                        .eq('id', group.id);
-                                      if (error) throw error;
-                                      if (selectedGroup?.id === group.id) {
-                                        setSelectedGroup(null);
-                                      }
-                                      fetchGroups();
-                                    } catch (error) {
-                                      console.error('Error deleting group:', error);
-                                      alert('Fehler beim Löschen der Gruppe.');
-                                    }
-                                  }}
-                                  className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 rounded transition-opacity z-10"
-                                  title="Gruppe löschen"
-                                >
-                                  <Trash2 className="h-4 w-4 text-red-600" />
-                                </button>
-                              )}
-                            </div>
-                          );
-                        })}
-                    </>
-                  )}
-                  
-                  {/* Unread Section */}
-                  {unreadContacts.length > 0 && (
-                    <>
-                      <div className="px-4 py-2 bg-red-50 border-b border-red-100">
-                        <span className="text-xs font-semibold text-red-600 uppercase tracking-wide">
-                          Ungelesen ({unreadContacts.length})
-                        </span>
-                      </div>
-                      {unreadContacts.map(contact => {
-                        const isSelected = selectedContact?.id === contact.id;
-                        const unreadCount = messages.filter(msg => 
-                          msg.sender_id === contact.id && 
-                          msg.receiver_id === user?.id && 
-                          !msg.read_at
-                        ).length;
-                        
-                        return (
-                          <div key={contact.id} className="relative group">
-                            <button
-                              onClick={() => {
-                                setSelectedContact(contact);
-                                setSelectedGroup(null);
-                                setShowMobileChat(true);
-                              }}
-                              className={`w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors duration-150 relative ${
-                                unreadCount > 0 ? 'border-l-4 border-red-500' : 'border-l-4 border-transparent'
-                              } ${
-                                isSelected ? 'bg-blue-50' : unreadCount > 0 ? 'bg-red-50/30' : ''
-                              }`}
-                            >
-                              <div className="flex items-center min-w-0 gap-2">
-                                <ProfilePicture
-                                  userId={contact.id}
-                                  url={contact.profile_picture_url} 
-                                  size="sm"
-                                  editable={false}
-                                  isAdmin={contact.role === 'admin'}
-                                  fullName={contact.full_name}
-                                />
-                                <div className="ml-2 sm:ml-3 flex-1 min-w-0">
-                                  <div className="font-semibold text-gray-900">
-                                    <span className="truncate block">{contact.full_name}</span>
-                                  </div>
-                                  <div className="text-xs sm:text-sm text-gray-500">
-                                    {contact.role === 'admin' ? 'Administrator' : 
-                                     contact.role === 'buchhaltung' ? 'Buchhaltung' :
-                                     contact.role === 'verwaltung' ? 'Verwaltung' :
-                                     contact.role === 'vertrieb' ? 'Vertrieb' :
-                                     contact.role === 'teilnehmer' ? 'Teilnehmer' : 'Dozent'}
-                                  </div>
-                                </div>
-                                {unreadCount > 0 && (
-                                <div className="ml-2 flex-shrink-0">
-                                  <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
-                                    <span className="text-white text-xs font-bold">
-                                      {unreadCount > 99 ? '99+' : unreadCount}
-                                    </span>
-                                  </div>
-                                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  {visibleConversations.map(conversation => {
+                    const isGroup = conversation.type === 'group';
+                    const isArchived = !isGroup && archivedContactIds.has(conversation.id);
+                    const isSelected = isGroup
+                      ? selectedGroup?.id === conversation.id
+                      : selectedContact?.id === conversation.id;
+                    const name = isGroup ? conversation.group.name : conversation.contact.full_name;
+                    const detail = isGroup
+                      ? `${conversation.group.member_count || 0} Mitglieder`
+                      : conversation.contact.role === 'admin' ? 'Administrator'
+                      : conversation.contact.role === 'buchhaltung' ? 'Buchhaltung'
+                      : conversation.contact.role === 'verwaltung' ? 'Verwaltung'
+                      : conversation.contact.role === 'vertrieb' ? 'Vertrieb'
+                      : conversation.contact.role === 'teilnehmer' ? 'Teilnehmer' : 'Dozent';
+
+                    return (
+                      <div key={`${conversation.type}-${conversation.id}`} className="relative group">
+                        <button
+                          onClick={() => {
+                            if (isGroup) {
+                              setSelectedGroup(conversation.group);
+                              setSelectedContact(null);
+                            } else {
+                              setSelectedContact(conversation.contact);
+                              setSelectedGroup(null);
+                            }
+                            setShowMobileChat(true);
+                          }}
+                          className={`w-full border-l-4 text-left p-3 pr-10 sm:p-4 sm:pr-10 hover:bg-gray-50 transition-colors duration-150 ${
+                            conversation.unreadCount > 0 ? 'border-red-500 bg-red-50/30' : 'border-transparent'
+                          } ${isSelected ? 'bg-blue-50' : ''}`}
+                        >
+                          <div className="flex items-center min-w-0 gap-2">
+                            {isGroup ? (
+                              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                <Users className="h-5 w-5 text-primary" />
+                              </div>
+                            ) : (
+                              <ProfilePicture
+                                userId={conversation.contact.id}
+                                url={conversation.contact.profile_picture_url}
+                                size="sm"
+                                editable={false}
+                                isAdmin={conversation.contact.role === 'admin'}
+                                fullName={conversation.contact.full_name}
+                              />
+                            )}
+                            <div className="ml-2 sm:ml-3 flex-1 min-w-0 text-left">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className={`truncate block ${conversation.unreadCount > 0 ? 'font-semibold' : 'font-medium'} text-gray-900`}>
+                                  {name}
+                                </span>
+                                {conversation.lastMessageAt > 0 && (
+                                  <span className="flex-shrink-0 text-xs text-gray-500">
+                                    {formatMessageTime(new Date(conversation.lastMessageAt).toISOString())}
+                                  </span>
                                 )}
                               </div>
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setChatToDelete(contact);
-                                setShowDeleteChatModal(true);
-                              }}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 rounded transition-opacity z-10"
-                              title="Chat löschen"
-                            >
-                              <Trash2 className="h-4 w-4 text-red-600" />
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </>
-                  )}
-                  
-                  {/* Read Section */}
-                  {readContacts.length > 0 && (
-                    <>
-                      <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
-                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                          {unreadContacts.length > 0 ? 'Gelesen' : 'Offene Chats'} ({readContacts.length})
-                        </span>
-                      </div>
-                      {readContacts.map(contact => {
-                        const isSelected = selectedContact?.id === contact.id;
-                        
-                        return (
-                          <div key={contact.id} className="relative group">
-                            <button
-                              onClick={() => {
-                                setSelectedContact(contact);
-                                setSelectedGroup(null);
-                                setShowMobileChat(true);
-                              }}
-                              className={`w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors duration-150 relative ${
-                                isSelected ? 'bg-blue-50' : ''
-                              }`}
-                            >
-                              <div className="flex items-center min-w-0 gap-2">
-                                <ProfilePicture
-                                  userId={contact.id}
-                                  url={contact.profile_picture_url} 
-                                  size="sm"
-                                  editable={false}
-                                  isAdmin={contact.role === 'admin'}
-                                  fullName={contact.full_name}
-                                />
-                                <div className="ml-2 sm:ml-3 flex-1 min-w-0">
-                                  <div className="font-medium text-gray-900">
-                                    <span className="truncate block">{contact.full_name}</span>
-                                  </div>
-                                  <div className="text-xs sm:text-sm text-gray-500">
-                                    {contact.role === 'admin' ? 'Administrator' : 
-                                     contact.role === 'buchhaltung' ? 'Buchhaltung' :
-                                     contact.role === 'verwaltung' ? 'Verwaltung' :
-                                     contact.role === 'vertrieb' ? 'Vertrieb' :
-                                     contact.role === 'teilnehmer' ? 'Teilnehmer' : 'Dozent'}
-                                  </div>
-                                </div>
+                              <div className="text-xs sm:text-sm text-gray-500">{detail}</div>
+                            </div>
+                            {conversation.unreadCount > 0 && (
+                              <div className="ml-2 flex-shrink-0 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+                                <span className="text-white text-xs font-bold">
+                                  {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
+                                </span>
                               </div>
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setChatToDelete(contact);
-                                setShowDeleteChatModal(true);
-                              }}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 rounded transition-opacity z-10"
-                              title="Chat löschen"
-                            >
-                              <Trash2 className="h-4 w-4 text-red-600" />
-                            </button>
+                            )}
                           </div>
-                        );
-                      })}
-                    </>
-                  )}
-                  
-                  {/* No results */}
-                  {unreadContacts.length === 0 && readContacts.length === 0 && (
+                        </button>
+                        {isGroup && isAdmin && (
+                          <button
+                            onClick={async e => {
+                              e.stopPropagation();
+                              if (!confirm(`Gruppe "${conversation.group.name}" wirklich löschen? Alle Nachrichten werden ebenfalls gelöscht.`)) return;
+                              try {
+                                const { error } = await supabase
+                                  .from('chat_groups')
+                                  .delete()
+                                  .eq('id', conversation.group.id);
+                                if (error) throw error;
+                                if (selectedGroup?.id === conversation.group.id) setSelectedGroup(null);
+                                fetchGroups();
+                              } catch (error) {
+                                console.error('Error deleting group:', error);
+                                alert('Fehler beim Löschen der Gruppe.');
+                              }
+                            }}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 rounded transition-opacity z-10"
+                            title="Gruppe löschen"
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </button>
+                        )}
+                        {!isGroup && (
+                          <button
+                            onClick={e => {
+                              e.stopPropagation();
+                              if (isArchived) {
+                                handleUnarchiveChat(conversation.contact);
+                              } else {
+                                setChatToArchive(conversation.contact);
+                                setShowArchiveChatModal(true);
+                              }
+                            }}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:bg-gray-100 rounded transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100 z-10"
+                            title={isArchived ? 'Chat aus dem Archiv holen' : 'Chat archivieren'}
+                            aria-label={isArchived ? 'Chat aus dem Archiv holen' : 'Chat archivieren'}
+                          >
+                            {isArchived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {visibleConversations.length === 0 && (
                     <div className="p-4 text-center text-gray-500 text-sm">
-                      {searchQuery ? 'Keine Kontakte gefunden' : 'Keine Kontakte verfügbar'}
+                      {conversationFilter === 'unread'
+                        ? 'Keine ungelesenen Unterhaltungen'
+                        : conversationFilter === 'archived'
+                        ? 'Keine archivierten Chats'
+                        : 'Keine Unterhaltungen gefunden'}
                     </div>
                   )}
                 </div>
               </div>
 
               {/* Chat Area */}
-              <div className={`col-span-1 sm:col-span-2 flex flex-col ${!showMobileChat ? 'hidden sm:flex' : 'flex'} h-[calc(100vh-180px)] sm:h-auto`}>
+              <div ref={chatWindowRef} className={`col-span-1 flex min-h-0 flex-col overflow-hidden ${!showMobileChat ? 'hidden sm:flex' : 'flex'}`}>
                 {selectedGroup ? (
                   <>
                     <div className="p-4 border-b border-gray-200">
@@ -1231,7 +1340,7 @@ export function Chat() {
                         )}
                       </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 h-[calc(100vh-320px)] sm:h-auto">
+                    <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
                       {messages.length === 0 ? (
                         <div className="text-center text-gray-500 py-8">
                           <Users className="h-12 w-12 mx-auto mb-3 text-gray-400" />
@@ -1263,8 +1372,10 @@ export function Chat() {
                               {message.file_url && (
                                 <button
                                   onClick={async () => {
+                                    const fileUrl = message.file_url;
+                                    if (!fileUrl) return;
                                     try {
-                                      const response = await fetch(message.file_url);
+                                      const response = await fetch(fileUrl);
                                       const blob = await response.blob();
                                       const url = window.URL.createObjectURL(blob);
                                       const a = document.createElement('a');
@@ -1299,7 +1410,7 @@ export function Chat() {
                                   <Download className="h-4 w-4 flex-shrink-0" />
                                 </button>
                               )}
-                              {message.content && <p className="break-words">{renderMessageContent(message.content, message.sender_id === user?.id)}</p>}
+                              {message.content && <p className="break-words whitespace-pre-wrap">{renderMessageContent(message.content)}</p>}
                               <div className="flex items-center justify-end mt-1 space-x-1">
                                 <span className={`text-xs ${
                                   message.sender_id === user?.id
@@ -1363,6 +1474,7 @@ export function Chat() {
                           file_type: fileType,
                           file_size: fileSize
                         });
+                        await fetchGroups();
                         setNewMessage('');
                         setSelectedFile(null);
                       } catch (error) {
@@ -1371,7 +1483,7 @@ export function Chat() {
                       } finally {
                         setIsUploading(false);
                       }
-                    }} className="p-3 sm:p-4 border-t border-gray-200">
+                    }} className="flex-shrink-0 p-3 sm:p-4 border-t border-gray-200">
                       {fileTypeWarning && (
                         <div className="mb-2 p-3 bg-red-50 border border-red-200 rounded-md flex items-start gap-2">
                           <X className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
@@ -1417,7 +1529,7 @@ export function Chat() {
                           </button>
                         </div>
                       )}
-                      <div className="flex space-x-2 sm:space-x-4">
+                      <div className="flex items-end space-x-2 sm:space-x-4">
                         <input
                           type="file"
                           id="group-file-upload"
@@ -1442,12 +1554,13 @@ export function Chat() {
                         >
                           <Paperclip className="h-4 w-4" />
                         </label>
-                        <input
-                          type="text"
+                        <textarea
+                          ref={messageInputRef}
+                          rows={2}
                           value={newMessage}
                           onChange={(e) => setNewMessage(e.target.value)}
                           placeholder="Nachricht an die Gruppe schreiben..."
-                          className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 text-sm"
+                          className="flex-1 min-w-0 overflow-y-hidden rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 text-sm"
                         />
                         <button
                           type="submit"
@@ -1478,7 +1591,7 @@ export function Chat() {
                         </h2>
                       </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 h-[calc(100vh-320px)] sm:h-auto">
+                    <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
                       {(isVbTeilnehmerContact(selectedContact) ? vbMessages : messages).map(message => (
                         <div
                           key={message.id}
@@ -1538,7 +1651,7 @@ export function Chat() {
                                     <Download className="h-4 w-4 flex-shrink-0" />
                                   </button>
                                 )}
-                                {message.content && <p className="break-words">{renderMessageContent(message.content, message.sender_id === user?.id)}</p>}
+                                {message.content && <p className="break-words whitespace-pre-wrap">{renderMessageContent(message.content)}</p>}
                               </>
                             )}
                             <div className="flex items-center justify-end mt-1 space-x-1">
@@ -1579,7 +1692,7 @@ export function Chat() {
                       ))}
                       <div ref={messagesEndRef} />
                     </div>
-                    <form onSubmit={handleSendMessage} className="p-3 sm:p-4 border-t border-gray-200">
+                    <form onSubmit={handleSendMessage} className="flex-shrink-0 p-3 sm:p-4 border-t border-gray-200">
                       {fileTypeWarning && (
                         <div className="mb-2 p-3 bg-red-50 border border-red-200 rounded-md flex items-start gap-2">
                           <X className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
@@ -1625,7 +1738,7 @@ export function Chat() {
                           </button>
                         </div>
                       )}
-                      <div className="flex space-x-2 sm:space-x-4">
+                      <div className="flex items-end space-x-2 sm:space-x-4">
                         <input
                           type="file"
                           id="file-upload"
@@ -1650,12 +1763,13 @@ export function Chat() {
                         >
                           <Paperclip className="h-4 w-4" />
                         </label>
-                        <input
-                          type="text"
+                        <textarea
+                          ref={messageInputRef}
+                          rows={2}
                           value={newMessage}
                           onChange={(e) => setNewMessage(e.target.value)}
                           placeholder="Nachricht schreiben..."
-                          className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 text-sm"
+                          className="flex-1 min-w-0 overflow-y-hidden rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 text-sm"
                         />
                         <button
                           type="submit"
@@ -2361,33 +2475,28 @@ export function Chat() {
         </div>
       )}
 
-      {/* Delete Chat Confirmation Modal */}
-      {showDeleteChatModal && chatToDelete && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowDeleteChatModal(false)}>
+      {showArchiveChatModal && chatToArchive && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => { setShowArchiveChatModal(false); setChatToArchive(null); }}>
           <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Chat löschen?</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Chat archivieren?</h3>
             <p className="text-gray-600 mb-4">
-              Möchten Sie den Chat mit <strong>{chatToDelete.full_name}</strong> wirklich löschen? Alle Nachrichten werden unwiderruflich gelöscht.
+              Möchten Sie den Chat mit <strong>{chatToArchive.full_name}</strong> archivieren? Die Nachrichten bleiben erhalten und der Chat ist im Filter „Archiviert“ wieder erreichbar.
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 type="button"
-                onClick={() => setShowDeleteChatModal(false)}
+                onClick={() => { setShowArchiveChatModal(false); setChatToArchive(null); }}
                 className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
               >
                 Abbrechen
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  if (chatToDelete) {
-                    handleDeleteChat(chatToDelete);
-                  }
-                }}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors flex items-center"
+                onClick={() => chatToArchive && handleArchiveChat(chatToArchive)}
+                className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors flex items-center"
               >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Löschen
+                <Archive className="h-4 w-4 mr-2" />
+                Archivieren
               </button>
             </div>
           </div>

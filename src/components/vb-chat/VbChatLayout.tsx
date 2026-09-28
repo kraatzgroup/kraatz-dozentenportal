@@ -184,8 +184,8 @@ export const VbChatLayout: React.FC = () => {
   }
 
   return (
-    <div className="flex-1 flex min-h-0 bg-white relative">
-      <div className={`h-full ${displayedConversation ? 'hidden md:block' : 'block'}`}>
+    <div className="relative flex-1 flex min-h-0 min-w-0 overflow-hidden bg-white">
+      <div className={`h-full min-h-0 w-full flex-shrink-0 md:w-[40%] md:min-w-[280px] ${displayedConversation ? 'hidden md:block' : 'block'}`}>
         <VbConversationList
           conversations={conversations}
           activeConversationId={activeConversation?.id || ''}
@@ -195,7 +195,7 @@ export const VbChatLayout: React.FC = () => {
         />
       </div>
 
-      <div className={`flex-1 ${!displayedConversation ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`min-w-0 flex-1 min-h-0 ${!displayedConversation ? 'hidden md:flex' : 'flex'}`}>
         <VbChatWindow
           conversation={displayedConversation}
           messages={displayedMessages}

@@ -26,12 +26,12 @@ export const VbLayout: React.FC<VbLayoutProps> = ({ children, fullscreen = false
   }
 
   return (
-    <div className={`bg-background flex ${fullscreen ? 'h-screen' : 'min-h-screen'}`}>
+    <div className={`bg-background flex ${fullscreen ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
       <VbHeader />
       <div className="flex-1 flex flex-col min-w-0">
         <VbMobileHeader />
         {fullscreen ? (
-          <main className="flex-1 flex flex-col min-h-0">
+          <main className="flex-1 flex min-h-0 flex-col overflow-hidden">
             {children}
           </main>
         ) : (

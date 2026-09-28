@@ -45,6 +45,33 @@ export const VbChatWindow: React.FC<VbChatWindowProps> = ({
   const [isSending, setIsSending] = React.useState(false);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+  const chatWindowRef = React.useRef<HTMLDivElement>(null);
+  const messageInputRef = React.useRef<HTMLTextAreaElement>(null);
+
+  const resizeMessageInput = React.useCallback(() => {
+    const textarea = messageInputRef.current;
+    const chatWindow = chatWindowRef.current;
+    if (!textarea || !chatWindow) return;
+
+    textarea.style.height = 'auto';
+    const contentHeight = textarea.scrollHeight;
+    const maxHeight = chatWindow.clientHeight * 0.5;
+    textarea.style.height = `${Math.min(contentHeight, maxHeight)}px`;
+    textarea.style.overflowY = contentHeight > maxHeight ? 'auto' : 'hidden';
+  }, []);
+
+  React.useEffect(() => {
+    resizeMessageInput();
+  }, [message, resizeMessageInput]);
+
+  React.useEffect(() => {
+    const chatWindow = chatWindowRef.current;
+    if (!chatWindow) return;
+
+    const observer = new ResizeObserver(resizeMessageInput);
+    observer.observe(chatWindow);
+    return () => observer.disconnect();
+  }, [conversation?.id, resizeMessageInput]);
 
   React.useEffect(() => {
     // Scroll only the message container; scrollIntoView would also scroll
@@ -70,13 +97,6 @@ export const VbChatWindow: React.FC<VbChatWindowProps> = ({
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
   if (!conversation) {
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-50">
@@ -96,8 +116,8 @@ export const VbChatWindow: React.FC<VbChatWindowProps> = ({
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-white">
-      <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+    <div ref={chatWindowRef} className="flex-1 flex min-h-0 flex-col overflow-hidden bg-white">
+      <div className="flex-shrink-0 p-3 sm:p-4 border-b border-gray-200 flex items-center justify-between">
         <div className="flex items-center gap-3">
           {onBack && (
             <button onClick={onBack} className="md:hidden p-2 text-gray-500 hover:text-gray-700">
@@ -119,7 +139,7 @@ export const VbChatWindow: React.FC<VbChatWindowProps> = ({
         )}
       </div>
 
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
         {loading && messages.length === 0 ? (
           <div className="flex items-center justify-center">
             <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
@@ -135,7 +155,7 @@ export const VbChatWindow: React.FC<VbChatWindowProps> = ({
               className={`flex ${msg.sender_id === ownSenderId ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[70%] rounded-lg p-3 ${
+                className={`max-w-[85%] sm:max-w-[70%] rounded-lg p-2 sm:p-3 ${
                   msg.sender_id === ownSenderId
                     ? 'bg-[#2a83bf] text-white'
                     : 'bg-gray-100 text-gray-900'
@@ -160,26 +180,26 @@ export const VbChatWindow: React.FC<VbChatWindowProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="p-4 border-t border-gray-200">
+      <div className="flex-shrink-0 p-3 sm:p-4 border-t border-gray-200">
         {!canSend && sendDisabledReason && (
           <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-2">
             {sendDisabledReason}
           </p>
         )}
-        <div className="flex gap-2">
-          <input
-            type="text"
+        <div className="flex items-end gap-2">
+          <textarea
+            ref={messageInputRef}
+            rows={2}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            onKeyPress={handleKeyPress}
             placeholder={canSend ? 'Nachricht schreiben...' : 'Schreiben derzeit nicht möglich'}
             disabled={isSending || !canSend}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
+            className="flex-1 min-w-0 overflow-y-hidden px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
           />
           <button
             onClick={handleSend}
             disabled={!message.trim() || isSending || !canSend}
-            className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 sm:px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSending ? (
               <Loader2 className="w-5 h-5 animate-spin" />
