@@ -1297,10 +1297,10 @@ export function EliteKleingruppeDashboard() {
       )}
 
       {/* Willkommen & Motivation - Above Tabs */}
-      <div className="bg-white/80 backdrop-blur-sm pt-6 pb-4">
+      <div className="bg-white/80 backdrop-blur-sm pt-4 sm:pt-6 pb-3 sm:pb-4">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-[#2e83c2] rounded-2xl p-6 text-white shadow-lg">
-            <h2 className="text-2xl font-bold">Willkommen zurück{firstName ? `, ${firstName}` : ''}!</h2>
+          <div className="bg-[#2e83c2] rounded-2xl p-4 sm:p-6 text-white shadow-lg">
+            <h2 className="text-xl sm:text-2xl font-bold">Willkommen zurück{firstName ? `, ${firstName}` : ''}!</h2>
             <p className="text-white/80 mt-1">Dein Weg zum Examen – Schritt für Schritt zum Erfolg.</p>
           </div>
         </div>
@@ -1308,38 +1308,38 @@ export function EliteKleingruppeDashboard() {
 
       <div className="bg-white/80 backdrop-blur-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <nav className="flex flex-col md:flex-row md:space-x-1 overflow-x-auto">
+          <nav className="flex flex-row gap-1 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0 snap-x" aria-label="Bereiche">
             <button
               onClick={() => setActiveTab('dashboard')}
-              className={`py-4 px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors ${activeTab === 'dashboard' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+              className={`snap-start shrink-0 whitespace-nowrap py-3 sm:py-4 px-3 sm:px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors ${activeTab === 'dashboard' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
             >
               <Award className="h-4 w-4 mr-2" />
               Dashboard
             </button>
             <button
               onClick={() => setActiveTab('kalender')}
-              className={`py-4 px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors ${activeTab === 'kalender' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+              className={`snap-start shrink-0 whitespace-nowrap py-3 sm:py-4 px-3 sm:px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors ${activeTab === 'kalender' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
             >
               <Calendar className="h-4 w-4 mr-2" />
               Einheiten-Kalender
             </button>
             <button
               onClick={() => setActiveTab('materialien')}
-              className={`py-4 px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors ${activeTab === 'materialien' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+              className={`snap-start shrink-0 whitespace-nowrap py-3 sm:py-4 px-3 sm:px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors ${activeTab === 'materialien' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
             >
               <FileText className="h-4 w-4 mr-2" />
               Materialien
             </button>
             <button
               onClick={() => setActiveTab('klausuren')}
-              className={`py-4 px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors ${activeTab === 'klausuren' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+              className={`snap-start shrink-0 whitespace-nowrap py-3 sm:py-4 px-3 sm:px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors ${activeTab === 'klausuren' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
             >
               <PenTool className="h-4 w-4 mr-2" />
               Meine Klausuren
             </button>
             <button
               onClick={() => setActiveTab('support')}
-              className={`py-4 px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors ${activeTab === 'support' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+              className={`snap-start shrink-0 whitespace-nowrap py-3 sm:py-4 px-3 sm:px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors ${activeTab === 'support' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
             >
               <HelpCircle className="h-4 w-4 mr-2" />
               Support
@@ -1348,14 +1348,14 @@ export function EliteKleingruppeDashboard() {
               <>
                 <button
                   onClick={() => window.location.href = '/klausurenbesprechung/dashboard'}
-                  className="py-4 px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                  className="snap-start shrink-0 whitespace-nowrap py-3 sm:py-4 px-3 sm:px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors text-gray-500 hover:text-gray-700 hover:bg-gray-50"
                 >
                   <GraduationCap className="h-4 w-4 mr-2" />
                   Videoklausurenkorrektur
                 </button>
                 <button
                   onClick={() => window.location.href = '/klausurenbesprechung/klausuren-masterclass'}
-                  className="py-4 px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                  className="snap-start shrink-0 whitespace-nowrap py-3 sm:py-4 px-3 sm:px-4 font-medium text-sm flex items-center rounded-t-lg transition-colors text-gray-500 hover:text-gray-700 hover:bg-gray-50"
                 >
                   <GraduationCap className="h-4 w-4 mr-2" />
                   Klausuren-Masterclass
@@ -1367,7 +1367,7 @@ export function EliteKleingruppeDashboard() {
       </div>
 
       {/* Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
             {/* Staatsexamen Countdown */}
@@ -1383,7 +1383,7 @@ export function EliteKleingruppeDashboard() {
                       <p className="text-sm text-gray-500">Trage das Datum ein, um deinen Countdown zu starten</p>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-3">
+                  <div className="flex flex-wrap items-center gap-3">
                     <input
                       type="date"
                       value={tempExamDate}
@@ -1407,7 +1407,7 @@ export function EliteKleingruppeDashboard() {
                 </div>
               </div>
             ) : examDate ? (
-              <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl p-6 text-white shadow-xl">
+              <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl p-4 sm:p-6 text-white shadow-xl">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
                 <div className="absolute bottom-0 left-0 w-48 h-48 bg-blue-500/10 rounded-full blur-2xl translate-y-1/2 -translate-x-1/2" />
                 
@@ -1420,7 +1420,7 @@ export function EliteKleingruppeDashboard() {
                         </div>
                         <span className="text-sm font-medium text-white/60 uppercase tracking-wider">Dein Staatsexamen</span>
                       </div>
-                      <p className="text-2xl font-bold text-white">
+                      <p className="text-xl sm:text-2xl font-bold text-white">
                         {new Date(examDate).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
                       </p>
                       <button 
@@ -1434,7 +1434,7 @@ export function EliteKleingruppeDashboard() {
                     <div className="flex items-center gap-6">
                       <div className="text-center">
                         <div className="relative">
-                          <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-400">
+                          <div className="text-5xl sm:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-400">
                             {getExamCountdown()}
                           </div>
                           <div className="absolute -inset-2 bg-primary/20 blur-xl rounded-full -z-10" />
@@ -1516,7 +1516,7 @@ export function EliteKleingruppeDashboard() {
 
             {/* Zoom-Links für Rechtsgebiete */}
             {(zoomLinks.Zivilrecht.url || zoomLinks.Strafrecht.url || zoomLinks['Öffentliches Recht'].url) && (
-              <div className="bg-white rounded-xl shadow p-6">
+              <div className="bg-white rounded-xl shadow p-4 sm:p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                   <svg className="h-5 w-5" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <rect width="100" height="100" rx="20" fill="#2D8CFF"/>
@@ -1638,7 +1638,7 @@ export function EliteKleingruppeDashboard() {
             {/* Kursfortschritt */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Fortschrittsübersicht */}
-              <div className="lg:col-span-2 bg-white rounded-xl shadow p-6">
+              <div className="lg:col-span-2 bg-white rounded-xl shadow p-4 sm:p-6">
                 <div className="flex items-center gap-2 mb-4">
                   <h3 className="text-lg font-semibold text-gray-900">Dein Kursfortschritt</h3>
                   <div className="group relative">
@@ -1865,7 +1865,7 @@ export function EliteKleingruppeDashboard() {
             </div>
 
             {/* Klausur-Bewertungs-Statistik */}
-            <div className="bg-white rounded-xl shadow p-6">
+            <div className="bg-white rounded-xl shadow p-4 sm:p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <h3 className="text-lg font-semibold text-gray-900">Klausur-Bewertungen</h3>
@@ -2127,7 +2127,7 @@ export function EliteKleingruppeDashboard() {
             {/* Nächste Einheiten & Aktionen */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Nächste Einheiten */}
-              <div className="bg-white rounded-xl shadow p-6">
+              <div className="bg-white rounded-xl shadow p-4 sm:p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Nächste Einheiten</h3>
                 {(() => {
                   const today = new Date();
@@ -2189,7 +2189,7 @@ export function EliteKleingruppeDashboard() {
               </div>
 
               {/* Schnellaktionen */}
-              <div className="bg-white rounded-xl shadow p-6">
+              <div className="bg-white rounded-xl shadow p-4 sm:p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Schnellaktionen</h3>
                 <div className="space-y-3">
                   <button 
@@ -2252,7 +2252,7 @@ export function EliteKleingruppeDashboard() {
 
               {/* Zoom Backgrounds */}
               {zoomBackgrounds.length > 0 && (
-                <div className="bg-white rounded-xl shadow p-6">
+                <div className="bg-white rounded-xl shadow p-4 sm:p-6">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Zoom-Hintergründe</h3>
                   <p className="text-sm text-gray-600 mb-4">
                     {zoomBackgrounds.length} Hintergrund{zoomBackgrounds.length > 1 ? 'e' : ''} verfügbar
@@ -2283,7 +2283,7 @@ export function EliteKleingruppeDashboard() {
 
             {/* Kurszeiten mit Meeting-Links */}
             {courseTimes.length > 0 && (
-              <div className="bg-white rounded-xl shadow p-6">
+              <div className="bg-white rounded-xl shadow p-4 sm:p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                   Deine Kurszeiten
                   <span className="relative group">
@@ -2342,7 +2342,7 @@ export function EliteKleingruppeDashboard() {
             )}
 
             {/* Deine Dozenten */}
-            <div className="bg-white rounded-xl shadow p-6">
+            <div className="bg-white rounded-xl shadow p-4 sm:p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Deine Dozenten</h3>
               {dozenten.filter(d => d.name !== 'Verwaltung').length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -2401,16 +2401,16 @@ export function EliteKleingruppeDashboard() {
           <div className="space-y-6">
             {/* Kalender Header */}
             <div className="bg-white rounded-lg shadow">
-              <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <div className="p-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-medium text-gray-900">Einheiten-Kalender</h2>
                   <p className="text-sm text-gray-500 mt-1">Übersicht aller geplanten und freigegebenen Einheiten für dich</p>
                 </div>
-                <div className="flex items-center space-x-4">
+                <div className="flex items-center justify-between sm:justify-end sm:space-x-4 bg-gray-50 sm:bg-transparent rounded-lg p-1 sm:p-0">
                   <button onClick={() => setCalendarMonth(m => m === 0 ? 11 : m - 1)} className="p-2 hover:bg-gray-100 rounded-lg">
                     <ChevronLeft className="h-5 w-5 text-gray-600" />
                   </button>
-                  <span className="text-lg font-medium min-w-[150px] text-center">
+                  <span className="text-base sm:text-lg font-medium sm:min-w-[150px] text-center">
                     {new Date(calendarYear, calendarMonth).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })}
                   </span>
                   <button onClick={() => setCalendarMonth(m => m === 11 ? 0 : m + 1)} className="p-2 hover:bg-gray-100 rounded-lg">
@@ -2454,10 +2454,10 @@ export function EliteKleingruppeDashboard() {
               </div>
               
               {/* Kalender Grid */}
-              <div className="p-4">
+              <div className="p-2 sm:p-4">
                 <div className="grid grid-cols-7 gap-px bg-gray-200 rounded-lg overflow-hidden">
                   {['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map(day => (
-                    <div key={day} className="bg-gray-50 p-2 text-center text-sm font-medium text-gray-500">{day}</div>
+                    <div key={day} className="bg-gray-50 p-1 sm:p-2 text-center text-xs sm:text-sm font-medium text-gray-500">{day}</div>
                   ))}
                   {(() => {
                     const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
@@ -2466,7 +2466,7 @@ export function EliteKleingruppeDashboard() {
                     const today = new Date(); today.setHours(0, 0, 0, 0);
                     
                     for (let i = 0; i < firstDay; i++) {
-                      days.push(<div key={`empty-${i}`} className="bg-white h-24"></div>);
+                      days.push(<div key={`empty-${i}`} className="bg-white h-16 sm:h-24"></div>);
                     }
                     
                     for (let day = 1; day <= daysInMonth; day++) {
@@ -2504,9 +2504,9 @@ export function EliteKleingruppeDashboard() {
                       const isPast = date < today;
                       
                       days.push(
-                        <div key={day} className={`bg-white h-24 p-2 ${isToday ? 'ring-2 ring-primary ring-inset' : ''}`}>
+                        <div key={day} className={`bg-white h-16 sm:h-24 p-1 sm:p-2 ${isToday ? 'ring-2 ring-primary ring-inset' : ''}`}>
                           <div className={`text-sm font-medium ${isToday ? 'text-primary' : isPast ? 'text-gray-400' : 'text-gray-900'}`}>{day}</div>
-                          <div className="mt-1 space-y-1 overflow-y-auto max-h-16">
+                          <div className="mt-0.5 sm:mt-1 space-y-0.5 sm:space-y-1 overflow-y-auto max-h-9 sm:max-h-16">
                             {dayReleases.map(release => {
                               const legalAreaAbbr = release.legal_area === 'Zivilrecht' ? 'ZR' : 
                                                    release.legal_area === 'Strafrecht' ? 'StR' : 
@@ -2553,11 +2553,12 @@ export function EliteKleingruppeDashboard() {
                                 <button 
                                   key={release.id} 
                                   onClick={() => setSelectedReleaseForDetail(release)}
-                                  className={`text-xs p-1 rounded truncate flex items-center w-full text-left cursor-pointer hover:opacity-80 transition-opacity ${bgColor} ${textColor} ${hoverColor}`}
+                                  className={`text-[10px] sm:text-xs p-0.5 sm:p-1 rounded truncate flex items-center w-full text-left cursor-pointer hover:opacity-80 transition-opacity ${bgColor} ${textColor} ${hoverColor}`}
                                   title={`${release.title} - Klicken für Details`}
                                 >
-                                  {release.is_released ? <Unlock className="h-3 w-3 mr-1 flex-shrink-0" /> : <Lock className="h-3 w-3 mr-1 flex-shrink-0" />}
-                                  <span className="truncate">
+                                  {release.is_released ? <Unlock className="h-3 w-3 sm:mr-1 flex-shrink-0" /> : <Lock className="h-3 w-3 sm:mr-1 flex-shrink-0" />}
+                                  {release.event_type === 'einheit' && legalAreaAbbr && <span className="font-semibold sm:hidden">{legalAreaAbbr}</span>}
+                                  <span className="truncate hidden sm:inline">
                                     {release.event_type === 'einheit' && legalAreaAbbr && <span className="font-semibold">[{legalAreaAbbr}] </span>}
                                     {release.title}
                                   </span>
@@ -2577,7 +2578,7 @@ export function EliteKleingruppeDashboard() {
             {/* Legende */}
             <div className="bg-white rounded-lg shadow p-4">
               <h3 className="text-sm font-medium text-gray-900 mb-3">Legende</h3>
-              <div className="flex items-center space-x-6">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                 <div className="flex items-center">
                   <div className="w-4 h-4 bg-green-100 rounded mr-2"></div>
                   <span className="text-sm text-gray-600 flex items-center"><Unlock className="h-3 w-3 mr-1" /> Freigegebene Einheit</span>
@@ -2898,15 +2899,15 @@ export function EliteKleingruppeDashboard() {
                     {einheitenReleases.map(release => (
                     <li key={release.id} className="p-4">
                       <div 
-                        className="flex items-center justify-between cursor-pointer"
+                        className="flex items-center justify-between gap-3 cursor-pointer"
                         onClick={() => setExpandedRelease(expandedRelease === release.id ? null : release.id)}
                       >
-                        <div className="flex items-center">
-                          <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
+                        <div className="flex items-center min-w-0">
+                          <div className="h-10 w-10 flex-shrink-0 rounded-full bg-green-100 flex items-center justify-center">
                             <FileText className="h-5 w-5 text-green-600" />
                           </div>
-                          <div className="ml-4">
-                            <h4 className="text-sm font-medium text-gray-900">{release.title}</h4>
+                          <div className="ml-3 sm:ml-4 min-w-0">
+                            <h4 className="text-sm font-medium text-gray-900 break-words">{release.title}</h4>
                             <p className="text-xs text-gray-500">
                               {formatDate(release.release_date)}
                               {release.legal_area && <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{release.legal_area}</span>}
@@ -3467,13 +3468,13 @@ export function EliteKleingruppeDashboard() {
                 <ul className="divide-y divide-gray-200">
                   {klausuren.map(klausur => (
                     <li key={klausur.id} className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                          <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center min-w-0">
+                          <div className="h-10 w-10 flex-shrink-0 rounded-full bg-primary/10 flex items-center justify-center">
                             <PenTool className="h-5 w-5 text-primary" />
                           </div>
-                          <div className="ml-4">
-                            <h4 className="text-sm font-medium text-gray-900">{klausur.title}</h4>
+                          <div className="ml-3 sm:ml-4 min-w-0">
+                            <h4 className="text-sm font-medium text-gray-900 break-words">{klausur.title}</h4>
                             <p className="text-xs text-gray-500">
                               {formatDate(klausur.submitted_at)}
                               <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{klausur.legal_area}</span>
@@ -3503,7 +3504,7 @@ export function EliteKleingruppeDashboard() {
                             })()}
                           </div>
                         </div>
-                        <div className="flex items-center space-x-4">
+                        <div className="flex items-center justify-between sm:justify-end gap-4 flex-shrink-0">
                           {getStatusBadge(klausur.status)}
                           <button onClick={() => downloadKlausur(klausur)} className="text-primary hover:text-primary/80" title="Originale Klausur herunterladen">
                             <Download className="h-4 w-4" />
@@ -3511,7 +3512,7 @@ export function EliteKleingruppeDashboard() {
                         </div>
                       </div>
                       {klausur.status === 'completed' && (klausur.score !== undefined || klausur.feedback || klausur.corrected_file_url || klausur.corrected_excel_url) && (
-                        <div className="mt-3 ml-14 p-3 bg-green-50 rounded-lg">
+                        <div className="mt-3 sm:ml-14 p-3 bg-green-50 rounded-lg">
                           {klausur.score !== undefined && <p className="text-sm font-medium text-green-800">Punktzahl: {klausur.score}</p>}
                           {klausur.feedback && <p className="text-sm text-green-700 mt-1">{klausur.feedback}</p>}
                           {(klausur.corrected_file_url || klausur.corrected_excel_url) && (
@@ -3552,7 +3553,7 @@ export function EliteKleingruppeDashboard() {
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
             <div className="fixed inset-0 bg-black/50" onClick={() => setShowUploadModal(false)} />
-            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Klausur hochladen</h3>
               <div className="space-y-4">
                 <div>
@@ -3589,7 +3590,7 @@ export function EliteKleingruppeDashboard() {
                   {uploadFile && <p className="text-xs text-gray-500 mt-1">{uploadFile.name}</p>}
                 </div>
               </div>
-              <div className="mt-6 flex justify-end space-x-3">
+              <div className="mt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
                 <button
                   onClick={() => setShowUploadModal(false)}
                   className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
@@ -3614,7 +3615,7 @@ export function EliteKleingruppeDashboard() {
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
             <div className="fixed inset-0 bg-black/50" onClick={() => setShowSettingsModal(false)} />
-            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
               <h3 className="text-lg font-medium text-gray-900 mb-6">Einstellungen</h3>
               
               {/* Erfolgsmeldung / Fehlermeldung */}
@@ -3690,7 +3691,7 @@ export function EliteKleingruppeDashboard() {
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
             <div className="fixed inset-0 bg-black/50 transition-opacity" onClick={() => setSelectedReleaseForDetail(null)} />
-            <div className="relative bg-white rounded-xl shadow-xl max-w-2xl w-full mx-auto p-6 max-h-[90vh] overflow-y-auto">
+            <div className="relative bg-white rounded-xl shadow-xl max-w-2xl w-full mx-auto p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
               {/* Header */}
               <div className="flex items-start justify-between mb-6">
                 <div>
