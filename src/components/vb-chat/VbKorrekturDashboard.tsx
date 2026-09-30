@@ -1225,11 +1225,31 @@ export const VbKorrekturDashboard: React.FC = () => {
     })
   }
 
+  // Folders/Klausuren with "H{Nummer}" in their name are never offered for Sachverhalt selection
+  const excludeHNumber = !editingCorrectionField
+  const isHNumberName = (s?: string | null) => !!s && /\bH\d+\b/.test(s)
+  const hiddenFolderIds = new Set<string>()
+  if (excludeHNumber) {
+    folderStructure.forEach(f => { if (isHNumberName(f.name)) hiddenFolderIds.add(f.id) })
+    let hiddenChanged = true
+    while (hiddenChanged) {
+      hiddenChanged = false
+      folderStructure.forEach(f => {
+        if (f.parent_id && hiddenFolderIds.has(f.parent_id) && !hiddenFolderIds.has(f.id)) {
+          hiddenFolderIds.add(f.id)
+          hiddenChanged = true
+        }
+      })
+    }
+  }
+  const isHiddenMaterial = (m: TeachingMaterial) =>
+    excludeHNumber && (hiddenFolderIds.has(m.folder_id) || isHNumberName(m.title) || isHNumberName(m.file_name))
+
   // Materials of a folder that are actually selectable in the current selector context
   const getSelectableFolderMaterials = (folderId: string): TeachingMaterial[] =>
     crashkursMaterialFolderIds && !crashkursMaterialFolderIds.has(folderId)
       ? []
-      : materialsByFolder[folderId] || []
+      : (materialsByFolder[folderId] || []).filter(m => !isHiddenMaterial(m))
 
   // Recursively check if ALL materials in a folder (and its subfolders) have already
   // been assigned to this Teilnehmer. A folder is only blocked when NOTHING usable is
@@ -1238,7 +1258,7 @@ export const VbKorrekturDashboard: React.FC = () => {
   // as any Klausur in it is still unused.
   const isFolderFullyAssigned = (folderId: string): boolean => {
     const folderMaterials = getSelectableFolderMaterials(folderId)
-    const subFolders = folderStructure.filter(f => f.parent_id === folderId)
+    const subFolders = folderStructure.filter(f => f.parent_id === folderId && !hiddenFolderIds.has(f.id))
 
     // Empty folder (no materials, no subfolders): nothing to block.
     if (folderMaterials.length === 0 && subFolders.length === 0) return false
@@ -1252,6 +1272,7 @@ export const VbKorrekturDashboard: React.FC = () => {
   // Show only top-level folders (parent_id is null), and filter by legal area if set
   const filteredFolders = folderStructure.filter(f =>
     f.parent_id === null &&
+    !hiddenFolderIds.has(f.id) &&
     (!materialSelectorLegalArea || f.name === materialSelectorLegalArea) &&
     (!crashkursVisibleFolderIds || crashkursVisibleFolderIds.has(f.id))
   )
@@ -1275,6 +1296,7 @@ export const VbKorrekturDashboard: React.FC = () => {
   // Flat list of materials matching the search term (used when searching)
   const searchResults = materialSearchTerm.trim()
     ? filteredAndSortedMaterials.filter(m => {
+        if (isHiddenMaterial(m)) return false
         const term = materialSearchTerm.toLowerCase()
         return (
           m.title.toLowerCase().includes(term) ||
@@ -1304,6 +1326,7 @@ export const VbKorrekturDashboard: React.FC = () => {
     // Get subfolders of this folder
     const subFolders = folderStructure.filter(f =>
       f.parent_id === folder.id &&
+      !hiddenFolderIds.has(f.id) &&
       (!crashkursVisibleFolderIds || crashkursVisibleFolderIds.has(f.id))
     )
 
@@ -2270,8 +2293,8 @@ export const VbKorrekturDashboard: React.FC = () => {
                   and no material is manually selected from folder/search) */}
               {!editingCorrectionField && suggestionCaseInfo && selectedMaterials.size === 0 && (
                 <SuggestedKlausuren
-                  materials={suggestionMaterials}
-                  folders={suggestionFolders}
+                  materials={suggestionMaterials.filter(m => !isHiddenMaterial(m as TeachingMaterial))}
+                  folders={suggestionFolders.filter(f => !hiddenFolderIds.has(f.id))}
                   caseInfo={suggestionCaseInfo}
                   assignedUrls={assignedMaterialUrls}
                   onAssign={handleQuickAssignSuggestion}
@@ -2396,7 +2419,7 @@ export const VbKorrekturDashboard: React.FC = () => {
                 })()}
                 
                 {/* Show materials without folder */}
-                {!isCrashkursMaterialSelection && materialsByFolder['no-folder'] && materialsByFolder['no-folder'].length > 0 && (
+                {!isCrashkursMaterialSelection && getSelectableFolderMaterials('no-folder').length > 0 && (
                   <div>
                     <button
                       onClick={() => toggleFolder('no-folder')}
@@ -2426,7 +2449,7 @@ export const VbKorrekturDashboard: React.FC = () => {
                     
                     {expandedFolders.has('no-folder') && (
                       <div className="ml-8 mt-2 space-y-2">
-                        {materialsByFolder['no-folder'].map(material => {
+                        {getSelectableFolderMaterials('no-folder').map(material => {
                           const isAssigned = assignedMaterialUrls.has(material.file_url)
                           return (
                             <div
