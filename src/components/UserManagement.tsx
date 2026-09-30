@@ -51,6 +51,36 @@ interface CreateUserResponse {
   emailId?: string;
 }
 
+const ROLE_SEARCH_LABELS: Record<string, string> = {
+  admin: 'admin administrator',
+  buchhaltung: 'buchhaltung',
+  verwaltung: 'verwaltung',
+  vertrieb: 'vertrieb',
+  teilnehmer: 'teilnehmer',
+  dozent: 'dozent',
+  videobesprechung: 'videobesprechung videoklausurenkorrektur video klausurenkorrektur teilnehmer',
+  videobesprechung_dozent: 'videobesprechung_dozent videobesprechung videoklausurenkorrektur video klausurenkorrektur dozent',
+  vb_crashkurs: 'vb_crashkurs crashkurs',
+};
+
+function userMatchesSearch(
+  user: { full_name?: string | null; email?: string | null; role?: string | null; additional_roles?: string[] | null; id: string },
+  query: string,
+  eliteTeilnehmerIds: Set<string>,
+  eliteDozentIds: Set<string>
+): boolean {
+  const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return true;
+  const roles = [user.role || 'dozent', ...(user.additional_roles || [])];
+  const haystack = [
+    user.full_name,
+    user.email,
+    ...roles.map(r => ROLE_SEARCH_LABELS[r] ?? r),
+    eliteTeilnehmerIds.has(user.id) || eliteDozentIds.has(user.id) ? 'elite kleingruppe elite-kleingruppe' : '',
+  ].filter(Boolean).join(' ').toLowerCase();
+  return tokens.every(t => haystack.includes(t));
+}
+
 export function UserManagement() {
   const navigate = useNavigate();
   const { signOut } = useAuthStore();
@@ -903,18 +933,7 @@ export function UserManagement() {
                     }
 
                     // Apply search filter
-                    if (!searchQuery) return true;
-                    const query = searchQuery.toLowerCase();
-                    const roleText = user.role === 'admin' ? 'administrator' :
-                                     user.role === 'buchhaltung' ? 'buchhaltung' :
-                                     user.role === 'verwaltung' ? 'verwaltung' :
-                                     user.role === 'vertrieb' ? 'vertrieb' :
-                                     user.role === 'teilnehmer' ? 'teilnehmer' : 'dozent';
-                    const additionalRolesText = (user.additional_roles || []).join(' ').toLowerCase();
-                    return (user.full_name?.toLowerCase().includes(query) ?? false) ||
-                           (user.email?.toLowerCase().includes(query) ?? false) ||
-                           roleText.includes(query) ||
-                           additionalRolesText.includes(query);
+                    return userMatchesSearch(user, searchQuery, eliteTeilnehmerIds, eliteDozentIds);
                   }).sort((a, b) => {
                     // Sort by created_at descending (newest first)
                     const dateA = new Date(a.created_at || 0).getTime();
@@ -1094,18 +1113,7 @@ export function UserManagement() {
                   if (user.role === 'teilnehmer' && !eliteTeilnehmerIds.has(user.id) && !(user.additional_roles || []).includes('videobesprechung')) {
                     return false;
                   }
-                  if (!searchQuery) return true;
-                  const query = searchQuery.toLowerCase();
-                  const roleText = user.role === 'admin' ? 'administrator' :
-                                   user.role === 'buchhaltung' ? 'buchhaltung' :
-                                   user.role === 'verwaltung' ? 'verwaltung' :
-                                   user.role === 'vertrieb' ? 'vertrieb' :
-                                   user.role === 'teilnehmer' ? 'teilnehmer' : 'dozent';
-                  const additionalRolesText = (user.additional_roles || []).join(' ').toLowerCase();
-                  return (user.full_name?.toLowerCase().includes(query) ?? false) ||
-                         (user.email?.toLowerCase().includes(query) ?? false) ||
-                         roleText.includes(query) ||
-                         additionalRolesText.includes(query);
+                  return userMatchesSearch(user, searchQuery, eliteTeilnehmerIds, eliteDozentIds);
                 });
                 const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
 
