@@ -700,22 +700,22 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
     // Don't use green highlighting if rated
     if (fullyAccessed && !isRated) {
       return {
-        containerClass: "border-[3px] border-[#2e83c2]/40 shadow-sm rounded-lg p-4 bg-gray-50/80 backdrop-blur-sm",
-        badgeClass: "px-3 py-1.5 bg-[#2e83c2] text-white text-sm rounded-full font-medium",
+        containerClass: "border border-gray-200 border-l-4 border-l-[#2e83c2] shadow-sm hover:shadow-md rounded-xl p-4 sm:p-5 bg-white",
+        badgeClass: "px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 text-xs rounded-full font-medium whitespace-nowrap",
         badgeText: "✓ Abgeschlossen",
         showNewBadge: false
       }
     } else if (partiallyAccessed || (fullyAccessed && isRated)) {
       return {
-        containerClass: "border-[3px] border-[#2e83c2]/40 shadow-sm rounded-lg p-4 bg-gray-50/80 backdrop-blur-sm",
-        badgeClass: "px-3 py-1.5 bg-[#2e83c2] text-white text-sm rounded-full font-medium",
+        containerClass: "border border-gray-200 border-l-4 border-l-[#2e83c2] shadow-sm hover:shadow-md rounded-xl p-4 sm:p-5 bg-white",
+        badgeClass: "px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 text-xs rounded-full font-medium whitespace-nowrap",
         badgeText: "✓ Abgeschlossen",
         showNewBadge: false
       }
     } else {
       return {
-        containerClass: "border-[3px] border-[#2e83c2]/40 shadow-sm rounded-lg p-4 bg-gray-50/80 backdrop-blur-sm",
-        badgeClass: "px-3 py-1.5 bg-[#2e83c2] text-white text-sm rounded-full font-medium",
+        containerClass: "border border-gray-200 border-l-4 border-l-[#2e83c2] shadow-sm hover:shadow-md rounded-xl p-4 sm:p-5 bg-white",
+        badgeClass: "px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 text-xs rounded-full font-medium whitespace-nowrap",
         badgeText: "✓ Abgeschlossen",
         showNewBadge: isNew
       }
@@ -1246,14 +1246,14 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+    <div>
+      <div>
         {/* Header */}
-        <div className="mb-6 sm:mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+        <div className="mb-6 sm:mb-8 rounded-2xl bg-gradient-to-r from-[#2e83c2] to-[#1f6aa5] p-5 sm:p-7 text-white shadow-lg">
+          <h1 className="text-xl sm:text-3xl font-bold mb-1 sm:mb-2 break-words">
             Willkommen, {profile?.first_name || user?.user_metadata?.first_name || (user?.user_metadata?.full_name?.split(' ')[0]) || 'Benutzer'}!
           </h1>
-          <p className="text-gray-600 text-sm sm:text-base">Hier ist dein persönliches Dashboard für Klausurbearbeitungen.</p>
+          <p className="text-white/80 text-sm sm:text-base">Hier ist dein persönliches Dashboard für Klausurbearbeitungen.</p>
         </div>
 
         {/* 0. Neueste verfügbare Korrektur */}
@@ -1309,7 +1309,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                   <div className="mt-4 space-y-3 animate-in slide-in-from-top-2 duration-300">
                     <div className="bg-gray-50/80 backdrop-blur-sm p-3 rounded border border-gray-200 shadow-sm">
                       <p className="text-sm text-gray-800 font-bold mb-2">📚 Deine Unterlagen:</p>
-                      <div className="flex flex-col gap-2 max-w-xs md:row-start-3 md:col-start-1">
+                      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
                         {caseStudy.pdf_url && (
                           <button onClick={() => downloadFileAsPDF(caseStudy.pdf_url!, `Sachverhalt_${caseStudy.case_study_number}.pdf`, caseStudy.id)} className="px-3 py-2 rounded-lg text-sm text-white transition-colors flex items-center space-x-2 bg-[#2e83c2] hover:bg-[#0a1f44]">
                             <FileText className="w-4 h-4" />
@@ -1422,7 +1422,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
         )}
 
         {/* 1. Verfügbare Klausuren */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-lg shadow-sm p-4 sm:p-6 mb-6 sm:mb-8">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 sm:p-6 mb-5 sm:mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg sm:text-xl font-bold text-gray-900">Verfügbare Klausuren</h2>
             <div className="flex items-center space-x-2">
@@ -1471,7 +1471,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
 
         {/* 2. Sachverhalt angefordert */}
         {requestedCases.length > 0 && (
-        <div className="bg-white/80 backdrop-blur-sm rounded-lg shadow-sm p-4 sm:p-6 mb-6 sm:mb-8">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 sm:p-6 mb-5 sm:mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg sm:text-xl font-bold text-gray-900">Sachverhalt angefordert</h2>
             <div className="flex items-center space-x-2">
@@ -1513,7 +1513,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
 
         {/* 3. Sachverhalt verfügbar */}
         {materialsReadyCases.length > 0 && (
-        <div className="bg-white/80 backdrop-blur-sm rounded-lg shadow-sm p-4 sm:p-6 mb-6 sm:mb-8">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 sm:p-6 mb-5 sm:mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg sm:text-xl font-bold text-gray-900">Sachverhalt verfügbar</h2>
             <div className="flex items-center space-x-2">
@@ -1677,38 +1677,38 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
 
         {/* 4. Eingereichte Bearbeitungen */}
         {submittedCases.length > 0 && (
-        <div className="bg-white/80 backdrop-blur-sm rounded-lg shadow-sm p-4 sm:p-6 mb-6 sm:mb-8">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 sm:p-6 mb-5 sm:mb-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg sm:text-xl font-bold text-gray-900">Upload Bearbeitung</h2>
+            <h2 className="text-lg sm:text-xl font-bold text-gray-900">Eingereichte Bearbeitungen</h2>
             <div className="flex items-center space-x-2">
               <Upload className="w-5 h-5 text-primary" />
               <span className="font-bold text-primary">{submittedCases.length}</span>
             </div>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
               {/* Submitted cases */}
               {submittedCases.map((caseStudy) => (
                 <div 
                   key={caseStudy.id} 
                   id={`case-study-${caseStudy.id}`}
-                  className={`border rounded-lg p-4 transition-all duration-1000 ${
+                  className={`border border-l-4 rounded-xl p-4 sm:p-5 transition-all duration-1000 ${
                     highlightedCaseId === caseStudy.id 
-                      ? 'border-blue-400 bg-blue-100 shadow-lg ring-2 ring-blue-300' 
-                      : 'border-gray-300 bg-gray-100'
+                      ? 'border-blue-400 bg-blue-50 shadow-lg ring-2 ring-blue-300' 
+                      : 'border-gray-200 border-l-green-500 bg-white shadow-sm'
                   }`}
                 >
                   <div className="mb-3">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
                       <span className="bg-blue-100 text-blue-600 text-xs font-semibold px-2 py-1 rounded">
                         #{caseStudy.case_study_number}
                       </span>
-                      <h3 className="font-bold text-gray-900">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
+                      <h3 className="font-bold text-gray-900 text-sm sm:text-base break-words">{caseStudy.legal_area} - {caseStudy.sub_area}</h3>
                     </div>
-                    <p className="text-sm text-gray-600">Schwerpunkt: {caseStudy.focus_area}</p>
+                    <p className="text-xs sm:text-sm text-gray-600 break-words">Schwerpunkt: {caseStudy.focus_area}</p>
                   </div>
-                  <div className="bg-green-50/80 backdrop-blur-sm border border-green-200 rounded-lg p-4 shadow-sm">
-                    <div className="flex items-center space-x-3">
-                      <CheckCircle className="w-6 h-6 text-green-600" />
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0" />
                       <div>
                         <p className="text-sm font-medium text-green-800">
                           Klausurbearbeitung erfolgreich hochgeladen
@@ -1724,12 +1724,12 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                           Eingereicht: {new Date(caseStudy.submitted_at || caseStudy.updated_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })} Uhr
                         </p>
                         <div className="flex flex-col gap-2">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
                             <a
                               href={caseStudy.submission_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+                              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-white border border-blue-200 rounded-lg text-xs sm:text-sm font-medium text-blue-700 hover:bg-blue-50 transition-colors"
                             >
                               <Download className="w-4 h-4" />
                               Datei herunterladen
@@ -1747,7 +1747,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                       setEditingCaseId(caseStudy.id)
                                       editFileInputRef.current?.click()
                                     }}
-                                    className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-800"
+                                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs sm:text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                                   >
                                     <Edit3 className="w-4 h-4" />
                                     Bearbeitung ändern
@@ -1784,7 +1784,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
 
         {/* 5. Video-Klausurenkorrektur verfügbar */}
         {completedCases.length > 0 && (
-        <div className="bg-white/80 backdrop-blur-sm rounded-lg shadow-sm p-4 sm:p-6 mb-6 sm:mb-8">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 sm:p-6 mb-5 sm:mb-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg sm:text-xl font-bold text-gray-900">Video-Klausurenkorrektur verfügbar</h2>
@@ -1974,7 +1974,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                             <div className="mt-4 space-y-3 animate-in slide-in-from-top-2 duration-300">
                               <div className="bg-gray-50/80 backdrop-blur-sm p-3 rounded border border-gray-200 shadow-sm">
                                 <p className="text-sm text-gray-800 font-bold mb-2">📚 Deine Unterlagen:</p>
-                                <div className="flex flex-col gap-2 max-w-xs md:row-start-3 md:col-start-1">
+                                <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
                                   {caseStudy.case_study_material_url && (
                                     <button
                                       onClick={(e) => {
@@ -2266,10 +2266,10 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                             </div>
                           </div>
                           
-                          {/* Video ansehen - Always Visible */}
+                          {/* Video ansehen + Bewertung - Always Visible */}
+                          <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
                           {caseStudy.video_correction_url && (
-                            <div className="mt-3">
-                              <button
+                            <button
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   expandAndScrollToCorrection(caseStudy.id)
@@ -2279,13 +2279,10 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                 <Video className="w-4 h-4" />
                                 Video ansehen
                               </button>
-                            </div>
                           )}
 
-                          {/* Rating Button - Always Visible */}
-                          <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                             {ratings.has(caseStudy.id) ? (
-                              <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg w-full sm:w-auto">
+                              <div className="flex items-center justify-center sm:justify-start gap-2 px-4 py-2 bg-yellow-50 border border-yellow-200 text-gray-700 text-sm rounded-lg w-full sm:w-auto">
                                 <div className="flex">
                                   {[1, 2, 3, 4, 5].map((star) => (
                                     <Star
@@ -2318,7 +2315,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                                   e.stopPropagation()
                                   handleDeleteCaseStudy(caseStudy.id)
                                 }}
-                                className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 transition-colors"
+                                className="sm:ml-auto flex items-center justify-center gap-1 px-3 py-2 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 transition-colors"
                                 title="Klausur löschen (Admin)"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -2332,7 +2329,7 @@ const downloadFile = async (url: string, filename: string, caseStudyId?: string)
                             <div className="mt-4 space-y-3 animate-in slide-in-from-top-2 duration-300">
                               <div className="bg-gray-50/80 backdrop-blur-sm p-3 rounded border border-gray-200 shadow-sm">
                                 <p className="text-sm text-gray-800 font-bold mb-2">📚 Deine Unterlagen:</p>
-                                <div className="flex flex-col gap-2 max-w-xs md:row-start-3 md:col-start-1">
+                                <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
                                   {caseStudy.case_study_material_url && (
                                     <button
                                       onClick={(e) => {

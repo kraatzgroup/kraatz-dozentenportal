@@ -1,17 +1,9 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BarChart3, BookOpen, Award, CheckCircle, Play, TrendingUp, TrendingDown } from 'lucide-react'
+import { BarChart3 } from 'lucide-react'
 import { useVbCaseStudies } from '../../hooks/useVbCaseStudies'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
-
-interface LegalAreaStats {
-  area: string
-  average_grade: number
-  total_submissions: number
-  trend: 'up' | 'down' | 'stable'
-  latest_grade: number
-}
 
 const LEGAL_AREAS = [
   { name: 'Zivilrecht', color: '#3B82F6' },
@@ -38,6 +30,66 @@ const getGradeBadgeColor = (grade: number) => {
   if (grade >= 7) return 'bg-yellow-100 text-yellow-800'
   if (grade >= 4) return 'bg-orange-100 text-orange-800'
   return 'bg-red-100 text-red-800'
+}
+
+interface ChartPoint {
+  id: string
+  grade: number
+  label: string
+  date: string
+}
+
+const CHART_COLOR = '#2e83c2'
+
+const LineChart = ({ points, onPointClick }: { points: ChartPoint[]; onPointClick: (id: string) => void }) => {
+  const W = 320
+  const H = 150
+  const pad = { top: 18, right: 16, bottom: 26, left: 26 }
+  const innerW = W - pad.left - pad.right
+  const innerH = H - pad.top - pad.bottom
+  const yFor = (g: number) => pad.top + innerH * (1 - Math.min(Math.max(g, 0), 18) / 18)
+  const xFor = (i: number) =>
+    points.length === 1 ? pad.left + innerW / 2 : pad.left + (i / (points.length - 1)) * innerW
+  const coords = points.map((p, i) => ({ ...p, x: xFor(i), y: yFor(p.grade) }))
+  const line = coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x} ${c.y}`).join(' ')
+  const showEveryLabel = coords.length <= 5
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto block">
+      {[0, 4, 9, 18].map(t => (
+        <g key={t}>
+          <line
+            x1={pad.left}
+            x2={W - pad.right}
+            y1={yFor(t)}
+            y2={yFor(t)}
+            stroke={t === 4 ? '#9CA3AF' : '#E5E7EB'}
+            strokeWidth="1"
+            strokeDasharray={t === 4 ? '3 3' : undefined}
+          />
+          <text x={pad.left - 6} y={yFor(t) + 3.5} fontSize="10" fill="#9CA3AF" textAnchor="end">
+            {t}
+          </text>
+        </g>
+      ))}
+      {coords.length > 1 && <path d={line} fill="none" stroke={CHART_COLOR} strokeWidth="2" strokeLinejoin="round" />}
+      {coords.map((c, i) => (
+        <g key={c.id} onClick={() => onPointClick(c.id)} style={{ cursor: 'pointer' }}>
+          <circle cx={c.x} cy={c.y} r="4" fill={CHART_COLOR} />
+          <text x={c.x} y={c.y - 9} fontSize="10.5" fill="#374151" textAnchor="middle">
+            {formatGrade(c.grade).replace(',00', '')}
+          </text>
+          {(showEveryLabel || i === 0 || i === coords.length - 1) && (
+            <text x={c.x} y={H - 8} fontSize="9.5" fill="#6B7280" textAnchor="middle">
+              {c.date}
+            </text>
+          )}
+          <title>
+            {c.label}: {formatGrade(c.grade)} Punkte
+          </title>
+        </g>
+      ))}
+    </svg>
+  )
 }
 
 export const VbResultsPage = () => {
@@ -95,36 +147,6 @@ export const VbResultsPage = () => {
     [results]
   )
 
-  const legalAreaStats = useMemo<LegalAreaStats[]>(() => {
-    const groups = gradedResults.reduce((acc, r) => {
-      ;(acc[r.legal_area] ||= []).push(r)
-      return acc
-    }, {} as Record<string, typeof gradedResults>)
-
-    return Object.entries(groups as Record<string, typeof gradedResults>)
-      .map(([area, areaResults]) => {
-        const sorted = [...areaResults].sort(
-          (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-        )
-        const total = areaResults.reduce((sum, r) => sum + (r.grade || 0), 0)
-        const latest = sorted[0]?.grade || 0
-        const previous = sorted[1]?.grade ?? latest
-        let trend: 'up' | 'down' | 'stable' = 'stable'
-        if (sorted.length > 1) {
-          if (latest > previous) trend = 'up'
-          else if (latest < previous) trend = 'down'
-        }
-        return {
-          area,
-          average_grade: total / areaResults.length,
-          total_submissions: areaResults.length,
-          trend,
-          latest_grade: latest,
-        }
-      })
-      .sort((a, b) => b.total_submissions - a.total_submissions)
-  }, [gradedResults])
-
   const navigateToVideo = (caseStudyId: string) => {
     navigate(`/klausurenbesprechung/dashboard#case-study-${caseStudyId}`)
   }
@@ -152,367 +174,122 @@ export const VbResultsPage = () => {
     )
   }
 
-  // Inline-SVG chart geometry (mirrors the Elite-Kleingruppe mechanic)
-  const chartHeight = 50
-  const chartWidth = 100
-  const padding = { top: 5, right: 5, bottom: 5, left: 15 }
-  const innerWidth = chartWidth - padding.left - padding.right
-  const innerHeight = chartHeight - padding.top - padding.bottom
+  const overallAvg =
+    gradedResults.length > 0 ? gradedResults.reduce((sum, r) => sum + (r.grade || 0), 0) / gradedResults.length : null
+  const latestGraded = gradedResults[0]
 
   return (
-    <div className="space-y-8">
-      <div className="text-center">
-        <h1 className="text-3xl font-bold text-gray-900 mb-4">Meine Klausurergebnisse</h1>
-        <p className="text-gray-600">
-          Verfolge Deinen Fortschritt und analysiere Deine Leistung nach Rechtsgebieten
-        </p>
+    <div className="space-y-6 sm:space-y-8">
+      <div>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Meine Klausurergebnisse</h1>
+        <p className="text-gray-600 text-sm sm:text-base mt-1">Deine Noten und dein Verlauf nach Rechtsgebieten.</p>
       </div>
 
-      {/* Overview */}
-      <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-        <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 sm:mb-6">Deine Ergebnisse</h2>
-        <div
-          className={`grid gap-4 sm:gap-6 grid-cols-1 ${
-            legalAreaStats.length <= 1
-              ? 'sm:grid-cols-2'
-              : legalAreaStats.length === 2
-              ? 'sm:grid-cols-2 md:grid-cols-3'
-              : 'sm:grid-cols-2 lg:grid-cols-4'
-          }`}
-        >
-          <div className="text-center p-3 sm:p-0">
-            <div className="flex items-center justify-center mb-2">
-              <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-primary mr-2" />
-              <span className="text-xs sm:text-sm text-gray-600">Korrigierte Klausuren</span>
-            </div>
-            <p className="text-xl sm:text-2xl font-bold text-gray-900">{results.length}</p>
-          </div>
-
-          {LEGAL_AREAS.map(({ name, color }) => {
-            const stat = legalAreaStats.find(s => s.area === name)
-            if (!stat) return null
-            return (
-              <div key={name} className="text-center p-3 sm:p-0">
-                <div className="flex items-center justify-center mb-2">
-                  <Award className="w-5 h-5 sm:w-6 sm:h-6 mr-2" style={{ color }} />
-                  <span className="text-xs sm:text-sm text-gray-600 break-words">
-                    Durchschnitt {name}
-                  </span>
-                </div>
-                <p className={`text-xl sm:text-2xl font-bold ${getGradeColor(stat.average_grade)}`}>
-                  {formatGrade(stat.average_grade)} Punkte
-                </p>
-              </div>
-            )
-          })}
+      {/* Überblick */}
+      <dl className="grid grid-cols-3 bg-white rounded-lg border border-gray-200 divide-x divide-gray-200">
+        <div className="p-3 sm:p-5">
+          <dt className="text-xs sm:text-sm text-gray-500">Korrigiert</dt>
+          <dd className="mt-1 text-xl sm:text-2xl font-semibold text-gray-900">{results.length}</dd>
         </div>
-      </div>
+        <div className="p-3 sm:p-5">
+          <dt className="text-xs sm:text-sm text-gray-500">Ø Punkte</dt>
+          <dd className={`mt-1 text-xl sm:text-2xl font-semibold ${overallAvg !== null ? getGradeColor(overallAvg) : 'text-gray-400'}`}>
+            {overallAvg !== null ? formatGrade(overallAvg) : '–'}
+          </dd>
+        </div>
+        <div className="p-3 sm:p-5">
+          <dt className="text-xs sm:text-sm text-gray-500">Letzte Note</dt>
+          <dd className={`mt-1 text-xl sm:text-2xl font-semibold ${latestGraded ? getGradeColor(latestGraded.grade as number) : 'text-gray-400'}`}>
+            {latestGraded ? formatGrade(latestGraded.grade as number) : '–'}
+          </dd>
+        </div>
+      </dl>
 
-      {/* Punkteverlauf nach Rechtsgebieten (Inline-SVG) - nur wenn Noten vorhanden */}
+      {/* Verlauf */}
       {gradedResults.length > 0 && (
-      <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-        <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 sm:mb-6">
-          Punkteverlauf nach Rechtsgebieten
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {LEGAL_AREAS.map(({ name, color }) => {
-            const areaResults = [...gradedResults]
-              .filter(r => r.legal_area === name)
-              .sort((a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime())
-            const avg =
-              areaResults.length > 0
-                ? Math.round(areaResults.reduce((sum, r) => sum + (r.grade || 0), 0) / areaResults.length)
-                : 0
-            const trend =
-              areaResults.length < 2
-                ? 'neutral'
-                : (areaResults[areaResults.length - 1].grade || 0) >
-                  (areaResults[areaResults.length - 2].grade || 0)
-                ? 'improved'
-                : (areaResults[areaResults.length - 1].grade || 0) <
-                  (areaResults[areaResults.length - 2].grade || 0)
-                ? 'declined'
-                : 'stable'
-
-            return (
-              <div key={name} className="bg-blue-50 rounded-lg p-2 relative">
-                {trend === 'improved' && (
-                  <div className="absolute -top-1 -right-1 animate-bounce">
-                    <span className="text-sm">🎉</span>
+        <section>
+          <h2 className="text-lg font-semibold text-gray-900 mb-3">Verlauf</h2>
+          <div className="bg-white rounded-lg border border-gray-200 grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-gray-200">
+            {LEGAL_AREAS.map(({ name }) => {
+              const areaResults = [...gradedResults]
+                .filter(r => r.legal_area === name)
+                .sort((a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime())
+              const avg =
+                areaResults.length > 0
+                  ? areaResults.reduce((sum, r) => sum + (r.grade || 0), 0) / areaResults.length
+                  : null
+              return (
+                <div key={name} className="p-4 min-w-0">
+                  <div className="flex items-baseline justify-between gap-2 mb-2">
+                    <h3 className="text-sm font-medium text-gray-900">{name}</h3>
+                    {avg !== null && <span className="text-xs text-gray-500">Ø {formatGrade(avg)}</span>}
                   </div>
-                )}
-                <div className="text-center mb-1">
-                  <div className="text-xs font-semibold" style={{ color }}>
-                    {name}
-                  </div>
-                  {areaResults.length > 0 && (
-                    <div className="text-xs text-gray-600">Ø {avg} Pkt.</div>
-                  )}
-                  {areaResults.length >= 2 && (
-                    <span
-                      className={`text-xs px-1.5 py-0.5 rounded-full font-medium inline-block mt-1 ${
-                        trend === 'improved'
-                          ? 'bg-green-100 text-green-700'
-                          : trend === 'declined'
-                          ? 'bg-red-100 text-red-700'
-                          : 'bg-gray-100 text-gray-600'
-                      }`}
-                    >
-                      {trend === 'improved' ? '↑' : trend === 'declined' ? '↓' : '→'}
-                    </span>
+                  {areaResults.length === 0 ? (
+                    <p className="text-sm text-gray-400 py-10 text-center">Noch keine Note</p>
+                  ) : (
+                    <LineChart
+                      onPointClick={navigateToVideo}
+                      points={areaResults.map(r => ({
+                        id: r.id,
+                        grade: r.grade || 0,
+                        label: r.sub_area,
+                        date: formatDate(r.updated_at).slice(0, 5),
+                      }))}
+                    />
                   )}
                 </div>
-
-                {areaResults.length === 0 ? (
-                  <div className="h-8 flex items-center justify-center">
-                    <span className="text-xs text-gray-400">-</span>
-                  </div>
-                ) : (
-                  <svg width="100%" viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="overflow-visible">
-                    <text x={padding.left - 2} y={padding.top + 3} fontSize="6" fill="#9CA3AF" textAnchor="end">
-                      18
-                    </text>
-                    <text
-                      x={padding.left - 2}
-                      y={padding.top + innerHeight}
-                      fontSize="6"
-                      fill="#9CA3AF"
-                      textAnchor="end"
-                    >
-                      0
-                    </text>
-                    <line
-                      x1={padding.left}
-                      y1={padding.top}
-                      x2={padding.left + innerWidth}
-                      y2={padding.top}
-                      stroke="#E5E7EB"
-                      strokeWidth="0.5"
-                      strokeDasharray="2,2"
-                    />
-                    <line
-                      x1={padding.left}
-                      y1={padding.top + innerHeight}
-                      x2={padding.left + innerWidth}
-                      y2={padding.top + innerHeight}
-                      stroke="#E5E7EB"
-                      strokeWidth="0.5"
-                    />
-                    {/* Bestehensgrenze (4 Punkte) */}
-                    <line
-                      x1={padding.left}
-                      y1={padding.top + innerHeight * (1 - 4 / 18)}
-                      x2={padding.left + innerWidth}
-                      y2={padding.top + innerHeight * (1 - 4 / 18)}
-                      stroke="#FCD34D"
-                      strokeWidth="0.5"
-                      strokeDasharray="2,1"
-                    />
-                    {(() => {
-                      const points = areaResults.map((r, i) => ({
-                        x: padding.left + (i / Math.max(areaResults.length - 1, 1)) * innerWidth,
-                        y: padding.top + innerHeight * (1 - (r.grade || 0) / 18),
-                        grade: r.grade,
-                        id: r.id,
-                        label: `${r.sub_area}`,
-                      }))
-                      const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
-                      return (
-                        <g>
-                          {points.length > 1 && (
-                            <path
-                              d={linePath}
-                              fill="none"
-                              stroke={color}
-                              strokeWidth="1.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          )}
-                          {points.map((p, i) => (
-                            <g key={i} onClick={() => navigateToVideo(p.id)} style={{ cursor: 'pointer' }}>
-                              <circle cx={p.x} cy={p.y} r="4" fill={color} stroke="white" strokeWidth="1.5" />
-                              <title>
-                                {p.label}: {p.grade} Punkte – Klicken für Video
-                              </title>
-                            </g>
-                          ))}
-                        </g>
-                      )
-                    })()}
-                  </svg>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      </div>
+              )
+            })}
+          </div>
+          <p className="text-xs text-gray-500 mt-2">Gestrichelte Linie: Bestehensgrenze (4 Punkte). Klick auf einen Punkt öffnet die Korrektur.</p>
+        </section>
       )}
 
-      {/* Deine Klausuren */}
-      <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4 sm:mb-6">
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Deine Klausuren</h2>
-          <span className="text-xs sm:text-sm text-gray-600">
-            {results.length} {results.length === 1 ? 'Klausur' : 'Klausuren'}
-          </span>
-        </div>
-        <div className="space-y-3 sm:space-y-4">
-          {results.map((result, index) => (
-            <div
-              key={result.id}
-              className={`bg-white rounded-lg p-3 sm:p-4 border-l-4 shadow-sm border-t border-r border-b border-gray-200 ${
-                result.legal_area === 'Zivilrecht'
-                  ? 'border-l-blue-600'
-                  : result.legal_area === 'Strafrecht'
-                  ? 'border-l-red-600'
-                  : 'border-l-green-600'
-              }`}
-            >
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-                <div className="flex items-start sm:items-center gap-3 sm:gap-4 flex-1">
-                  {result.grade !== null && result.grade !== undefined ? (
-                    <div
-                      className={`flex flex-col items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-full font-bold flex-shrink-0 leading-none ${getGradeBadgeColor(
-                        result.grade
-                      )}`}
-                    >
-                      <span className="text-base sm:text-lg">{formatGrade(result.grade)}</span>
-                      <span className="text-[9px] font-medium opacity-80">Pkt</span>
-                    </div>
-                  ) : (
-                    <div
-                      className={`flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full font-semibold text-sm sm:text-base flex-shrink-0 ${
-                        result.legal_area === 'Zivilrecht'
-                          ? 'bg-blue-100 text-blue-600'
-                          : result.legal_area === 'Strafrecht'
-                          ? 'bg-red-100 text-red-600'
-                          : 'bg-green-100 text-green-600'
-                      }`}
-                    >
-                      {results.length - index}
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <h3 className="font-medium text-gray-900 text-sm sm:text-lg">
-                        Klausur #{result.case_study_number}
-                      </h3>
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
-                          result.legal_area === 'Zivilrecht'
-                            ? 'bg-blue-100 text-blue-800'
-                            : result.legal_area === 'Strafrecht'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-green-100 text-green-800'
-                        }`}
-                      >
-                        {result.legal_area}
-                      </span>
-                      {result.grade !== null && result.grade !== undefined ? (
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${getGradeBadgeColor(
-                            result.grade
-                          )}`}
-                        >
-                          {formatGrade(result.grade)} Punkte
-                        </span>
-                      ) : (
-                        <span className="px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap bg-blue-100 text-primary">
-                          Korrigiert
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm sm:text-base text-gray-900 font-medium truncate">{result.sub_area}</p>
-                    <p className="text-xs sm:text-sm text-gray-600 truncate">
-                      Schwerpunkt: {result.focus_area}
+      {/* Klausuren */}
+      <section>
+        <h2 className="text-lg font-semibold text-gray-900 mb-3">Klausuren</h2>
+        <ul className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-200">
+          {results.map(result => {
+            const graded = result.grade !== null && result.grade !== undefined
+            return (
+              <li key={result.id} className="p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+                <div className="flex items-start gap-4 flex-1 min-w-0">
+                  <div className="w-14 flex-shrink-0 text-right">
+                    {graded ? (
+                      <>
+                        <div className={`text-xl font-semibold leading-tight ${getGradeColor(result.grade as number)}`}>
+                          {formatGrade(result.grade as number)}
+                        </div>
+                        <div className="text-[11px] text-gray-500">Punkte</div>
+                      </>
+                    ) : (
+                      <div className="text-xs text-gray-500 pt-1">korrigiert</div>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm sm:text-base font-medium text-gray-900 break-words">
+                      Klausur #{result.case_study_number} · {result.sub_area}
                     </p>
-                    <p className="text-xs text-gray-500">Korrigiert: {formatDate(result.updated_at)}</p>
+                    <p className="text-sm text-gray-600 break-words">
+                      {result.legal_area}
+                      {result.focus_area ? ` · ${result.focus_area}` : ''}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">{formatDate(result.updated_at)}</p>
                   </div>
                 </div>
                 {result.video_correction_url && (
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
-                    <button
-                      onClick={() => navigateToVideo(result.id)}
-                      className="hidden sm:flex items-center space-x-2 px-3 py-1 bg-blue-100 text-primary rounded-full text-xs sm:text-sm whitespace-nowrap hover:bg-blue-200 transition-colors"
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                      <span>Videoklausurenkorrektur verfügbar</span>
-                    </button>
-                    <button
-                      onClick={() => navigateToVideo(result.id)}
-                      className="flex items-center justify-center space-x-2 px-3 sm:px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors text-sm sm:text-base whitespace-nowrap"
-                    >
-                      <Play className="w-4 h-4" />
-                      <span>Video ansehen</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Detaillierte Statistik */}
-      {legalAreaStats.length > 0 && (
-        <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 sm:mb-6">
-            Detaillierte Statistik nach Rechtsgebieten
-          </h2>
-          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-            {legalAreaStats.map(stat => (
-              <div
-                key={stat.area}
-                className={`border-l-4 rounded-lg p-5 shadow-sm bg-white ${
-                  stat.area === 'Zivilrecht'
-                    ? 'border-l-blue-600'
-                    : stat.area === 'Strafrecht'
-                    ? 'border-l-red-600'
-                    : 'border-l-green-600'
-                }`}
-              >
-                <div className="flex justify-between items-center mb-4">
-                  <h3
-                    className={`font-bold text-lg ${
-                      stat.area === 'Zivilrecht'
-                        ? 'text-blue-700'
-                        : stat.area === 'Strafrecht'
-                        ? 'text-red-700'
-                        : 'text-green-700'
-                    }`}
+                  <button
+                    onClick={() => navigateToVideo(result.id)}
+                    className="sm:flex-shrink-0 w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                   >
-                    {stat.area}
-                  </h3>
-                  {stat.trend === 'up' && <TrendingUp className="w-6 h-6 text-green-500" />}
-                  {stat.trend === 'down' && <TrendingDown className="w-6 h-6 text-red-500" />}
-                </div>
-                <div className="space-y-3">
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <p className="text-xs text-gray-500 mb-1">Durchschnitt</p>
-                    <p className={`text-2xl font-bold ${getGradeColor(stat.average_grade)}`}>
-                      {formatGrade(stat.average_grade)} Punkte
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-1">Klausuren</p>
-                      <p className="text-lg font-bold text-gray-900">{stat.total_submissions}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-1">Letzte Note</p>
-                      <p className={`text-lg font-bold ${getGradeColor(stat.latest_grade)}`}>
-                        {formatGrade(stat.latest_grade)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
+                    Zur Korrektur
+                  </button>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      </section>
     </div>
   )
 }

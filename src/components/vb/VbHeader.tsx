@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { supabase } from '../../lib/supabase';
 import { User, CreditCard, LogOut, MessageCircle, Menu, X, LayoutDashboard, Award, GraduationCap, Settings, CalendarDays, ClipboardList, Trophy, HelpCircle } from 'lucide-react';
@@ -110,16 +110,23 @@ interface NavLinkItemProps {
   onClick?: () => void;
 }
 
-const SidebarNavLink: React.FC<NavLinkItemProps> = ({ to, icon, label, onClick }) => (
-  <Link
-    to={to}
-    onClick={onClick}
-    className="flex items-center gap-2 px-3 py-2 rounded-md text-gray-600 hover:bg-gray-100 hover:text-primary transition-colors text-sm font-medium"
-  >
-    {icon}
-    <span>{label}</span>
-  </Link>
-);
+const SidebarNavLink: React.FC<NavLinkItemProps> = ({ to, icon, label, onClick }) => {
+  const { pathname } = useLocation();
+  const active = pathname === to || (to !== '/klausurenbesprechung' && pathname.startsWith(`${to}/`));
+  return (
+    <Link
+      to={to}
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      className={`flex items-center gap-2 px-3 py-2.5 md:py-2 rounded-md transition-colors text-sm font-medium ${
+        active ? 'bg-primary/10 text-primary' : 'text-gray-600 hover:bg-gray-100 hover:text-primary'
+      }`}
+    >
+      {icon}
+      <span>{label}</span>
+    </Link>
+  );
+};
 
 const SidebarExternalLink: React.FC<{ href: string; icon?: React.ReactNode; label: string; onClick?: () => void }> = ({ href, icon, label, onClick }) => (
   <a

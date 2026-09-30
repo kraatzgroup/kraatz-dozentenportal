@@ -113,13 +113,13 @@ export const VbMasterclassPage = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div>
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6 sm:mb-8">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Klausuren-Masterclass</h1>
-            <p className="text-gray-600">Lerne von Experten mit unseren Video-Lektionen</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1 sm:mb-2">Klausuren-Masterclass</h1>
+            <p className="text-gray-600 text-sm sm:text-base">Lerne von Experten mit unseren Video-Lektionen</p>
           </div>
         </div>
       </div>
@@ -136,19 +136,10 @@ export const VbMasterclassPage = () => {
             const watched = watchedIds.has(lesson.id)
             const thumb = lesson.thumbnail_url || youTubeThumb(lesson.video_url)
             return (
-              <div key={lesson.id} className="space-y-2 sm:space-y-3 transition-all duration-200 h-full flex flex-col">
+              <div key={lesson.id} className="transition-all duration-200 h-full flex flex-col">
                 {/* Watch Status Indicator Above Video */}
-                <div className="flex items-center gap-2 min-h-6">
-                  {watched && (
-                    <span className="flex items-center gap-1 text-green-600 text-sm">
-                      <CheckCircle className="w-4 h-4" />
-                      Gesehen
-                    </span>
-                  )}
-                </div>
-
-                {/* Video Card */}
-                <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow flex-1 flex flex-col">
+                                {/* Video Card */}
+                <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow flex-1 flex flex-col">
                   {/* Thumbnail with Play Button */}
                   <div
                     className="relative aspect-video bg-gray-200 cursor-pointer group"
@@ -169,6 +160,12 @@ export const VbMasterclassPage = () => {
                         <Play className="w-8 h-8 text-white fill-white" />
                       </div>
                     </div>
+                    {watched && (
+                      <div className="absolute top-2 left-2 bg-green-600 text-white px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1">
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        Gesehen
+                      </div>
+                    )}
                     {lesson.duration > 0 && (
                       <div className="absolute bottom-2 right-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded text-sm flex items-center gap-1">
                         <Clock className="w-3 h-3" />
@@ -188,7 +185,7 @@ export const VbMasterclassPage = () => {
                     <div className="flex justify-end mt-auto">
                       <button
                         onClick={() => openVideo(lesson)}
-                        className="flex items-center gap-2 px-3 py-2 text-white rounded-lg hover:opacity-90 transition-colors text-sm font-medium"
+                        className="flex items-center justify-center gap-2 px-3 py-2 w-full sm:w-auto text-white rounded-lg hover:opacity-90 transition-colors text-sm font-medium"
                         style={{ backgroundColor: '#2e83c2' }}
                       >
                         <Play className="w-4 h-4" />
@@ -206,19 +203,19 @@ export const VbMasterclassPage = () => {
       {/* Video Lightbox Modal */}
       {selectedVideo && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-95 flex items-center justify-center z-50 p-6"
+          className="fixed inset-0 bg-black bg-opacity-95 flex items-center justify-center z-50 p-3 sm:p-6 overflow-y-auto"
           onClick={() => setSelectedVideo(null)}
         >
           <div className="relative w-full max-w-3xl mx-auto" onClick={e => e.stopPropagation()}>
             <button
               onClick={() => setSelectedVideo(null)}
-              className="text-white hover:text-red-400 transition-colors z-[60] bg-black bg-opacity-70 rounded-full p-3 shadow-lg"
-              style={{ position: 'fixed', top: '20px', right: '20px' }}
+              className="text-white hover:text-red-400 transition-colors z-[60] bg-black bg-opacity-70 rounded-full p-2 sm:p-3 shadow-lg"
+              style={{ position: 'fixed', top: '12px', right: '12px' }}
             >
-              <X className="w-8 h-8" />
+              <X className="w-6 h-6 sm:w-8 sm:h-8" />
             </button>
 
-            <div className="text-white text-center mb-6">
+            <div className="text-white text-center mb-4 sm:mb-6 pt-10 sm:pt-0 px-8 sm:px-0">
               <h2 className="text-xl font-bold">{selectedVideo.title}</h2>
               {selectedVideo.description && (
                 <p className="text-gray-300 mt-2 text-sm">{selectedVideo.description}</p>
