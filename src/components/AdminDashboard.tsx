@@ -4539,7 +4539,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
       {showActivityLog && (
         <div className="fixed z-50 inset-0 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowActivityLog(false)}>
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
               <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
             </div>
             <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full relative">
@@ -4732,7 +4732,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
       {showInvoicePreview && invoicePreviewData && (
         <div className="fixed z-[60] inset-0 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowInvoicePreview(false)}>
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
               <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
             </div>
             <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full relative">
@@ -4861,7 +4861,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
       {showCalendarEntryModal && selectedCalendarDate && (
         <div className="fixed z-50 inset-0 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowCalendarEntryModal(false)}>
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
               <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
             </div>
             <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full relative">
@@ -4968,7 +4968,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
       {showTeilnehmerPreview && previewTeilnehmer && (
         <div className="fixed z-50 inset-0 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowTeilnehmerPreview(false)}>
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
               <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
             </div>
             <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full relative">
@@ -5068,7 +5068,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
       {showTemplateEditor && editingTemplate && (
         <div className="fixed z-50 inset-0 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowTemplateEditor(false)}>
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
               <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
             </div>
             <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full relative">
@@ -5194,7 +5194,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
       {showDeadlineModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => setShowDeadlineModal(false)} />
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" />
             <div className="relative inline-block bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-md sm:w-full">
               <div className="bg-white px-4 pt-5 pb-4 sm:p-6">
                 <div className="flex items-center mb-4">

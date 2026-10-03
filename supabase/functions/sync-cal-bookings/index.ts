@@ -122,15 +122,17 @@ serve(async (req) => {
     }
 
     const now = new Date()
-    const [upcomingBookings, recurringBookings, unconfirmedBookings, cancelledBookings] = await Promise.all([
+    const [upcomingBookings, recurringBookings, unconfirmedBookings, pastBookings, cancelledBookings] = await Promise.all([
       fetchBookings(calApiKey, 'upcoming'),
       fetchBookings(calApiKey, 'recurring'),
       fetchBookings(calApiKey, 'unconfirmed'),
-      fetchBookings(calApiKey, 'cancelled', new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()),
+      fetchBookings(calApiKey, 'past'),
+      fetchBookings(calApiKey, 'cancelled', new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()),
     ])
-    const validBookings = [...upcomingBookings, ...recurringBookings, ...unconfirmedBookings]
-      .filter(booking => booking.status?.toLowerCase() !== 'cancelled' && new Date(booking.end).getTime() >= now.getTime())
-    const cancelledBookingIds = cancelledBookings.map(booking => String(booking.id))
+    // Keine Bookings mehr löschen: vergangene Calls bleiben als Zeile erhalten
+    // (die Pipeline zeigt sie über die zugehörigen Leads weiter an), stornierte
+    // Calls bleiben mit Status 'cancelled' erhalten, damit nichts verloren geht.
+    const validBookings = [...upcomingBookings, ...recurringBookings, ...unconfirmedBookings, ...pastBookings, ...cancelledBookings]
 
     // Upsert Cal.com bookings and their associated leads
     let syncedCount = 0
@@ -170,7 +172,7 @@ serve(async (req) => {
       if (error) throw error
       syncedCount++
 
-      if (attendeeEmail) {
+      if (attendeeEmail && booking.status?.toLowerCase() !== 'cancelled') {
         const nameParts = attendeeName?.split(/\s+/).filter(Boolean) || []
         const leadData = {
           cal_booking_id: String(booking.id),
@@ -200,22 +202,6 @@ serve(async (req) => {
         if (leadUpdateError) throw leadUpdateError
         syncedLeadCount++
       }
-    }
-
-    const { error: pastBookingsError } = await supabase
-      .from('cal_bookings')
-      .delete()
-      .lt('end_time', now.toISOString())
-
-    if (pastBookingsError) throw pastBookingsError
-
-    if (cancelledBookingIds.length > 0) {
-      const { error: cancelledBookingsError } = await supabase
-        .from('cal_bookings')
-        .delete()
-        .in('cal_booking_id', cancelledBookingIds)
-
-      if (cancelledBookingsError) throw cancelledBookingsError
     }
 
     console.log(`Synced ${syncedCount} Cal.com bookings and ${syncedLeadCount} associated leads`)

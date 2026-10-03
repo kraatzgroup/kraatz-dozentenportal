@@ -1509,6 +1509,12 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                                     </span>
                                   </div>
                                   <div className="mt-2 text-xs text-gray-500 space-y-1">
+                                    {lesson.scheduled_date && (
+                                      <p className="text-orange-700">
+                                        <span className="font-medium">Termin:</span>{' '}
+                                        {new Date(lesson.scheduled_date).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })} Uhr
+                                      </p>
+                                    )}
                                     {lesson.rechtsgebiet && (
                                       <p><span className="font-medium">Rechtsgebiet:</span> {lesson.rechtsgebiet}</p>
                                     )}
@@ -1802,7 +1808,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
           {showInvoiceManagement && (
             <div className="fixed z-10 inset-0 overflow-y-auto">
               <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={handleBackToInvoices}>
+                <div className="fixed inset-0 transition-opacity" aria-hidden="true">
                   <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
                 </div>
                 <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full relative">
@@ -2774,7 +2780,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       {duplicateWarning.show && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => setDuplicateWarning({ show: false, existingEntries: [], pendingData: null })} />
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" />
             <div className="relative inline-block bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full">
               <div className="bg-white px-4 pt-5 pb-4 sm:p-6">
                 <div className="flex items-start gap-3">
@@ -2866,7 +2872,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       {showBundeslaenderModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => setShowBundeslaenderModal(false)} />
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" />
             <div className="relative inline-block bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-2xl sm:w-full">
               <div className="bg-white px-4 pt-5 pb-4 sm:p-6">
                 <div className="flex items-center justify-between mb-4">

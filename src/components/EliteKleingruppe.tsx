@@ -3834,7 +3834,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       {showReleaseModal && selectedDate && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 py-8">
-            <div className="fixed inset-0 bg-black/50" onClick={() => setShowReleaseModal(false)} />
+            <div className="fixed inset-0 bg-black/50" />
             <div className="relative bg-white rounded-lg shadow-xl max-w-3xl w-full p-6 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 <div>
@@ -4647,7 +4647,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         return (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
-            <div className="fixed inset-0 bg-black/50" onClick={() => !isDeletingGroup && setGroupToDelete(null)} />
+            <div className="fixed inset-0 bg-black/50" />
             <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
               <h3 className="text-lg font-medium text-gray-900 mb-2">Gruppe löschen</h3>
               <p className="text-sm text-gray-500 mb-1">
@@ -4721,7 +4721,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       {klausurToDelete && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
-            <div className="fixed inset-0 bg-black/50" onClick={() => setKlausurToDelete(null)} />
+            <div className="fixed inset-0 bg-black/50" />
             <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
               <h3 className="text-lg font-medium text-gray-900 mb-2">Klausur löschen</h3>
               <p className="text-sm text-gray-500 mb-1">
@@ -4755,7 +4755,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       {showKorrekturModal && selectedKlausur && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
-            <div className="fixed inset-0 bg-black/50" onClick={() => setShowKorrekturModal(false)} />
+            <div className="fixed inset-0 bg-black/50" />
             <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium text-gray-900">Klausur korrigieren</h3>
@@ -4953,7 +4953,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       {showDeleteModal && selectedReleaseForAction && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
-            <div className="fixed inset-0 bg-black/50" onClick={() => setShowDeleteModal(false)} />
+            <div className="fixed inset-0 bg-black/50" />
             <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium text-gray-900">Termin löschen</h3>
@@ -5038,7 +5038,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       {showDeleteConfirmModal && selectedReleaseForAction && (
         <div className="fixed inset-0 z-[60] overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
-            <div className="fixed inset-0 bg-black/50" onClick={() => setShowDeleteConfirmModal(false)} />
+            <div className="fixed inset-0 bg-black/50" />
             <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium text-red-900">⚠️ Permanentes Löschen bestätigen</h3>
@@ -5120,7 +5120,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       {showRescheduleConfirmModal && editingRelease && (
         <div className="fixed inset-0 z-[60] overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
-            <div className="fixed inset-0 bg-black/50" onClick={() => setShowRescheduleConfirmModal(false)} />
+            <div className="fixed inset-0 bg-black/50" />
             <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium text-gray-900">Terminänderung bestätigen</h3>
@@ -5191,7 +5191,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       {showRescheduleModal && selectedReleaseForAction && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
-            <div className="fixed inset-0 bg-black/50" onClick={() => setShowRescheduleModal(false)} />
+            <div className="fixed inset-0 bg-black/50" />
             <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium text-gray-900">Termin verschieben</h3>
@@ -5994,7 +5994,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       {showCourseTimeModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
-            <div className="fixed inset-0 bg-black/50" onClick={() => setShowCourseTimeModal(false)} />
+            <div className="fixed inset-0 bg-black/50" />
             <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium text-gray-900">
@@ -6117,7 +6117,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       {showDozentModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
-            <div className="fixed inset-0 bg-black/50" onClick={() => setShowDozentModal(false)} />
+            <div className="fixed inset-0 bg-black/50" />
             <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium text-gray-900">Dozent zuweisen</h3>
@@ -6162,7 +6162,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         return (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 py-8">
-            <div className="fixed inset-0 bg-black/50" onClick={() => { setShowEditModal(false); setEditingRelease(null); }} />
+            <div className="fixed inset-0 bg-black/50" />
             <div className="relative bg-white rounded-lg shadow-xl max-w-3xl w-full p-6 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 <div>
@@ -6909,7 +6909,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       {showFaqModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
-            <div className="fixed inset-0 bg-black/50" onClick={() => setShowFaqModal(false)} />
+            <div className="fixed inset-0 bg-black/50" />
             <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium text-gray-900">
@@ -6977,7 +6977,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       {showVideoModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
-            <div className="fixed inset-0 bg-black/50" onClick={() => setShowVideoModal(false)} />
+            <div className="fixed inset-0 bg-black/50" />
             <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium text-gray-900">
@@ -7620,7 +7620,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       {showConflictModal && conflictDetails && (
         <div className="fixed inset-0 z-[70] overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
-            <div className="fixed inset-0 bg-black/50" onClick={() => setShowConflictModal(false)} />
+            <div className="fixed inset-0 bg-black/50" />
             <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
               <div className="flex items-start mb-4">
                 <div className="flex-shrink-0">

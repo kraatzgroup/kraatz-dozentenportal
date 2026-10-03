@@ -504,7 +504,7 @@ export const KorrekturModal: React.FC<KorrekturModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4">
-        <div className="fixed inset-0 bg-black/50" onClick={onClose} />
+        <div className="fixed inset-0 bg-black/50" />
         <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6 my-8">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-medium text-gray-900">Klausur korrigieren</h3>

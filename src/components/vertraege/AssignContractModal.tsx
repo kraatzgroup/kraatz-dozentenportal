@@ -191,7 +191,7 @@ export function AssignContractModal({
   const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString('de-DE') : '—');
 
   return createPortal(
-    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
       <div
         className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col"
         onMouseDown={(e) => e.stopPropagation()}

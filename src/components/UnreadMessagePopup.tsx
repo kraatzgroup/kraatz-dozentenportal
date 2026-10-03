@@ -27,7 +27,7 @@ export function UnreadMessagePopup({ messages, onClose, onMarkAsRead, onMarkAllA
     return (
       <div className="fixed inset-0 z-50 overflow-y-auto">
         <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center">
-          <div className="fixed inset-0 transition-opacity" onClick={onClose}>
+          <div className="fixed inset-0 transition-opacity">
             <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
           </div>
           <div className="inline-block bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:max-w-lg sm:w-full p-6">
@@ -47,7 +47,7 @@ export function UnreadMessagePopup({ messages, onClose, onMarkAsRead, onMarkAllA
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center">
-        <div className="fixed inset-0 transition-opacity" onClick={onClose}>
+        <div className="fixed inset-0 transition-opacity">
           <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
         </div>
         <div className="inline-block bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:max-w-lg sm:w-full">

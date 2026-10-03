@@ -126,7 +126,14 @@ export function VertriebDashboard() {
       {/* Main Content */}
       <main className="w-full py-6 px-10">
         {activeTab === 'overview' && (
-          <SalesKanbanOverview calBookings={calBookings} leads={leads} onCreateLead={createLead} />
+          <SalesKanbanOverview
+            calBookings={calBookings}
+            leads={leads}
+            onCreateLead={createLead}
+            onUpdateLead={updateLead}
+            trialLessons={trialLessons}
+            onCreateTrialLesson={createTrialLesson}
+          />
         )}
 
         {activeTab === 'calendar' && (

@@ -1172,7 +1172,7 @@ export function DozentDetail() {
       {duplicateWarning.show && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => setDuplicateWarning({ show: false, existingEntries: [], pendingData: null })} />
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" />
             <div className="relative inline-block bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full">
               <div className="bg-white px-4 pt-5 pb-4 sm:p-6">
                 <div className="flex items-start gap-3">

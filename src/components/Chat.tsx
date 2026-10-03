@@ -2439,7 +2439,7 @@ export function Chat() {
 
       {/* Delete Message Confirmation Modal */}
       {showDeleteMessageModal && messageToDelete && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowDeleteMessageModal(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
           <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Nachricht löschen?</h3>
             <p className="text-gray-600 mb-4">
@@ -2476,7 +2476,7 @@ export function Chat() {
       )}
 
       {showArchiveChatModal && chatToArchive && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => { setShowArchiveChatModal(false); setChatToArchive(null); }}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
           <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Chat archivieren?</h3>
             <p className="text-gray-600 mb-4">

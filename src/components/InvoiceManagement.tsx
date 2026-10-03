@@ -1755,7 +1755,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       {showCreateTypeDialog && (
         <div className="fixed z-10 inset-0 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowCreateTypeDialog(false)}>
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
               <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
             </div>
             <div className="inline-block align-middle bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:max-w-md sm:w-full">
@@ -1810,7 +1810,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       {showPeriodSelectionDialog && (
         <div className="fixed z-10 inset-0 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowPeriodSelectionDialog(false)}>
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
               <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
             </div>
             <div className="inline-block align-middle bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:max-w-md sm:w-full">
@@ -1940,7 +1940,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       {showInvoiceDetailsDialog && (
         <div className="fixed z-10 inset-0 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowInvoiceDetailsDialog(false)}>
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
               <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
             </div>
             <div className="inline-block align-middle bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:max-w-md sm:w-full">
@@ -2013,7 +2013,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       {showExamTypeDialog && (
         <div className="fixed z-10 inset-0 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowExamTypeDialog(false)}>
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
               <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
             </div>
             <div className="inline-block align-middle bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:max-w-md sm:w-full">
@@ -2068,7 +2068,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       {showConfirmModal && (
         <div className="fixed z-10 inset-0 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowConfirmModal(false)}>
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
               <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
             </div>
             <div className="inline-block align-middle bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:max-w-2xl sm:w-full">
@@ -2572,7 +2572,7 @@ export function InvoiceManagement({ onBack, dozentId, isAdmin = false, selectedM
       {showUploadDialog && uploadInvoice && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowUploadDialog(false)}>
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
               <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
             </div>
             <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">

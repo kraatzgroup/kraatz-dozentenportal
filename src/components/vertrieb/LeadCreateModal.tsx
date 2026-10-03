@@ -63,7 +63,7 @@ export function LeadCreateModal({ isOpen, onClose, onCreateLead }: LeadCreateMod
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg bg-white shadow-xl" onClick={event => event.stopPropagation()}>
         <div className="flex items-center justify-between border-b p-4">
           <h3 className="text-lg font-semibold text-gray-900">Neuen Lead hinzufügen</h3>

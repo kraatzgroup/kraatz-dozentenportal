@@ -150,6 +150,12 @@ export interface Lead {
   booking_date: string | null;
   contract_requested_at: string | null;
   final_call_date: string | null;
+  offer_sent_at: string | null;
+  offer_package: string | null;
+  offer_start_date: string | null;
+  offer_price: number | null;
+  downsell_mail_sent_at: string | null;
+  downsell_reason: string | null;
   street: string | null;
   house_number: string | null;
   postal_code: string | null;
@@ -167,6 +173,15 @@ export interface LeadNote {
   note: string;
   created_by: string | null;
   created_at: string;
+}
+
+export interface LeadStatusHistory {
+  id: number;
+  lead_id: string;
+  status: Lead['status'];
+  changed_at: string;
+  changed_by: string | null;
+  meta: Record<string, unknown> | null;
 }
 
 export interface ContractRequest {
@@ -205,6 +220,7 @@ interface SalesState {
   calBookings: CalBooking[];
   leads: Lead[];
   leadNotes: LeadNote[];
+  leadHistory: LeadStatusHistory[];
   contractRequests: ContractRequest[];
   activeTeilnehmer: any[];
   isLoading: boolean;
@@ -222,6 +238,7 @@ interface SalesState {
   refreshCalBookings: () => Promise<void>;
   fetchLeads: () => Promise<void>;
   fetchLeadNotes: (leadId?: string) => Promise<void>;
+  fetchLeadHistory: (leadId: string) => Promise<void>;
   addLeadNote: (leadId: string, note: string) => Promise<void>;
   fetchContractRequests: () => Promise<void>;
   fetchActiveTeilnehmer: () => Promise<void>;
@@ -275,6 +292,7 @@ export const useSalesStore = create<SalesState>((set, get) => ({
   calBookings: [],
   leads: [],
   leadNotes: [],
+  leadHistory: [],
   contractRequests: [],
   activeTeilnehmer: [],
   isLoading: false,
@@ -556,9 +574,20 @@ export const useSalesStore = create<SalesState>((set, get) => ({
       if (error) throw error;
       
       const { leads } = get();
+      const current = leads.find(l => l.id === id);
       set({
         leads: leads.map(l => l.id === id ? { ...l, ...data } : l)
       });
+
+      // Customer-Journey: Statuswechsel protokollieren
+      if (data.status && current && data.status !== current.status) {
+        const { data: { user } } = await supabase.auth.getUser();
+        await supabase.from('lead_status_history').insert({
+          lead_id: id,
+          status: data.status,
+          changed_by: user?.id ?? null,
+        });
+      }
     } catch (error: any) {
       console.error('Error updating lead:', error);
       set({ error: error.message });
@@ -634,6 +663,21 @@ export const useSalesStore = create<SalesState>((set, get) => ({
       set({ leadNotes: data || [] });
     } catch (error: any) {
       console.error('Error fetching lead notes:', error);
+      set({ error: error.message });
+    }
+  },
+
+  fetchLeadHistory: async (leadId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('lead_status_history')
+        .select('*')
+        .eq('lead_id', leadId)
+        .order('changed_at', { ascending: true });
+      if (error) throw error;
+      set({ leadHistory: data || [] });
+    } catch (error: any) {
+      console.error('Error fetching lead history:', error);
       set({ error: error.message });
     }
   },
@@ -781,12 +825,24 @@ export const useSalesStore = create<SalesState>((set, get) => ({
 
   createLead: async (data) => {
     try {
-      const { error } = await supabase.from('leads').insert({
-        ...data,
-        source: data.source || 'manual',
-        status: data.status || 'new',
-      });
+      const { data: inserted, error } = await supabase
+        .from('leads')
+        .insert({
+          ...data,
+          source: data.source || 'manual',
+          status: data.status || 'new',
+        })
+        .select()
+        .single();
       if (error) throw error;
+      if (inserted) {
+        const { data: { user } } = await supabase.auth.getUser();
+        await supabase.from('lead_status_history').insert({
+          lead_id: inserted.id,
+          status: inserted.status || 'new',
+          changed_by: user?.id ?? null,
+        });
+      }
       await get().fetchLeads();
     } catch (error: any) {
       console.error('Error creating lead:', error);

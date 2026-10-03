@@ -344,7 +344,7 @@ export function DozentCard({ dozent, userRole, onEdit, onFolderClick, preloadedF
       {showContactInfo && (
         <div className="fixed z-50 inset-0 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowContactInfo(false)}>
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
               <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
             </div>
             <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full relative">
@@ -443,7 +443,7 @@ export function DozentCard({ dozent, userRole, onEdit, onFolderClick, preloadedF
       {showAvailabilityPopup && (
         <div className="fixed z-50 inset-0 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 transition-opacity" aria-hidden="true" onClick={() => setShowAvailabilityPopup(false)}>
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
               <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
             </div>
             <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full relative">
