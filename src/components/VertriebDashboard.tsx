@@ -3,14 +3,12 @@ import { useSearchParams } from 'react-router-dom';
 
 import { Lead, useSalesStore } from '../store/salesStore';
 import { SalesKanbanOverview } from './vertrieb/SalesKanbanOverview';
-import { TrialLessonsList } from './vertrieb/TrialLessonsList';
-import { CalBookingsList } from './vertrieb/CalBookingsList';
 import { SalesCalendar } from './vertrieb/SalesCalendar';
 import { FinalgespraechList } from './vertrieb/FinalgespraechList';
 import { AfterSalesList } from './vertrieb/AfterSalesList';
 
-type TabType = 'overview' | 'calendar' | 'calls' | 'trials' | 'finalgespraech' | 'aftersales';
-const VALID_TABS: TabType[] = ['overview', 'calendar', 'calls', 'trials', 'finalgespraech', 'aftersales'];
+type TabType = 'overview' | 'calendar' | 'finalgespraech' | 'aftersales';
+const VALID_TABS: TabType[] = ['overview', 'calendar', 'finalgespraech', 'aftersales'];
 
 export function VertriebDashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -42,21 +40,17 @@ export function VertriebDashboard() {
     trialLessons,
     calBookings,
     leads,
-    isLoading,
     fetchPackages,
     fetchFollowUps,
     fetchTrialLessons,
     fetchUpsells,
     fetchCalBookings,
-    refreshCalBookings,
     fetchLeads,
     fetchSales,
     fetchActiveTeilnehmer,
     createTrialLesson,
     createLead,
-    updateTrialLesson,
     updateLead,
-    deleteTrialLesson,
     subscribeToChanges,
   } = useSalesStore();
 
@@ -84,13 +78,9 @@ export function VertriebDashboard() {
     ]);
   };
 
-  const upcomingTrials = trialLessons.filter(t => t.status === 'scheduled').length;
-
   const tabs = [
     { id: 'overview' as TabType, label: 'Übersicht' },
     { id: 'calendar' as TabType, label: 'Kalender' },
-    { id: 'calls' as TabType, label: 'Calls', badge: calBookings.filter(b => new Date(b.end_time) >= new Date()).length },
-    { id: 'trials' as TabType, label: 'Probestunden', badge: upcomingTrials },
     { id: 'finalgespraech' as TabType, label: 'Finalgespräch', badge: leads.filter(l => l.status === 'finalgespraech' || l.status === 'post_trial_call').length },
     { id: 'aftersales' as TabType, label: 'After Sales', badge: leads.filter(l => l.status === 'contract_closed').length },
   ];
@@ -138,23 +128,6 @@ export function VertriebDashboard() {
 
         {activeTab === 'calendar' && (
           <SalesCalendar />
-        )}
-
-        {activeTab === 'calls' && (
-          <CalBookingsList
-            bookings={calBookings}
-            onRefresh={refreshCalBookings}
-            isLoading={isLoading}
-          />
-        )}
-
-        {activeTab === 'trials' && (
-          <TrialLessonsList
-            trialLessons={trialLessons}
-            onUpdate={updateTrialLesson}
-            onCreate={createTrialLesson}
-            onDelete={deleteTrialLesson}
-          />
         )}
 
         {activeTab === 'finalgespraech' && (

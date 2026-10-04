@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
-import { MessageSquare, LogOut, Settings, FolderIcon, Edit, Trash2, Users, FileText, User, Clock, Calendar, X, GraduationCap, Check, AlertTriangle, Menu, Bell, Upload } from 'lucide-react';
+import { MessageSquare, LogOut, Settings, FolderIcon, Edit, Trash2, Users, FileText, User, Clock, Calendar, X, GraduationCap, Check, AlertTriangle, Menu, Bell, Upload, TrendingUp, Briefcase } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useMessageStore } from '../store/messageStore';
 import { useFolderStore } from '../store/folderStore';
@@ -19,6 +19,7 @@ import { InvoiceManagement } from './InvoiceManagement';
 import { AbsenceCalendar } from './AbsenceCalendar';
 import { useSalesStore } from '../store/salesStore';
 import { DozentenDashboard } from './DozentenDashboard';
+import { VertriebDashboard } from './VertriebDashboard';
 
 interface DashboardProps {
   isAdmin?: boolean;
@@ -41,7 +42,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { subTab: urlSubTab } = useParams<{ subTab?: string }>();
-  const { user, signOut, userRole, isAdmin: isUserAdmin, isBuchhaltung, isDozent, isMaterial, additionalRoles } = useAuthStore();
+  const { user, signOut, userRole, isAdmin: isUserAdmin, isBuchhaltung, isDozent, isMaterial, isVertrieb, isVerwaltung, additionalRoles } = useAuthStore();
   const { folders, fetchFolders, createFolder, updateFolder, deleteFolder } = useFolderStore();
   const { files, fetchFiles, uploadFile, deleteFile } = useFileStore();
   const { teilnehmer, fetchTeilnehmer } = useTeilnehmerStore();
@@ -210,6 +211,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   // Derive EK view state from URL
   const isEliteKleingruppeRoute = location.pathname.startsWith('/dashboard/elite-kleingruppe');
   const showEliteKleingruppe = isEliteKleingruppeRoute;
+  const isVertriebRoute = isVertrieb && location.pathname.startsWith('/dashboard/vertrieb');
   const ekSubTab = urlSubTab ? (EK_SUB_TAB_MAP[urlSubTab] || 'einheiten') : 'einheiten';
   const [duplicateWarning, setDuplicateWarning] = useState<{ show: boolean; existingEntries: any[]; pendingData: any | null }>({
     show: false, existingEntries: [], pendingData: null
@@ -1017,7 +1019,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
           <div className="flex justify-between h-16">
             <div className="flex">
               <div className="flex-shrink-0 flex items-center">
-                <Logo onClick={isDozent ? () => handleSelectFolder(null) : undefined} />
+                <Logo onClick={isDozent ? () => (isVertriebRoute ? navigate('/dashboard') : handleSelectFolder(null)) : undefined} />
                 <span className="ml-2 text-xl font-semibold text-gray-900">Dozenten-Portal</span>
               </div>
             </div>
@@ -1258,7 +1260,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
         </div>
       )}
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+      <main className={isVertriebRoute ? 'w-full py-6 px-2 sm:px-6 lg:px-10' : 'max-w-7xl mx-auto py-6 sm:px-6 lg:px-8'}>
         <div className="px-4 py-6 sm:px-0">
           {/* Ordner-Sektion für alle Benutzer - am Anfang */}
           <div className="mb-8">
@@ -1401,6 +1403,36 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   >
                     <Users className="h-6 w-6 text-primary" />
                     <span className="ml-3 font-medium text-gray-900">Elite-Kleingruppe</span>
+                  </button>
+                </div>
+              )}
+              {/* Vertrieb Folder - for users with vertrieb (additional) role */}
+              {isVertrieb && (
+                <div
+                  className={`relative block w-full text-left ${
+                    isVertriebRoute
+                      ? 'ring-2 ring-primary'
+                      : 'hover:bg-gray-50'
+                  } bg-white rounded-lg shadow p-4`}
+                >
+                  <button
+                    onClick={() => { setSelectedFolder(null); navigate('/dashboard/vertrieb'); }}
+                    className="w-full flex items-center text-left"
+                  >
+                    <TrendingUp className="h-6 w-6 text-primary" />
+                    <span className="ml-3 font-medium text-gray-900">Vertrieb</span>
+                  </button>
+                </div>
+              )}
+              {/* Verwaltung Folder - for users with verwaltung (additional) role */}
+              {isVerwaltung && (
+                <div className="relative block w-full text-left hover:bg-gray-50 bg-white rounded-lg shadow p-4">
+                  <button
+                    onClick={() => { setSelectedFolder(null); navigate('/dashboard/verwaltung'); }}
+                    className="w-full flex items-center text-left"
+                  >
+                    <Briefcase className="h-6 w-6 text-primary" />
+                    <span className="ml-3 font-medium text-gray-900">Verwaltung</span>
                   </button>
                 </div>
               )}
@@ -1792,8 +1824,13 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
             </>
           )}
 
+          {/* VertriebDashboard für Dozenten mit Vertrieb-Rolle (/dashboard/vertrieb) */}
+          {isVertriebRoute && (
+            <VertriebDashboard />
+          )}
+
           {/* DozentenDashboard für Dozenten - nur anzeigen wenn kein Ordner ausgewählt ist */}
-          {isDozent && !selectedFolder && (
+          {isDozent && !selectedFolder && !isVertriebRoute && (
             <DozentenDashboard
               showEliteKleingruppe={showEliteKleingruppe}
               ekSubTab={ekSubTab}
@@ -2091,7 +2128,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                                     const { data: { user } } = await supabase.auth.getUser();
                                     if (user) {
                                       // Get profile ID of current user
-                                      const { data: profile } = await supabase
+                                      const { data: _profile } = await supabase
                                         .from('profiles')
                                         .select('id')
                                         .eq('id', user.id)

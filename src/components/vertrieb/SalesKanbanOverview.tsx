@@ -523,6 +523,9 @@ export function SalesKanbanOverview({
       }
     };
 
+    // Cal.com-Buchung je Lead (für Zoom-/Meeting-URL im Detail-Modal)
+    const bookingByCalId = new Map(calBookings.map(b => [String(b.cal_booking_id), b]));
+
     // Leads sind die persistente Datenquelle der Pipeline
     const leadItems: PipelineItem[] = leads
       .filter(lead => !TERMINAL_STATUSES.includes(lead.status))
@@ -531,7 +534,7 @@ export function SalesKanbanOverview({
         // Abgelehnte Probestunde: Dozent hat abgesagt -> neu anfragen
         let trialRejected: string | null = null;
         const latestTrial = latestTrialByLead.get(lead.id);
-        if (latestTrial?.status === 'cancelled') {
+        if (latestTrial?.status === 'cancelled' && placed.column !== 'closed') {
           const dt = latestTrial.scheduled_date ? formatStamp(new Date(latestTrial.scheduled_date).getTime()) : 'Termin offen';
           trialRejected = `Probestunde neu anfragen – Dozent ${latestTrial.dozent_name || 'XY'} hat die Probestunde für ${dt} abgelehnt`;
         }
@@ -594,7 +597,7 @@ export function SalesKanbanOverview({
         studyLocation: lead.study_location,
         examGoal: lead.study_goal,
         consultationWishes: lead.notes,
-        meetingUrl: null,
+        meetingUrl: lead.cal_booking_id ? (bookingByCalId.get(lead.cal_booking_id)?.meeting_url ?? null) : null,
         description: null,
         source: lead.cal_booking_id ? 'cal' as const : 'manual' as const,
         };

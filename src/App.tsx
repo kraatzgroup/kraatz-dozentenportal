@@ -180,6 +180,8 @@ function App() {
               shown when isEliteKleingruppe is true. */}
           <Route path="/dashboard" element={<RoleGuard dashboard />} />
           <Route path="/dashboard/elite-kleingruppe/:subTab?" element={<RoleGuard dashboard />} />
+          <Route path="/dashboard/vertrieb" element={<RoleGuard dashboard />} />
+          <Route path="/dashboard/verwaltung" element={<RoleGuard dashboard />} />
           <Route path="/dashboard/taetigkeitsbericht" element={<RoleGuard dashboard />} />
 
           {/* ─── Staff-only routes ────────────────────────────────────────── */}

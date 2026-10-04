@@ -148,15 +148,18 @@ function GuardSpinner() {
 function DashboardSelector() {
   const {
     isMaterial, isTeilnehmer, isEliteKleingruppe, additionalRoles,
-    isAdmin, isBuchhaltung, isVerwaltung, isVertrieb,
+    isAdmin, isBuchhaltung, isVerwaltung, isVertrieb, isDozent,
   } = useAuthStore();
   const { isPreviewMode, previewedRole } = usePreviewStore();
+  const { pathname } = useLocation();
 
   const showPreview = isAdmin && isPreviewMode;
   const showAdminView = showPreview ? previewedRole === 'admin' : isAdmin;
   const showBuchhaltungView = showPreview ? previewedRole === 'buchhaltung' : (isBuchhaltung && !isAdmin);
-  const showVerwaltungView = showPreview ? previewedRole === 'verwaltung' : isVerwaltung;
-  const showVertriebView = showPreview ? previewedRole === 'vertrieb' : isVertrieb;
+  const showVerwaltungView = showPreview ? previewedRole === 'verwaltung' : (isVerwaltung && !isDozent);
+  // Dozenten mit Vertrieb-Zusatzrolle landen im Dozenten-Dashboard und
+  // erreichen Vertrieb über die Grid-Kachel (/dashboard/vertrieb)
+  const showVertriebView = showPreview ? previewedRole === 'vertrieb' : (isVertrieb && !isDozent);
   const showTeilnehmerView = showPreview ? previewedRole === 'teilnehmer' : isTeilnehmer;
 
   let content: ReactNode;
@@ -177,6 +180,10 @@ function DashboardSelector() {
     content = <LazyAdminDashboard mode="verwaltung" />;
   } else if (showAdminView) {
     content = <LazyAdminDashboard mode="admin" />;
+  } else if (isVerwaltung && pathname.startsWith('/dashboard/verwaltung')) {
+    // Dozenten mit Verwaltung-Zusatzrolle erreichen die Verwaltungs-Ansicht
+    // über die Grid-Kachel (/dashboard/verwaltung)
+    content = <LazyAdminDashboard mode="verwaltung" />;
   } else {
     content = <LazyDashboard isAdmin={false} />;
   }

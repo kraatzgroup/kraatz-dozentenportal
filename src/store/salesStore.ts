@@ -587,6 +587,21 @@ export const useSalesStore = create<SalesState>((set, get) => ({
           status: data.status,
           changed_by: user?.id ?? null,
         });
+
+        // Abgeschlossen: alle offenen ToDos schließen (Kalender-ToDos + Probestunden-Anfragen)
+        if (data.status === 'closed') {
+          await supabase
+            .from('sales_todos')
+            .update({ status: 'completed' })
+            .eq('lead_id', id)
+            .eq('status', 'pending');
+          await supabase
+            .from('trial_lessons')
+            .update({ status: 'cancelled' })
+            .eq('lead_id', id)
+            .in('status', ['requested', 'dozent_assigned', 'confirmed']);
+          await get().fetchTrialLessons();
+        }
       }
     } catch (error: any) {
       console.error('Error updating lead:', error);

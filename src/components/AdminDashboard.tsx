@@ -1506,6 +1506,17 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 )}
               </button>
               
+              {/* Dozenten-Dashboard shortcut for users with dozent role */}
+              {isDozent && (
+                <button
+                  onClick={() => navigate('/dashboard')}
+                  className="inline-flex items-center px-2 lg:px-3 py-2 border border-transparent text-xs lg:text-sm leading-4 font-medium rounded-md text-primary hover:text-primary/80 focus:outline-none transition"
+                  title="Dozenten-Dashboard"
+                >
+                  <GraduationCap className="h-4 w-4 lg:h-5 lg:w-5" />
+                </button>
+              )}
+
               {/* Settings icon for all users to edit their own profile */}
               <button
                 onClick={() => {
