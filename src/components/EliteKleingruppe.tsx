@@ -1658,6 +1658,18 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
     } catch (error) { console.error('Error toggling release:', error); }
   };
 
+  // Ermittelt alle Material-IDs, die in einem Ordner und dessen Unterordnern liegen.
+  // Dient dazu, die Materialauswahl strikt auf den gewählten Klausur-Ordner zu begrenzen,
+  // damit keine Dokumente aus einer anderen Klausur/Einheit/Gruppe übernommen werden.
+  const getFolderTreeMaterialIds = (folderId: string): Set<string> => {
+    const result = new Set<string>();
+    const walk = (id: string) => {
+      materials.forEach(m => { if (m.folder_id === id) result.add(m.id); });
+      folders.filter(f => f.parent_id === id).forEach(f => walk(f.id));
+    };
+    if (folderId) walk(folderId);
+    return result;
+  };
 
   const openEditReleaseModal = (release: ScheduledRelease) => {
     setEditingRelease(release);
@@ -1677,8 +1689,17 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
     setReleaseZoomMeetingId(release.zoom_meeting_id || '');
     setReleaseZoomPasscode(release.zoom_passcode || '');
     setReleaseKlausurFolderId(release.klausur_folder_id || '');
-    setReleaseSolutionMaterialIds(release.solution_material_ids || []);
-    setSelectedMaterials(release.material_ids || []);
+    // Nur Materialien übernehmen, die tatsächlich im gewählten Klausur-Ordner liegen.
+    // Verhindert, dass beim früheren Wechsel der Klausur "hängengebliebene" Dokumente
+    // aus einer anderen Klausur/Einheit/Gruppe weiter mitgeführt werden.
+    if (release.klausur_folder_id) {
+      const folderMaterialIds = getFolderTreeMaterialIds(release.klausur_folder_id);
+      setReleaseSolutionMaterialIds((release.solution_material_ids || []).filter(id => folderMaterialIds.has(id)));
+      setSelectedMaterials((release.material_ids || []).filter(id => folderMaterialIds.has(id)));
+    } else {
+      setReleaseSolutionMaterialIds(release.solution_material_ids || []);
+      setSelectedMaterials(release.material_ids || []);
+    }
     setSelectedFolders(release.folder_ids || []);
     setSolutionReleaseMode(release.solution_release_date ? 'custom' : 'auto');
     setCustomSolutionReleaseDate(release.solution_release_date || '');
@@ -1841,7 +1862,7 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       solution_material_ids: releaseSolutionMaterialIds,
       solution_release_date: solutionReleaseMode === 'custom' && customSolutionReleaseDate ? customSolutionReleaseDate : null,
       solution_release_time: solutionReleaseMode === 'custom' && customSolutionReleaseTime ? customSolutionReleaseTime : null,
-      elite_kleingruppe_id: selectedEliteGroupId || (eliteGroups.length === 1 ? eliteGroups[0].id : null),
+      elite_kleingruppe_id: editingRelease.elite_kleingruppe_id || selectedEliteGroupId || (eliteGroups.length === 1 ? eliteGroups[0].id : null),
       additional_documents: editAdditionalDocuments
     };
 
@@ -4151,7 +4172,13 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                   <label className="block text-sm font-medium text-gray-700 mb-1">Welche Klausur wird besprochen?</label>
                   <select 
                     value={releaseKlausurFolderId} 
-                    onChange={(e) => setReleaseKlausurFolderId(e.target.value)} 
+                    onChange={(e) => {
+                      setReleaseKlausurFolderId(e.target.value);
+                      // Klausur gewechselt -> alte Materialauswahl verwerfen, damit keine
+                      // Dokumente aus einer anderen Klausur übernommen werden.
+                      setReleaseSolutionMaterialIds([]);
+                      setSelectedMaterials([]);
+                    }} 
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     disabled={!releaseLegalArea}
                   >
@@ -6314,7 +6341,13 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
                   <label className="block text-sm font-medium text-gray-700 mb-1">Welche Klausur wird besprochen?</label>
                   <select 
                     value={releaseKlausurFolderId} 
-                    onChange={(e) => setReleaseKlausurFolderId(e.target.value)} 
+                    onChange={(e) => {
+                      setReleaseKlausurFolderId(e.target.value);
+                      // Klausur gewechselt -> alte Materialauswahl verwerfen, damit keine
+                      // Dokumente aus einer anderen Klausur übernommen werden.
+                      setReleaseSolutionMaterialIds([]);
+                      setSelectedMaterials([]);
+                    }} 
                     disabled={!releaseLegalArea}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:bg-gray-100 disabled:cursor-not-allowed"
                   >
