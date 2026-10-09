@@ -136,7 +136,7 @@ export function EliteKleingruppeDashboard() {
   }, [setSearchParams]);
   
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
-  const [calendarYear] = useState(new Date().getFullYear());
+  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [allReleases, setAllReleases] = useState<ScheduledRelease[]>([]);
   const [releases, setReleases] = useState<ScheduledRelease[]>([]);
   const [materials, setMaterials] = useState<TeachingMaterial[]>([]);
@@ -2407,13 +2407,13 @@ export function EliteKleingruppeDashboard() {
                   <p className="text-sm text-gray-500 mt-1">Übersicht aller geplanten und freigegebenen Einheiten für dich</p>
                 </div>
                 <div className="flex items-center justify-between sm:justify-end sm:space-x-4 bg-gray-50 sm:bg-transparent rounded-lg p-1 sm:p-0">
-                  <button onClick={() => setCalendarMonth(m => m === 0 ? 11 : m - 1)} className="p-2 hover:bg-gray-100 rounded-lg">
+                  <button onClick={() => { if (calendarMonth === 0) { setCalendarMonth(11); setCalendarYear(calendarYear - 1); } else { setCalendarMonth(calendarMonth - 1); } }} className="p-2 hover:bg-gray-100 rounded-lg">
                     <ChevronLeft className="h-5 w-5 text-gray-600" />
                   </button>
                   <span className="text-base sm:text-lg font-medium sm:min-w-[150px] text-center">
                     {new Date(calendarYear, calendarMonth).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })}
                   </span>
-                  <button onClick={() => setCalendarMonth(m => m === 11 ? 0 : m + 1)} className="p-2 hover:bg-gray-100 rounded-lg">
+                  <button onClick={() => { if (calendarMonth === 11) { setCalendarMonth(0); setCalendarYear(calendarYear + 1); } else { setCalendarMonth(calendarMonth + 1); } }} className="p-2 hover:bg-gray-100 rounded-lg">
                     <ChevronRight className="h-5 w-5 text-gray-600" />
                   </button>
                 </div>
