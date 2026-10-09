@@ -45,6 +45,26 @@ const PLACEHOLDERS = [
   { token: '[Beginn]', label: 'Beginn' },
 ];
 
+// Optionale Bausteine (Sections) der Angebots-Mail. Die Vorlage markiert jeden
+// Abschnitt mit <!--SECTION:key-->…<!--/SECTION:key-->; der Vertrieb kann die
+// Bausteine im Modal einzeln ein-/ausblenden, bevor die Mail versendet wird.
+const OFFER_SECTIONS = [
+  { key: 'ueberblick', label: 'Einzelunterricht im Überblick' },
+  { key: 'einblicke', label: 'Zusätzliche Einblicke' },
+  { key: 'probematerial', label: 'Kostenlose Probematerialien' },
+  { key: 'preisuebersicht', label: 'Preisübersicht' },
+  { key: 'motivation', label: 'Motivationsschub' },
+  { key: 'testimonials', label: 'Das sagen unsere Teilnehmer' },
+  { key: 'naechste-schritte', label: 'Nächste Schritte' },
+];
+
+// Erkennt in einer Vorlage vorhandene Sections (über ihre Markierungen) und
+// aktiviert sie standardmäßig alle.
+const discoverSections = (bodyText: string): Record<string, boolean> => {
+  const present = OFFER_SECTIONS.filter(s => bodyText.includes(`<!--SECTION:${s.key}-->`));
+  return Object.fromEntries(present.map(s => [s.key, true]));
+};
+
 interface OfferPackage {
   id: string;
   name: string;
@@ -80,6 +100,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
   const [beginDate, setBeginDate] = useState(getNextMonday);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
+  const [activeSections, setActiveSections] = useState<Record<string, boolean>>({});
   const [showPreview, setShowPreview] = useState(false);
   const [showSource, setShowSource] = useState(false);
   const [reasonOption, setReasonOption] = useState('');
@@ -105,6 +126,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
         setIsHtml(Boolean(all[0].is_html));
         setSubject(all[0].subject || '');
         setBody(all[0].body || '');
+        setActiveSections(discoverSections(all[0].body || ''));
       }
     };
     fetchTemplates();
@@ -140,8 +162,22 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
     );
   };
 
-  const replacePlaceholders = (text: string) =>
-    PLACEHOLDERS.reduce((acc, p) => acc.split(p.token).join(placeholderValues[p.token as keyof typeof placeholderValues]), applyConditionals(text));
+  // Abgewählte Sections (<!--SECTION:key-->…<!--/SECTION:key-->) entfernen,
+  // aktive Sections entsperren (nur die Markierungen entfernen).
+  const applySectionToggles = (text: string) =>
+    OFFER_SECTIONS.reduce((acc, section) => {
+      const re = new RegExp(`<!--SECTION:${section.key}-->([\\s\\S]*?)<!--/SECTION:${section.key}-->`, 'g');
+      return acc.replace(re, activeSections[section.key] ? '$1' : '');
+    }, text);
+
+  const replacePlaceholders = (text: string) => {
+    const withSections = applySectionToggles(text);
+    const withConditionals = applyConditionals(withSections);
+    return PLACEHOLDERS.reduce(
+      (acc, p) => acc.split(p.token).join(placeholderValues[p.token as keyof typeof placeholderValues]),
+      withConditionals
+    );
+  };
 
   const previewSubject = replacePlaceholders(subject);
   const previewBody = replacePlaceholders(body);
@@ -159,12 +195,16 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
     setBody(prev => prev + (prev && !prev.endsWith('\n') ? ' ' : '') + token);
   };
 
+  const toggleSection = (key: string) =>
+    setActiveSections(prev => ({ ...prev, [key]: !prev[key] }));
+
   const selectTemplate = (template: EmailTemplateRow) => {
     setSelectedTemplateId(template.id);
     setIsHtml(Boolean(template.is_html));
     setShowSource(false);
     setSubject(template.subject || '');
     setBody(template.body || '');
+    setActiveSections(discoverSections(template.body || ''));
   };
 
   const handleSend = async (e: FormEvent<HTMLFormElement>) => {
@@ -318,6 +358,26 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
                 onChange={e => setBeginDate(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
               />
+            </div>
+          </div>
+          )}
+
+          {/* Bausteine der E-Mail: einzeln ein-/ausblendbar */}
+          {Object.keys(activeSections).length > 0 && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Bausteine der E-Mail</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {OFFER_SECTIONS.filter(s => s.key in activeSections).map(section => (
+                <label key={section.key} className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={activeSections[section.key]}
+                    onChange={() => toggleSection(section.key)}
+                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  <span className="text-sm text-gray-700">{section.label}</span>
+                </label>
+              ))}
             </div>
           </div>
           )}
