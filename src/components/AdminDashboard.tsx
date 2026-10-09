@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { MessageSquare, LogOut, Users, Clock, FileText, Calendar, Edit2, X, Check, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Receipt, Search, Download, Eye, Mail, Send, Trash2, Settings, TrendingUp, GraduationCap, LayoutDashboard, Bell, Upload, UserPlus, HelpCircle, BookOpen, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
+import { MessageSquare, LogOut, Users, Clock, FileText, Calendar, Edit2, X, Check, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Receipt, Search, Download, Eye, Mail, Send, Trash2, Settings, TrendingUp, GraduationCap, LayoutDashboard, Bell, Upload, UserPlus, HelpCircle, BookOpen, RefreshCw, CheckCircle, AlertCircle, Key } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
 import { useFileStore } from '../store/fileStore';
@@ -23,6 +23,7 @@ import { DozentenDashboard } from './DozentenDashboard';
 import { EliteKleingruppe } from './EliteKleingruppe';
 import { VertraegeManager } from './vertraege/VertraegeManager';
 import { VbAdminDashboard } from './vb-chat/VbAdminDashboard';
+import { KraatzClubZugang } from './KraatzClubZugang';
 import { generateTeilnehmerStundenPDF } from '../utils/pdfGenerator';
 
 // Helper function to check if teilnehmer is active based on contract dates
@@ -124,15 +125,15 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const accountingTabs = ['vertraege'];
-  const verwaltungTabs = ['dozenten', 'teilnehmer', 'kalender', 'elite-kleingruppe', 'vertraege'];
+  const verwaltungTabs = ['dozenten', 'teilnehmer', 'kalender', 'elite-kleingruppe', 'vertraege', 'kraatz-club-zugang'];
   const allowedTabs = isAccountingMode ? accountingTabs : isVerwaltungMode ? verwaltungTabs : null;
   const defaultTab = isAccountingMode ? 'vertraege' : isVerwaltungMode ? 'dozenten' : 'uebersicht';
   const storageKey = isAccountingMode ? 'accountingDashboardTab' : isVerwaltungMode ? 'verwaltungDashboardTab' : 'adminDashboardTab';
 
-  const [activeTab, setActiveTabState] = useState<'uebersicht' | 'dozenten' | 'teilnehmer' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard' | 'elite-kleingruppe' | 'vertraege' | 'klausurenkorrektur'>(() => {
+  const [activeTab, setActiveTabState] = useState<'uebersicht' | 'dozenten' | 'teilnehmer' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard' | 'elite-kleingruppe' | 'vertraege' | 'klausurenkorrektur' | 'kraatz-club-zugang'>(() => {
     // Check URL parameter first
     const tabParam = searchParams.get('tab');
-    const allTabs = ['uebersicht', 'dozenten', 'teilnehmer', 'rechnungen', 'kalender', 'emails', 'vertrieb', 'integrationen', 'dozenten-dashboard', 'elite-kleingruppe', 'vertraege', 'klausurenkorrektur'];
+    const allTabs = ['uebersicht', 'dozenten', 'teilnehmer', 'rechnungen', 'kalender', 'emails', 'vertrieb', 'integrationen', 'dozenten-dashboard', 'elite-kleingruppe', 'vertraege', 'klausurenkorrektur', 'kraatz-club-zugang'];
     if (tabParam === 'leads') {
       return allowedTabs && !allowedTabs.includes('vertrieb') ? defaultTab : 'vertrieb';
     }
@@ -1401,7 +1402,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   return (
     <div className="min-h-screen bg-background">
       <nav className="bg-white shadow-sm">
-        <div className={activeTab === 'vertrieb' ? 'w-full px-10' : 'max-w-7xl mx-auto px-2 sm:px-6 lg:px-8'}>
+        <div className={(activeTab === 'vertrieb' || activeTab === 'kraatz-club-zugang') ? 'w-full px-10' : 'max-w-7xl mx-auto px-2 sm:px-6 lg:px-8'}>
           <div className="flex justify-between items-center h-16">
             <div className="flex">
               <div className="flex-shrink-0 flex items-center">
@@ -1591,16 +1592,16 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
         </div>
       </nav>
 
-      <main className={activeTab === 'vertrieb' ? 'w-full py-0 px-0' : 'max-w-7xl mx-auto py-4 sm:py-6 px-2 sm:px-6 lg:px-8'}>
+      <main className={(activeTab === 'vertrieb' || activeTab === 'kraatz-club-zugang') ? 'w-full py-0 px-0' : 'max-w-7xl mx-auto py-4 sm:py-6 px-2 sm:px-6 lg:px-8'}>
         {/* Personalized Greeting */}
-        <div className={activeTab === 'vertrieb' ? 'mb-4 sm:mb-6 px-10' : 'mb-4 sm:mb-6'}>
+        <div className={(activeTab === 'vertrieb' || activeTab === 'kraatz-club-zugang') ? 'mb-4 sm:mb-6 px-10' : 'mb-4 sm:mb-6'}>
           <h2 className="pt-5 text-xl sm:text-2xl font-semibold text-gray-900">
             Guten Tag, {fullName?.split(' ')[0] || 'Benutzer'}
           </h2>
         </div>
 
         {/* Tab Navigation */}
-        <div className={activeTab === 'vertrieb' ? 'mb-6 px-10' : 'mb-6'}>
+        <div className={(activeTab === 'vertrieb' || activeTab === 'kraatz-club-zugang') ? 'mb-6 px-10' : 'mb-6'}>
           <div className="border-b border-gray-200 relative">
             {/* Left Arrow */}
             {showLeftArrow && (
@@ -1803,6 +1804,19 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
               >
                 <FileText className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">Verträge</span>
+              </button>
+              )}
+              {(isAdmin || isVerwaltungMode || isAccountingMode) && !isDozent && (
+              <button
+                onClick={() => { setActiveTab('kraatz-club-zugang'); }}
+                className={`${
+                  activeTab === 'kraatz-club-zugang'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm sm:text-base flex items-center`}
+              >
+                <Key className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
+                <span className="hidden sm:inline">Kraatz Club Zugang</span>
               </button>
               )}
             </nav>
@@ -4352,6 +4366,10 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
 
         {activeTab === 'vertraege' && !isDozent && (
           <VertraegeManager />
+        )}
+
+        {activeTab === 'kraatz-club-zugang' && !isDozent && (
+          <KraatzClubZugang />
         )}
       </main>
 
