@@ -1572,11 +1572,15 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
       if (releaseEventType === 'einheit' && assignedDozentId && releaseDuration > 0) {
         const hours = releaseDuration / 60;
         const category = releaseUnitType?.startsWith('wiederholung') ? 'Wiederholungseinheit' : 'Unterrichtseinheit';
+        const group = eliteGroups.find(g => g.id === eliteGroupId);
+        const groupSuffix = group?.group_number
+          ? ` - Elite-Kleingruppe ${group.group_number}`
+          : '';
         const { error: hoursError } = await supabase.from('dozent_hours').insert({
           dozent_id: assignedDozentId,
           date: selectedDate.toISOString().split('T')[0],
           hours: hours,
-          description: `${category}: ${releaseTitle} (${releaseLegalArea || 'Allgemein'})`,
+          description: `${category}: ${releaseTitle} (${releaseLegalArea || 'Allgemein'})${groupSuffix}`,
           category: category,
           status: 'pending',
           elite_kleingruppe_id: eliteGroupId
@@ -2030,6 +2034,37 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         .eq('id', editingRelease.id);
 
       if (error) throw error;
+
+      // Stunden-Einträge (dozent_hours + pending_dozent_hours) auf den neuen
+      // Termin mitziehen, damit die Einheit im Tätigkeitsbericht des Monats
+      // erscheint, in dem sie tatsächlich stattgefunden hat. Nur noch nicht
+      // bestätigte (pending) Einträge werden angepasst, bereits bestätigte
+      // bzw. abgerechnete bleiben unverändert.
+      if (editingRelease.event_type === 'einheit' && editingRelease.dozent_id) {
+        const newDate = pendingUpdateData.release_date;
+        const newHours = pendingUpdateData.duration_minutes
+          ? pendingUpdateData.duration_minutes / 60
+          : null;
+
+        if (newDate) {
+          const hoursUpdate: Record<string, unknown> = { date: newDate };
+          if (newHours) hoursUpdate.hours = newHours;
+
+          await supabase
+            .from('pending_dozent_hours')
+            .update(hoursUpdate)
+            .eq('elite_release_id', editingRelease.id)
+            .eq('status', 'pending');
+
+          await supabase
+            .from('dozent_hours')
+            .update(hoursUpdate)
+            .eq('dozent_id', editingRelease.dozent_id)
+            .eq('date', editingRelease.release_date)
+            .like('description', `%${editingRelease.title}%`)
+            .eq('status', 'pending');
+        }
+      }
 
       // Send notification emails to participants if requested
       if (notifyParticipantsReschedule) {
