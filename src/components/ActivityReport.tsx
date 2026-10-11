@@ -264,11 +264,17 @@ export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType
     if (!targetDozentId) return;
 
     try {
+      const startDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
+      const lastDayOfMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+      const endDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
+
       const { data, error } = await supabase
         .from('pending_dozent_hours')
         .select('*')
         .eq('dozent_id', targetDozentId)
         .eq('status', 'pending')
+        .gte('date', startDate)
+        .lte('date', endDate)
         .order('date', { ascending: false });
 
       if (error) throw error;
@@ -675,7 +681,7 @@ export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType
       {/* Active Participants Section */}
       <div className="bg-white shadow overflow-hidden sm:rounded-md">
         <div className="px-4 py-5 border-b border-gray-200 sm:px-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
             <h3 className="text-lg font-medium text-gray-900">
               Aktive Teilnehmer ({examType})
             </h3>
@@ -697,7 +703,7 @@ export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType
                 const hasMonthlyHours = teilnehmer.monthly_hours > 0;
                 
                 return (
-                  <div key={teilnehmer.id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition-colors">
+                  <div key={teilnehmer.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 hover:bg-gray-50 rounded-lg transition-colors">
                     <div className="flex items-center flex-1">
                       <div className="flex-shrink-0">
                         <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
@@ -732,7 +738,7 @@ export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType
                         )}
                       </div>
                     </div>
-                    <div className="text-right ml-4">
+                    <div className="text-left sm:text-right sm:ml-4">
                       {hasMonthlyHours ? (
                         <>
                           <div className="text-lg font-semibold text-primary">
@@ -780,7 +786,7 @@ export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType
                 const hasMonthlyHours = teilnehmer.monthly_hours > 0;
                 
                 return (
-                  <div key={teilnehmer.id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition-colors">
+                  <div key={teilnehmer.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 hover:bg-gray-50 rounded-lg transition-colors">
                     <div className="flex items-center flex-1">
                       <div className="flex-shrink-0">
                         <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
@@ -815,7 +821,7 @@ export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType
                         )}
                       </div>
                     </div>
-                    <div className="text-right ml-4">
+                    <div className="text-left sm:text-right sm:ml-4">
                       {hasMonthlyHours ? (
                         <>
                           <div className="text-lg font-semibold text-primary">
@@ -870,7 +876,7 @@ export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType
       {/* Pending Hours Section - only for 1. Staatsexamen since Elite-Kleingruppe is only for 1. Staatsexamen */}
       {pendingHours.length > 0 && examType === '1. Staatsexamen' && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg shadow">
-          <div className="px-6 py-4 border-b border-yellow-200 flex items-center justify-between">
+          <div className="px-6 py-4 border-b border-yellow-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="flex items-center">
               <AlertCircle className="h-5 w-5 text-yellow-600 mr-2" />
               <div>
@@ -889,13 +895,13 @@ export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType
           <div className="p-6 space-y-4">
             {pendingHours.map((pending) => (
               <div key={pending.id} className="bg-white border border-yellow-200 rounded-lg p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                  <div className="flex-1 min-w-0">
                     <div className="flex items-center mb-2">
                       <Calendar className="h-4 w-4 mr-1 text-gray-500" />
                       <span className="font-medium text-gray-900">{formatDate(pending.date)}</span>
                     </div>
-                    <div className="flex items-center space-x-4 mb-2">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                         {pending.category}
                       </span>
@@ -906,13 +912,13 @@ export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType
                     </div>
                     <div className="flex items-start">
                       <BookOpen className="h-4 w-4 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
-                      <div className="text-sm text-gray-700">
+                      <div className="text-sm text-gray-700 break-words">
                         <span className="font-medium">Einheit: </span>
                         {pending.description}
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2 ml-4">
+                  <div className="flex items-center space-x-2 sm:ml-4 flex-shrink-0">
                     <button
                       onClick={() => handleConfirmPending(pending.id)}
                       className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
@@ -939,7 +945,7 @@ export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType
       {/* Flat Rate Items Section */}
       {flatRateItems.length > 0 && (
         <div className="bg-purple-50 border border-purple-200 rounded-lg shadow">
-          <div className="px-6 py-4 border-b border-purple-200 flex items-center justify-between">
+          <div className="px-6 py-4 border-b border-purple-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>
               <h3 className="text-lg font-medium text-gray-900">
                 Pauschale Vergütungen
@@ -957,13 +963,13 @@ export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType
           <div className="p-6 space-y-4">
             {flatRateItems.map((item) => (
               <div key={item.id} className="bg-white border border-purple-200 rounded-lg p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                  <div className="flex-1 min-w-0">
                     <div className="flex items-center mb-2">
                       <Calendar className="h-4 w-4 mr-1 text-gray-500" />
                       <span className="font-medium text-gray-900">{formatDate(item.date)}</span>
                     </div>
-                    <div className="flex items-center space-x-4 mb-2">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                         {item.category || 'Pauschale Vergütung'}
                       </span>
@@ -973,13 +979,13 @@ export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType
                     </div>
                     <div className="flex items-start">
                       <BookOpen className="h-4 w-4 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
-                      <div className="text-sm text-gray-700">
+                      <div className="text-sm text-gray-700 break-words">
                         <span className="font-medium">Beschreibung: </span>
                         {item.description || item.name}
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2 ml-4">
+                  <div className="flex items-center space-x-2 sm:ml-4 flex-shrink-0">
                     <button
                       onClick={() => handleEditFlatRateItem(item)}
                       className="text-gray-400 hover:text-primary transition-colors"
@@ -1003,7 +1009,7 @@ export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType
       )}
       {/* Hours Entries */}
       <div className="bg-white rounded-lg shadow">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
             <h3 className="text-lg font-medium text-gray-900">
               Stundeneinträge
@@ -1043,8 +1049,8 @@ export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType
                 {/* Show all entries */}
                 {combinedHours.map((entry, index) => (
                   <React.Fragment key={entry.id}>
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start space-x-4 flex-1">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                      <div className="flex items-start space-x-4 flex-1 min-w-0">
                        <div>
                          <div className="flex items-center mb-2">
                            <Calendar className="h-4 w-4 mr-1" />
@@ -1056,7 +1062,7 @@ export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType
                              <span>Teilnehmer {entry.teilnehmer_name}</span>
                            </div>
                          )}
-                         <div className="flex items-center space-x-4 mb-3">
+                         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${entry.type === 'participant' ? 'bg-blue-100 text-blue-800' : entry.category === 'Elite-Kleingruppe Korrektur' || entry.description?.includes('Elite-Kleingruppe') ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}`}>
                              {entry.type === 'participant'
                                ? 'Einzelunterricht'
@@ -1084,7 +1090,7 @@ export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType
                          )}
                        </div>
                       </div>
-                      <div className="flex items-center space-x-2 ml-4">
+                      <div className="flex items-center space-x-2 mt-3 sm:mt-0 sm:ml-4 flex-shrink-0">
                         <button
                           onClick={() => handleEditEntry(entry)}
                           className="text-gray-400 hover:text-primary transition-colors"
@@ -1127,8 +1133,8 @@ export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType
                 {/* Show first 3 entries */}
                 {combinedHours.slice(0, 3).map((entry, index) => (
                   <React.Fragment key={entry.id}>
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start space-x-4 flex-1">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                      <div className="flex items-start space-x-4 flex-1 min-w-0">
                        <div>
                          <div className="flex items-center mb-2">
                            <Calendar className="h-4 w-4 mr-1" />
@@ -1140,7 +1146,7 @@ export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType
                              <span>Teilnehmer {entry.teilnehmer_name}</span>
                            </div>
                          )}
-                         <div className="flex items-center space-x-4 mb-3">
+                         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${entry.type === 'participant' ? 'bg-blue-100 text-blue-800' : entry.category === 'Elite-Kleingruppe Korrektur' || entry.description?.includes('Elite-Kleingruppe') ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}`}>
                              {entry.type === 'participant'
                                ? 'Einzelunterricht'
@@ -1168,7 +1174,7 @@ export function ActivityReport({ selectedMonth, selectedYear, dozentId, examType
                          )}
                        </div>
                       </div>
-                      <div className="flex items-center space-x-2 ml-4">
+                      <div className="flex items-center space-x-2 mt-3 sm:mt-0 sm:ml-4 flex-shrink-0">
                         <button
                           onClick={() => handleEditEntry(entry)}
                           className="text-gray-400 hover:text-primary transition-colors"
