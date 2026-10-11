@@ -1,8 +1,28 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Gift, Trash2, Loader2 } from 'lucide-react';
+import { Gift, Trash2, Loader2, RefreshCw, RotateCcw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useToastStore } from '../store/toastStore';
 import { useAuthStore } from '../store/authStore';
+
+type ZugangStatus =
+  | 'ausstehend'
+  | 'freischaltung_gesendet'
+  | 'aktiv'
+  | 'entzug_gesendet'
+  | 'entzogen'
+  | 'uebersprungen'
+  | 'fehler';
+
+interface MemberspotZugang {
+  id: string;
+  zugang: string;
+  dauerhaft: boolean;
+  status: ZugangStatus;
+  letzte_aktion: 'grant' | 'revoke' | null;
+  last_error: string | null;
+  granted_at: string | null;
+  revoked_at: string | null;
+}
 
 interface KraatzClubZugangRow {
   id: string;
@@ -13,11 +33,33 @@ interface KraatzClubZugangRow {
   vertragsende: string;
   zugang: string[];
   created_at: string;
+  zugaenge: MemberspotZugang[];
 }
+
+const STATUS_LABEL: Record<ZugangStatus, string> = {
+  ausstehend: 'wartet auf Vertragsbeginn',
+  freischaltung_gesendet: 'Freischaltung läuft',
+  aktiv: 'aktiv',
+  entzug_gesendet: 'Entzug läuft',
+  entzogen: 'entzogen',
+  uebersprungen: 'übersprungen (Vertrag bereits beendet)',
+  fehler: 'Fehler',
+};
+
+const STATUS_DOT: Record<ZugangStatus, string> = {
+  ausstehend: 'bg-gray-400',
+  freischaltung_gesendet: 'bg-amber-400',
+  aktiv: 'bg-green-500',
+  entzug_gesendet: 'bg-amber-400',
+  entzogen: 'bg-gray-300',
+  uebersprungen: 'bg-gray-300',
+  fehler: 'bg-red-500',
+};
+
+const ZUGANG_ORDER = ['Premium-Mitgliedschaft', 'Zivilrecht', 'Strafrecht', 'Öffentliches Recht', 'Free Access'];
 
 const ZUGANG_OPTIONS = [
   'Premium-Mitgliedschaft',
-  'Ein Monat gratis',
   'Zivilrecht',
   'Strafrecht',
   'Öffentliches Recht',
@@ -25,10 +67,10 @@ const ZUGANG_OPTIONS = [
 
 const ZUGANG_BADGE: Record<string, string> = {
   'Premium-Mitgliedschaft': 'bg-purple-100 text-purple-700',
-  'Ein Monat gratis': 'bg-amber-100 text-amber-700',
   'Zivilrecht': 'bg-blue-100 text-blue-700',
   'Strafrecht': 'bg-red-100 text-red-700',
   'Öffentliches Recht': 'bg-green-100 text-green-700',
+  'Free Access': 'bg-gray-100 text-gray-700',
 };
 
 const inputClass =
@@ -65,11 +107,13 @@ export function KraatzClubZugang() {
   const [zugang, setZugang] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
   const fetchRows = useCallback(async () => {
     const { data, error } = await supabase
-      .from('kraatz_club_zugang')
-      .select('*')
+      .from('memberspot_kraatzclub_mitglieder')
+      .select('*, zugaenge:memberspot_kraatzclub_zugaenge(id, zugang, dauerhaft, status, letzte_aktion, last_error, granted_at, revoked_at)')
       .order('created_at', { ascending: false });
     if (error) {
       console.error(error);
@@ -83,6 +127,41 @@ export function KraatzClubZugang() {
   useEffect(() => {
     fetchRows();
   }, [fetchRows]);
+
+  const runSync = useCallback(async (showToast: boolean) => {
+    setSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('memberspot-kraatzclub-sync');
+      if (error || data?.success === false) throw new Error(data?.error || error?.message);
+      if (showToast) {
+        addToast(
+          data.due > 0 ? `${data.sent} Zugänge an Memberspot übergeben` : 'Keine fälligen Zugänge',
+          data.failed > 0 ? 'error' : 'success'
+        );
+      }
+    } catch (e) {
+      console.error(e);
+      if (showToast) addToast('Synchronisierung mit Memberspot fehlgeschlagen', 'error');
+    } finally {
+      setSyncing(false);
+      fetchRows();
+    }
+  }, [addToast, fetchRows]);
+
+  const retryZugang = async (z: MemberspotZugang) => {
+    setRetryingId(z.id);
+    const { error } = await supabase
+      .from('memberspot_kraatzclub_zugaenge')
+      .update({ status: z.letzte_aktion === 'revoke' ? 'aktiv' : 'ausstehend', versuche: 0, last_error: null })
+      .eq('id', z.id);
+    setRetryingId(null);
+    if (error) {
+      console.error(error);
+      addToast('Fehler beim Zurücksetzen', 'error');
+      return;
+    }
+    runSync(true);
+  };
 
   const toggleZugang = (option: string) => {
     setZugang((prev) =>
@@ -123,7 +202,7 @@ export function KraatzClubZugang() {
 
     setSubmitting(true);
     try {
-      const { error } = await supabase.from('kraatz_club_zugang').insert({
+      const { error } = await supabase.from('memberspot_kraatzclub_mitglieder').insert({
         vorname: vorname.trim(),
         nachname: nachname.trim(),
         email: email.trim(),
@@ -136,7 +215,7 @@ export function KraatzClubZugang() {
 
       addToast('Zugang gespeichert', 'success');
       resetForm();
-      fetchRows();
+      runSync(false);
     } catch (e) {
       console.error(e);
       addToast('Fehler beim Speichern', 'error');
@@ -146,10 +225,14 @@ export function KraatzClubZugang() {
   };
 
   const deleteRow = async (row: KraatzClubZugangRow) => {
-    if (!confirm(`Zugang für „${row.vorname} ${row.nachname}" wirklich löschen?`)) return;
+    if (
+      !confirm(
+        `Eintrag für „${row.vorname} ${row.nachname}" wirklich löschen?\n\nAchtung: Bereits freigeschaltete Zugänge in Memberspot werden dadurch NICHT entzogen.`
+      )
+    ) return;
     setDeletingId(row.id);
     try {
-      const { error } = await supabase.from('kraatz_club_zugang').delete().eq('id', row.id);
+      const { error } = await supabase.from('memberspot_kraatzclub_mitglieder').delete().eq('id', row.id);
       if (error) throw error;
       addToast('Zugang gelöscht', 'success');
       fetchRows();
@@ -166,7 +249,7 @@ export function KraatzClubZugang() {
       <div>
         <h3 className="text-lg font-semibold text-gray-900">Kraatz Club Zugang</h3>
         <p className="text-sm text-gray-500 mt-1">
-          Hier kann gratis Zugang zum Kraatz Club vergeben und verwaltet werden.
+          Hier können Zugänge zum Kraatz Club vergeben und verwaltet werden.
         </p>
       </div>
 
@@ -282,9 +365,21 @@ export function KraatzClubZugang() {
 
       {/* Vergebene Zugänge */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="p-4 sm:p-5 border-b border-gray-100">
-          <h4 className="font-semibold text-gray-900">Vergebene Zugänge</h4>
-          <p className="text-sm text-gray-500 mt-0.5">{rows.length} Einträge</p>
+        <div className="p-4 sm:p-5 border-b border-gray-100 flex items-start justify-between gap-4">
+          <div>
+            <h4 className="font-semibold text-gray-900">Vergebene Zugänge</h4>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {rows.length} Einträge · Freischaltung ab Vertragsbeginn, Entzug nach Vertragsende (Free Access bleibt bestehen)
+            </p>
+          </div>
+          <button
+            onClick={() => runSync(true)}
+            disabled={syncing}
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 disabled:opacity-50 whitespace-nowrap"
+          >
+            <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+            Jetzt synchronisieren
+          </button>
         </div>
         {loading ? (
           <div className="flex items-center justify-center py-12">
@@ -319,16 +414,30 @@ export function KraatzClubZugang() {
                     </td>
                     <td className="px-4 py-3 text-sm">
                       <div className="flex flex-wrap gap-1">
-                        {(row.zugang || []).map((z) => (
-                          <span
-                            key={z}
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                              ZUGANG_BADGE[z] || 'bg-gray-100 text-gray-700'
-                            }`}
-                          >
-                            {z}
-                          </span>
-                        ))}
+                        {[...(row.zugaenge || [])]
+                          .sort((a, b) => ZUGANG_ORDER.indexOf(a.zugang) - ZUGANG_ORDER.indexOf(b.zugang))
+                          .map((z) => (
+                            <span
+                              key={z.id}
+                              title={`${STATUS_LABEL[z.status]}${z.last_error ? `: ${z.last_error}` : ''}`}
+                              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
+                                ZUGANG_BADGE[z.zugang] || 'bg-gray-100 text-gray-700'
+                              } ${z.status === 'entzogen' || z.status === 'uebersprungen' ? 'opacity-50 line-through' : ''}`}
+                            >
+                              <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[z.status]}`} />
+                              {z.zugang}
+                              {z.status === 'fehler' && (
+                                <button
+                                  onClick={() => retryZugang(z)}
+                                  disabled={retryingId === z.id}
+                                  className="ml-0.5 text-red-600 hover:text-red-800 disabled:opacity-50"
+                                  title="Erneut senden"
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                </button>
+                              )}
+                            </span>
+                          ))}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">{formatDateTime(row.created_at)}</td>

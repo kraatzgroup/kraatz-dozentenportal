@@ -393,3 +393,13 @@ entrypoint = "./functions/after-sales/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/after-sales/*.html" ]
+
+# Wird von pg_cron ohne JWT aufgerufen (wie die übrigen Cron-Funktionen)
+[functions.memberspot-kraatzclub-sync]
+enabled = true
+verify_jwt = false
+
+# Wird von Zapier aufgerufen, abgesichert über den Header X-Callback-Secret
+[functions.memberspot-kraatzclub-callback]
+enabled = true
+verify_jwt = false
