@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
-import { MessageSquare, LogOut, Settings, FolderIcon, Edit, Trash2, Users, FileText, User, Clock, Calendar, X, GraduationCap, Check, AlertTriangle, Menu, Bell, Upload, TrendingUp, Briefcase } from 'lucide-react';
+import { MessageSquare, LogOut, Settings, FolderIcon, Edit, Trash2, Users, FileText, User, Clock, Calendar, X, GraduationCap, Check, RotateCcw, AlertTriangle, Menu, Bell, Upload, TrendingUp, Briefcase } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useMessageStore } from '../store/messageStore';
 import { useFolderStore } from '../store/folderStore';
@@ -99,6 +99,9 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const [showActivityTypeDialog, setShowActivityTypeDialog] = useState(false);
   const [selectedActivityType, setSelectedActivityType] = useState<'sonstige' | 'Elite Klausur Korrektur' | 'sonstiger_posten' | null>(null);
   const [showFlatRateDialog, setShowFlatRateDialog] = useState(false);
+  const [showRestoreRejectedDialog, setShowRestoreRejectedDialog] = useState(false);
+  const [rejectedHours, setRejectedHours] = useState<any[]>([]);
+  const [isLoadingRejected, setIsLoadingRejected] = useState(false);
   const [showAvailabilityPopup, setShowAvailabilityPopup] = useState(false);
   const [currentAvailability, setCurrentAvailability] = useState<{status: string; notes?: string} | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -846,6 +849,54 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
       console.error('Error creating activity:', error);
       alert('Fehler beim Speichern der Tätigkeit: ' + (error as Error).message);
     }
+  };
+
+  const fetchRejectedHours = async () => {
+    if (!user) return;
+    setIsLoadingRejected(true);
+    try {
+      const startDate = `${activityReportYear}-${String(activityReportMonth).padStart(2, '0')}-01`;
+      const lastDay = new Date(activityReportYear, activityReportMonth, 0).getDate();
+      const endDate = `${activityReportYear}-${String(activityReportMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+      const { data, error } = await supabase
+        .from('pending_dozent_hours')
+        .select('*')
+        .eq('dozent_id', user.id)
+        .eq('status', 'rejected')
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date', { ascending: false });
+
+      if (error) throw error;
+      setRejectedHours(data || []);
+    } catch (e) {
+      console.error('Error fetching rejected hours:', e);
+    } finally {
+      setIsLoadingRejected(false);
+    }
+  };
+
+  const openRestoreRejectedDialog = () => {
+    setShowActivityTypeDialog(false);
+    setShowRestoreRejectedDialog(true);
+    fetchRejectedHours();
+  };
+
+  const restoreRejectedHour = async (id: string) => {
+    const { error } = await supabase
+      .from('pending_dozent_hours')
+      .update({ status: 'pending', updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('status', 'rejected');
+
+    if (error) {
+      alert('Fehler beim Wiederherstellen: ' + error.message);
+      return;
+    }
+
+    await fetchRejectedHours();
+    setActivityRefreshKey(prev => prev + 1);
   };
 
   const saveDashboardHoursEntry = async (hoursData: any) => {
@@ -2465,6 +2516,21 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                       <p className="text-xs text-gray-500">z.B. Materialkosten, Reisekosten, sonstige Pauschalen...</p>
                     </div>
                   </button>
+                  <button
+                    type="button"
+                    onClick={openRestoreRejectedDialog}
+                    className="w-full flex items-center p-4 border border-gray-300 rounded-lg hover:border-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex-shrink-0">
+                      <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center">
+                        <X className="h-5 w-5 text-gray-600" />
+                      </div>
+                    </div>
+                    <div className="ml-4 text-left">
+                      <h4 className="text-sm font-medium text-gray-900">Abgelehnte Einheiten wiederherstellen</h4>
+                      <p className="text-xs text-gray-500">Verworfene Bestätigungen für den aktuellen Monat wieder anzeigen</p>
+                    </div>
+                  </button>
                 </div>
               </div>
               <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
@@ -2474,6 +2540,72 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                   className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"
                 >
                   Abbrechen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Restore Rejected Dialog */}
+      {showRestoreRejectedDialog && (
+        <div className="fixed z-20 inset-0 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">
+                  Abgelehnte Einheiten wiederherstellen
+                </h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  Diese Einheiten wurden abgelehnt. Sie können sie wiederherstellen, damit sie erneut zur Bestätigung angezeigt werden.
+                </p>
+
+                {isLoadingRejected ? (
+                  <div className="py-8 text-center text-sm text-gray-500">Lädt...</div>
+                ) : rejectedHours.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-gray-500">
+                    Keine abgelehnten Einheiten im{' '}
+                    {new Date(activityReportYear, activityReportMonth - 1, 1).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })}.
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-80 overflow-y-auto">
+                    {rejectedHours.map(h => (
+                      <div key={h.id} className="border border-gray-200 rounded-lg p-4 flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center mb-1">
+                            <Calendar className="h-4 w-4 mr-1 text-gray-500" />
+                            <span className="font-medium text-gray-900">
+                              {new Date(h.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            </span>
+                            <span className="ml-2 text-sm text-gray-900 font-semibold">{h.hours} Stunden</span>
+                          </div>
+                          <div className="text-sm text-gray-700 break-words">{h.description}</div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            Abgelehnt am {new Date(h.rejected_at || h.updated_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })} um {new Date(h.rejected_at || h.updated_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => restoreRejectedHour(h.id)}
+                          className="flex-shrink-0 inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-primary/90"
+                        >
+                          <RotateCcw className="h-4 w-4 mr-1" />
+                          Wiederherstellen
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button
+                  type="button"
+                  onClick={() => setShowRestoreRejectedDialog(false)}
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm"
+                >
+                  Schließen
                 </button>
               </div>
             </div>
