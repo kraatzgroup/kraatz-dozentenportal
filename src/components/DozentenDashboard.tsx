@@ -15,6 +15,96 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, r
 import { CSS } from '@dnd-kit/utilities';
 import { extractTagsFromPdfFile } from '../lib/extractSchwerpunkte';
 
+// --- Robuster Datei-Upload -------------------------------------------------
+// Hintergrund: supabase.storage.upload() (Multipart) hatte in einem früheren
+// supabase-js-Stand einen Fehler, der den kompletten FormData-Body statt der
+// eigentlichen Datei-Bytes speicherte. Deshalb laden wir hier als rohe Bytes
+// per REST-API hoch und validieren die Datei-Signatur direkt nach dem Upload.
+
+const MIME_BY_EXT: Record<string, string> = {
+  pdf: 'application/pdf',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  zip: 'application/zip',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+};
+
+function extOf(name: string): string {
+  return (name.split('.').pop() || '').toLowerCase();
+}
+
+function mimeFor(file: File): string {
+  return file.type || MIME_BY_EXT[extOf(file.name)] || 'application/octet-stream';
+}
+
+/** Prüft, ob die ersten Bytes zur erwarteten Datei-Signatur passen. */
+function signatureOk(bytes: Uint8Array, mime: string): boolean {
+  if (mime === 'application/pdf') {
+    return bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46; // %PDF
+  }
+  if (
+    mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    mime === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+    mime === 'application/zip'
+  ) {
+    return bytes[0] === 0x50 && bytes[1] === 0x4b; // PK
+  }
+  if (mime === 'image/png') {
+    return bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+  }
+  if (mime === 'image/jpeg') {
+    return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  return true; // unbekannter Typ: keine Signaturprüfung
+}
+
+/**
+ * Lädt eine Datei als rohe Bytes in den masterclass-Bucket und validiert die
+ * Datei-Signatur. Gibt die öffentliche URL zurück.
+ */
+async function uploadMaterialFile(file: File, storageFileName: string): Promise<string> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Keine aktive Sitzung – bitte neu anmelden.');
+
+  const mime = mimeFor(file);
+  const base = import.meta.env.VITE_SUPABASE_URL;
+  const uploadUrl = `${base}/storage/v1/object/masterclass/materials/${storageFileName}`;
+
+  const resp = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      'Content-Type': mime,
+      'x-upsert': 'false',
+    },
+    body: file,
+  });
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => '');
+    throw new Error(`Upload fehlgeschlagen (HTTP ${resp.status}${detail ? `: ${detail}` : ''})`);
+  }
+
+  // Direkt nach dem Upload die gespeicherten Bytes verifizieren (Cache-Buster).
+  const verifyUrl = `${base}/storage/v1/object/public/masterclass/materials/${storageFileName}?cb=${Date.now()}`;
+  const verifyResp = await fetch(verifyUrl, { headers: { Range: 'bytes=0-15' } });
+  if (verifyResp.ok || verifyResp.status === 206) {
+    const head = new Uint8Array(await verifyResp.arrayBuffer());
+    if (!signatureOk(head, mime)) {
+      throw new Error(`Datei "${file.name}" wurde beschädigt hochgeladen – bitte erneut versuchen.`);
+    }
+  }
+
+  const { data: urlData } = supabase.storage.from('masterclass').getPublicUrl(`materials/${storageFileName}`);
+  return urlData.publicUrl;
+}
+
 interface Chapter { id: string; title: string; description: string | null; thumbnail_url: string | null; position: number; is_published: boolean; lessons?: Lesson[]; }
 interface Lesson { id: string; chapter_id: string; title: string; description: string | null; video_url: string | null; thumbnail_url: string | null; position: number; is_published: boolean; attachments?: Attachment[]; }
 interface Attachment { id: string; lesson_id: string; name: string; type: string; url: string; file_path: string | null; position: number; }
@@ -1658,14 +1748,10 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
     const fileExt = file.name.split('.').pop();
     const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}.${fileExt}`;
     console.log('📁 Uploading to storage path:', `materials/${fileName}`);
-    const { error } = await supabase.storage.from('masterclass').upload(`materials/${fileName}`, file, {
-      contentType: file.type,
-      cacheControl: '3600'
-    });
-    if (!error) {
-      const { data: urlData } = supabase.storage.from('masterclass').getPublicUrl(`materials/${fileName}`);
-      console.log('✅ File uploaded successfully:', { publicUrl: urlData.publicUrl });
-      setMaterialFile(urlData.publicUrl);
+    try {
+      const publicUrl = await uploadMaterialFile(file, fileName);
+      console.log('✅ File uploaded successfully:', { publicUrl });
+      setMaterialFile(publicUrl);
       // Update file name and type in UI for both new and editing materials
       setMaterialFileName(file.name);
       setMaterialFileType(file.type);
@@ -1686,8 +1772,8 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
         console.log('🔄 Editing existing material - updating file_url and UI file name');
         console.log('📋 Preserved fields:', { title: materialTitle });
       }
-    } else {
-      console.error('❌ File upload failed:', error);
+    } catch (uploadErr) {
+      console.error('❌ File upload failed:', uploadErr);
     }
     setIsUploadingMaterial(false);
   };
@@ -1733,24 +1819,14 @@ export function DozentenDashboard({ showEliteKleingruppe: externalShowEliteKlein
       try {
         const fileExt = file.name.split('.').pop();
         const storageFileName = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage.from('masterclass').upload(`materials/${storageFileName}`, file, {
-          contentType: file.type,
-          cacheControl: '3600'
-        });
+        const publicUrl = await uploadMaterialFile(file, storageFileName);
         
-        if (uploadError) {
-          console.error(`Upload error for ${file.name}:`, uploadError);
-          failedFiles.push(file.name);
-          continue;
-        }
-        
-        const { data: urlData } = supabase.storage.from('masterclass').getPublicUrl(`materials/${storageFileName}`);
         const titleFromFile = file.name.replace(/\.[^/.]+$/, '');
         
         const { error: insertError } = await supabase.from('teaching_materials').insert({
           title: titleFromFile,
           description: null,
-          file_url: urlData.publicUrl,
+          file_url: publicUrl,
           file_name: file.name,
           file_type: file.type,
           category: null,
