@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Gift, Trash2, Loader2, RefreshCw, RotateCcw } from 'lucide-react';
+import { Gift, Trash2, Loader2, RotateCcw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useToastStore } from '../store/toastStore';
 import { useAuthStore } from '../store/authStore';
@@ -204,7 +204,7 @@ export function KraatzClubZugang() {
   const [zugang, setZugang] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
+  const [, setSyncing] = useState(false);
   const [retryingId, setRetryingId] = useState<string | null>(null);
 
   const fetchRows = useCallback(async () => {
@@ -500,14 +500,6 @@ export function KraatzClubZugang() {
               {rows.length} Einträge · Freischaltung ab Vertragsbeginn, Entzug nach Vertragsende (Free Access bleibt bestehen)
             </p>
           </div>
-          <button
-            onClick={() => runSync(true)}
-            disabled={syncing}
-            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 disabled:opacity-50 whitespace-nowrap"
-          >
-            <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-            Jetzt synchronisieren
-          </button>
         </div>
         {loading ? (
           <div className="flex items-center justify-center py-12">
