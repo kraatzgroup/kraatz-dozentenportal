@@ -46,11 +46,11 @@ const STATUS_LABEL: Record<ZugangStatus, string> = {
   fehler: 'Fehler',
 };
 
-const STATUS_DOT: Record<ZugangStatus, string> = {
+const STATUS_DOT: Record<ZugangStatus, string | null> = {
   ausstehend: 'bg-gray-400',
-  freischaltung_gesendet: 'bg-amber-400',
-  aktiv: 'bg-green-500',
-  entzug_gesendet: 'bg-amber-400',
+  freischaltung_gesendet: null,
+  aktiv: null,
+  entzug_gesendet: null,
   entzogen: 'bg-gray-300',
   uebersprungen: 'bg-gray-300',
   fehler: 'bg-red-500',
@@ -552,7 +552,9 @@ export function KraatzClubZugang() {
                                 ZUGANG_BADGE[z.zugang] || 'bg-gray-100 text-gray-700'
                               } ${z.status === 'entzogen' || z.status === 'uebersprungen' ? 'opacity-50 line-through' : ''}`}
                             >
-                              <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[z.status]}`} />
+                              {STATUS_DOT[z.status] && (
+                                <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[z.status]}`} />
+                              )}
                               {z.zugang}
                               {z.status === 'fehler' && (
                                 <button
