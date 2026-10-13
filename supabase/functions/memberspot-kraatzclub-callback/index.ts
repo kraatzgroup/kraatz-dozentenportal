@@ -1,4 +1,5 @@
 /// <reference path="../deno.d.ts" />
+/// <reference path="../npm-imports.d.ts" />
 // Edge function: memberspot-kraatzclub-callback
 //
 // Called by Zapier (Webhooks by Zapier -> POST) after the Memberspot action

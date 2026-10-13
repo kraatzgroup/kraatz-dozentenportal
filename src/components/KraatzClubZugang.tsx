@@ -56,10 +56,11 @@ const STATUS_DOT: Record<ZugangStatus, string> = {
   fehler: 'bg-red-500',
 };
 
-const ZUGANG_ORDER = ['Premium-Mitgliedschaft', 'Zivilrecht', 'Strafrecht', 'Öffentliches Recht', 'Free Access'];
+const ZUGANG_ORDER = ['Premium-Mitgliedschaft', 'Gratis Monat', 'Zivilrecht', 'Strafrecht', 'Öffentliches Recht', 'Free Access'];
 
 const ZUGANG_OPTIONS = [
   'Premium-Mitgliedschaft',
+  'Gratis Monat',
   'Zivilrecht',
   'Strafrecht',
   'Öffentliches Recht',
@@ -67,6 +68,7 @@ const ZUGANG_OPTIONS = [
 
 const ZUGANG_BADGE: Record<string, string> = {
   'Premium-Mitgliedschaft': 'bg-purple-100 text-purple-700',
+  'Gratis Monat': 'bg-amber-100 text-amber-700',
   'Zivilrecht': 'bg-blue-100 text-blue-700',
   'Strafrecht': 'bg-red-100 text-red-700',
   'Öffentliches Recht': 'bg-green-100 text-green-700',
@@ -75,6 +77,21 @@ const ZUGANG_BADGE: Record<string, string> = {
 
 const inputClass =
   'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm';
+
+const todayISO = (): string => {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+};
+
+const addDays = (dateStr: string, days: number): string => {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+};
 
 const formatDate = (iso: string): string => {
   const d = new Date(iso);
@@ -92,6 +109,86 @@ const formatDateTime = (iso: string): string => {
     hour: '2-digit',
     minute: '2-digit',
   });
+};
+
+const KRAATZ_CLUB_LOGIN_URL = 'https://member.kraatz-club.de/auth/login';
+const KRAATZ_CLUB_LOGO_URL =
+  'https://files.mspotcdn.de/schools%2FwgExlBUwDc02VQa5IKie%2Flogo-1682680505711.png?alt=media&token=0ef3ffa7-d1c4-427e-a8a3-5f4c1d21529e';
+const KRAATZ_CLUB_EMAIL_SUBJECT = 'Ihr Zugang zum Kraatz Club ist freigeschaltet';
+
+const buildKraatzClubEmailHtml = (vorname: string, nachname: string, zugang: string[]): string => {
+  const zugaengeHtml = (zugang || [])
+    .filter((z) => z !== 'Gratis Monat')
+    .map((z) => `<li style="margin:0 0 6px;">${z}</li>`)
+    .join('');
+  return `<div style="margin:0;padding:24px 12px;background-color:#F3F4FA;font-family:'Montserrat','Avenir','Avenir Next',Arial,sans-serif;color:#4E5D78;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:680px;margin:0 auto;background-color:#FFFFFF;border-radius:16px;overflow:hidden;">
+
+<tr><td align="center" style="padding:28px 24px 20px;background-color:#FFFFFF;border-bottom:1px solid #E9ECEF;">
+<img src="${KRAATZ_CLUB_LOGO_URL}" alt="Kraatz Club" style="height:64px;display:block;margin:0 auto;">
+</td></tr>
+
+<tr><td style="padding:36px 32px 8px;font-size:16px;line-height:1.7;color:#4E5D78;">
+<p style="margin:0 0 16px;">Guten Tag ${vorname} ${nachname},</p>
+<p style="margin:0 0 16px;">wir freuen uns, Ihnen mitteilen zu können, dass Ihr Zugang zum Kraatz Club freigeschaltet wurde.</p>
+<p style="margin:0 0 8px;">Folgende Zugänge stehen Ihnen ab sofort zur Verfügung:</p>
+<ul style="margin:0 0 16px;padding-left:20px;">${zugaengeHtml}</ul>
+</td></tr>
+
+<tr><td style="padding:8px 32px 16px;">
+<a href="${KRAATZ_CLUB_LOGIN_URL}" style="display:inline-block;background-color:#2D84C1;color:#FFFFFF;text-decoration:none;font-size:15px;font-weight:600;padding:13px 26px;border-radius:8px;">Jetzt im Kraatz Club anmelden</a>
+</td></tr>
+
+<tr><td style="padding:16px 32px 32px;font-size:15px;line-height:1.7;color:#4E5D78;">
+<p style="margin:0 0 12px;"><strong>Sie haben eine separate E-Mail mit dem Betreff „Willkommen zum Mitgliederbereich von Kraatz-Club" vom Absender Kraatz-Club &lt;antwort@memberspot.de&gt; erhalten. Über diese E-Mail können Sie Ihr Passwort festlegen.</strong></p>
+<p style="margin:0 0 12px;">Falls Sie diese E-Mail nicht erhalten haben, prüfen Sie bitte Ihren Spam-Ordner. Sollte sie auch dort nicht sein, nutzen Sie bitte über <a href="${KRAATZ_CLUB_LOGIN_URL}" style="color:#2D84C1;font-weight:600;">${KRAATZ_CLUB_LOGIN_URL}</a> die Funktion „Passwort vergessen", um die E-Mail erneut anzufordern.</p>
+<p style="margin:0 0 12px;">Hinweis: <strong>Falls Sie bereits mit dieser E-Mail-Adresse Mitglied im Kraatz Club sind oder waren, erhalten Sie keine gesonderte E-Mail für die Vergabe eines Passwortes. Ihr regulärer Login behält seine Gültigkeit. Falls Sie sich an das Passwort nicht mehr erinnern können, setzen Sie es bitte über die Funktion „Passwort vergessen" zurück.</strong></p>
+<p style="margin:0;">Wir wünschen Ihnen viel Erfolg bei Ihrer Vorbereitung.<br><br><strong style="color:#000000;">Ihr Team der Akademie Kraatz</strong></p>
+</td></tr>
+
+<tr><td align="center" style="padding:20px 24px;background-color:#F8F9FA;border-top:1px solid #E9ECEF;font-size:12px;line-height:1.7;color:#666666;">
+Akademie Kraatz GmbH &middot; Wilmersdorfer Str. 145/146 &middot; 10585 Berlin<br>
+<a href="https://kraatz-group.de/impressum/" style="color:#666666;">Impressum</a> &middot;
+<a href="https://kraatz-group.de/datenschutzerklaerung/" style="color:#666666;">Datenschutz</a>
+</td></tr>
+
+</table>
+</div>`;
+};
+
+const sendKraatzClubEmail = async (params: {
+  vorname: string;
+  nachname: string;
+  email: string;
+  zugang: string[];
+  mitgliedId?: string;
+}) => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Nicht eingeloggt');
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        to: params.email,
+        toName: `${params.vorname} ${params.nachname}`,
+        subject: KRAATZ_CLUB_EMAIL_SUBJECT,
+        html: buildKraatzClubEmailHtml(params.vorname, params.nachname, params.zugang),
+        fromName: 'Kraatz Club',
+        fromEmail: 'postmaster@kraatz-group.de',
+        replyTo: 'postmaster@kraatz-group.de',
+        edgeFunction: 'send-kraatz-club-zugang-email',
+        context: params.mitgliedId ? { mitgliedId: params.mitgliedId } : undefined,
+      }),
+    }
+  );
+  const result = await response.json();
+  if (!response.ok) throw new Error(result?.error || result?.details || 'Versand fehlgeschlagen');
 };
 
 export function KraatzClubZugang() {
@@ -164,9 +261,21 @@ export function KraatzClubZugang() {
   };
 
   const toggleZugang = (option: string) => {
-    setZugang((prev) =>
-      prev.includes(option) ? prev.filter((o) => o !== option) : [...prev, option]
-    );
+    const isOn = !zugang.includes(option);
+    let next = isOn ? [...zugang, option] : zugang.filter((o) => o !== option);
+
+    if (option === 'Gratis Monat' && isOn) {
+      // Startdatum default heute, Vertragsende automatisch +30 Tage (fixiert)
+      const start = vertragsbeginn || todayISO();
+      setVertragsbeginn(start);
+      setVertragsende(addDays(start, 30));
+      // Premium-Mitgliedschaft automatisch vorauswählen (änderbar)
+      if (!next.includes('Premium-Mitgliedschaft')) {
+        next = [...next, 'Premium-Mitgliedschaft'];
+      }
+    }
+
+    setZugang(next);
   };
 
   const resetForm = () => {
@@ -191,8 +300,8 @@ export function KraatzClubZugang() {
       addToast('Bitte Vertragsbeginn und Vertragsende angeben', 'error');
       return;
     }
-    if (new Date(vertragsende) < new Date(vertragsbeginn)) {
-      addToast('Vertragsende darf nicht vor dem Vertragsbeginn liegen', 'error');
+    if (new Date(vertragsende) <= new Date(vertragsbeginn)) {
+      addToast('Das Vertragsende muss mindestens einen Tag nach dem Vertragsbeginn liegen', 'error');
       return;
     }
     if (zugang.length === 0) {
@@ -201,23 +310,34 @@ export function KraatzClubZugang() {
     }
 
     setSubmitting(true);
+    const v = vorname.trim();
+    const n = nachname.trim();
+    const e = email.trim();
     try {
-      const { error } = await supabase.from('memberspot_kraatzclub_mitglieder').insert({
-        vorname: vorname.trim(),
-        nachname: nachname.trim(),
-        email: email.trim(),
+      const { data: inserted, error } = await supabase.from('memberspot_kraatzclub_mitglieder').insert({
+        vorname: v,
+        nachname: n,
+        email: e,
         vertragsbeginn,
         vertragsende,
         zugang,
         created_by: user?.id,
-      });
+      }).select('id').single();
       if (error) throw error;
 
       addToast('Zugang gespeichert', 'success');
       resetForm();
       runSync(false);
-    } catch (e) {
-      console.error(e);
+
+      try {
+        await sendKraatzClubEmail({ vorname: v, nachname: n, email: e, zugang, mitgliedId: inserted?.id });
+        addToast(`Aktivierungs-E-Mail an ${e} versendet`, 'success');
+      } catch (mailErr: any) {
+        console.error(mailErr);
+        addToast('Zugang gespeichert, aber E-Mail-Versand fehlgeschlagen', 'error');
+      }
+    } catch (err) {
+      console.error(err);
       addToast('Fehler beim Speichern', 'error');
     } finally {
       setSubmitting(false);
@@ -309,7 +429,13 @@ export function KraatzClubZugang() {
                 <input
                   type="date"
                   value={vertragsbeginn}
-                  onChange={(e) => setVertragsbeginn(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setVertragsbeginn(v);
+                    if (zugang.includes('Gratis Monat')) {
+                      setVertragsende(addDays(v, 30));
+                    }
+                  }}
                   className={inputClass}
                 />
               </div>
@@ -319,7 +445,9 @@ export function KraatzClubZugang() {
                   type="date"
                   value={vertragsende}
                   onChange={(e) => setVertragsende(e.target.value)}
-                  className={inputClass}
+                  disabled={zugang.includes('Gratis Monat')}
+                  title={zugang.includes('Gratis Monat') ? 'Bei „Gratis Monat" automatisch Vertragsbeginn + 30 Tage' : undefined}
+                  className={`${inputClass} disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed`}
                 />
               </div>
             </div>

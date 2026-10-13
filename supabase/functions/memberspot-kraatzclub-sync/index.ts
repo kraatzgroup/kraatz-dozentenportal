@@ -1,4 +1,5 @@
 /// <reference path="../deno.d.ts" />
+/// <reference path="../npm-imports.d.ts" />
 // Edge function: memberspot-kraatzclub-sync
 //
 // Runs hourly via pg_cron (and right after a new Kraatz-Club-Mitglied is
