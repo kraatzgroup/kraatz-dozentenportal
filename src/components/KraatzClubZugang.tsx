@@ -366,22 +366,26 @@ export function KraatzClubZugang() {
 
   return (
     <div className="space-y-6 px-10">
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900">Kraatz Club Zugang</h3>
-        <p className="text-sm text-gray-500 mt-1">
-          Hier können Zugänge zum Kraatz Club vergeben und verwaltet werden.
-        </p>
+      <div className="flex items-center gap-4">
+        <img
+          src="https://files.mspotcdn.de/schools%2FwgExlBUwDc02VQa5IKie%2Flogo-1682680505711.png?alt=media&token=0ef3ffa7-d1c4-427e-a8a3-5f4c1d21529e"
+          alt="Kraatz Club"
+          className="h-12 w-auto flex-shrink-0"
+        />
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">Kraatz Club Zugang</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            Hier können Zugänge zum Kraatz Club vergeben und verwaltet werden.
+          </p>
+        </div>
       </div>
 
       <div className="w-full">
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 sm:p-6">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-4">
             <Gift className="h-5 w-5 text-primary" />
-            <h4 className="font-semibold text-gray-900">Gratis Zugang Kraatz Club</h4>
+            <h4 className="font-semibold text-gray-900">Kraatz Club Zugang erstellen</h4>
           </div>
-          <p className="text-sm text-gray-500 mb-4">
-            Gratis-Zugang zum Kraatz Club für eine Person vergeben.
-          </p>
           <form
             onSubmit={(e) => {
               e.preventDefault();
