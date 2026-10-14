@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Nur eingeloggte Mitarbeiter (admin / vertrieb / verwaltung) dürfen versenden
+    // Nur eingeloggte Mitarbeiter (admin / vertrieb / verwaltung / buchhaltung) dürfen versenden
     const token = req.headers.get('Authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
     if (!token) {
       return new Response(
@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
         );
       }
       const { data: profile } = await authAdmin.from('profiles').select('role').eq('id', user.id).single();
-      if (!profile || !['admin', 'vertrieb', 'verwaltung'].includes(profile.role)) {
+      if (!profile || !['admin', 'vertrieb', 'verwaltung', 'buchhaltung'].includes(profile.role)) {
         return new Response(
           JSON.stringify({ error: 'Forbidden' }),
           { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
