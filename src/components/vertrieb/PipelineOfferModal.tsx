@@ -319,7 +319,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
       const price = Math.round(h * getHourlyRate(h) * 100) / 100;
       const key = t === 'platin' ? 'Platin' : 'Gold';
       values[`[${key}_Tag]`] = matchedTier === t && selectedPackage
-        ? '<span style="display:inline-block;background-color:#2D84C1;color:#FFFFFF;font-size:10px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:10px;vertical-align:middle;">DEIN PAKET</span>'
+        ? '<span style="display:inline-block;background-color:#2D84C1;color:#FFFFFF;font-size:10px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:10px;vertical-align:middle;">IHR PAKET</span>'
         : '';
       const selected = matchedTier === t && Boolean(selectedPackage);
       values[`[${key}_Rahmen_L]`] = selected ? 'border:3px solid #2D84C1;border-right:0;' : '';
@@ -330,7 +330,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
     });
     const rowStyle = TIER_EMAIL_STYLES.individuell + 'padding:14px 16px;border:3px solid #2D84C1;';
     values['[Individuell_Zeile]'] = selectedPackage && !matchedTier
-      ? `<tr><td style="${rowStyle}border-right:0;border-radius:10px 0 0 10px;"><strong>${selectedPackage.name}</strong> <span style="display:inline-block;background-color:#2D84C1;color:#FFFFFF;font-size:10px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:10px;vertical-align:middle;">DEIN PAKET</span><br><span style="font-size:12px;">${formatHours(selectedPackage.hours)} Unterrichtsstunden &middot; ZR ${formatHours(parseHours(subjectHours.zr))} / ÖR ${formatHours(parseHours(subjectHours.oer))} / StR ${formatHours(parseHours(subjectHours.str))} &middot; ${months} ${months === 1 ? 'Monat' : 'Monate'} &agrave; ${formatEuro(monthlyRate)} &middot; ${formatEuro(hourlyRate)}/h</span></td><td align="right" style="${rowStyle}border-left:0;border-radius:0 10px 10px 0;font-size:18px;font-weight:700;white-space:nowrap;">${formatEuro(selectedPackage.price)}</td></tr>`
+      ? `<tr><td style="${rowStyle}border-right:0;border-radius:10px 0 0 10px;"><strong>${selectedPackage.name}</strong> <span style="display:inline-block;background-color:#2D84C1;color:#FFFFFF;font-size:10px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:10px;vertical-align:middle;">IHR PAKET</span><br><span style="font-size:12px;">${formatHours(selectedPackage.hours)} Unterrichtsstunden &middot; ZR ${formatHours(parseHours(subjectHours.zr))} / ÖR ${formatHours(parseHours(subjectHours.oer))} / StR ${formatHours(parseHours(subjectHours.str))} &middot; ${months} ${months === 1 ? 'Monat' : 'Monate'} &agrave; ${formatEuro(monthlyRate)} &middot; ${formatEuro(hourlyRate)}/h</span></td><td align="right" style="${rowStyle}border-left:0;border-radius:0 10px 10px 0;font-size:18px;font-weight:700;white-space:nowrap;">${formatEuro(selectedPackage.price)}</td></tr>`
       : '';
     SUBJECTS.forEach(sub => {
       const h = parseHours(subjectHours[sub.key]);
@@ -371,6 +371,8 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
 
   const previewSubject = replacePlaceholders(subject);
   const previewBody = replacePlaceholders(body);
+  // Nur Vorschau: Links aus dem Iframe in neuem Tab öffnen (versendete Mail bleibt unverändert)
+  const previewDoc = `<base target="_blank">${previewBody}`;
   // Vorschau für HTML-Vorlagen: Tags entfernen, damit sie lesbar bleibt
   const previewBodyText = isHtml
     ? previewBody
@@ -750,8 +752,8 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
                 <p className="mb-2 text-sm font-semibold text-gray-900">{previewSubject}</p>
                 <iframe
                   title="E-Mail-Vorschau"
-                  sandbox=""
-                  srcDoc={previewBody}
+                  sandbox="allow-popups allow-popups-to-escape-sandbox"
+                  srcDoc={previewDoc}
                   className="h-[520px] w-full rounded border border-gray-200 bg-white"
                 />
               </div>
@@ -800,8 +802,8 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
               {isHtml ? (
                 <iframe
                   title="E-Mail-Vorschau"
-                  sandbox=""
-                  srcDoc={previewBody}
+                  sandbox="allow-popups allow-popups-to-escape-sandbox"
+                  srcDoc={previewDoc}
                   className="h-[420px] w-full rounded border border-gray-200 bg-white"
                 />
               ) : (
