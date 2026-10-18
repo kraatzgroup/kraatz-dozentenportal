@@ -16,11 +16,22 @@ interface EmailTemplateRow {
   is_html?: boolean | null;
 }
 
+export interface OfferConfig {
+  elite: boolean;
+  totalHours: number;
+  subjectHours: Record<string, string>;
+  months: number;
+  beginDate: string | null;
+}
+
 interface PipelineOfferModalProps {
   lead: Lead | null;
   onClose: () => void;
   /** Wird nach erfolgreichem Versand aufgerufen (Parent setzt den Ziel-Status). */
-  onSent: (info: { packageName: string | null; beginDate: string | null; price: number | null; reason: string | null }) => Promise<void>;
+  onSent: (info: { packageName: string | null; beginDate: string | null; price: number | null; reason: string | null; config?: OfferConfig }) => Promise<void>;
+  /** Nur Paket-Konfiguration (ohne E-Mail): Maske aus der Angebotserstellung, z.B. bei geändertem Vertragsgegenstand. */
+  configOnly?: boolean;
+  initialConfig?: OfferConfig | null;
   /** Kategorie der E-Mail-Vorlagen (z.B. 'angebot' oder 'kraatzclub'). */
   templateCategory?: string;
   title?: string;
@@ -130,6 +141,36 @@ const splitLeadName = (lead: Lead) => {
   return { first, last };
 };
 
+// Bisher gewählte Konfiguration eines Leads; bei älteren Leads aus Paketname/Start abgeleitet (null: kein Angebot hinterlegt)
+export const deriveOfferConfig = (lead: Lead | null): OfferConfig | null => {
+  if (!lead) return null;
+  if (lead.offer_config) return lead.offer_config;
+  if (!lead.offer_package) return null;
+  const name = lead.offer_package.toUpperCase();
+  const elite = name.includes('ELITE');
+  const totalHours = elite ? ELITE_PACKAGE.hours : name.includes('GOLD') ? 70 : 140;
+  return { elite, totalHours, subjectHours: defaultDistribution(totalHours), months: 12, beginDate: lead.offer_start_date };
+};
+
+// Zusammenfassung einer Konfiguration für die Vorschau (Paket, Verteilung, Preis, Rate)
+export const summarizeOfferConfig = (config: OfferConfig) => {
+  const tier = (Object.keys(TIER_HOURS) as OfferTier[]).find(t => TIER_HOURS[t] === config.totalHours) || null;
+  if (config.elite) {
+    return {
+      name: ELITE_PACKAGE.name, hours: ELITE_PACKAGE.hours, price: ELITE_PACKAGE.price, hourlyRate: null as number | null,
+      rateLabel: `${ELITE_PACKAGE.installments} Raten à ${formatEuro(ELITE_PACKAGE.installment)}`, months: 12,
+      distribution: 'ZR 120 / ÖR 100 / StR 90 Std. + 72 Std. Wiederholung',
+    };
+  }
+  const rate = getHourlyRate(config.totalHours);
+  const price = Math.round(config.totalHours * rate * 100) / 100;
+  return {
+    name: tier ? TIER_NAMES[tier] : 'Individuelles Angebot 1. Staatsexamen', hours: config.totalHours, price, hourlyRate: rate,
+    rateLabel: `${config.months} ${config.months === 1 ? 'Monat' : 'Monate'} à ${formatEuro(price / config.months)}`, months: config.months,
+    distribution: SUBJECTS.map(sub => `${sub.token === 'OER' ? 'ÖR' : sub.token === 'STR' ? 'StR' : 'ZR'} ${formatHours(parseHours(config.subjectHours[sub.key] || '0'))}`).join(' / ') + ' Std.',
+  };
+};
+
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 // Stundenpreis nach Gesamtumfang (70 h = 9.905 €, 140 h = 19.530 €)
@@ -153,7 +194,7 @@ const formatEuro = (value: number) =>
 const formatDate = (value: string) =>
   value ? new Date(value + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' }) : '';
 
-export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = 'angebot', title = 'Angebot senden', description, submitLabel = 'Angebot senden', allowSkip = false, skipLabel = 'Ohne Mail verschieben', onSkip, showPackageFields = true, askReason = false }: PipelineOfferModalProps) {
+export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = 'angebot', title = 'Angebot senden', description, submitLabel = 'Angebot senden', allowSkip = false, skipLabel = 'Ohne Mail verschieben', onSkip, showPackageFields = true, askReason = false, configOnly = false, initialConfig = null }: PipelineOfferModalProps) {
   const { addToast } = useToastStore();
   const [templates, setTemplates] = useState<EmailTemplateRow[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
@@ -185,6 +226,15 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
   }, [lead?.id]);
 
   useEffect(() => {
+    if (!lead || !initialConfig) return;
+    setSelectedTemplateId(initialConfig.elite ? ELITE_TEMPLATE_ID : '');
+    setTotalHoursInput(String(initialConfig.totalHours));
+    setSubjectHours(initialConfig.subjectHours as Record<SubjectKey, string>);
+    setMonths(initialConfig.months);
+    if (initialConfig.beginDate) setBeginDate(initialConfig.beginDate);
+  }, [lead?.id]);
+
+  useEffect(() => {
     const fetchTemplates = async () => {
       const { data } = await supabase
         .from('email_templates')
@@ -195,14 +245,15 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
       const all = offerTemplates.length > 0 ? offerTemplates : rows;
       setTemplates(all);
       if (all.length > 0) {
-        setSelectedTemplateId(all[0].id);
-        setIsHtml(Boolean(all[0].is_html));
-        setSubject(all[0].subject || '');
-        setBody(all[0].body || '');
-        setActiveSections(discoverSections(all[0].body || ''));
+        const initial = (initialConfig?.elite && all.find(t => t.id === ELITE_TEMPLATE_ID)) || all[0];
+        setSelectedTemplateId(initial.id);
+        setIsHtml(Boolean(initial.is_html));
+        setSubject(initial.subject || '');
+        setBody(initial.body || '');
+        setActiveSections(discoverSections(initial.body || ''));
       }
     };
-    if (lead) fetchTemplates();
+    if (lead && !configOnly) fetchTemplates();
   }, [lead?.id, templateCategory]);
 
   const totalHours = parseHours(totalHoursInput);
@@ -348,6 +399,22 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
 
   const handleSend = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (configOnly) {
+      setIsSending(true);
+      try {
+        await onSent({
+          packageName: selectedPackage?.name ?? null,
+          beginDate: beginDate || null,
+          price: selectedPackage?.price ?? null,
+          reason: null,
+          config: { elite: isElite, totalHours, subjectHours, months, beginDate: beginDate || null },
+        });
+        onClose();
+      } finally {
+        setIsSending(false);
+      }
+      return;
+    }
     if (!lead?.email || !previewSubject.trim() || !previewBody.trim()) {
       addToast('E-Mail-Adresse, Betreff und Text sind erforderlich', 'error');
       return;
@@ -385,7 +452,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
       const result = await response.json();
       if (!response.ok) throw new Error(result?.error || result?.details || 'Send failed');
       addToast(`Angebot an ${lead.email} versendet`, 'success');
-      await onSent({ packageName: selectedPackage?.name ?? null, beginDate: beginDate || null, price: selectedPackage?.price ?? null, reason: reasonText.trim() || reasonOption || null });
+      await onSent({ packageName: selectedPackage?.name ?? null, beginDate: beginDate || null, price: selectedPackage?.price ?? null, reason: reasonText.trim() || reasonOption || null, config: { elite: isElite, totalHours, subjectHours, months, beginDate: beginDate || null } });
       onClose();
     } catch (error: any) {
       console.error('Error sending offer email:', error);
@@ -405,7 +472,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
             <FileText className="h-5 w-5 text-amber-600" />
             <div>
               <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-              <p className="text-xs text-gray-500">Lead: {lead.name} · {lead.email}</p>
+              <p className="text-xs text-gray-500">Lead: {lead.name}{lead.email ? ` · ${lead.email}` : ''}</p>
               {description && <p className="text-xs text-gray-500">{description}</p>}
             </div>
           </div>
@@ -444,6 +511,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
             </div>
           )}
 
+          {!configOnly && (<>
           {/* Template-Auswahl */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">E-Mail-Vorlage</label>
@@ -495,6 +563,24 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
               />
             </div>
           </div>
+
+          </>)}
+
+          {/* Nur Konfiguration: zwischen Einzelunterricht und ELITE Kleingruppe wechseln */}
+          {configOnly && (
+          <div className="grid grid-cols-2 gap-2">
+            {[{ elite: false, label: 'Einzelunterricht' }, { elite: true, label: 'ELITE Kleingruppe' }].map(opt => (
+              <button
+                key={opt.label}
+                type="button"
+                onClick={() => setSelectedTemplateId(opt.elite ? ELITE_TEMPLATE_ID : '')}
+                className={`rounded-lg border p-2.5 text-left text-sm font-medium transition-colors ${isElite === opt.elite ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          )}
 
           {/* ELITE Kleingruppe: festes Paket, nur Beginn wählbar */}
           {showPackageFields && isElite && (
@@ -605,6 +691,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
           </div>
           )}
 
+          {!configOnly && (<>
           {/* Bausteine der E-Mail: einzeln ein-/ausblendbar */}
           {Object.keys(activeSections).length > 0 && (
           <div>
@@ -723,9 +810,11 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
             </div>
           )}
 
+          </>)}
+
           </div>
           <div className="flex shrink-0 justify-end space-x-3 border-t border-gray-200 p-4 sm:p-6">
-            {!(isHtml && !showSource) && (
+            {!configOnly && !(isHtml && !showSource) && (
             <button
               type="button"
               onClick={() => setShowPreview(prev => !prev)}
@@ -749,10 +838,10 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
             </button>
             <button
               type="submit"
-              disabled={isSending || !lead.email}
+              disabled={isSending || (!configOnly && !lead.email)}
               className="flex items-center px-4 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition disabled:opacity-50"
             >
-              <Send className="h-4 w-4 mr-1.5" />{isSending ? 'Wird gesendet...' : submitLabel}
+              <Send className="h-4 w-4 mr-1.5" />{isSending ? (configOnly ? 'Wird gespeichert...' : 'Wird gesendet...') : submitLabel}
             </button>
           </div>
         </form>

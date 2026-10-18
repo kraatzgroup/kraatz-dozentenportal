@@ -154,6 +154,7 @@ export interface Lead {
   offer_package: string | null;
   offer_start_date: string | null;
   offer_price: number | null;
+  offer_config: { elite: boolean; totalHours: number; subjectHours: Record<string, string>; months: number; beginDate: string | null } | null;
   downsell_mail_sent_at: string | null;
   downsell_reason: string | null;
   street: string | null;

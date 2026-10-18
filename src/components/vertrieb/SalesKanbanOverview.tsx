@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { createContext, useContext, useMemo, useState } from 'react';
 import {
   DndContext,
   DragEndEvent,
@@ -21,6 +21,7 @@ import {
   FileText,
   GraduationCap,
   MessageSquare,
+  Pencil,
   Phone,
   Plus,
   Users,
@@ -31,9 +32,11 @@ import {
 import { CalBooking, Lead, TrialLesson, useSalesStore } from '../../store/salesStore';
 import { useToastStore } from '../../store/toastStore';
 import { LeadCreateModal } from './LeadCreateModal';
-import { PipelineOfferModal } from './PipelineOfferModal';
+import { PipelineOfferModal, OfferConfig, deriveOfferConfig } from './PipelineOfferModal';
+import { PipelineClosedModal } from './PipelineClosedModal';
 import { PipelineTrialModal, TrialRequestData } from './PipelineTrialModal';
 import { LeadHistoryModal } from './LeadHistoryModal';
+import { LeadEditModal } from './LeadEditModal';
 import { getNextMondayDateTime, toDateTimeLocal } from './dateDefaults';
 
 interface SalesKanbanOverviewProps {
@@ -315,7 +318,10 @@ function CardContent({ item, isNew }: { item: PipelineItem; isNew: boolean }) {
   );
 }
 
+const EditLeadContext = createContext<(item: PipelineItem) => void>(() => {});
+
 function DraggableCard({ item, isNew, onSelect }: DraggableCardProps) {
+  const onEdit = useContext(EditLeadContext);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: item.id });
 
   return (
@@ -334,10 +340,23 @@ function DraggableCard({ item, isNew, onSelect }: DraggableCardProps) {
           onSelect(item);
         }
       }}
-      className={`cursor-grab select-none rounded-md border bg-white p-3 shadow-sm transition hover:border-blue-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-400 active:cursor-grabbing ${
+      className={`relative cursor-grab select-none rounded-md border bg-white p-3 pr-8 shadow-sm transition hover:border-blue-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-400 active:cursor-grabbing ${
         item.escalated ? 'border-rose-300 ring-1 ring-rose-200' : 'border-slate-200'
       } ${isDragging ? 'opacity-30' : ''}`}
     >
+      <button
+        type="button"
+        title="Stammdaten bearbeiten"
+        aria-label={`Stammdaten bearbeiten: ${item.title}`}
+        onPointerDown={e => e.stopPropagation()}
+        onMouseDown={e => e.stopPropagation()}
+        onTouchStart={e => e.stopPropagation()}
+        onKeyDown={e => e.stopPropagation()}
+        onClick={e => { e.stopPropagation(); onEdit(item); }}
+        className="absolute right-1.5 top-1.5 rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
+      >
+        <Pencil className="h-3.5 w-3.5" />
+      </button>
       <CardContent item={item} isNew={isNew} />
     </div>
   );
@@ -440,6 +459,10 @@ export function SalesKanbanOverview({
   const [historyLead, setHistoryLead] = useState<Lead | null>(null);
   const [trialRequest, setTrialRequest] = useState<{ lead: Lead; initial: TrialRequestData | null; rejectedDozentId: string | null; rejectedDozentName: string | null } | null>(null);
 
+  const [resendLead, setResendLead] = useState<Lead | null>(null);
+  const [editLead, setEditLead] = useState<Lead | null>(null);
+  const [closeRequest, setCloseRequest] = useState<Lead | null>(null);
+  const [closeConfigLead, setCloseConfigLead] = useState<Lead | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -511,7 +534,8 @@ export function SalesKanbanOverview({
             const dozent = trial.dozent_name || 'Dozent';
             const rechtsgebiet = trial.rechtsgebiet ? ` im ${trial.rechtsgebiet}` : '';
             const trialHint = `Probestunde angefragt für ${formatStamp(start)} Uhr, ${trial.duration || 60} Min., bei ${dozent}${rechtsgebiet}`;
-            return now < end
+            const pinnedToTrial = lead.status === 'trial_pending' && !lead.final_call_date;
+            return now < end || pinnedToTrial
               ? { column: 'trial_pending', hint: trialHint }
               : { column: 'finalgespraech', hint: `Probestunde beendet – Termin war ${formatStamp(start)} Uhr` };
           }
@@ -534,9 +558,9 @@ export function SalesKanbanOverview({
         // Abgelehnte Probestunde: Dozent hat abgesagt -> neu anfragen
         let trialRejected: string | null = null;
         const latestTrial = latestTrialByLead.get(lead.id);
-        if (latestTrial?.status === 'cancelled' && placed.column !== 'closed') {
+        if (latestTrial?.status === 'cancelled' && latestTrial.dozent_name && placed.column !== 'closed') {
           const dt = latestTrial.scheduled_date ? formatStamp(new Date(latestTrial.scheduled_date).getTime()) : 'Termin offen';
-          trialRejected = `Probestunde neu anfragen – Dozent ${latestTrial.dozent_name || 'XY'} hat die Probestunde für ${dt} abgelehnt`;
+          trialRejected = `Probestunde neu anfragen – Dozent ${latestTrial.dozent_name} hat die Probestunde für ${dt} abgelehnt`;
         }
 
         // Downsell: Infomail Kraatz Club versendet oder nichts gesendet
@@ -578,7 +602,7 @@ export function SalesKanbanOverview({
         offerLines: getOfferLines(lead, now),
         trialStatus,
         trialRejected,
-        rejectedTrial: latestTrial?.status === 'cancelled' ? latestTrial : null,
+        rejectedTrial: trialRejected ? latestTrial ?? null : null,
         downsellInfo,
         downsellMailSent,
         downsellReason,
@@ -789,6 +813,11 @@ export function SalesKanbanOverview({
     return fresh || null;
   };
 
+  const handleEditItem = async (item: PipelineItem) => {
+    const lead = await ensureLead(item);
+    if (lead) setEditLead(lead);
+  };
+
   const handleDragStart = (event: DragStartEvent) => setActiveId(String(event.active.id));
 
   const handleDragEnd = async (event: DragEndEvent) => {
@@ -818,6 +847,12 @@ export function SalesKanbanOverview({
       setDownsellRequest(lead);
       return;
     }
+    if (targetStatus === 'closed') {
+      // Ohne hinterlegtes Angebot gibt es nichts zu bestätigen: direkt die Paket-Maske öffnen
+      if (deriveOfferConfig(lead)) setCloseRequest(lead);
+      else setCloseConfigLead(lead);
+      return;
+    }
     // Alle übrigen Verschiebungen: direkter Status-Update
     await onUpdateLead(lead.id, { status: targetStatus });
     addToast(`Status auf „${STATUS_LABELS[targetStatus] || targetStatus}“ gesetzt`, 'success');
@@ -837,7 +872,7 @@ export function SalesKanbanOverview({
     setDownsellRequest(null);
   };
 
-  const handleOfferSent = async ({ packageName, beginDate, price }: { packageName: string | null; beginDate: string | null; price: number | null }) => {
+  const handleOfferSent = async ({ packageName, beginDate, price, config }: { packageName: string | null; beginDate: string | null; price: number | null; config?: OfferConfig }) => {
     if (!offerLead) return;
     await onUpdateLead(offerLead.id, {
       status: 'offer_sent',
@@ -845,8 +880,57 @@ export function SalesKanbanOverview({
       offer_package: packageName,
       offer_start_date: beginDate,
       offer_price: price,
+      offer_config: config ?? null,
     });
     setOfferLead(null);
+  };
+
+  const handleCloseUnchanged = async () => {
+    if (!closeRequest) return;
+    await onUpdateLead(closeRequest.id, { status: 'closed' });
+    addToast('Lead abgeschlossen', 'success');
+    setCloseRequest(null);
+  };
+
+  const handleCloseChanged = async ({ packageName, beginDate, price, config }: { packageName: string | null; beginDate: string | null; price: number | null; config?: OfferConfig }) => {
+    if (!closeConfigLead) return;
+    await onUpdateLead(closeConfigLead.id, {
+      status: 'closed',
+      offer_package: packageName,
+      offer_start_date: beginDate,
+      offer_price: price,
+      offer_config: config ?? null,
+    });
+    addToast('Lead mit geändertem Vertragsgegenstand abgeschlossen', 'success');
+    setCloseConfigLead(null);
+  };
+
+  const handleResendSent = async ({ packageName, beginDate, price, config }: { packageName: string | null; beginDate: string | null; price: number | null; config?: OfferConfig }) => {
+    if (!resendLead) return;
+    const inOfferStage = resendLead.status === 'offer_sent' || resendLead.status === 'post_offer_call';
+    await onUpdateLead(resendLead.id, {
+      ...(inOfferStage ? { status: 'offer_sent' as const } : {}),
+      offer_sent_at: new Date().toISOString(),
+      offer_package: packageName,
+      offer_start_date: beginDate,
+      offer_price: price,
+      offer_config: config ?? null,
+    });
+    setResendLead(null);
+  };
+
+  const handleOfferSkip = async () => {
+    if (!offerLead) return;
+    await onUpdateLead(offerLead.id, { status: 'offer_sent', offer_sent_at: null });
+    addToast('Lead nach „Angebot“ verschoben (ohne Mail)', 'success');
+    setOfferLead(null);
+  };
+
+  const handleTrialSkip = async () => {
+    if (!trialRequest) return;
+    await onUpdateLead(trialRequest.lead.id, { status: 'trial_pending', final_call_date: null });
+    addToast('Lead nach „Probestunde“ verschoben (ohne neue Anfrage)', 'success');
+    setTrialRequest(null);
   };
 
   const handleTrialSubmit = async (data: TrialRequestData) => {
@@ -862,6 +946,7 @@ export function SalesKanbanOverview({
   const selectedMeetingUrl = getSafeHttpUrl(selectedItem?.meetingUrl);
 
   return (
+    <EditLeadContext.Provider value={handleEditItem}>
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveId(null)}>
     <div className="space-y-6">
       {/* To Do Übersicht */}
@@ -1033,8 +1118,21 @@ export function SalesKanbanOverview({
       {/* Angebot senden */}
       <PipelineOfferModal
         lead={offerLead}
+        allowSkip
+        skipLabel="Ohne Mail verschieben"
+        onSkip={handleOfferSkip}
         onClose={() => setOfferLead(null)}
         onSent={handleOfferSent}
+      />
+
+      {/* Angebot erneut senden: bisherige Konfiguration vorbelegt */}
+      <PipelineOfferModal
+        lead={resendLead}
+        initialConfig={deriveOfferConfig(resendLead)}
+        title="Angebot erneut senden"
+        submitLabel="Angebot erneut senden"
+        onClose={() => setResendLead(null)}
+        onSent={handleResendSent}
       />
 
       {/* Downsell / Unqualifiziert: Informationsmail Kraatz Club? */}
@@ -1052,6 +1150,36 @@ export function SalesKanbanOverview({
         onSent={handleDownsellSent}
       />
 
+      {/* Stammdaten des Leads bearbeiten */}
+      <LeadEditModal
+        lead={editLead}
+        onClose={() => setEditLead(null)}
+        onSave={async (id, data) => {
+          await onUpdateLead(id, data);
+          addToast('Lead-Stammdaten gespeichert', 'success');
+        }}
+      />
+
+      {/* Abschluss: Vertragsgegenstand bestätigen */}
+      <PipelineClosedModal
+        lead={closeRequest}
+        onClose={() => setCloseRequest(null)}
+        onUnchanged={handleCloseUnchanged}
+        onChanged={() => { setCloseConfigLead(closeRequest); setCloseRequest(null); }}
+      />
+
+      {/* Abschluss mit geändertem Vertragsgegenstand: Paket-Maske aus der Angebotserstellung */}
+      <PipelineOfferModal
+        lead={closeConfigLead}
+        configOnly
+        initialConfig={deriveOfferConfig(closeConfigLead) ?? { elite: false, totalHours: 140, subjectHours: { zr: '55', oer: '50', str: '35' }, months: 12, beginDate: closeConfigLead?.offer_start_date ?? null }}
+        title="Vertragsgegenstand anpassen"
+        description="Bisher gewähltes Paket – bitte an den Vertrag anpassen."
+        submitLabel="Als abgeschlossen markieren"
+        onClose={() => setCloseConfigLead(null)}
+        onSent={handleCloseChanged}
+      />
+
       {/* Probestunde anfragen */}
       <PipelineTrialModal
         lead={trialRequest?.lead || null}
@@ -1060,6 +1188,7 @@ export function SalesKanbanOverview({
         rejectedDozentName={trialRequest?.rejectedDozentName || null}
         onClose={() => setTrialRequest(null)}
         onSubmit={handleTrialSubmit}
+        onSkip={handleTrialSkip}
       />
 
       {/* Detail-Modal */}
@@ -1103,6 +1232,15 @@ export function SalesKanbanOverview({
                       {selectedItem.offerLines.map(line => <p key={line}>{line}</p>)}
                     </div>
                   )}
+                  {selectedItem.lead && (selectedItem.lead.offer_sent_at || selectedItem.lead.offer_package) && (
+                    <button
+                      type="button"
+                      onClick={() => { setResendLead(selectedItem.lead); setSelectedItem(null); }}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-900 transition hover:bg-amber-100"
+                    >
+                      <Mail className="h-3.5 w-3.5" />Angebot erneut senden
+                    </button>
+                  )}
                   {selectedItem.calBooking?.status && <div className="text-slate-600">Booking-Status: {getBookingStatusLabel(selectedItem.calBooking.status)}</div>}
                   {selectedItem.description && <p className="whitespace-pre-wrap text-slate-600">{selectedItem.description}</p>}
                 </div>
@@ -1139,5 +1277,6 @@ export function SalesKanbanOverview({
           </DragOverlay>
     </div>
     </DndContext>
+    </EditLeadContext.Provider>
   );
 }

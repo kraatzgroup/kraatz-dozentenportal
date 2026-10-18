@@ -34,6 +34,8 @@ interface PipelineTrialModalProps {
   rejectedDozentName?: string | null;
   onClose: () => void;
   onSubmit: (data: TrialRequestData) => Promise<void>;
+  /** Lead ohne neue Probestunde in die Spalte verschieben. */
+  onSkip?: () => Promise<void>;
 }
 
 const BUNDESLAENDER = [
@@ -42,7 +44,7 @@ const BUNDESLAENDER = [
   'Rheinland-Pfalz', 'Saarland', 'Sachsen', 'Sachsen-Anhalt', 'Schleswig-Holstein', 'Thüringen',
 ];
 
-export function PipelineTrialModal({ lead, initial, rejectedDozentId, rejectedDozentName, onClose, onSubmit }: PipelineTrialModalProps) {
+export function PipelineTrialModal({ lead, initial, rejectedDozentId, rejectedDozentName, onClose, onSubmit, onSkip }: PipelineTrialModalProps) {
   const [dozenten, setDozenten] = useState<Dozent[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -275,6 +277,16 @@ export function PipelineTrialModal({ lead, initial, rejectedDozentId, rejectedDo
           </div>
 
           <div className="flex justify-end space-x-3 pt-4">
+            {onSkip && (
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={async () => { await onSkip(); onClose(); }}
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
+              >
+                Ohne Probestunde verschieben
+              </button>
+            )}
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition">
               Abbrechen
             </button>
