@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   DndContext,
   DragEndEvent,
@@ -30,6 +30,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { CalBooking, Lead, TrialLesson, useSalesStore } from '../../store/salesStore';
+import { supabase } from '../../lib/supabase';
 import { useToastStore } from '../../store/toastStore';
 import { LeadCreateModal } from './LeadCreateModal';
 import { PipelineOfferModal, OfferConfig, deriveOfferConfig } from './PipelineOfferModal';
@@ -70,6 +71,7 @@ interface PipelineItem {
   hint: string | null;
   offerLines: string[];
   escalated: boolean;
+  scheduledCallDone: boolean;
   trialStatus: string | null;
   trialRejected: string | null;
   rejectedTrial: TrialLesson | null;
@@ -287,8 +289,8 @@ function CardContent({ item, isNew }: { item: PipelineItem; isNew: boolean }) {
           {item.downsellReason && <p className="mt-1 text-xs text-slate-500">Grund: {item.downsellReason}</p>}
         </>
       ) : item.column === 'post_offer_call' ? (
-        <p className={`mt-1 flex items-center gap-1 text-xs font-semibold ${item.escalated ? 'text-rose-700' : 'text-orange-700'}`}>
-          <Phone className="h-3 w-3 shrink-0" />Bitte anrufen{item.escalated ? ' – überfällig' : ''}
+        <p className={`mt-1 flex items-center gap-1 text-xs font-semibold ${item.scheduledCallDone ? 'text-amber-700' : item.escalated ? 'text-rose-700' : 'text-orange-700'}`}>
+          <Phone className="h-3 w-3 shrink-0" />{item.scheduledCallDone ? 'Bitte bearbeiten' : `Bitte anrufen${item.escalated ? ' – überfällig' : ''}`}
         </p>
       ) : (
         <>
@@ -464,6 +466,17 @@ export function SalesKanbanOverview({
   const [closeRequest, setCloseRequest] = useState<Lead | null>(null);
   const [closeConfigLead, setCloseConfigLead] = useState<Lead | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  // Geplante 2.-Gespräch-ToDos (pending): der Anruf wird erst ab dem Termin fällig
+  const [callTodos, setCallTodos] = useState<{ lead_id: string; scheduled_date: string; scheduled_time: string | null }[]>([]);
+  useEffect(() => {
+    supabase
+      .from('sales_todos')
+      .select('lead_id, scheduled_date, scheduled_time')
+      .eq('todo_type', 'gespraech_nach_angebot')
+      .eq('status', 'pending')
+      .not('lead_id', 'is', null)
+      .then(({ data }) => setCallTodos((data || []) as { lead_id: string; scheduled_date: string; scheduled_time: string | null }[]));
+  }, [leads]);
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } })
@@ -504,6 +517,17 @@ export function SalesKanbanOverview({
         if (!prev || (t.updated_at || '') > (prev.updated_at || '')) latestTrialByLead.set(t.lead_id!, t);
       });
 
+    // Frühestes offenes Anruf-ToDo je Lead (Termin ohne Uhrzeit = Tagesbeginn)
+    const scheduledCallByLead = new Map<string, number>();
+    callTodos.forEach(t => {
+      const ms = new Date(`${t.scheduled_date}T${t.scheduled_time || '00:00'}`).getTime();
+      const prev = scheduledCallByLead.get(t.lead_id);
+      if (prev === undefined || ms < prev) scheduledCallByLead.set(t.lead_id, ms);
+    });
+    // Fälligkeitszeitpunkt des Follow-ups: geplanter Termin, sonst 24h nach Angebot
+    const followUpDueAt = (lead: Lead) =>
+      scheduledCallByLead.get(lead.id) ?? (lead.offer_sent_at ? new Date(lead.offer_sent_at).getTime() + FOLLOW_UP_AFTER_OFFER_MS : null);
+
     // Spalte + Hinweis je Lead: 2. Gespräch = Follow-up-Anruf spätestens 24h nach Angebot,
     // Finalgespräch = nach Ende der Probestunde
     const placeLead = (lead: Lead): { column: ColumnDef['id']; hint: string | null } => {
@@ -511,14 +535,25 @@ export function SalesKanbanOverview({
         case 'new':
           return { column: 'new', hint: null };
         case 'offer_sent': {
+          const scheduled = scheduledCallByLead.get(lead.id);
+          if (scheduled !== undefined) {
+            return now >= scheduled
+              ? { column: 'post_offer_call', hint: `Geplanter Anruf war ${formatStamp(scheduled)} Uhr` }
+              : { column: 'offer_sent', hint: `Anruf geplant für ${formatStamp(scheduled)} Uhr` };
+          }
           if (!lead.offer_sent_at) return { column: 'offer_sent', hint: null };
           const due = new Date(lead.offer_sent_at).getTime() + FOLLOW_UP_AFTER_OFFER_MS;
           return now >= due
             ? { column: 'post_offer_call', hint: `Follow-up-Anruf fällig seit ${formatStamp(due)}` }
             : { column: 'offer_sent', hint: null };
         }
-        case 'post_offer_call':
-          return { column: 'post_offer_call', hint: 'Follow-up-Anruf (Mario Kraatz)' };
+        case 'post_offer_call': {
+          const scheduled = scheduledCallByLead.get(lead.id);
+          if (scheduled !== undefined && now < scheduled) {
+            return { column: 'offer_sent', hint: `Anruf geplant für ${formatStamp(scheduled)} Uhr` };
+          }
+          return { column: 'post_offer_call', hint: scheduled !== undefined ? `Geplanter Anruf war ${formatStamp(scheduled)} Uhr` : 'Follow-up-Anruf (Mario Kraatz)' };
+        }
         case 'downsell':
           return { column: 'downsell', hint: null };
         case 'unqualified':
@@ -593,12 +628,18 @@ export function SalesKanbanOverview({
             trialStatus = 'noch ausstehend';
           }
         }
+        // Geplanter Anruf (2. Gespräch) liegt in der Vergangenheit -> oben zum Bearbeiten.
+        // Sobald der Lead weitergezogen wurde (andere Spalte), fällt er dort wieder raus.
+        const scheduledCall = scheduledCallByLead.get(lead.id) ?? null;
+        const scheduledCallDone = scheduledCall !== null && now >= scheduledCall && placed.column === 'post_offer_call';
         return {
         ...placed,
         hint: trialRejected ?? placed.hint,
         escalated: placed.column === 'post_offer_call'
-          && lead.offer_sent_at !== null
-          && now - new Date(lead.offer_sent_at).getTime() >= FOLLOW_UP_ESCALATION_MS,
+          && !scheduledCallDone
+          && followUpDueAt(lead) !== null
+          && now - followUpDueAt(lead)! >= FOLLOW_UP_ESCALATION_MS - FOLLOW_UP_AFTER_OFFER_MS,
+        scheduledCallDone,
         offerLines: getOfferLines(lead, now),
         trialStatus,
         trialRejected,
@@ -612,9 +653,9 @@ export function SalesKanbanOverview({
         calBooking: null,
         title: lead.name,
         status: lead.status,
-        date: dateKeyFromValue(lead.booking_date),
-        time: formatTime(lead.booking_date),
-        startsAt: lead.booking_date,
+        date: scheduledCallDone ? formatDateKey(new Date(scheduledCall)) : dateKeyFromValue(lead.booking_date),
+        time: scheduledCallDone ? new Date(scheduledCall).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : formatTime(lead.booking_date),
+        startsAt: scheduledCallDone ? new Date(scheduledCall).toISOString() : lead.booking_date,
         participant: lead.name,
         email: lead.email,
         phone: lead.phone,
@@ -655,6 +696,7 @@ export function SalesKanbanOverview({
         hint: null,
         offerLines: [],
         escalated: false,
+        scheduledCallDone: false,
         trialStatus: null,
         trialRejected: null,
         rejectedTrial: null,
@@ -665,7 +707,7 @@ export function SalesKanbanOverview({
       }));
 
     return [...leadItems, ...bookingItems];
-  }, [leads, calBookings, trialLessons]);
+  }, [leads, calBookings, trialLessons, callTodos]);
 
   // Vergangene/laufende Calls ohne Folgeschritt landen oben als To-Do, nicht in der Spalte
   const isPastCall = (item: PipelineItem) =>
@@ -680,10 +722,11 @@ export function SalesKanbanOverview({
     [items]
   );
 
-  // Follow-up-Anrufe (2. Gespräch): To-Do oben unter den kommenden Gesprächen
+  // Follow-up-Anrufe (2. Gespräch): To-Do oben unter den kommenden Gesprächen.
+  // Stattgefundene geplante Anrufe zählen nicht als "anrufen", sondern als "bearbeiten".
   const followUpDue = useMemo(
     () => items
-      .filter(item => item.column === 'post_offer_call')
+      .filter(item => item.column === 'post_offer_call' && !item.scheduledCallDone)
       .sort((a, b) => {
         const da = a.lead?.offer_sent_at || '9999';
         const db = b.lead?.offer_sent_at || '9999';
@@ -692,8 +735,20 @@ export function SalesKanbanOverview({
     [items]
   );
 
-  // Über 48 Stunden ohne Rückruf: ganz oben, rot umrandet
+  // Über 24h nach Fälligkeit ohne Rückruf: ganz oben, rot umrandet (und nicht doppelt in der orange-Gruppe)
   const followUpEscalated = useMemo(() => followUpDue.filter(item => item.escalated), [followUpDue]);
+  const followUpDueNonEscalated = useMemo(() => followUpDue.filter(item => !item.escalated), [followUpDue]);
+
+  // Stattgefundene geplante Anrufe (2. Gespräch): ganz oben zum Weiterverarbeiten
+  const doneCalls = useMemo(
+    () => items
+      .filter(item => item.scheduledCallDone)
+      .sort((a, b) => (b.startsAt || '').localeCompare(a.startsAt || '')),
+    [items]
+  );
+
+  // "Zu bearbeiten": stattgefundene geplante Anrufe zuerst, danach vergangene Beratungsgespräche
+  const zuBearbeiten = useMemo(() => [...doneCalls, ...pastCalls], [doneCalls, pastCalls]);
 
   // Abgelehnte Probestunden: oben als ToDo, neu anfragen
   const rejectedTrials = useMemo(() => items.filter(item => item.trialRejected), [items]);
@@ -964,7 +1019,7 @@ export function SalesKanbanOverview({
               <Phone className="h-4 w-4" />2. Gespräch überfällig
               <span className="text-xs font-normal text-rose-700">({followUpEscalated.length})</span>
             </h3>
-            <p className="mt-1 text-xs text-rose-800">Seit mehr als 48 Stunden nicht zurückgerufen – bitte sofort anrufen.</p>
+            <p className="mt-1 text-xs text-rose-800">Follow-up seit mehr als 24 Stunden fällig – bitte sofort anrufen.</p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {followUpEscalated.map(item => (
                 <DraggableCard key={item.id} item={item} isNew={false} onSelect={setSelectedItem} />
@@ -1013,17 +1068,17 @@ export function SalesKanbanOverview({
             </div>
           </div>
         )}
-        {(followUpDue.length > 0 || finalDue.length > 0) && (
-          <div className={`mb-4 grid gap-4 ${followUpDue.length > 0 && finalDue.length > 0 ? 'lg:grid-cols-2' : ''}`}>
-            {followUpDue.length > 0 && (
+        {(followUpDueNonEscalated.length > 0 || finalDue.length > 0) && (
+          <div className={`mb-4 grid gap-4 ${followUpDueNonEscalated.length > 0 && finalDue.length > 0 ? 'lg:grid-cols-2' : ''}`}>
+            {followUpDueNonEscalated.length > 0 && (
               <div className="rounded-lg border border-orange-200 bg-orange-50/60 p-4">
                 <h3 className="flex items-center gap-2 font-medium text-orange-900">
                   <Phone className="h-4 w-4" />2. Gespräch – Follow-up fällig
-                  <span className="text-xs font-normal text-orange-700">({followUpDue.length})</span>
+                  <span className="text-xs font-normal text-orange-700">({followUpDueNonEscalated.length})</span>
                 </h3>
-                <p className="mt-1 text-xs text-orange-800">Angebot vor mehr als 24 Stunden versendet – bitte anrufen.</p>
+                <p className="mt-1 text-xs text-orange-800">Angebot vor mehr als 24 Stunden versendet bzw. geplanter Anruf fällig – bitte anrufen.</p>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {followUpDue.map(item => (
+                  {followUpDueNonEscalated.map(item => (
                     <DraggableCard key={item.id} item={item} isNew={false} onSelect={setSelectedItem} />
                   ))}
                 </div>
@@ -1050,30 +1105,30 @@ export function SalesKanbanOverview({
           <div className="mt-3">{renderTodoList(todosByDay.today, 'Keine anstehenden Beratungsgespräche für heute.')}</div>
         </div>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          {pastCalls.length > 0 && (
+          {zuBearbeiten.length > 0 && (
             <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-4">
               <h3 className="flex items-center gap-2 font-medium text-amber-900">
                 <Clock className="h-4 w-4" />Zu bearbeiten – stattgefundene Calls
-                <span className="text-xs font-normal text-amber-700">({pastCalls.length})</span>
+                <span className="text-xs font-normal text-amber-700">({zuBearbeiten.length})</span>
               </h3>
               <p className="mt-1 text-xs text-amber-800">Karte in die passende Pipeline-Spalte ziehen (Angebot, 2. Gespräch, Probestunde …).</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {(showAllPast ? pastCalls : pastCalls.slice(0, PAST_CALLS_PREVIEW)).map(item => (
-                  <DraggableCard key={item.id} item={item} isNew onSelect={setSelectedItem} />
+                {(showAllPast ? zuBearbeiten : zuBearbeiten.slice(0, PAST_CALLS_PREVIEW)).map(item => (
+                  <DraggableCard key={item.id} item={item} isNew={item.status === 'new'} onSelect={setSelectedItem} />
                 ))}
               </div>
-              {pastCalls.length > PAST_CALLS_PREVIEW && (
+              {zuBearbeiten.length > PAST_CALLS_PREVIEW && (
                 <button
                   type="button"
                   onClick={() => setShowAllPast(prev => !prev)}
                   className="mt-3 w-full rounded-md py-1.5 text-xs font-medium text-amber-900 transition hover:bg-white/70"
                 >
-                  {showAllPast ? 'Weniger anzeigen' : `Mehr anzeigen (${pastCalls.length - PAST_CALLS_PREVIEW})`}
+                  {showAllPast ? 'Weniger anzeigen' : `Mehr anzeigen (${zuBearbeiten.length - PAST_CALLS_PREVIEW})`}
                 </button>
               )}
             </div>
           )}
-          <div className={`rounded-lg border border-slate-200 bg-slate-50 p-4 ${pastCalls.length === 0 ? 'lg:col-start-2' : ''}`}>
+          <div className={`rounded-lg border border-slate-200 bg-slate-50 p-4 ${zuBearbeiten.length === 0 ? 'lg:col-start-2' : ''}`}>
             <h3 className="flex items-center gap-2 font-medium text-slate-900"><ChevronRight className="h-4 w-4" />{isNextWorkingDayTomorrow ? 'Morgen' : 'Nächster Werktag'}<span className="text-xs font-normal text-slate-500">{formatDayLabel(nextWorkingDay)} · {todosByDay.nextWorkingDay.length}</span></h3>
             <div className="mt-3">{renderTodoList(todosByDay.nextWorkingDay, 'Keine anstehenden Beratungsgespräche für den nächsten Werktag.')}</div>
           </div>

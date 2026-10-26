@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, FormEvent } from 'react';
-import { X, FileText, Eye, Send, ChevronDown, Package as PackageIcon } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { X, FileText, Eye, Send, ChevronDown, Package as PackageIcon, Pencil, RotateCcw } from 'lucide-react';
 import { Lead } from '../../store/salesStore';
 import { supabase } from '../../lib/supabase';
 import { useToastStore } from '../../store/toastStore';
@@ -22,6 +23,7 @@ export interface OfferConfig {
   subjectHours: Record<string, string>;
   months: number;
   beginDate: string | null;
+  hourlyRate?: number | null;
 }
 
 interface PipelineOfferModalProps {
@@ -118,6 +120,15 @@ const CARD_STYLES: Record<OfferTier | 'individuell' | 'elite', { bg: string; tex
   individuell: { bg: cardBg(TIER_EMAIL_STYLES.individuell, 'black'), text: '#FFFFFF', label: '#D1D5DB', title: '#FFFFFF', frame: '#C7CDD6', tagText: '#111111', pattern: patternStyle('black') },
 };
 const ELITE_TEMPLATE_ID = 'angebot-elite';
+const PROBEHOEREN_TEMPLATE_ID = 'elite-probehoeren';
+const CRASHKURS_TEMPLATE_ID = 'klausuren-crashkurs';
+const CRASHKURS_PRICE_H = 158.5;
+const CRASHKURS_EXAMINER_H = 168.5;
+const CRASHKURS_PACKAGES = [
+  { id: 'p6', label: '6 Klausuren (ZR 3 · ÖR 2 · StR 1)', total: '6', zr: '3', oer: '2', str: '1', variant: 'standard' as const },
+  { id: 'p21', label: '21 Klausuren (ZR 10 · ÖR 6 · StR 5)', total: '21', zr: '10', oer: '6', str: '5', variant: 'standard' as const },
+  { id: 'p24', label: '24 Klausuren (ZR 12 · ÖR 8 · StR 4 · 36 Std.)', total: '24', zr: '12', oer: '8', str: '4', variant: 'flat' as const },
+];
 const ELITE_PACKAGE = { name: 'ELITE Kleingruppe 1. Staatsexamen', hours: 382, price: 9785, installments: 13, installment: 752.7 };
 type Salutation = 'herr' | 'frau' | 'divers';
 
@@ -162,7 +173,7 @@ export const summarizeOfferConfig = (config: OfferConfig) => {
       distribution: 'ZR 120 / ÖR 100 / StR 90 Std. + 72 Std. Wiederholung',
     };
   }
-  const rate = getHourlyRate(config.totalHours);
+  const rate = config.hourlyRate ?? getHourlyRate(config.totalHours);
   const price = Math.round(config.totalHours * rate * 100) / 100;
   return {
     name: tier ? TIER_NAMES[tier] : 'Individuelles Angebot 1. Staatsexamen', hours: config.totalHours, price, hourlyRate: rate,
@@ -184,6 +195,11 @@ const parseHours = (v: string) => {
   return Number.isFinite(n) && n > 0 ? n : 0;
 };
 
+const crashDefaultDist = (total: number) => ({
+  zr: String(Math.round(total * 3 / 6)),
+  oer: String(Math.round(total * 2 / 6)),
+  str: String(total - Math.round(total * 3 / 6) - Math.round(total * 2 / 6)),
+});
 const formatHours = (n: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 }).format(n);
 
 const OFFER_SENDER = { name: 'Mario Kraatz', email: 'mariokraatz@kraatz-group.de' };
@@ -193,6 +209,29 @@ const formatEuro = (value: number) =>
 
 const formatDate = (value: string) =>
   value ? new Date(value + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' }) : '';
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const toDateInput = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+const formatCallWhen = (dateStr: string, timeStr: string) => {
+  if (!dateStr || !timeStr) return '';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const [hh, mm] = timeStr.split(':').map(Number);
+  if (!y || !m || !d || Number.isNaN(hh)) return '';
+  const time = mm ? `${hh}:${pad2(mm)}` : `${hh}`;
+  const now = new Date();
+  const dayDiff = Math.round(
+    (new Date(y, m - 1, d).getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 86400000
+  );
+  const weekday = new Date(y, m - 1, d).toLocaleDateString('de-DE', { weekday: 'long' });
+  if (dayDiff === 0) {
+    const part = hh < 12 ? 'Vormittag' : hh < 14 ? 'Mittag' : hh < 18 ? 'Nachmittag' : 'Abend';
+    return `heute ${part} um ${time} Uhr`;
+  }
+  if (dayDiff === 1) return `morgen, ${weekday} den ${d}.${m}. um ${time} Uhr`;
+  if (dayDiff === 2) return `übermorgen, ${weekday} den ${d}.${m}. um ${time} Uhr`;
+  return `am ${weekday}, den ${d}.${m}.${y} um ${time} Uhr`;
+};
 
 export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = 'angebot', title = 'Angebot senden', description, submitLabel = 'Angebot senden', allowSkip = false, skipLabel = 'Ohne Mail verschieben', onSkip, showPackageFields = true, askReason = false, configOnly = false, initialConfig = null }: PipelineOfferModalProps) {
   const { addToast } = useToastStore();
@@ -205,6 +244,19 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [months, setMonths] = useState(12);
+  const [rateOverride, setRateOverride] = useState<number | null>(null);
+  const [editingRate, setEditingRate] = useState(false);
+  const [rateInput, setRateInput] = useState('');
+  const [callEnabled, setCallEnabled] = useState(true);
+  const [callDate, setCallDate] = useState('');
+  const [callTime, setCallTime] = useState('');
+  const [probestundeEnabled, setProbestundeEnabled] = useState(true);
+  const [crashTotalInput, setCrashTotalInput] = useState('6');
+  const [crashSubjects, setCrashSubjects] = useState<Record<SubjectKey, string>>({ zr: '3', oer: '2', str: '1' });
+  const [crashMonths, setCrashMonths] = useState(2);
+  const [crashVariant, setCrashVariant] = useState<'standard' | 'flat'>('standard');
+  const [crashPackage, setCrashPackage] = useState('p6');
+  const [crashHourlyRate, setCrashHourlyRate] = useState('148.50');
   const [beginDate, setBeginDate] = useState(getNextMonday);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
@@ -223,6 +275,12 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
     setFirstName(first);
     setLastName(last);
     setSalutation(guessSalutation(first));
+    setRateOverride(null);
+    setEditingRate(false);
+    setCallEnabled(true);
+    setCallDate('');
+    setCallTime('');
+    setProbestundeEnabled(true);
   }, [lead?.id]);
 
   useEffect(() => {
@@ -231,6 +289,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
     setTotalHoursInput(String(initialConfig.totalHours));
     setSubjectHours(initialConfig.subjectHours as Record<SubjectKey, string>);
     setMonths(initialConfig.months);
+    setRateOverride(initialConfig.hourlyRate ?? null);
     if (initialConfig.beginDate) setBeginDate(initialConfig.beginDate);
   }, [lead?.id]);
 
@@ -251,6 +310,8 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
         setSubject(initial.subject || '');
         setBody(initial.body || '');
         setActiveSections(discoverSections(initial.body || ''));
+        // Telefonat-Baustein: erweiterte Einstellungen offen, damit Datum/Zeit sichtbar sind
+        if (/chstes Telefonat/.test(initial.body || '')) setShowAdvanced(true);
       }
     };
     if (lead && !configOnly) fetchTemplates();
@@ -260,12 +321,23 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
   const distributed = SUBJECTS.reduce((sum, sub) => sum + parseHours(subjectHours[sub.key]), 0);
   const remaining = Math.round((totalHours - distributed) * 100) / 100;
   const isElite = selectedTemplateId === ELITE_TEMPLATE_ID;
+  const isInfoTemplate = selectedTemplateId === PROBEHOEREN_TEMPLATE_ID;
+  const isCrashkurs = selectedTemplateId === CRASHKURS_TEMPLATE_ID;
   const matchedTier = isElite ? null : (Object.keys(TIER_HOURS) as OfferTier[]).find(t => TIER_HOURS[t] === totalHours) || null;
   const cardKey = isElite ? 'elite' : matchedTier || 'individuell';
-  const hourlyRate = getHourlyRate(totalHours);
+  const hourlyRate = rateOverride ?? getHourlyRate(totalHours);
   const totalPrice = Math.round(totalHours * hourlyRate * 100) / 100;
   const monthlyRate = totalPrice / months;
   const packageName = matchedTier ? TIER_NAMES[matchedTier] : 'Individuelles Angebot 1. Staatsexamen';
+  const crashTotal = Math.round(parseFloat(crashTotalInput) || 0);
+  const crashDistributed = SUBJECTS.reduce((sum, sub) => sum + (parseFloat(crashSubjects[sub.key]) || 0), 0);
+  const crashRemaining = crashTotal - crashDistributed;
+  const crashRate = parseFloat(crashHourlyRate.replace(',', '.')) || CRASHKURS_PRICE_H;
+  const canScheduleCall = /chstes Telefonat/.test(body);
+  const callWhen = callEnabled && canScheduleCall ? formatCallWhen(callDate, callTime) : '';
+  const canToggleProbestunde = body.includes('<!--IF:probestunde-->');
+  const crashHours = crashTotal * 1.5;
+  const crashPrice = Math.round(crashHours * crashRate * 100) / 100;
   const selectedPackage = !showPackageFields
     ? null
     : isElite
@@ -277,6 +349,32 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
   const chooseTier = (t: OfferTier) => {
     setTotalHoursInput(String(TIER_HOURS[t]));
     setSubjectHours(defaultDistribution(TIER_HOURS[t]));
+  };
+
+  const startRateEdit = () => {
+    setRateInput(String(hourlyRate).replace('.', ','));
+    setEditingRate(true);
+  };
+
+  const commitRateEdit = () => {
+    const n = Math.round((parseFloat(rateInput.replace(',', '.')) || 0) * 100) / 100;
+    setRateOverride(n > 0 && n !== getHourlyRate(totalHours) ? n : null);
+    setEditingRate(false);
+  };
+
+  const changeCrashPackage = (id: string) => {
+    setCrashPackage(id);
+    const pkg = CRASHKURS_PACKAGES.find(p => p.id === id);
+    if (!pkg) return;
+    setCrashTotalInput(pkg.total);
+    setCrashSubjects({ zr: pkg.zr, oer: pkg.oer, str: pkg.str });
+    setCrashVariant(pkg.variant);
+  };
+
+  const changeCrashTotal = (value: string) => {
+    setCrashTotalInput(value);
+    const n = Math.round(parseFloat(value) || 0);
+    if (n > 0) setCrashSubjects(crashDefaultDist(n));
   };
 
   const changeTotal = (value: string) => {
@@ -314,9 +412,11 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
       '[Stundenpreis]': selectedPackage ? formatEuro(hourlyRate) : '',
       '[Monatsrate]': isElite ? formatEuro(ELITE_PACKAGE.installment) : selectedPackage ? formatEuro(monthlyRate) : '',
     };
+    const defaultRate = getHourlyRate(totalHours);
+    const tierFactor = rateOverride != null && defaultRate > 0 ? hourlyRate / defaultRate : 1;
     (Object.keys(TIER_HOURS) as OfferTier[]).forEach(t => {
       const h = TIER_HOURS[t];
-      const price = Math.round(h * getHourlyRate(h) * 100) / 100;
+      const price = Math.round(h * getHourlyRate(h) * tierFactor * 100) / 100;
       const key = t === 'platin' ? 'Platin' : 'Gold';
       values[`[${key}_Tag]`] = matchedTier === t && selectedPackage
         ? '<span style="display:inline-block;background-color:#2D84C1;color:#FFFFFF;font-size:10px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:10px;vertical-align:middle;">IHR PAKET</span>'
@@ -325,7 +425,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
       values[`[${key}_Rahmen_L]`] = selected ? 'border:3px solid #2D84C1;border-right:0;' : '';
       values[`[${key}_Rahmen_R]`] = selected ? 'border:3px solid #2D84C1;border-left:0;' : '';
       values[`[${key}_Preis]`] = formatEuro(price);
-      values[`[${key}_Stundenpreis]`] = formatEuro(getHourlyRate(h));
+      values[`[${key}_Stundenpreis]`] = formatEuro(getHourlyRate(h) * tierFactor);
       values[`[${key}_Rate]`] = formatEuro(price / months);
     });
     const rowStyle = TIER_EMAIL_STYLES.individuell + 'padding:14px 16px;border:3px solid #2D84C1;';
@@ -337,17 +437,29 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
       values[`[Stunden_${sub.token}]`] = formatHours(h);
       values[`[Klausuren_${sub.token}]`] = String(Math.round((sub.baseExams * h) / sub.baseHours));
     });
+    if (selectedTemplateId === CRASHKURS_TEMPLATE_ID) {
+      values['[K_Zusammenfassung]'] = `${crashTotal} Original-Klausuren &ndash; Zivilrecht (ZR): ${crashSubjects.zr}, &Ouml;ffentliches Recht (&Ouml;R): ${crashSubjects.oer}, Strafrecht (StR): ${crashSubjects.str}.`;
+      const h = CRASHKURS_PRICE_H;
+      const ex = CRASHKURS_EXAMINER_H;
+      values['[K_Preisblock]'] = crashVariant === 'flat'
+        ? `<p style="margin:0 0 10px;font-size:15px;line-height:1.7;">${crashTotal} Klausuren mit ${formatHours(crashHours)} Stunden (Stundensatz: ${formatEuro(crashRate)}) = <strong style="color:#000000;">${formatEuro(crashPrice)}</strong>${crashMonths ? ` (${crashMonths} ${crashMonths === 1 ? 'Monat' : 'Monate'} &agrave; ${formatEuro(crashPrice / crashMonths)})` : ''}.</p>`
+        : `<p style="margin:0 0 6px;font-size:15px;line-height:1.7;"><strong style="color:#000000;">&bdquo;Platin&ldquo; &ndash; Option:</strong> Korrektur (0,5 h) + Besprechung (1,0 h) mit ${formatEuro(h)}/h = 1,5 h/Klausur = ${formatEuro(h * 1.5)}/Klausur (Option: ausschlie&szlig;lich Pr&uuml;fer als Dozent: ${formatEuro(ex)}/h = ${formatEuro(ex * 1.5)}/Klausur)</p>
+<p style="margin:0 0 6px;font-size:15px;line-height:1.7;"><strong style="color:#000000;">&bdquo;Gold&ldquo; &ndash; Option:</strong> Nur Besprechung ohne Korrektur (1,0 h/Klausur) mit ${formatEuro(h)}/h = ${formatEuro(h)}/Klausur (Option: ausschlie&szlig;lich Pr&uuml;fer als Dozent: ${formatEuro(ex)}/h = ${formatEuro(ex)}/Klausur)</p>
+<p style="margin:0 0 10px;font-size:15px;line-height:1.7;"><strong style="color:#000000;">&bdquo;Bronze&ldquo; &ndash; Option:</strong> Nur Korrektur ohne Besprechung (0,5 h/Klausur) mit ${formatEuro(h)}/h = ${formatEuro(h * 0.5)}/Klausur (Option: ausschlie&szlig;lich Pr&uuml;fer als Dozent: ${formatEuro(ex)}/h = ${formatEuro(ex * 0.5)}/Klausur)</p>`;
+    }
     return values;
-  }, [lead, firstName, lastName, salutation, selectedPackage, matchedTier, isElite, cardKey, beginDate, months, hourlyRate, monthlyRate, subjectHours]);
+  }, [lead, firstName, lastName, salutation, selectedPackage, matchedTier, isElite, cardKey, beginDate, months, hourlyRate, monthlyRate, rateOverride, totalHours, subjectHours, selectedTemplateId, crashTotal, crashSubjects, crashMonths, crashVariant, crashHours, crashRate, crashPrice, crashPackage]);
 
   // Bedingte Blöcke (<!--IF:key-->…<!--/IF:key-->) entfernen, wenn der Wert fehlt
   const applyConditionals = (text: string) => {
     const flags: Record<string, boolean> = {
       paket: Boolean(selectedPackage),
       beginn: Boolean(beginDate),
+      probestunde: probestundeEnabled,
+      telefonat: callEnabled,
     };
     flags.angebot = flags.paket || flags.beginn;
-    return ['paket', 'beginn', 'angebot'].reduce(
+    return ['paket', 'beginn', 'angebot', 'probestunde', 'telefonat'].reduce(
       (acc, key) => acc.replace(new RegExp(`<!--IF:${key}-->([\\s\\S]*?)<!--/IF:${key}-->`, 'g'), flags[key] ? '$1' : ''),
       text
     );
@@ -366,7 +478,13 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
     const withConditionals = applyConditionals(withSections);
     const replaceAll = (input: string) =>
       Object.entries(placeholderValues).reduce((acc, [token, value]) => acc.split(token).join(value), input);
-    return replaceAll(replaceAll(withConditionals));
+    let result = replaceAll(replaceAll(withConditionals));
+    if (callWhen) {
+      result = result
+        .split('unser n&auml;chstes Telefonat').join(`unser Telefonat ${callWhen}`)
+        .split('unser nächstes Telefonat').join(`unser Telefonat ${callWhen}`);
+    }
+    return result;
   };
 
   const previewSubject = replacePlaceholders(subject);
@@ -397,6 +515,9 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
     setSubject(template.subject || '');
     setBody(template.body || '');
     setActiveSections(discoverSections(template.body || ''));
+    setCallEnabled(true);
+    setProbestundeEnabled(true);
+    if (/chstes Telefonat/.test(template.body || '')) setShowAdvanced(true);
   };
 
   const handleSend = async (e: FormEvent<HTMLFormElement>) => {
@@ -409,7 +530,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
           beginDate: beginDate || null,
           price: selectedPackage?.price ?? null,
           reason: null,
-          config: { elite: isElite, totalHours, subjectHours, months, beginDate: beginDate || null },
+          config: { elite: isElite, totalHours, subjectHours, months, beginDate: beginDate || null, hourlyRate: isElite ? null : rateOverride },
         });
         onClose();
       } finally {
@@ -417,8 +538,17 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
       }
       return;
     }
+    if (isInfoTemplate && !previewSubject.trim()) {
+      addToast('Betreff ist erforderlich', 'error');
+      return;
+    }
     if (!lead?.email || !previewSubject.trim() || !previewBody.trim()) {
       addToast('E-Mail-Adresse, Betreff und Text sind erforderlich', 'error');
+      return;
+    }
+    if (callEnabled && canScheduleCall && (!callDate || !callTime)) {
+      setShowAdvanced(true);
+      addToast('Bitte Datum und Uhrzeit für das nächste Telefonat angeben (oder Option abhaken)', 'error');
       return;
     }
     setIsSending(true);
@@ -447,18 +577,70 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
             fromEmail: OFFER_SENDER.email,
             replyTo: OFFER_SENDER.email,
             edgeFunction: 'send-offer-email',
-            context: { leadId: lead.id, templateId: selectedTemplateId || null, packageId: isElite ? 'elite' : matchedTier || 'individuell', hours: totalHours, months, subjectHours },
+            context: { leadId: lead.id, templateId: selectedTemplateId || null, packageId: isElite ? 'elite' : matchedTier || 'individuell', hours: totalHours, months, subjectHours, hourlyRate },
           }),
         }
       );
       const result = await response.json();
       if (!response.ok) throw new Error(result?.error || result?.details || 'Send failed');
-      addToast(`Angebot an ${lead.email} versendet`, 'success');
-      await onSent({ packageName: selectedPackage?.name ?? null, beginDate: beginDate || null, price: selectedPackage?.price ?? null, reason: reasonText.trim() || reasonOption || null, config: { elite: isElite, totalHours, subjectHours, months, beginDate: beginDate || null } });
+      let callTodoCreated = false;
+      if (callEnabled && canScheduleCall && callDate && callTime) {
+        const callTodo = {
+          title: `2. Gespräch: ${lead.name}`,
+          description: `Folgetelefonat zum Angebot${selectedPackage ? ` (${selectedPackage.name})` : ''} – in der E-Mail angekündigt als „unser Telefonat ${callWhen}".`,
+          scheduled_date: callDate,
+          scheduled_time: callTime,
+          lead_id: lead.id,
+          teilnehmer_name: lead.name,
+          teilnehmer_email: lead.email,
+          teilnehmer_phone: lead.phone,
+          priority: 'high',
+        };
+        // Bei erneutem Versand das offene To-Do aktualisieren statt zu duplizieren
+        const { data: openCallTodos } = await supabase
+          .from('sales_todos')
+          .select('id')
+          .eq('lead_id', lead.id)
+          .eq('todo_type', 'gespraech_nach_angebot')
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false })
+          .limit(1);
+        const existingCallId = openCallTodos?.[0]?.id;
+        const { error: todoError } = existingCallId
+          ? await supabase.from('sales_todos').update(callTodo).eq('id', existingCallId)
+          : await supabase.from('sales_todos').insert({ ...callTodo, todo_type: 'gespraech_nach_angebot', status: 'pending', vertrieb_user_id: session.user.id });
+        if (todoError) {
+          addToast(`To-Do „2. Gespräch" konnte nicht angelegt werden: ${todoError.message}`, 'error');
+        } else {
+          callTodoCreated = true;
+          // Konvention wie im Vertriebskalender: Finalgespräch am Folgetag anlegen (nur bei neuem To-Do)
+          if (!existingCallId) {
+            const followUp = new Date(`${callDate}T12:00:00`);
+            followUp.setDate(followUp.getDate() + 1);
+            const { error: followUpError } = await supabase.from('sales_todos').insert({
+              todo_type: 'finalgespraech',
+              title: `Finalgespräch: ${lead.name}`,
+              scheduled_date: toDateInput(followUp),
+              scheduled_time: callTime,
+              lead_id: lead.id,
+              teilnehmer_name: lead.name,
+              teilnehmer_email: lead.email,
+              teilnehmer_phone: lead.phone,
+              priority: 'high',
+              status: 'pending',
+              vertrieb_user_id: session.user.id,
+              notes: `Automatisch erstellt nach 2. Gespräch vom ${callDate}`,
+            });
+            if (followUpError) addToast(`To-Do „Finalgespräch" konnte nicht angelegt werden: ${followUpError.message}`, 'error');
+          }
+        }
+      }
+      addToast(`Angebot an ${lead.email} versendet${callTodoCreated ? ' · 2. Gespräch eingeplant' : ''}`, 'success');
+      await onSent({ packageName: selectedPackage?.name ?? null, beginDate: beginDate || null, price: selectedPackage?.price ?? null, reason: reasonText.trim() || reasonOption || null, config: { elite: isElite, totalHours, subjectHours, months, beginDate: beginDate || null, hourlyRate: isElite ? null : rateOverride } });
       onClose();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error sending offer email:', error);
-      addToast(`Versand fehlgeschlagen: ${error.message}`, 'error');
+      addToast(`Versand fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}`, 'error');
     } finally {
       setIsSending(false);
     }
@@ -466,7 +648,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
 
   if (!lead) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex shrink-0 items-center justify-between border-b border-gray-200 p-4 sm:p-6">
@@ -517,21 +699,21 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
           {/* Template-Auswahl */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">E-Mail-Vorlage</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <select
+              value={selectedTemplateId}
+              onChange={e => {
+                const template = templates.find(t => t.id === e.target.value);
+                if (template) selectTemplate(template);
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+            >
               {templates.map(template => (
-                <button
-                  key={template.id}
-                  type="button"
-                  onClick={() => selectTemplate(template)}
-                  className={`text-left p-2.5 rounded-lg border transition-colors ${
-                    selectedTemplateId === template.id ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  <p className="text-sm font-medium text-gray-900">{template.icon} {template.title}</p>
-                  {template.description && <p className="text-xs text-gray-500 truncate">{template.description}</p>}
-                </button>
+                <option key={template.id} value={template.id}>{template.icon} {template.title}</option>
               ))}
-            </div>
+            </select>
+            {templates.find(t => t.id === selectedTemplateId)?.description && (
+              <p className="mt-1 text-xs text-gray-500">{templates.find(t => t.id === selectedTemplateId)?.description}</p>
+            )}
           </div>
 
           {/* Anrede / Vorname / Nachname (Anrede wird standardmäßig aus dem Vornamen erkannt) */}
@@ -569,7 +751,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
           </>)}
 
           {/* Nur Konfiguration: zwischen Einzelunterricht und ELITE Kleingruppe wechseln */}
-          {configOnly && (
+          {configOnly && !isInfoTemplate && (
           <div className="grid grid-cols-2 gap-2">
             {[{ elite: false, label: 'Einzelunterricht' }, { elite: true, label: 'ELITE Kleingruppe' }].map(opt => (
               <button
@@ -584,8 +766,56 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
           </div>
           )}
 
+          {/* Klausuren Crashkurs: Klausuren-Anzahl und Verteilung konfigurierbar */}
+          {showPackageFields && isCrashkurs && (
+          <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Paket</label>
+              <select value={crashPackage} onChange={e => changeCrashPackage(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                {CRASHKURS_PACKAGES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                <option value="custom">Individuell festlegen</option>
+              </select>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-gray-900">Verteilung</p>
+              <select value={crashVariant} onChange={e => setCrashVariant(e.target.value as 'standard' | 'flat')} className="rounded-lg border border-gray-300 px-2 py-1 text-xs">
+                <option value="standard">Pro Klausur (Platin/Gold/Bronze)</option>
+                <option value="flat">Pauschal (Stundensatz)</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Klausuren gesamt</label>
+                <input type="number" min="0" value={crashTotalInput} onChange={e => { setCrashPackage('custom'); changeCrashTotal(e.target.value); }} className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent" />
+              </div>
+              {SUBJECTS.map(sub => (
+                <div key={sub.key}>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">{sub.label.replace(' (ZR)', '').replace(' (ÖR)', '').replace(' (StR)', '')}</label>
+                  <input type="number" min="0" value={crashSubjects[sub.key]} onChange={e => { setCrashPackage('custom'); setCrashSubjects(prev => ({ ...prev, [sub.key]: e.target.value })); }} className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent" />
+                </div>
+              ))}
+            </div>
+            <p className={`text-sm font-medium ${crashRemaining === 0 ? 'text-green-600' : 'text-amber-600'}`}>
+              {crashRemaining === 0 ? `✓ Verteilung geht auf (${crashTotal} Klausuren)` : crashRemaining > 0 ? `Noch ${crashRemaining} Klausur(en) zu verteilen` : `${-crashRemaining} Klausur(en) zu viel verteilt`}
+            </p>
+            {crashVariant === 'flat' && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Laufzeit (Monate)</label>
+                  <input type="number" min="1" value={crashMonths} onChange={e => setCrashMonths(Number(e.target.value))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Stundensatz (€/h)</label>
+                  <input type="text" inputMode="decimal" value={crashHourlyRate} onChange={e => setCrashHourlyRate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent" />
+                </div>
+                <p className="col-span-2 text-xs text-gray-600">Gesamt: {formatEuro(crashPrice)} · {formatHours(crashHours)} Std. (1,5 h/Klausur)</p>
+              </div>
+            )}
+          </div>
+          )}
+
           {/* ELITE Kleingruppe: festes Paket, nur Beginn wählbar */}
-          {showPackageFields && isElite && (
+          {showPackageFields && !isInfoTemplate && !isCrashkurs && isElite && (
           <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
             <p className="text-sm font-semibold text-gray-900">{ELITE_PACKAGE.name}</p>
             <p className="text-xs text-gray-600">max. 8 Teilnehmer · 310 Std. + 72 Std. Wiederholung = {ELITE_PACKAGE.hours} Std. · {formatEuro(ELITE_PACKAGE.price)} · {ELITE_PACKAGE.installments} Raten à {formatEuro(ELITE_PACKAGE.installment)}</p>
@@ -602,7 +832,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
           )}
 
           {/* Paket: PLATIN / GOLD / individuell, Stundenverteilung, Laufzeit */}
-          {showPackageFields && !isElite && (
+          {showPackageFields && !isInfoTemplate && !isCrashkurs && !isElite && (
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
@@ -645,7 +875,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
               </div>
               {SUBJECTS.map(sub => (
                 <div key={sub.key}>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">{sub.label}</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">{sub.label.replace(' (ZR)', '').replace(' (ÖR)', '').replace(' (StR)', '')}</label>
                   <input
                     type="number" min="0" step="0.5"
                     value={subjectHours[sub.key]}
@@ -687,7 +917,46 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
 
             <div className="grid grid-cols-3 gap-3 rounded-lg bg-gray-50 p-3 text-center">
               <div><p className="text-xs text-gray-500">Gesamtpreis</p><p className="text-sm font-semibold text-gray-900">{formatEuro(totalPrice)}</p></div>
-              <div><p className="text-xs text-gray-500">Stundenpreis</p><p className="text-sm font-semibold text-gray-900">{formatEuro(hourlyRate)}</p></div>
+              <div className="group">
+                <p className="text-xs text-gray-500">Stundenpreis</p>
+                {editingRate ? (
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    autoFocus
+                    value={rateInput}
+                    onChange={e => setRateInput(e.target.value)}
+                    onBlur={commitRateEdit}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') commitRateEdit();
+                      if (e.key === 'Escape') setEditingRate(false);
+                    }}
+                    className="mx-auto w-24 rounded border border-primary px-1 py-0.5 text-center text-sm font-semibold text-gray-900 focus:outline-none"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center gap-1">
+                    <p className={`text-sm font-semibold ${rateOverride != null ? 'text-amber-700' : 'text-gray-900'}`}>{formatEuro(hourlyRate)}</p>
+                    <button
+                      type="button"
+                      onClick={startRateEdit}
+                      title="Stundenpreis bearbeiten"
+                      className="invisible text-gray-400 hover:text-primary group-hover:visible"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    {rateOverride != null && (
+                      <button
+                        type="button"
+                        onClick={() => setRateOverride(null)}
+                        title={`Standardpreis wiederherstellen (${formatEuro(getHourlyRate(totalHours))})`}
+                        className="invisible text-gray-400 hover:text-primary group-hover:visible"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
               <div><p className="text-xs text-gray-500">Monatliche Rate</p><p className="text-sm font-semibold text-gray-900">{formatEuro(monthlyRate)}</p></div>
             </div>
           </div>
@@ -719,6 +988,55 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
                   <span className="text-sm text-gray-700">{section.label}</span>
                 </label>
               ))}
+              {canScheduleCall && (
+                <label className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={callEnabled}
+                    onChange={e => setCallEnabled(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  <span className="text-sm text-gray-700">Nächstes Telefonat am …</span>
+                </label>
+              )}
+              {callEnabled && canScheduleCall && (
+                <div className="sm:col-span-2 grid grid-cols-2 gap-2 p-1.5">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Datum</label>
+                    <input
+                      type="date"
+                      value={callDate}
+                      onChange={e => setCallDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Uhrzeit</label>
+                    <input
+                      type="time"
+                      value={callTime}
+                      onChange={e => setCallTime(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                    />
+                  </div>
+                  {callWhen && (
+                    <p className="col-span-2 text-xs text-gray-500">
+                      In der Mail: „unser Telefonat {callWhen}" · wird zusätzlich als To-Do „2. Gespräch" eingeplant
+                    </p>
+                  )}
+                </div>
+              )}
+              {canToggleProbestunde && (
+                <label className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={probestundeEnabled}
+                    onChange={e => setProbestundeEnabled(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  <span className="text-sm text-gray-700">Kostenfreie Probestunde erwähnen</span>
+                </label>
+              )}
             </div>
             )}
           </div>
@@ -848,6 +1166,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
