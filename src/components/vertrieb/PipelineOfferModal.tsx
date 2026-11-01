@@ -24,6 +24,8 @@ export interface OfferConfig {
   months: number;
   beginDate: string | null;
   hourlyRate?: number | null;
+  /** Klausuren Crashkurs – zuletzt konfigurierte Paketwahl des Leads. */
+  crashkurs?: { tier: OfferTier; total: number; subjects: Record<string, string> } | null;
 }
 
 interface PipelineOfferModalProps {
@@ -128,6 +130,37 @@ const CRASHKURS_OPTIONS: Record<OfferTier, { price: number; hoursPerExam: number
   gold: { price: 158.5, hoursPerExam: 1, info: 'Besprechung' },
 };
 const CRASHKURS_DEFAULT = { total: '24', subjects: { zr: '12', oer: '8', str: '4' } };
+const crashDraftKey = (leadId: string) => `crashkurs-draft:${leadId}`;
+const templateDraftKey = (leadId: string) => `offer-template-draft:${leadId}`;
+
+// Zuletzt gewählte E-Mail-Vorlage des Leads (überlebt das Schließen des Modals)
+const loadTemplateDraft = (leadId: string): string | null => {
+  try {
+    return localStorage.getItem(templateDraftKey(leadId));
+  } catch {
+    return null;
+  }
+};
+const saveTemplateDraft = (leadId: string, templateId: string) => {
+  try {
+    localStorage.setItem(templateDraftKey(leadId), templateId);
+  } catch {
+    /* ignore */
+  }
+};
+
+// Zuletzt konfigurierte Crashkurs-Einstellungen des Leads (überlebt das Schließen des Modals)
+const loadCrashDraft = (leadId: string): OfferConfig['crashkurs'] => {
+  try {
+    const raw = localStorage.getItem(crashDraftKey(leadId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as OfferConfig['crashkurs'];
+    if (parsed && (parsed.tier === 'platin' || parsed.tier === 'gold') && parsed.subjects) return parsed;
+  } catch {
+    /* ignore */
+  }
+  return null;
+};
 const ELITE_PACKAGE = { name: 'ELITE Kleingruppe 1. Staatsexamen', hours: 382, price: 9785, installments: 13, installment: 752.7 };
 type Salutation = 'herr' | 'frau' | 'divers';
 
@@ -362,7 +395,24 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
     if (initialConfig.beginDate) setBeginDate(initialConfig.beginDate);
   }, [lead?.id]);
 
+  // Crashkurs: zuletzt konfigurierte Einstellungen des Leads wiederherstellen
   useEffect(() => {
+    if (!lead || configOnly) return;
+    const draft = loadCrashDraft(lead.id) ?? initialConfig?.crashkurs ?? null;
+    if (draft) {
+      setCrashTier(draft.tier);
+      setCrashTotalInput(String(draft.total));
+      setCrashSubjects(draft.subjects as Record<SubjectKey, string>);
+    } else {
+      setCrashTier('platin');
+      setCrashTotalInput(CRASHKURS_DEFAULT.total);
+      setCrashSubjects(CRASHKURS_DEFAULT.subjects);
+    }
+  }, [lead?.id]);
+
+  useEffect(() => {
+    if (!lead || configOnly) return;
+    const leadId = lead.id;
     const fetchTemplates = async () => {
       const { data } = await supabase
         .from('email_templates')
@@ -373,7 +423,13 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
       const all = offerTemplates.length > 0 ? offerTemplates : rows;
       setTemplates(all);
       if (all.length > 0) {
-        const initial = (initialConfig?.elite && all.find(t => t.id === ELITE_TEMPLATE_ID)) || all[0];
+        const savedTemplateId = loadTemplateDraft(leadId);
+        const preferredTemplateId = savedTemplateId
+          || (initialConfig?.crashkurs ? CRASHKURS_TEMPLATE_ID : null)
+          || (initialConfig?.elite ? ELITE_TEMPLATE_ID : null);
+        const initial = preferredTemplateId
+          ? (all.find(t => t.id === preferredTemplateId) || all[0])
+          : all[0];
         setSelectedTemplateId(initial.id);
         setIsHtml(Boolean(initial.is_html));
         setSubject(initial.subject || '');
@@ -383,7 +439,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
         if (/chstes Telefonat/.test(initial.body || '')) setShowAdvanced(true);
       }
     };
-    if (lead && !configOnly) fetchTemplates();
+    fetchTemplates();
   }, [lead?.id, templateCategory]);
 
   const totalHours = parseHours(totalHoursInput);
@@ -420,6 +476,26 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
       : totalHours > 0
         ? { name: packageName, hours: totalHours, price: totalPrice }
         : null;
+
+  // Crashkurs-Konfiguration als Draft speichern, damit sie beim Schließen erhalten bleibt
+  useEffect(() => {
+    if (!lead || !isCrashkurs) return;
+    try {
+      localStorage.setItem(crashDraftKey(lead.id), JSON.stringify({ tier: crashTier, total: crashTotal, subjects: crashSubjects }));
+    } catch {
+      /* Speicher nicht verfügbar – ignorieren */
+    }
+  }, [lead?.id, isCrashkurs, crashTier, crashTotal, crashSubjects]);
+
+  const buildOfferConfig = (): OfferConfig => ({
+    elite: isElite,
+    totalHours,
+    subjectHours,
+    months,
+    beginDate: beginDate || null,
+    hourlyRate: isElite ? null : rateOverride,
+    crashkurs: isCrashkurs ? { tier: crashTier, total: crashTotal, subjects: crashSubjects } : null,
+  });
 
   const chooseTier = (t: OfferTier) => {
     setTotalHoursInput(String(TIER_HOURS[t]));
@@ -466,6 +542,11 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
   const resetCrashDefault = () => {
     setCrashTotalInput(CRASHKURS_DEFAULT.total);
     setCrashSubjects(CRASHKURS_DEFAULT.subjects);
+  };
+  // Paketwahl (Platin/Gold) setzt Verteilung immer auf den Standard zurück
+  const selectCrashTier = (tier: OfferTier) => {
+    setCrashTier(tier);
+    resetCrashDefault();
   };
   const crashIsDefault = crashTotalInput === CRASHKURS_DEFAULT.total && SUBJECTS.every(s => crashSubjects[s.key] === CRASHKURS_DEFAULT.subjects[s.key]);
 
@@ -635,6 +716,7 @@ ${priceRow('gold', 'Nur Besprechung (1 h/Klausur), keine Korrektur')}
     setCallEnabled(true);
     setProbestundeEnabled(false);
     if (/chstes Telefonat/.test(template.body || '')) setShowAdvanced(true);
+    if (lead) saveTemplateDraft(lead.id, template.id);
   };
 
   const handleSend = async (e: FormEvent<HTMLFormElement>) => {
@@ -647,7 +729,7 @@ ${priceRow('gold', 'Nur Besprechung (1 h/Klausur), keine Korrektur')}
           beginDate: beginDate || null,
           price: selectedPackage?.price ?? null,
           reason: null,
-          config: { elite: isElite, totalHours, subjectHours, months, beginDate: beginDate || null, hourlyRate: isElite ? null : rateOverride },
+          config: buildOfferConfig(),
         });
         onClose();
       } finally {
@@ -761,7 +843,7 @@ ${priceRow('gold', 'Nur Besprechung (1 h/Klausur), keine Korrektur')}
         }
       }
       addToast(`Angebot an ${lead.email} versendet${callTodoCreated ? ' · 2. Gespräch eingeplant' : ''}`, 'success');
-      await onSent({ packageName: selectedPackage?.name ?? null, beginDate: beginDate || null, price: selectedPackage?.price ?? null, reason: reasonText.trim() || reasonOption || null, config: { elite: isElite, totalHours, subjectHours, months, beginDate: beginDate || null, hourlyRate: isElite ? null : rateOverride } });
+      await onSent({ packageName: selectedPackage?.name ?? null, beginDate: beginDate || null, price: selectedPackage?.price ?? null, reason: reasonText.trim() || reasonOption || null, config: buildOfferConfig() });
       onClose();
     } catch (error) {
       console.error('Error sending offer email:', error);
@@ -772,6 +854,19 @@ ${priceRow('gold', 'Nur Besprechung (1 h/Klausur), keine Korrektur')}
   };
 
   if (!lead) return null;
+
+  // "Angebot senden" erst freigeben, wenn Verteilung aufgeht und Telefonat vollständig ist
+  const hoursUnbalanced = !configOnly && showPackageFields && !isInfoTemplate && !isCrashkurs && !isElite && remaining !== 0;
+  const klausurenUnbalanced = !configOnly && isCrashkurs && crashRemaining !== 0;
+  const callIncomplete = !configOnly && callEnabled && canScheduleCall && (!callDate || !callTime);
+  const submitBlocked = hoursUnbalanced || klausurenUnbalanced || callIncomplete;
+  const submitBlockedReason = hoursUnbalanced
+    ? 'Die Stundenverteilung geht nicht auf.'
+    : klausurenUnbalanced
+      ? 'Die Klausurenverteilung geht nicht auf.'
+      : callIncomplete
+        ? 'Bitte Datum und Uhrzeit für das nächste Telefonat angeben.'
+        : '';
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -903,7 +998,7 @@ ${priceRow('gold', 'Nur Besprechung (1 h/Klausur), keine Korrektur')}
                   <button
                     key={t}
                     type="button"
-                    onClick={() => setCrashTier(t)}
+                    onClick={() => selectCrashTier(t)}
                     style={{
                       background: t === 'platin'
                         ? 'linear-gradient(135deg,#f8fafc 0%,#cfd6de 25%,#ffffff 45%,#aeb7c2 70%,#e9edf1 100%)'
@@ -1296,8 +1391,13 @@ ${priceRow('gold', 'Nur Besprechung (1 h/Klausur), keine Korrektur')}
             </button>
             <button
               type="submit"
-              disabled={isSending || (!configOnly && !lead.email)}
-              className="flex items-center px-4 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition disabled:opacity-50"
+              disabled={isSending || (!configOnly && !lead.email) || submitBlocked}
+              title={submitBlocked ? submitBlockedReason : undefined}
+              className={`flex items-center px-4 py-2 text-sm text-white rounded-lg transition disabled:opacity-60 ${
+                (!configOnly && !lead.email) || submitBlocked
+                  ? 'bg-gray-300 cursor-not-allowed'
+                  : 'bg-amber-600 hover:bg-amber-700'
+              }`}
             >
               <Send className="h-4 w-4 mr-1.5" />{isSending ? (configOnly ? 'Wird gespeichert...' : 'Wird gesendet...') : submitLabel}
             </button>

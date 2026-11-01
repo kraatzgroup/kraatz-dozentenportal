@@ -1364,6 +1364,7 @@ export function SalesKanbanOverview({
       {/* Angebot senden */}
       <PipelineOfferModal
         lead={offerLead}
+        initialConfig={deriveOfferConfig(offerLead)}
         allowSkip
         skipLabel="Ohne Mail verschieben"
         onSkip={handleOfferSkip}
