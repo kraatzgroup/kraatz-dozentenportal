@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { X, FileText, Eye, Send, ChevronDown, Package as PackageIcon, Pencil, RotateCcw } from 'lucide-react';
 import { Lead } from '../../store/salesStore';
@@ -233,6 +233,65 @@ const formatCallWhen = (dateStr: string, timeStr: string) => {
   return `am ${weekday}, den ${d}.${m}.${y} um ${time} Uhr`;
 };
 
+interface PriceCellProps {
+  label: string;
+  display: string;
+  editing: boolean;
+  inputValue: string;
+  overridden: boolean;
+  onStartEdit: () => void;
+  onInputChange: (value: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+  onReset: () => void;
+  resetTitle: string;
+}
+
+function PriceCell({ label, display, editing, inputValue, overridden, onStartEdit, onInputChange, onCommit, onCancel, onReset, resetTitle }: PriceCellProps) {
+  return (
+    <div className="group">
+      <p className="text-xs text-gray-500">{label}</p>
+      {editing ? (
+        <input
+          type="text"
+          inputMode="decimal"
+          autoFocus
+          value={inputValue}
+          onChange={e => onInputChange(e.target.value)}
+          onBlur={onCommit}
+          onKeyDown={e => {
+            if (e.key === 'Enter') onCommit();
+            if (e.key === 'Escape') onCancel();
+          }}
+          className="mx-auto w-24 rounded border border-primary px-1 py-0.5 text-center text-sm font-semibold text-gray-900 focus:outline-none"
+        />
+      ) : (
+        <div className="flex items-center justify-center gap-1">
+          <p className={`text-sm font-semibold ${overridden ? 'text-amber-700' : 'text-gray-900'}`}>{display}</p>
+          <button
+            type="button"
+            onClick={onStartEdit}
+            title={`${label} bearbeiten`}
+            className="invisible text-gray-400 hover:text-primary group-hover:visible"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          {overridden && (
+            <button
+              type="button"
+              onClick={onReset}
+              title={resetTitle}
+              className="invisible text-gray-400 hover:text-primary group-hover:visible"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = 'angebot', title = 'Angebot senden', description, submitLabel = 'Angebot senden', allowSkip = false, skipLabel = 'Ohne Mail verschieben', onSkip, showPackageFields = true, askReason = false, configOnly = false, initialConfig = null }: PipelineOfferModalProps) {
   const { addToast } = useToastStore();
   const [templates, setTemplates] = useState<EmailTemplateRow[]>([]);
@@ -247,10 +306,14 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
   const [rateOverride, setRateOverride] = useState<number | null>(null);
   const [editingRate, setEditingRate] = useState(false);
   const [rateInput, setRateInput] = useState('');
+  const [editingTotal, setEditingTotal] = useState(false);
+  const [totalInput, setTotalInput] = useState('');
+  const [editingMonthly, setEditingMonthly] = useState(false);
+  const [monthlyInput, setMonthlyInput] = useState('');
   const [callEnabled, setCallEnabled] = useState(true);
   const [callDate, setCallDate] = useState('');
   const [callTime, setCallTime] = useState('');
-  const [probestundeEnabled, setProbestundeEnabled] = useState(true);
+  const [probestundeEnabled, setProbestundeEnabled] = useState(false);
   const [crashTotalInput, setCrashTotalInput] = useState('6');
   const [crashSubjects, setCrashSubjects] = useState<Record<SubjectKey, string>>({ zr: '3', oer: '2', str: '1' });
   const [crashMonths, setCrashMonths] = useState(2);
@@ -267,6 +330,14 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
   const [reasonOption, setReasonOption] = useState('');
   const [reasonText, setReasonText] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const subjectRef = useRef<HTMLInputElement>(null);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const callRef = useRef<HTMLDivElement>(null);
+  const distRef = useRef<HTMLDivElement>(null);
+
+  const scrollToIssue = (ref: { current: HTMLElement | null }) => {
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
 
   useEffect(() => {
     if (!lead) return;
@@ -277,10 +348,12 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
     setSalutation(guessSalutation(first));
     setRateOverride(null);
     setEditingRate(false);
+    setEditingTotal(false);
+    setEditingMonthly(false);
     setCallEnabled(true);
     setCallDate('');
     setCallTime('');
-    setProbestundeEnabled(true);
+    setProbestundeEnabled(false);
   }, [lead?.id]);
 
   useEffect(() => {
@@ -325,9 +398,12 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
   const isCrashkurs = selectedTemplateId === CRASHKURS_TEMPLATE_ID;
   const matchedTier = isElite ? null : (Object.keys(TIER_HOURS) as OfferTier[]).find(t => TIER_HOURS[t] === totalHours) || null;
   const cardKey = isElite ? 'elite' : matchedTier || 'individuell';
-  const hourlyRate = rateOverride ?? getHourlyRate(totalHours);
+  const defaultHourlyRate = getHourlyRate(totalHours);
+  const hourlyRate = rateOverride ?? defaultHourlyRate;
   const totalPrice = Math.round(totalHours * hourlyRate * 100) / 100;
   const monthlyRate = totalPrice / months;
+  const defaultTotalPrice = Math.round(totalHours * defaultHourlyRate * 100) / 100;
+  const defaultMonthlyRate = defaultTotalPrice / months;
   const packageName = matchedTier ? TIER_NAMES[matchedTier] : 'Individuelles Angebot 1. Staatsexamen';
   const crashTotal = Math.round(parseFloat(crashTotalInput) || 0);
   const crashDistributed = SUBJECTS.reduce((sum, sub) => sum + (parseFloat(crashSubjects[sub.key]) || 0), 0);
@@ -335,6 +411,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
   const crashRate = parseFloat(crashHourlyRate.replace(',', '.')) || CRASHKURS_PRICE_H;
   const canScheduleCall = /chstes Telefonat/.test(body);
   const callWhen = callEnabled && canScheduleCall ? formatCallWhen(callDate, callTime) : '';
+  const callMissingDetails = callEnabled && canScheduleCall && (!callDate || !callTime);
   const canToggleProbestunde = body.includes('<!--IF:probestunde-->');
   const crashHours = crashTotal * 1.5;
   const crashPrice = Math.round(crashHours * crashRate * 100) / 100;
@@ -352,7 +429,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
   };
 
   const startRateEdit = () => {
-    setRateInput(String(hourlyRate).replace('.', ','));
+    setRateInput(String(Math.round(hourlyRate * 100) / 100).replace('.', ','));
     setEditingRate(true);
   };
 
@@ -360,6 +437,32 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
     const n = Math.round((parseFloat(rateInput.replace(',', '.')) || 0) * 100) / 100;
     setRateOverride(n > 0 && n !== getHourlyRate(totalHours) ? n : null);
     setEditingRate(false);
+  };
+
+  const startTotalEdit = () => {
+    setTotalInput(String(totalPrice).replace('.', ','));
+    setEditingTotal(true);
+  };
+
+  const commitTotalEdit = () => {
+    const n = parseFloat(totalInput.replace(',', '.')) || 0;
+    setEditingTotal(false);
+    if (n <= 0 || totalHours <= 0) return;
+    const rate = n / totalHours;
+    setRateOverride(Math.abs(rate - defaultHourlyRate) < 0.005 ? null : rate);
+  };
+
+  const startMonthlyEdit = () => {
+    setMonthlyInput(String(Math.round(monthlyRate * 100) / 100).replace('.', ','));
+    setEditingMonthly(true);
+  };
+
+  const commitMonthlyEdit = () => {
+    const n = parseFloat(monthlyInput.replace(',', '.')) || 0;
+    setEditingMonthly(false);
+    if (n <= 0 || totalHours <= 0) return;
+    const rate = (n * months) / totalHours;
+    setRateOverride(Math.abs(rate - defaultHourlyRate) < 0.005 ? null : rate);
   };
 
   const changeCrashPackage = (id: string) => {
@@ -516,7 +619,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
     setBody(template.body || '');
     setActiveSections(discoverSections(template.body || ''));
     setCallEnabled(true);
-    setProbestundeEnabled(true);
+    setProbestundeEnabled(false);
     if (/chstes Telefonat/.test(template.body || '')) setShowAdvanced(true);
   };
 
@@ -540,15 +643,23 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
     }
     if (isInfoTemplate && !previewSubject.trim()) {
       addToast('Betreff ist erforderlich', 'error');
+      scrollToIssue(subjectRef);
       return;
     }
     if (!lead?.email || !previewSubject.trim() || !previewBody.trim()) {
       addToast('E-Mail-Adresse, Betreff und Text sind erforderlich', 'error');
+      scrollToIssue(!previewSubject.trim() ? subjectRef : bodyRef);
+      return;
+    }
+    if (showPackageFields && !isInfoTemplate && !isCrashkurs && !isElite && remaining !== 0) {
+      addToast('Die Stundenverteilung geht nicht auf – bitte Gesamtstunden und Fächer anpassen', 'error');
+      scrollToIssue(distRef);
       return;
     }
     if (callEnabled && canScheduleCall && (!callDate || !callTime)) {
       setShowAdvanced(true);
       addToast('Bitte Datum und Uhrzeit für das nächste Telefonat angeben (oder Option abhaken)', 'error');
+      setTimeout(() => scrollToIssue(callRef), 100);
       return;
     }
     setIsSending(true);
@@ -863,7 +974,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
               {!matchedTier && <p className="mt-1 text-xs text-amber-600">Individuelles Angebot (abweichende Stundenzahl)</p>}
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div ref={distRef} className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Gesamtstunden</label>
                 <input
@@ -916,48 +1027,45 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
             </div>
 
             <div className="grid grid-cols-3 gap-3 rounded-lg bg-gray-50 p-3 text-center">
-              <div><p className="text-xs text-gray-500">Gesamtpreis</p><p className="text-sm font-semibold text-gray-900">{formatEuro(totalPrice)}</p></div>
-              <div className="group">
-                <p className="text-xs text-gray-500">Stundenpreis</p>
-                {editingRate ? (
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    autoFocus
-                    value={rateInput}
-                    onChange={e => setRateInput(e.target.value)}
-                    onBlur={commitRateEdit}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') commitRateEdit();
-                      if (e.key === 'Escape') setEditingRate(false);
-                    }}
-                    className="mx-auto w-24 rounded border border-primary px-1 py-0.5 text-center text-sm font-semibold text-gray-900 focus:outline-none"
-                  />
-                ) : (
-                  <div className="flex items-center justify-center gap-1">
-                    <p className={`text-sm font-semibold ${rateOverride != null ? 'text-amber-700' : 'text-gray-900'}`}>{formatEuro(hourlyRate)}</p>
-                    <button
-                      type="button"
-                      onClick={startRateEdit}
-                      title="Stundenpreis bearbeiten"
-                      className="invisible text-gray-400 hover:text-primary group-hover:visible"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    {rateOverride != null && (
-                      <button
-                        type="button"
-                        onClick={() => setRateOverride(null)}
-                        title={`Standardpreis wiederherstellen (${formatEuro(getHourlyRate(totalHours))})`}
-                        className="invisible text-gray-400 hover:text-primary group-hover:visible"
-                      >
-                        <RotateCcw className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div><p className="text-xs text-gray-500">Monatliche Rate</p><p className="text-sm font-semibold text-gray-900">{formatEuro(monthlyRate)}</p></div>
+              <PriceCell
+                label="Gesamtpreis"
+                display={formatEuro(totalPrice)}
+                editing={editingTotal}
+                inputValue={totalInput}
+                overridden={rateOverride != null}
+                onStartEdit={startTotalEdit}
+                onInputChange={setTotalInput}
+                onCommit={commitTotalEdit}
+                onCancel={() => setEditingTotal(false)}
+                onReset={() => setRateOverride(null)}
+                resetTitle={`Standardpreis wiederherstellen (${formatEuro(defaultTotalPrice)})`}
+              />
+              <PriceCell
+                label="Stundenpreis"
+                display={formatEuro(hourlyRate)}
+                editing={editingRate}
+                inputValue={rateInput}
+                overridden={rateOverride != null}
+                onStartEdit={startRateEdit}
+                onInputChange={setRateInput}
+                onCommit={commitRateEdit}
+                onCancel={() => setEditingRate(false)}
+                onReset={() => setRateOverride(null)}
+                resetTitle={`Standardpreis wiederherstellen (${formatEuro(defaultHourlyRate)})`}
+              />
+              <PriceCell
+                label="Monatliche Rate"
+                display={formatEuro(monthlyRate)}
+                editing={editingMonthly}
+                inputValue={monthlyInput}
+                overridden={rateOverride != null}
+                onStartEdit={startMonthlyEdit}
+                onInputChange={setMonthlyInput}
+                onCommit={commitMonthlyEdit}
+                onCancel={() => setEditingMonthly(false)}
+                onReset={() => setRateOverride(null)}
+                resetTitle={`Standardpreis wiederherstellen (${formatEuro(defaultMonthlyRate)})`}
+              />
             </div>
           </div>
           )}
@@ -1000,14 +1108,14 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
                 </label>
               )}
               {callEnabled && canScheduleCall && (
-                <div className="sm:col-span-2 grid grid-cols-2 gap-2 p-1.5">
+                <div ref={callRef} className="sm:col-span-2 grid grid-cols-2 gap-2 p-1.5">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Datum</label>
                     <input
                       type="date"
                       value={callDate}
                       onChange={e => setCallDate(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm ${callMissingDetails ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
                     />
                   </div>
                   <div>
@@ -1016,9 +1124,14 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
                       type="time"
                       value={callTime}
                       onChange={e => setCallTime(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm ${callMissingDetails ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
                     />
                   </div>
+                  {callMissingDetails && (
+                    <p className="col-span-2 text-xs font-medium text-red-600">
+                      Bitte Datum und Uhrzeit für das Telefonat angeben oder die Option abhaken.
+                    </p>
+                  )}
                   {callWhen && (
                     <p className="col-span-2 text-xs text-gray-500">
                       In der Mail: „unser Telefonat {callWhen}" · wird zusätzlich als To-Do „2. Gespräch" eingeplant
@@ -1046,6 +1159,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Betreff</label>
             <input
+              ref={subjectRef}
               type="text"
               value={subject}
               onChange={e => setSubject(e.target.value)}
@@ -1101,6 +1215,7 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
               </div>
             </div>
             <textarea
+              ref={bodyRef}
               value={body}
               onChange={e => setBody(e.target.value)}
               rows={8}
