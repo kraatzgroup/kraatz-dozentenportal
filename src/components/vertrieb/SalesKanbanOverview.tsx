@@ -248,11 +248,29 @@ const getSafeHttpUrl = (value: string | null | undefined) => {
   }
 };
 
+interface CardAction {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  href?: string;
+  onClick?: () => void;
+}
+
 interface DraggableCardProps {
   item: PipelineItem;
   isNew: boolean;
   onSelect: (item: PipelineItem) => void;
+  action?: CardAction;
 }
+
+// Verhindert, dass Klicks auf Buttons in der Karte einen Drag oder das Detail-Modal auslösen
+const stopCardEvents = {
+  onPointerDown: (e: React.SyntheticEvent) => e.stopPropagation(),
+  onMouseDown: (e: React.SyntheticEvent) => e.stopPropagation(),
+  onTouchStart: (e: React.SyntheticEvent) => e.stopPropagation(),
+  onKeyDown: (e: React.SyntheticEvent) => e.stopPropagation(),
+};
+
+const telHref = (phone: string | null) => (phone ? `tel:${phone.replace(/[^\d+]/g, '')}` : undefined);
 
 function CardContent({ item, isNew }: { item: PipelineItem; isNew: boolean }) {
   const examTag = getExamTag(item.examGoal);
@@ -328,7 +346,7 @@ function CardContent({ item, isNew }: { item: PipelineItem; isNew: boolean }) {
 
 const EditLeadContext = createContext<(item: PipelineItem) => void>(() => {});
 
-function DraggableCard({ item, isNew, onSelect }: DraggableCardProps) {
+function DraggableCard({ item, isNew, onSelect, action }: DraggableCardProps) {
   const onEdit = useContext(EditLeadContext);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: item.id });
 
@@ -356,16 +374,91 @@ function DraggableCard({ item, isNew, onSelect }: DraggableCardProps) {
         type="button"
         title="Stammdaten bearbeiten"
         aria-label={`Stammdaten bearbeiten: ${item.title}`}
-        onPointerDown={e => e.stopPropagation()}
-        onMouseDown={e => e.stopPropagation()}
-        onTouchStart={e => e.stopPropagation()}
-        onKeyDown={e => e.stopPropagation()}
+        {...stopCardEvents}
         onClick={e => { e.stopPropagation(); onEdit(item); }}
         className="absolute right-1.5 top-1.5 rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
       >
         <Pencil className="h-3.5 w-3.5" />
       </button>
       <CardContent item={item} isNew={isNew} />
+      {action && (() => {
+        const ActionIcon = action.icon;
+        const className = 'mt-2 inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white shadow-sm transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400';
+        const content = <><ActionIcon className="h-3.5 w-3.5" />{action.label}</>;
+        return action.href ? (
+          <a href={action.href} {...stopCardEvents} onClick={e => e.stopPropagation()} className={className}>{content}</a>
+        ) : (
+          <button type="button" {...stopCardEvents} onClick={e => { e.stopPropagation(); action.onClick?.(); }} className={className}>{content}</button>
+        );
+      })()}
+    </div>
+  );
+}
+
+type TodoTierId = 'critical' | 'due' | 'planned';
+
+const TIER_STYLES: Record<TodoTierId, { wrap: string; stripe: string; title: string; text: string; chip: string; chipActive: string }> = {
+  critical: {
+    wrap: 'border-rose-200 bg-rose-50/60', stripe: 'bg-rose-500', title: 'text-rose-900', text: 'text-rose-800',
+    chip: 'border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100', chipActive: 'border-rose-500 bg-rose-600 text-white',
+  },
+  due: {
+    wrap: 'border-amber-200 bg-amber-50/60', stripe: 'bg-amber-500', title: 'text-amber-900', text: 'text-amber-800',
+    chip: 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100', chipActive: 'border-amber-500 bg-amber-500 text-white',
+  },
+  planned: {
+    wrap: 'border-blue-100 bg-blue-50/40', stripe: 'bg-blue-500', title: 'text-blue-900', text: 'text-blue-800',
+    chip: 'border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100', chipActive: 'border-blue-500 bg-blue-600 text-white',
+  },
+};
+
+function TodoTier({ tier, title, description, count, children }: { tier: TodoTierId; title: string; description: string; count: number; children: React.ReactNode }) {
+  const s = TIER_STYLES[tier];
+  return (
+    <div className={`relative overflow-hidden rounded-lg border p-4 pl-5 ${s.wrap}`}>
+      <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-1 ${s.stripe}`} />
+      <div className="flex items-baseline gap-2">
+        <h3 className={`font-semibold ${s.title}`}>{title}</h3>
+        <span className={`text-xs ${s.text}`}>({count})</span>
+      </div>
+      <p className={`mt-0.5 text-xs ${s.text}`}>{description}</p>
+      <div className="mt-4 space-y-5">{children}</div>
+    </div>
+  );
+}
+
+interface TodoGroupProps {
+  tier: TodoTierId;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  hint?: string;
+  items: PipelineItem[];
+  renderItem: (item: PipelineItem) => React.ReactNode;
+  limit?: number;
+}
+
+function TodoGroup({ tier, icon: Icon, label, hint, items, renderItem, limit }: TodoGroupProps) {
+  const [expanded, setExpanded] = useState(false);
+  if (items.length === 0) return null;
+  const s = TIER_STYLES[tier];
+  const visible = limit && !expanded ? items.slice(0, limit) : items;
+  return (
+    <div>
+      <h4 className={`flex items-center gap-1.5 text-sm font-medium ${s.title}`}>
+        <Icon className="h-4 w-4" />{label}
+        <span className={`text-xs font-normal ${s.text}`}>({items.length})</span>
+      </h4>
+      {hint && <p className="mt-0.5 text-xs text-slate-500">{hint}</p>}
+      <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{visible.map(renderItem)}</div>
+      {limit !== undefined && items.length > limit && (
+        <button
+          type="button"
+          onClick={() => setExpanded(prev => !prev)}
+          className={`mt-2 w-full rounded-md py-1.5 text-xs font-medium transition hover:bg-white/70 ${s.title}`}
+        >
+          {expanded ? 'Weniger anzeigen' : `Mehr anzeigen (${items.length - limit})`}
+        </button>
+      )}
     </div>
   );
 }
@@ -461,7 +554,7 @@ export function SalesKanbanOverview({
   const { addToast } = useToastStore();
   const [selectedItem, setSelectedItem] = useState<PipelineItem | null>(null);
   const [isLeadCreateModalOpen, setIsLeadCreateModalOpen] = useState(false);
-  const [showAllPast, setShowAllPast] = useState(false);
+  const [todoFilter, setTodoFilter] = useState<TodoTierId | 'all'>('all');
   const [offerLead, setOfferLead] = useState<Lead | null>(null);
   const [downsellRequest, setDownsellRequest] = useState<Lead | null>(null);
   const [historyLead, setHistoryLead] = useState<Lead | null>(null);
@@ -1047,6 +1140,45 @@ export function SalesKanbanOverview({
     ? COLUMNS.find(c => c.id === selectedItem.column)?.label ?? STATUS_LABELS[selectedItem.status] ?? 'Beratungsgespräch'
     : null;
 
+  // Abgelehnte Probestunde: Anfrage mit den bisherigen Daten neu öffnen (abgelehnter Dozent vorgemerkt)
+  const openTrialReRequest = (item: PipelineItem) => {
+    if (!item.lead || !item.rejectedTrial) return;
+    const t = item.rejectedTrial;
+    setTrialRequest({
+      lead: item.lead,
+      initial: {
+        teilnehmer_name: t.teilnehmer_name || item.lead.name,
+        teilnehmer_email: t.teilnehmer_email || item.lead.email,
+        teilnehmer_phone: t.teilnehmer_phone || item.lead.phone,
+        scheduled_date: toDateTimeLocal(t.scheduled_date) || getNextMondayDateTime(),
+        dozent_id: undefined,
+        rechtsgebiet: t.rechtsgebiet || undefined,
+        uni_standort: t.uni_standort || undefined,
+        landesrecht: t.landesrecht || undefined,
+        notes: t.notes || undefined,
+        duration: t.duration || 60,
+        lead_id: item.lead.id,
+      },
+      rejectedDozentId: t.dozent_id || null,
+      rejectedDozentName: t.dozent_name || null,
+    });
+  };
+
+  const callAction = (item: PipelineItem): CardAction | undefined =>
+    item.phone ? { label: 'Anrufen', icon: Phone, href: telHref(item.phone) } : undefined;
+
+  const tierCounts: Record<TodoTierId, number> = {
+    critical: followUpEscalated.length + rejectedTrials.length,
+    due: zuBearbeiten.length + followUpDueNonEscalated.length + finalDue.length,
+    planned: todosByDay.today.length + todosByDay.nextWorkingDay.length,
+  };
+  const showTier = (tier: TodoTierId) => todoFilter === 'all' || todoFilter === tier;
+  const filterChips: { id: TodoTierId; label: string }[] = [
+    { id: 'critical', label: 'kritisch' },
+    { id: 'due', label: 'fällig' },
+    { id: 'planned', label: 'geplant' },
+  ];
+
   // ESC schließt das oberste offene Fenster (Verlauf liegt über dem Detail-Modal)
   useEffect(() => {
     if (!selectedItem && !historyLead) return;
@@ -1065,141 +1197,126 @@ export function SalesKanbanOverview({
     <div className="space-y-6">
       {/* To Do Übersicht */}
       <section className="rounded-xl bg-white p-4 shadow-sm sm:p-6">
-        <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">To Dos</h2>
-            <p className="mt-1 text-sm text-slate-500">Anstehende Cal.com-Termine und manuell angelegte Beratungsgespräche.</p>
+            <p className="mt-1 text-sm text-slate-500">Nach Dringlichkeit sortiert – Karten lassen sich direkt in die Pipeline ziehen.</p>
           </div>
-          <Calendar className="h-5 w-5 text-primary" />
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="To Dos filtern">
+            <button
+              type="button"
+              aria-pressed={todoFilter === 'all'}
+              onClick={() => setTodoFilter('all')}
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition ${todoFilter === 'all' ? 'border-slate-700 bg-slate-800 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+            >
+              Alle
+            </button>
+            {filterChips.map(chip => (
+              <button
+                key={chip.id}
+                type="button"
+                aria-pressed={todoFilter === chip.id}
+                onClick={() => setTodoFilter(prev => (prev === chip.id ? 'all' : chip.id))}
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition ${todoFilter === chip.id ? TIER_STYLES[chip.id].chipActive : TIER_STYLES[chip.id].chip}`}
+              >
+                <span className="font-semibold">{tierCounts[chip.id]}</span> {chip.label}
+              </button>
+            ))}
+          </div>
         </div>
-        {(followUpEscalated.length > 0 || rejectedTrials.length > 0) && (
-          <div className="mb-4 grid gap-4 sm:grid-cols-2">
-            {followUpEscalated.length > 0 && (
-              <div className="rounded-lg border border-rose-300 bg-rose-50/70 p-4">
-                <h3 className="flex items-center gap-2 font-medium text-rose-900">
-                  <Phone className="h-4 w-4" />2. Gespräch überfällig
-                  <span className="text-xs font-normal text-rose-700">({followUpEscalated.length})</span>
-                </h3>
-                <p className="mt-1 text-xs text-rose-800">Follow-up seit mehr als 24 Stunden fällig – bitte sofort anrufen.</p>
-                <div className="mt-3 grid grid-cols-1 gap-2">
-                  {followUpEscalated.map(item => (
-                    <DraggableCard key={item.id} item={item} isNew={false} onSelect={setSelectedItem} />
-                  ))}
-                </div>
-              </div>
-            )}
-            {rejectedTrials.length > 0 && (
-              <div className="rounded-lg border border-rose-300 bg-rose-50/70 p-4">
-                <h3 className="flex items-center gap-2 font-medium text-rose-900">
-                  <GraduationCap className="h-4 w-4" />Probestunde abgelehnt
-                  <span className="text-xs font-normal text-rose-700">({rejectedTrials.length})</span>
-                </h3>
-                <p className="mt-1 text-xs text-rose-800">Dozent hat die Probestunde abgelehnt – bitte neu anfragen.</p>
-                <div className="mt-3 grid grid-cols-1 gap-2">
-                  {rejectedTrials.map(item => (
-                    <DraggableCard
-                      key={item.id}
-                      item={item}
-                      isNew={false}
-                      onSelect={() => {
-                        if (item.lead && item.rejectedTrial) {
-                          const t = item.rejectedTrial;
-                          setTrialRequest({
-                            lead: item.lead,
-                            initial: {
-                              teilnehmer_name: t.teilnehmer_name || item.lead.name,
-                              teilnehmer_email: t.teilnehmer_email || item.lead.email,
-                              teilnehmer_phone: t.teilnehmer_phone || item.lead.phone,
-                              scheduled_date: toDateTimeLocal(t.scheduled_date) || getNextMondayDateTime(),
-                              dozent_id: undefined,
-                              rechtsgebiet: t.rechtsgebiet || undefined,
-                              uni_standort: t.uni_standort || undefined,
-                              landesrecht: t.landesrecht || undefined,
-                              notes: t.notes || undefined,
-                              duration: t.duration || 60,
-                              lead_id: item.lead.id,
-                            },
-                            rejectedDozentId: t.dozent_id || null,
-                            rejectedDozentName: t.dozent_name || null,
-                          });
-                        }
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-        {(followUpDueNonEscalated.length > 0 || finalDue.length > 0) && (
-          <div className={`mb-4 grid gap-4 ${followUpDueNonEscalated.length > 0 && finalDue.length > 0 ? 'lg:grid-cols-2' : ''}`}>
-            {followUpDueNonEscalated.length > 0 && (
-              <div className="rounded-lg border border-orange-200 bg-orange-50/60 p-4">
-                <h3 className="flex items-center gap-2 font-medium text-orange-900">
-                  <Phone className="h-4 w-4" />2. Gespräch – Follow-up fällig
-                  <span className="text-xs font-normal text-orange-700">({followUpDueNonEscalated.length})</span>
-                </h3>
-                <p className="mt-1 text-xs text-orange-800">Angebot vor mehr als 24 Stunden versendet bzw. geplanter Anruf fällig – bitte anrufen.</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {followUpDueNonEscalated.map(item => (
-                    <DraggableCard key={item.id} item={item} isNew={false} onSelect={setSelectedItem} />
-                  ))}
-                </div>
-              </div>
-            )}
-            {finalDue.length > 0 && (
-              <div className="rounded-lg border border-rose-200 bg-rose-50/60 p-4">
-                <h3 className="flex items-center gap-2 font-medium text-rose-900">
-                  <Users className="h-4 w-4" />Finalgespräch fällig
-                  <span className="text-xs font-normal text-rose-700">({finalDue.length})</span>
-                </h3>
-                <p className="mt-1 text-xs text-rose-800">Probestunde beendet bzw. Finalgespräch offen – weiterverarbeiten.</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {finalDue.map(item => (
-                    <DraggableCard key={item.id} item={item} isNew={false} onSelect={setSelectedItem} />
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-        <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-4">
-          <h3 className="flex items-center gap-2 font-medium text-blue-900"><Clock className="h-4 w-4" />Heute, {formatDayLabel(today)}<span className="text-xs font-normal text-blue-700">({todosByDay.today.length})</span></h3>
-          <div className="mt-3">{renderTodoList(
-            todosByDay.today,
-            isWeekend
-              ? `Wochenende – die nächsten Termine stehen am ${formatDayLabel(nextWorkingDay)} an.`
-              : 'Keine anstehenden Beratungsgespräche für heute.'
-          )}</div>
-        </div>
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          {zuBearbeiten.length > 0 && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-4">
-              <h3 className="flex items-center gap-2 font-medium text-amber-900">
-                <Clock className="h-4 w-4" />Zu bearbeiten – stattgefundene Calls
-                <span className="text-xs font-normal text-amber-700">({zuBearbeiten.length})</span>
-              </h3>
-              <p className="mt-1 text-xs text-amber-800">Karte in die passende Pipeline-Spalte ziehen (Angebot, 2. Gespräch, Probestunde …).</p>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {(showAllPast ? zuBearbeiten : zuBearbeiten.slice(0, PAST_CALLS_PREVIEW)).map(item => (
-                  <DraggableCard key={item.id} item={item} isNew={item.status === 'new'} onSelect={setSelectedItem} />
-                ))}
-              </div>
-              {zuBearbeiten.length > PAST_CALLS_PREVIEW && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllPast(prev => !prev)}
-                  className="mt-3 w-full rounded-md py-1.5 text-xs font-medium text-amber-900 transition hover:bg-white/70"
-                >
-                  {showAllPast ? 'Weniger anzeigen' : `Mehr anzeigen (${zuBearbeiten.length - PAST_CALLS_PREVIEW})`}
-                </button>
-              )}
-            </div>
+
+        <div className="space-y-4">
+          {todoFilter === 'all' && tierCounts.critical === 0 && tierCounts.due === 0 && (
+            <p className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-2.5 text-sm text-green-800">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />Keine kritischen oder fälligen Aufgaben – alles abgearbeitet.
+            </p>
           )}
-          <div className={`rounded-lg border border-slate-200 bg-slate-50 p-4 ${zuBearbeiten.length === 0 ? 'lg:col-start-2' : ''}`}>
-            <h3 className="flex items-center gap-2 font-medium text-slate-900"><ChevronRight className="h-4 w-4" />{isNextWorkingDayTomorrow ? 'Morgen' : 'Nächster Werktag'}<span className="text-xs font-normal text-slate-500">{formatDayLabel(nextWorkingDay)} · {todosByDay.nextWorkingDay.length}</span></h3>
-            <div className="mt-3">{renderTodoList(todosByDay.nextWorkingDay, 'Keine anstehenden Beratungsgespräche für den nächsten Werktag.')}</div>
-          </div>
+
+          {showTier('critical') && (tierCounts.critical > 0 ? (
+            <TodoTier tier="critical" title="Kritisch" description="Sofort erledigen – hier wartet ein Lead bereits zu lange." count={tierCounts.critical}>
+              <TodoGroup
+                tier="critical"
+                icon={Phone}
+                label="2. Gespräch überfällig"
+                hint="Follow-up seit mehr als 24 Stunden fällig."
+                items={followUpEscalated}
+                renderItem={item => <DraggableCard key={item.id} item={item} isNew={false} onSelect={setSelectedItem} action={callAction(item)} />}
+              />
+              <TodoGroup
+                tier="critical"
+                icon={GraduationCap}
+                label="Probestunde abgelehnt"
+                hint="Dozent hat abgesagt – Probestunde neu anfragen."
+                items={rejectedTrials}
+                renderItem={item => (
+                  <DraggableCard
+                    key={item.id}
+                    item={item}
+                    isNew={false}
+                    onSelect={openTrialReRequest}
+                    action={{ label: 'Neu anfragen', icon: GraduationCap, onClick: () => openTrialReRequest(item) }}
+                  />
+                )}
+              />
+            </TodoTier>
+          ) : todoFilter === 'critical' && (
+            <p className="py-3 text-sm text-slate-400">Keine kritischen Aufgaben.</p>
+          ))}
+
+          {showTier('due') && (tierCounts.due > 0 ? (
+            <TodoTier tier="due" title="Fällig" description="Heute weiterverarbeiten, damit nichts liegen bleibt." count={tierCounts.due}>
+              <TodoGroup
+                tier="due"
+                icon={Clock}
+                label="Stattgefundene Calls"
+                hint="Karte in die passende Pipeline-Spalte ziehen (Angebot, Probestunde …)."
+                items={zuBearbeiten}
+                limit={PAST_CALLS_PREVIEW}
+                renderItem={item => <DraggableCard key={item.id} item={item} isNew={item.status === 'new'} onSelect={setSelectedItem} />}
+              />
+              <TodoGroup
+                tier="due"
+                icon={Phone}
+                label="2. Gespräch – Follow-up"
+                hint="Angebot vor über 24 Stunden versendet bzw. geplanter Anruf fällig."
+                items={followUpDueNonEscalated}
+                renderItem={item => <DraggableCard key={item.id} item={item} isNew={false} onSelect={setSelectedItem} action={callAction(item)} />}
+              />
+              <TodoGroup
+                tier="due"
+                icon={Users}
+                label="Finalgespräch"
+                hint="Probestunde beendet bzw. Finalgespräch offen."
+                items={finalDue}
+                renderItem={item => <DraggableCard key={item.id} item={item} isNew={false} onSelect={setSelectedItem} action={callAction(item)} />}
+              />
+            </TodoTier>
+          ) : todoFilter === 'due' && (
+            <p className="py-3 text-sm text-slate-400">Keine fälligen Aufgaben.</p>
+          ))}
+
+          {showTier('planned') && (
+            <TodoTier tier="planned" title="Geplant" description="Anstehende Beratungsgespräche und vereinbarte Anrufe." count={todosByDay.today.length + todosByDay.nextWorkingDay.length}>
+              <div className={`grid gap-5 ${!isWeekend ? 'lg:grid-cols-2' : ''}`}>
+                {!isWeekend && (
+                  <div>
+                    <h4 className="flex items-center gap-1.5 text-sm font-medium text-blue-900">
+                      <Clock className="h-4 w-4" />Heute, {formatDayLabel(today)}
+                      <span className="text-xs font-normal text-blue-800">({todosByDay.today.length})</span>
+                    </h4>
+                    <div className="mt-2">{renderTodoList(todosByDay.today, 'Keine anstehenden Termine für heute.')}</div>
+                  </div>
+                )}
+                <div>
+                  <h4 className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
+                    <ChevronRight className="h-4 w-4" />{isNextWorkingDayTomorrow ? 'Morgen' : 'Nächster Werktag'}, {formatDayLabel(nextWorkingDay)}
+                    <span className="text-xs font-normal text-slate-500">({todosByDay.nextWorkingDay.length})</span>
+                  </h4>
+                  <div className="mt-2">{renderTodoList(todosByDay.nextWorkingDay, 'Keine anstehenden Termine für den nächsten Werktag.')}</div>
+                </div>
+              </div>
+            </TodoTier>
+          )}
         </div>
       </section>
 
