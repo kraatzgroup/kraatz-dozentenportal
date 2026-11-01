@@ -28,6 +28,7 @@ import {
   X,
   TrendingDown,
   CheckCircle2,
+  Copy,
 } from 'lucide-react';
 import { CalBooking, Lead, TrialLesson, useSalesStore } from '../../store/salesStore';
 import { supabase } from '../../lib/supabase';
@@ -251,7 +252,6 @@ const getSafeHttpUrl = (value: string | null | undefined) => {
 interface CardAction {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  href?: string;
   onClick?: () => void;
 }
 
@@ -269,8 +269,6 @@ const stopCardEvents = {
   onTouchStart: (e: React.SyntheticEvent) => e.stopPropagation(),
   onKeyDown: (e: React.SyntheticEvent) => e.stopPropagation(),
 };
-
-const telHref = (phone: string | null) => (phone ? `tel:${phone.replace(/[^\d+]/g, '')}` : undefined);
 
 function CardContent({ item, isNew }: { item: PipelineItem; isNew: boolean }) {
   const examTag = getExamTag(item.examGoal);
@@ -383,12 +381,10 @@ function DraggableCard({ item, isNew, onSelect, action }: DraggableCardProps) {
       <CardContent item={item} isNew={isNew} />
       {action && (() => {
         const ActionIcon = action.icon;
-        const className = 'mt-2 inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white shadow-sm transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400';
-        const content = <><ActionIcon className="h-3.5 w-3.5" />{action.label}</>;
-        return action.href ? (
-          <a href={action.href} {...stopCardEvents} onClick={e => e.stopPropagation()} className={className}>{content}</a>
-        ) : (
-          <button type="button" {...stopCardEvents} onClick={e => { e.stopPropagation(); action.onClick?.(); }} className={className}>{content}</button>
+        return (
+          <button type="button" {...stopCardEvents} onClick={e => { e.stopPropagation(); action.onClick?.(); }} className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white shadow-sm transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <ActionIcon className="h-3.5 w-3.5" />{action.label}
+          </button>
         );
       })()}
     </div>
@@ -1164,8 +1160,18 @@ export function SalesKanbanOverview({
     });
   };
 
+  // "Anrufen" öffnet das Lead-Detail mit allen Infos; der Anruf wird von dort gestartet
   const callAction = (item: PipelineItem): CardAction | undefined =>
-    item.phone ? { label: 'Anrufen', icon: Phone, href: telHref(item.phone) } : undefined;
+    item.phone ? { label: 'Anrufen', icon: Phone, onClick: () => setSelectedItem(item) } : undefined;
+
+  const copyPhone = async (phone: string) => {
+    try {
+      await navigator.clipboard.writeText(phone.replace(/[^\d+]/g, ''));
+      addToast('Telefonnummer kopiert', 'success');
+    } catch {
+      addToast('Kopieren nicht möglich', 'error');
+    }
+  };
 
   const tierCounts: Record<TodoTierId, number> = {
     critical: followUpEscalated.length + rejectedTrials.length,
@@ -1495,7 +1501,24 @@ export function SalesKanbanOverview({
                 <div className="space-y-2">
                   {selectedItem.participant && <div>Name: {selectedItem.participant}</div>}
                   {selectedItem.email && <div className="flex items-center gap-2"><Mail className="h-4 w-4 shrink-0 text-slate-500" /><a href={`mailto:${selectedItem.email}`} className="text-primary hover:underline">{selectedItem.email}</a></div>}
-                  {selectedItem.phone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 shrink-0 text-slate-500" />Telefon: <a href={`tel:${selectedItem.phone.replace(/[^\d+]/g, '')}`} className="text-primary hover:underline">{selectedItem.phone}</a></div>}
+                  {selectedItem.phone && (
+                    <div className="flex items-center gap-2">
+                      <Phone className="h-4 w-4 shrink-0 text-slate-500" />
+                      <span className="text-slate-600">Telefon:</span>
+                      <span className="flex items-center gap-1 rounded-md border border-primary/40 bg-primary/5 px-2 py-1 font-medium text-slate-900">
+                        {selectedItem.phone}
+                        <button
+                          type="button"
+                          onClick={() => copyPhone(selectedItem.phone!)}
+                          title="Telefonnummer kopieren"
+                          aria-label="Telefonnummer kopieren"
+                          className="rounded p-1 text-slate-400 transition hover:bg-primary/10 hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
+                    </div>
+                  )}
                   {selectedItem.studyLocation && <div className="flex items-center gap-2"><MapPin className="h-4 w-4 shrink-0 text-slate-500" />Standort: {selectedItem.studyLocation}</div>}
                   {selectedItem.examGoal && <div><span className="font-medium">Prüfungsziel:</span> {selectedItem.examGoal}</div>}
                   {selectedItem.consultationWishes && <div className="border-t border-slate-200 pt-3"><p className="font-medium">Wünsche für die Beratung</p><p className="mt-1 whitespace-pre-wrap">{selectedItem.consultationWishes}</p></div>}

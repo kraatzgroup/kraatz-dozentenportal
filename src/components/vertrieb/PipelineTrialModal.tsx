@@ -138,7 +138,7 @@ export function PipelineTrialModal({ lead, initial, rejectedDozentId, rejectedDo
       <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-gray-200 p-4 sm:p-6">
           <div className="flex items-center gap-2">
-            <GraduationCap className="h-5 w-5 text-purple-600" />
+            <GraduationCap className="h-5 w-5 text-primary" />
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Probestunde anfragen</h3>
               <p className="text-xs text-gray-500">Lead: {lead.name}</p>
@@ -293,7 +293,7 @@ export function PipelineTrialModal({ lead, initial, rejectedDozentId, rejectedDo
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50"
+              className="px-4 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 transition disabled:opacity-50"
             >
               {isSubmitting ? 'Wird angelegt...' : 'Probestunde anfragen'}
             </button>
