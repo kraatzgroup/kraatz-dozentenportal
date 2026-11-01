@@ -5,6 +5,7 @@ import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
 import { useFileStore } from '../store/fileStore';
 import { useToastStore } from '../store/toastStore';
+import { useOfferTemplateStore } from '../store/offerTemplateStore';
 import { supabase } from '../lib/supabase';
 import { PDFViewerModal } from './PDFViewerModal';
 import { DozentCard } from './DozentCard';
@@ -633,6 +634,9 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
       if (error) throw error;
       addToast('Vorlage gespeichert', 'success');
       fetchEmailTemplates();
+      // Angebots-Vorlagen-Cache des Vertriebs aktualisieren
+      const savedCategory: string | null | undefined = emailTemplates.find(t => t.id === editingTemplate)?.category;
+      if (savedCategory) void useOfferTemplateStore.getState().fetchTemplates(savedCategory, { force: true });
       setShowTemplateEditor(false);
       setEditingTemplate(null);
     } catch (error) {

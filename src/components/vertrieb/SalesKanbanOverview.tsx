@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   DndContext,
   DragEndEvent,
@@ -270,7 +270,7 @@ const stopCardEvents = {
   onKeyDown: (e: React.SyntheticEvent) => e.stopPropagation(),
 };
 
-function CardContent({ item, isNew }: { item: PipelineItem; isNew: boolean }) {
+const CardContent = memo(function CardContent({ item, isNew }: { item: PipelineItem; isNew: boolean }) {
   const examTag = getExamTag(item.examGoal);
   return (
     <>
@@ -340,11 +340,11 @@ function CardContent({ item, isNew }: { item: PipelineItem; isNew: boolean }) {
       {item.description && <p className="mt-1 truncate text-xs text-slate-500">{item.description}</p>}
     </>
   );
-}
+});
 
 const EditLeadContext = createContext<(item: PipelineItem) => void>(() => {});
 
-function DraggableCard({ item, isNew, onSelect, action }: DraggableCardProps) {
+const DraggableCard = memo(function DraggableCard({ item, isNew, onSelect, action }: DraggableCardProps) {
   const onEdit = useContext(EditLeadContext);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: item.id });
 
@@ -389,7 +389,7 @@ function DraggableCard({ item, isNew, onSelect, action }: DraggableCardProps) {
       })()}
     </div>
   );
-}
+}, (prev, next) => prev.item === next.item && prev.isNew === next.isNew && prev.action?.label === next.action?.label);
 
 type TodoTierId = 'critical' | 'due' | 'planned';
 
@@ -974,7 +974,7 @@ export function SalesKanbanOverview({
    * Stellt sicher, dass zu einem Cal.com-Booking ein Lead existiert.
    * Wird beim Verschieben eines reinen Booking-Items benötigt.
    */
-  const ensureLead = async (item: PipelineItem): Promise<Lead | null> => {
+  const ensureLead = useCallback(async (item: PipelineItem): Promise<Lead | null> => {
     if (item.lead) return item.lead;
     if (!item.calBooking) return null;
     if (!item.email) {
@@ -999,12 +999,12 @@ export function SalesKanbanOverview({
     // createLead refresht den Store — den frisch angelegten Lead wiederfinden
     const fresh = useSalesStore.getState().leads.find(l => l.cal_booking_id === String(item.calBooking!.cal_booking_id));
     return fresh || null;
-  };
+  }, [onCreateLead, addToast]);
 
-  const handleEditItem = async (item: PipelineItem) => {
+  const handleEditItem = useCallback(async (item: PipelineItem) => {
     const lead = await ensureLead(item);
     if (lead) setEditLead(lead);
-  };
+  }, [ensureLead]);
 
   const handleDragStart = (event: DragStartEvent) => setActiveId(String(event.active.id));
 

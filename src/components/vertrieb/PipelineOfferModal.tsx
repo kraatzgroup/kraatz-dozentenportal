@@ -1,21 +1,13 @@
-import { useEffect, useMemo, useRef, useState, FormEvent } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState, FormEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { X, FileText, Eye, Send, ChevronDown, Package as PackageIcon, Pencil, RotateCcw } from 'lucide-react';
+import { X, FileText, Eye, Send, ChevronDown, Package as PackageIcon, Pencil, RotateCcw, RefreshCw } from 'lucide-react';
 import { Lead } from '../../store/salesStore';
+import { OfferEmailTemplate, readCachedOfferTemplates, useOfferTemplateStore } from '../../store/offerTemplateStore';
 import { supabase } from '../../lib/supabase';
 import { useToastStore } from '../../store/toastStore';
 import { getNextMonday } from './dateDefaults';
 
-interface EmailTemplateRow {
-  id: string;
-  title: string;
-  icon?: string | null;
-  description?: string | null;
-  subject: string;
-  body: string;
-  category?: string | null;
-  is_html?: boolean | null;
-}
+type EmailTemplateRow = OfferEmailTemplate;
 
 export interface OfferConfig {
   elite: boolean;
@@ -130,36 +122,76 @@ const CRASHKURS_OPTIONS: Record<OfferTier, { price: number; hoursPerExam: number
   gold: { price: 158.5, hoursPerExam: 1, info: 'Besprechung' },
 };
 const CRASHKURS_DEFAULT = { total: '24', subjects: { zr: '12', oer: '8', str: '4' } };
-const crashDraftKey = (leadId: string) => `crashkurs-draft:${leadId}`;
-const templateDraftKey = (leadId: string) => `offer-template-draft:${leadId}`;
 
-// Zuletzt gewählte E-Mail-Vorlage des Leads (überlebt das Schließen des Modals)
-const loadTemplateDraft = (leadId: string): string | null => {
+// Pro Lead (und Vorlagen-Kategorie) gespeicherte Einstellungen des Angebots-Modals.
+// Betreff/Text werden bewusst NICHT gespeichert – sie kommen immer aus der gewählten Vorlage.
+interface OfferDraft {
+  v: 1;
+  templateId: string;
+  totalHoursInput: string;
+  subjectHours: Record<string, string>;
+  months: number;
+  beginDate: string | null;
+  rateOverride: number | null;
+  crashTier: OfferTier;
+  crashTotalInput: string;
+  crashSubjects: Record<string, string>;
+  activeSections: Record<string, boolean>;
+  callEnabled: boolean;
+  callDate: string;
+  callTime: string;
+  probestundeEnabled: boolean;
+}
+
+const offerDraftKey = (leadId: string, category: string) => `offer-draft:v1:${category}:${leadId}`;
+const legacyOfferDraftKey = (leadId: string) => `offer-draft:${leadId}`;
+
+const isStringRecord = (value: unknown): value is Record<string, string> =>
+  Boolean(value) && typeof value === 'object' && Object.values(value as object).every(v => typeof v === 'string');
+
+// Prüft einen gespeicherten Draft auf Plausibilität; unbrauchbare Drafts werden verworfen
+const sanitizeOfferDraft = (raw: unknown): OfferDraft | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const d = raw as Partial<OfferDraft>;
+  if (typeof d.templateId !== 'string' || typeof d.totalHoursInput !== 'string' || !isStringRecord(d.subjectHours)) return null;
+  const months = typeof d.months === 'number' && d.months >= 1 && d.months <= 12 ? d.months : 12;
+  return {
+    v: 1,
+    templateId: d.templateId,
+    totalHoursInput: d.totalHoursInput,
+    subjectHours: d.subjectHours,
+    months,
+    beginDate: typeof d.beginDate === 'string' && d.beginDate ? d.beginDate : null,
+    rateOverride: typeof d.rateOverride === 'number' && d.rateOverride > 0 ? d.rateOverride : null,
+    crashTier: d.crashTier === 'gold' ? 'gold' : 'platin',
+    crashTotalInput: typeof d.crashTotalInput === 'string' ? d.crashTotalInput : CRASHKURS_DEFAULT.total,
+    crashSubjects: isStringRecord(d.crashSubjects) ? d.crashSubjects : CRASHKURS_DEFAULT.subjects,
+    activeSections: d.activeSections && typeof d.activeSections === 'object' ? d.activeSections : {},
+    callEnabled: typeof d.callEnabled === 'boolean' ? d.callEnabled : true,
+    callDate: typeof d.callDate === 'string' ? d.callDate : '',
+    callTime: typeof d.callTime === 'string' ? d.callTime : '',
+    probestundeEnabled: d.probestundeEnabled === true,
+  };
+};
+
+const loadOfferDraft = (leadId: string, category: string): OfferDraft | null => {
   try {
-    return localStorage.getItem(templateDraftKey(leadId));
+    const raw = localStorage.getItem(offerDraftKey(leadId, category))
+      // Übernahme von Drafts im alten Format (nur Angebots-Vorlagen)
+      ?? (category === 'angebot' ? localStorage.getItem(legacyOfferDraftKey(leadId)) : null);
+    return raw ? sanitizeOfferDraft(JSON.parse(raw)) : null;
   } catch {
     return null;
   }
 };
-const saveTemplateDraft = (leadId: string, templateId: string) => {
-  try {
-    localStorage.setItem(templateDraftKey(leadId), templateId);
-  } catch {
-    /* ignore */
-  }
-};
 
-// Zuletzt konfigurierte Crashkurs-Einstellungen des Leads (überlebt das Schließen des Modals)
-const loadCrashDraft = (leadId: string): OfferConfig['crashkurs'] => {
+const saveOfferDraft = (leadId: string, category: string, draft: OfferDraft) => {
   try {
-    const raw = localStorage.getItem(crashDraftKey(leadId));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as OfferConfig['crashkurs'];
-    if (parsed && (parsed.tier === 'platin' || parsed.tier === 'gold') && parsed.subjects) return parsed;
+    localStorage.setItem(offerDraftKey(leadId, category), JSON.stringify(draft));
+    if (category === 'angebot') localStorage.removeItem(legacyOfferDraftKey(leadId));
   } catch {
-    /* ignore */
+    /* Speicher voll oder nicht verfügbar – Draft ist optional */
   }
-  return null;
 };
 const ELITE_PACKAGE = { name: 'ELITE Kleingruppe 1. Staatsexamen', hours: 382, price: 9785, installments: 13, installment: 752.7 };
 type Salutation = 'herr' | 'frau' | 'divers';
@@ -324,36 +356,178 @@ function PriceCell({ label, display, editing, inputValue, overridden, onStartEdi
   );
 }
 
-export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = 'angebot', title = 'Angebot senden', description, submitLabel = 'Angebot senden', allowSkip = false, skipLabel = 'Ohne Mail verschieben', onSkip, showPackageFields = true, askReason = false, configOnly = false, initialConfig = null }: PipelineOfferModalProps) {
+interface RenderOptions {
+  activeSections: Record<string, boolean>;
+  flags: { paket: boolean; beginn: boolean; probestunde: boolean; telefonat: boolean };
+  placeholderValues: Record<string, string>;
+  callWhen: string;
+}
+
+// Vorlagentext für Vorschau/Versand aufbereiten: Sections, bedingte Blöcke, Platzhalter, Telefonat-Termin
+const renderTemplateText = (text: string, { activeSections, flags, placeholderValues, callWhen }: RenderOptions) => {
+  // Abgewählte Sections (<!--SECTION:key-->…<!--/SECTION:key-->) entfernen, aktive entsperren
+  const withSections = OFFER_SECTIONS.reduce((acc, section) => {
+    const re = new RegExp(`<!--SECTION:${section.key}-->([\\s\\S]*?)<!--/SECTION:${section.key}-->`, 'g');
+    return acc.replace(re, activeSections[section.key] ? '$1' : '');
+  }, text);
+  // Bedingte Blöcke (<!--IF:key-->…<!--/IF:key-->) entfernen, wenn der Wert fehlt
+  const allFlags: Record<string, boolean> = { ...flags, angebot: flags.paket || flags.beginn };
+  const withConditionals = ['paket', 'beginn', 'angebot', 'probestunde', 'telefonat'].reduce(
+    (acc, key) => acc.replace(new RegExp(`<!--IF:${key}-->([\\s\\S]*?)<!--/IF:${key}-->`, 'g'), allFlags[key] ? '$1' : ''),
+    withSections
+  );
+  const replaceAll = (input: string) =>
+    Object.entries(placeholderValues).reduce((acc, [token, value]) => acc.split(token).join(value), input);
+  let result = replaceAll(replaceAll(withConditionals));
+  if (callWhen) {
+    result = result
+      .split('unser n&auml;chstes Telefonat').join(`unser Telefonat ${callWhen}`)
+      .split('unser nächstes Telefonat').join(`unser Telefonat ${callWhen}`);
+  }
+  return result;
+};
+
+interface TemplateFields {
+  templateId: string;
+  isHtml: boolean;
+  subject: string;
+  body: string;
+  activeSections: Record<string, boolean>;
+  showAdvanced: boolean;
+}
+
+// Wählt die Vorlage (erster Kandidat, den es gibt, sonst die erste Vorlage) und leitet Betreff/Text/Bausteine ab
+const resolveTemplateFields = (templates: EmailTemplateRow[], candidateIds: string[], draft: OfferDraft | null): TemplateFields => {
+  const template = candidateIds.map(id => templates.find(t => t.id === id)).find(Boolean) ?? templates[0];
+  const body = template.body || '';
+  const savedSections = draft && draft.templateId === template.id && Object.keys(draft.activeSections).length > 0
+    ? draft.activeSections
+    : null;
+  return {
+    templateId: template.id,
+    isHtml: Boolean(template.is_html),
+    subject: template.subject || '',
+    body,
+    activeSections: savedSections ?? discoverSections(body),
+    // Telefonat-Baustein: erweiterte Einstellungen offen, damit Datum/Zeit sichtbar sind
+    showAdvanced: /chstes Telefonat/.test(body),
+  };
+};
+
+/**
+ * Startzustand des Modals in einem Schritt: Standardwerte → gespeichertes Angebot (offer_config)
+ * → lokaler Draft. Liegen die Vorlagen bereits vor (Cache), ist auch der E-Mail-Inhalt sofort korrekt.
+ */
+const buildInitialOfferState = ({ lead, initialConfig, configOnly, category, templates }: {
+  lead: Lead;
+  initialConfig: OfferConfig | null;
+  configOnly: boolean;
+  category: string;
+  templates: EmailTemplateRow[] | null;
+}) => {
+  const { first, last } = splitLeadName(lead);
+  const draft = configOnly ? null : loadOfferDraft(lead.id, category);
+  const configTemplateId = initialConfig?.crashkurs ? CRASHKURS_TEMPLATE_ID : initialConfig?.elite ? ELITE_TEMPLATE_ID : '';
+  const candidateIds = [draft?.templateId, configTemplateId].filter((id): id is string => Boolean(id));
+
+  const product = {
+    totalHoursInput: initialConfig ? String(initialConfig.totalHours) : '140',
+    subjectHours: (initialConfig?.subjectHours as Record<SubjectKey, string> | undefined) ?? defaultDistribution(140),
+    months: initialConfig?.months ?? 12,
+    beginDate: initialConfig?.beginDate || getNextMonday(),
+    rateOverride: initialConfig?.hourlyRate ?? null,
+    crashTier: initialConfig?.crashkurs?.tier ?? ('platin' as OfferTier),
+    crashTotalInput: initialConfig?.crashkurs ? String(initialConfig.crashkurs.total) : CRASHKURS_DEFAULT.total,
+    crashSubjects: (initialConfig?.crashkurs?.subjects as Record<SubjectKey, string> | undefined) ?? (CRASHKURS_DEFAULT.subjects as Record<SubjectKey, string>),
+    callEnabled: true,
+    callDate: '',
+    callTime: '',
+    probestundeEnabled: false,
+  };
+  if (draft) {
+    Object.assign(product, {
+      totalHoursInput: draft.totalHoursInput,
+      subjectHours: draft.subjectHours as Record<SubjectKey, string>,
+      months: draft.months,
+      beginDate: draft.beginDate || getNextMonday(),
+      rateOverride: draft.rateOverride,
+      crashTier: draft.crashTier,
+      crashTotalInput: draft.crashTotalInput,
+      crashSubjects: draft.crashSubjects as Record<SubjectKey, string>,
+      callEnabled: draft.callEnabled,
+      callDate: draft.callDate,
+      callTime: draft.callTime,
+      probestundeEnabled: draft.probestundeEnabled,
+    });
+  }
+
+  const templateFields: TemplateFields | null = !configOnly && templates && templates.length > 0
+    ? resolveTemplateFields(templates, candidateIds, draft)
+    : null;
+
+  return {
+    ...product,
+    firstName: first,
+    lastName: last,
+    salutation: guessSalutation(first),
+    draft,
+    candidateIds,
+    templateFields,
+    // Nur Konfiguration: Vorlage steuert lediglich Einzelunterricht / ELITE / Crashkurs
+    templateId: templateFields?.templateId ?? (configOnly ? configTemplateId : candidateIds[0] ?? ''),
+  };
+};
+
+export function PipelineOfferModal(props: PipelineOfferModalProps) {
+  if (!props.lead) return null;
+  // Neu mounten je Lead und Kategorie: der Zustand wird beim Öffnen in einem Schritt initialisiert
+  return <OfferModalContent key={`${props.lead.id}:${props.templateCategory ?? 'angebot'}`} {...props} lead={props.lead} />;
+}
+
+function OfferModalContent({ lead, onClose, onSent, templateCategory = 'angebot', title = 'Angebot senden', description, submitLabel = 'Angebot senden', allowSkip = false, skipLabel = 'Ohne Mail verschieben', onSkip, showPackageFields = true, askReason = false, configOnly = false, initialConfig = null }: PipelineOfferModalProps & { lead: Lead }) {
   const { addToast } = useToastStore();
-  const [templates, setTemplates] = useState<EmailTemplateRow[]>([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
-  const [isHtml, setIsHtml] = useState(false);
-  const [totalHoursInput, setTotalHoursInput] = useState('140');
-  const [subjectHours, setSubjectHours] = useState<Record<SubjectKey, string>>(defaultDistribution(140));
-  const [salutation, setSalutation] = useState<Salutation>('divers');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [months, setMonths] = useState(12);
-  const [rateOverride, setRateOverride] = useState<number | null>(null);
+  const [init] = useState(() => buildInitialOfferState({
+    lead,
+    initialConfig,
+    configOnly,
+    category: templateCategory,
+    templates: configOnly ? null : readCachedOfferTemplates(templateCategory),
+  }));
+  const storeTemplates = useOfferTemplateStore(s => s.templates[templateCategory]);
+  const templatesStatus = useOfferTemplateStore(s => s.status[templateCategory]);
+  const fetchTemplates = useOfferTemplateStore(s => s.fetchTemplates);
+  const templates = useMemo(
+    () => storeTemplates ?? (configOnly ? [] : readCachedOfferTemplates(templateCategory) ?? []),
+    [storeTemplates, configOnly, templateCategory]
+  );
+  const [templateReady, setTemplateReady] = useState(configOnly || init.templateFields !== null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(init.templateId);
+  const [isHtml, setIsHtml] = useState(init.templateFields?.isHtml ?? false);
+  const [totalHoursInput, setTotalHoursInput] = useState(init.totalHoursInput);
+  const [subjectHours, setSubjectHours] = useState<Record<SubjectKey, string>>(init.subjectHours);
+  const [salutation, setSalutation] = useState<Salutation>(init.salutation);
+  const [firstName, setFirstName] = useState(init.firstName);
+  const [lastName, setLastName] = useState(init.lastName);
+  const [months, setMonths] = useState(init.months);
+  const [rateOverride, setRateOverride] = useState<number | null>(init.rateOverride);
   const [editingRate, setEditingRate] = useState(false);
   const [rateInput, setRateInput] = useState('');
   const [editingTotal, setEditingTotal] = useState(false);
   const [totalInput, setTotalInput] = useState('');
   const [editingMonthly, setEditingMonthly] = useState(false);
   const [monthlyInput, setMonthlyInput] = useState('');
-  const [callEnabled, setCallEnabled] = useState(true);
-  const [callDate, setCallDate] = useState('');
-  const [callTime, setCallTime] = useState('');
-  const [probestundeEnabled, setProbestundeEnabled] = useState(false);
-  const [crashTotalInput, setCrashTotalInput] = useState(CRASHKURS_DEFAULT.total);
-  const [crashSubjects, setCrashSubjects] = useState<Record<SubjectKey, string>>(CRASHKURS_DEFAULT.subjects);
-  const [crashTier, setCrashTier] = useState<OfferTier>('platin');
-  const [beginDate, setBeginDate] = useState(getNextMonday);
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
-  const [activeSections, setActiveSections] = useState<Record<string, boolean>>({});
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [callEnabled, setCallEnabled] = useState(init.callEnabled);
+  const [callDate, setCallDate] = useState(init.callDate);
+  const [callTime, setCallTime] = useState(init.callTime);
+  const [probestundeEnabled, setProbestundeEnabled] = useState(init.probestundeEnabled);
+  const [crashTotalInput, setCrashTotalInput] = useState(init.crashTotalInput);
+  const [crashSubjects, setCrashSubjects] = useState<Record<SubjectKey, string>>(init.crashSubjects);
+  const [crashTier, setCrashTier] = useState<OfferTier>(init.crashTier);
+  const [beginDate, setBeginDate] = useState(init.beginDate);
+  const [subject, setSubject] = useState(init.templateFields?.subject ?? '');
+  const [body, setBody] = useState(init.templateFields?.body ?? '');
+  const [activeSections, setActiveSections] = useState<Record<string, boolean>>(init.templateFields?.activeSections ?? {});
+  const [showAdvanced, setShowAdvanced] = useState(init.templateFields?.showAdvanced ?? false);
   const [showPreview, setShowPreview] = useState(false);
   const [showSource, setShowSource] = useState(false);
   const [reasonOption, setReasonOption] = useState('');
@@ -368,79 +542,46 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
-  useEffect(() => {
-    if (!lead) return;
-    setBeginDate(getNextMonday());
-    const { first, last } = splitLeadName(lead);
-    setFirstName(first);
-    setLastName(last);
-    setSalutation(guessSalutation(first));
-    setRateOverride(null);
-    setEditingRate(false);
-    setEditingTotal(false);
-    setEditingMonthly(false);
-    setCallEnabled(true);
-    setCallDate('');
-    setCallTime('');
-    setProbestundeEnabled(false);
-  }, [lead?.id]);
+  // Zuletzt übernommene Vorlagenfassung (erkennt manuelle Änderungen an Betreff/Text)
+  const appliedTemplateRef = useRef({ id: init.templateFields?.templateId ?? '', subject: init.templateFields?.subject ?? '', body: init.templateFields?.body ?? '' });
 
+  // Vorlagen laden bzw. im Hintergrund aktualisieren (Cache sorgt für sofortige Anzeige)
   useEffect(() => {
-    if (!lead || !initialConfig) return;
-    setSelectedTemplateId(initialConfig.elite ? ELITE_TEMPLATE_ID : '');
-    setTotalHoursInput(String(initialConfig.totalHours));
-    setSubjectHours(initialConfig.subjectHours as Record<SubjectKey, string>);
-    setMonths(initialConfig.months);
-    setRateOverride(initialConfig.hourlyRate ?? null);
-    if (initialConfig.beginDate) setBeginDate(initialConfig.beginDate);
-  }, [lead?.id]);
+    if (!configOnly) void fetchTemplates(templateCategory);
+  }, [configOnly, templateCategory, fetchTemplates]);
 
-  // Crashkurs: zuletzt konfigurierte Einstellungen des Leads wiederherstellen
+  // Kamen die Vorlagen erst nach dem Öffnen (kein Cache), E-Mail-Inhalt genau einmal nachziehen –
+  // die Produkt-Konfiguration bleibt dabei unverändert
   useEffect(() => {
-    if (!lead || configOnly) return;
-    const draft = loadCrashDraft(lead.id) ?? initialConfig?.crashkurs ?? null;
-    if (draft) {
-      setCrashTier(draft.tier);
-      setCrashTotalInput(String(draft.total));
-      setCrashSubjects(draft.subjects as Record<SubjectKey, string>);
-    } else {
-      setCrashTier('platin');
-      setCrashTotalInput(CRASHKURS_DEFAULT.total);
-      setCrashSubjects(CRASHKURS_DEFAULT.subjects);
-    }
-  }, [lead?.id]);
+    if (templateReady || templates.length === 0) return;
+    const fields = resolveTemplateFields(templates, init.candidateIds, init.draft);
+    setSelectedTemplateId(fields.templateId);
+    setIsHtml(fields.isHtml);
+    setSubject(fields.subject);
+    setBody(fields.body);
+    setActiveSections(fields.activeSections);
+    if (fields.showAdvanced) setShowAdvanced(true);
+    appliedTemplateRef.current = { id: fields.templateId, subject: fields.subject, body: fields.body };
+    setTemplateReady(true);
+  }, [templateReady, templates, init]);
 
+  // Liefert die Hintergrund-Aktualisierung eine neuere Fassung der gewählten Vorlage, diese übernehmen –
+  // aber nur, solange Betreff/Text nicht von Hand bearbeitet wurden
   useEffect(() => {
-    if (!lead || configOnly) return;
-    const leadId = lead.id;
-    const fetchTemplates = async () => {
-      const { data } = await supabase
-        .from('email_templates')
-        .select('*')
-        .order('id');
-      const rows = (data || []) as EmailTemplateRow[];
-      const offerTemplates = rows.filter(t => t.category === templateCategory);
-      const all = offerTemplates.length > 0 ? offerTemplates : rows;
-      setTemplates(all);
-      if (all.length > 0) {
-        const savedTemplateId = loadTemplateDraft(leadId);
-        const preferredTemplateId = savedTemplateId
-          || (initialConfig?.crashkurs ? CRASHKURS_TEMPLATE_ID : null)
-          || (initialConfig?.elite ? ELITE_TEMPLATE_ID : null);
-        const initial = preferredTemplateId
-          ? (all.find(t => t.id === preferredTemplateId) || all[0])
-          : all[0];
-        setSelectedTemplateId(initial.id);
-        setIsHtml(Boolean(initial.is_html));
-        setSubject(initial.subject || '');
-        setBody(initial.body || '');
-        setActiveSections(discoverSections(initial.body || ''));
-        // Telefonat-Baustein: erweiterte Einstellungen offen, damit Datum/Zeit sichtbar sind
-        if (/chstes Telefonat/.test(initial.body || '')) setShowAdvanced(true);
-      }
-    };
-    fetchTemplates();
-  }, [lead?.id, templateCategory]);
+    if (!templateReady) return;
+    const applied = appliedTemplateRef.current;
+    const latest = templates.find(t => t.id === selectedTemplateId);
+    if (!latest || latest.id !== applied.id || subject !== applied.subject || body !== applied.body) return;
+    const latestSubject = latest.subject || '';
+    const latestBody = latest.body || '';
+    if (latestSubject === applied.subject && latestBody === applied.body) return;
+    appliedTemplateRef.current = { id: latest.id, subject: latestSubject, body: latestBody };
+    setIsHtml(Boolean(latest.is_html));
+    setSubject(latestSubject);
+    setBody(latestBody);
+    // Bausteine: bisherige Auswahl behalten, neu hinzugekommene aktivieren, entfernte verwerfen
+    setActiveSections(prev => Object.fromEntries(Object.keys(discoverSections(latestBody)).map(key => [key, prev[key] ?? true])));
+  }, [templates, templateReady, selectedTemplateId, subject, body]);
 
   const totalHours = parseHours(totalHoursInput);
   const distributed = SUBJECTS.reduce((sum, sub) => sum + parseHours(subjectHours[sub.key]), 0);
@@ -465,7 +606,8 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
   const callMissingDetails = callEnabled && canScheduleCall && (!callDate || !callTime);
   const canToggleProbestunde = body.includes('<!--IF:probestunde-->');
   const crashOption = CRASHKURS_OPTIONS[crashTier];
-  const selectedPackage = !showPackageFields
+  // Stabil memoisiert, damit Platzhalter/Vorschau nicht bei jedem Render neu berechnet werden
+  const selectedPackage = useMemo(() => (!showPackageFields
     ? null
     : isCrashkurs
       ? crashTotal > 0
@@ -475,17 +617,53 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
       ? { name: ELITE_PACKAGE.name, hours: ELITE_PACKAGE.hours, price: ELITE_PACKAGE.price }
       : totalHours > 0
         ? { name: packageName, hours: totalHours, price: totalPrice }
-        : null;
+        : null
+  ), [showPackageFields, isCrashkurs, crashTotal, crashTier, crashOption, isElite, totalHours, packageName, totalPrice]);
 
-  // Crashkurs-Konfiguration als Draft speichern, damit sie beim Schließen erhalten bleibt
+  // Einstellungen des Leads als Draft speichern (überlebt das Schließen des Modals).
+  // Gespeichert wird nur bei echter Änderung gegenüber dem Startzustand, entprellt; beim Schließen wird ausstehendes sofort geschrieben.
+  const draftSnapshot = useMemo(() => JSON.stringify({
+    v: 1,
+    templateId: selectedTemplateId,
+    totalHoursInput,
+    subjectHours,
+    months,
+    beginDate: beginDate || null,
+    rateOverride,
+    crashTier,
+    crashTotalInput,
+    crashSubjects,
+    activeSections,
+    callEnabled,
+    callDate,
+    callTime,
+    probestundeEnabled,
+  } satisfies OfferDraft), [selectedTemplateId, totalHoursInput, subjectHours, months, beginDate, rateOverride, crashTier, crashTotalInput, crashSubjects, activeSections, callEnabled, callDate, callTime, probestundeEnabled]);
+  const draftBaselineRef = useRef<string | null>(null);
+  const pendingDraftRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (!lead || !isCrashkurs) return;
-    try {
-      localStorage.setItem(crashDraftKey(lead.id), JSON.stringify({ tier: crashTier, total: crashTotal, subjects: crashSubjects }));
-    } catch {
-      /* Speicher nicht verfügbar – ignorieren */
+    if (configOnly || !templateReady) return;
+    if (draftBaselineRef.current === null) {
+      draftBaselineRef.current = draftSnapshot;
+      return;
     }
-  }, [lead?.id, isCrashkurs, crashTier, crashTotal, crashSubjects]);
+    if (draftSnapshot === draftBaselineRef.current) {
+      pendingDraftRef.current = null;
+      return;
+    }
+    pendingDraftRef.current = draftSnapshot;
+    const timer = setTimeout(() => {
+      saveOfferDraft(lead.id, templateCategory, JSON.parse(draftSnapshot) as OfferDraft);
+      draftBaselineRef.current = draftSnapshot;
+      pendingDraftRef.current = null;
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [draftSnapshot, configOnly, templateReady, lead.id, templateCategory]);
+
+  useEffect(() => () => {
+    if (pendingDraftRef.current) saveOfferDraft(lead.id, templateCategory, JSON.parse(pendingDraftRef.current) as OfferDraft);
+  }, [lead.id, templateCategory]);
 
   const buildOfferConfig = (): OfferConfig => ({
     elite: isElite,
@@ -648,47 +826,23 @@ ${priceRow('gold', 'Nur Besprechung (1 h/Klausur), keine Korrektur')}
     return values;
   }, [lead, firstName, lastName, salutation, selectedPackage, matchedTier, isElite, cardKey, beginDate, months, hourlyRate, monthlyRate, rateOverride, totalHours, subjectHours, selectedTemplateId, crashTotal, crashSubjects, crashTier, crashOption]);
 
-  // Bedingte Blöcke (<!--IF:key-->…<!--/IF:key-->) entfernen, wenn der Wert fehlt
-  const applyConditionals = (text: string) => {
-    const flags: Record<string, boolean> = {
+  const renderOptions = useMemo<RenderOptions>(() => ({
+    activeSections,
+    flags: {
       paket: Boolean(selectedPackage),
       beginn: Boolean(beginDate),
       probestunde: probestundeEnabled,
       telefonat: callEnabled,
-    };
-    flags.angebot = flags.paket || flags.beginn;
-    return ['paket', 'beginn', 'angebot', 'probestunde', 'telefonat'].reduce(
-      (acc, key) => acc.replace(new RegExp(`<!--IF:${key}-->([\\s\\S]*?)<!--/IF:${key}-->`, 'g'), flags[key] ? '$1' : ''),
-      text
-    );
-  };
+    },
+    placeholderValues,
+    callWhen,
+  }), [activeSections, selectedPackage, beginDate, probestundeEnabled, callEnabled, placeholderValues, callWhen]);
 
-  // Abgewählte Sections (<!--SECTION:key-->…<!--/SECTION:key-->) entfernen,
-  // aktive Sections entsperren (nur die Markierungen entfernen).
-  const applySectionToggles = (text: string) =>
-    OFFER_SECTIONS.reduce((acc, section) => {
-      const re = new RegExp(`<!--SECTION:${section.key}-->([\\s\\S]*?)<!--/SECTION:${section.key}-->`, 'g');
-      return acc.replace(re, activeSections[section.key] ? '$1' : '');
-    }, text);
-
-  const replacePlaceholders = (text: string) => {
-    const withSections = applySectionToggles(text);
-    const withConditionals = applyConditionals(withSections);
-    const replaceAll = (input: string) =>
-      Object.entries(placeholderValues).reduce((acc, [token, value]) => acc.split(token).join(value), input);
-    let result = replaceAll(replaceAll(withConditionals));
-    if (callWhen) {
-      result = result
-        .split('unser n&auml;chstes Telefonat').join(`unser Telefonat ${callWhen}`)
-        .split('unser nächstes Telefonat').join(`unser Telefonat ${callWhen}`);
-    }
-    return result;
-  };
-
-  const previewSubject = replacePlaceholders(subject);
-  const previewBody = replacePlaceholders(body);
-  // Nur Vorschau: Links aus dem Iframe in neuem Tab öffnen (versendete Mail bleibt unverändert)
-  const previewDoc = `<base target="_blank">${previewBody}`;
+  const previewSubject = useMemo(() => renderTemplateText(subject, renderOptions), [subject, renderOptions]);
+  const previewBody = useMemo(() => renderTemplateText(body, renderOptions), [body, renderOptions]);
+  // Nur Vorschau: Links aus dem Iframe in neuem Tab öffnen (versendete Mail bleibt unverändert).
+  // Zurückgestellt aktualisiert, damit Eingaben nicht durch das Neuladen des Iframes ruckeln.
+  const previewDoc = useDeferredValue(`<base target="_blank">${previewBody}`);
   // Vorschau für HTML-Vorlagen: Tags entfernen, damit sie lesbar bleibt
   const previewBodyText = isHtml
     ? previewBody
@@ -716,7 +870,7 @@ ${priceRow('gold', 'Nur Besprechung (1 h/Klausur), keine Korrektur')}
     setCallEnabled(true);
     setProbestundeEnabled(false);
     if (/chstes Telefonat/.test(template.body || '')) setShowAdvanced(true);
-    if (lead) saveTemplateDraft(lead.id, template.id);
+    appliedTemplateRef.current = { id: template.id, subject: template.subject || '', body: template.body || '' };
   };
 
   const handleSend = async (e: FormEvent<HTMLFormElement>) => {
@@ -853,14 +1007,18 @@ ${priceRow('gold', 'Nur Besprechung (1 h/Klausur), keine Korrektur')}
     }
   };
 
-  if (!lead) return null;
+  // Vorlagen noch nicht da (kein Cache, Request läuft) bzw. Laden fehlgeschlagen
+  const templatesLoading = !configOnly && !templateReady;
+  const templatesFailed = templatesLoading && templatesStatus === 'error';
 
   // "Angebot senden" erst freigeben, wenn Verteilung aufgeht und Telefonat vollständig ist
   const hoursUnbalanced = !configOnly && showPackageFields && !isInfoTemplate && !isCrashkurs && !isElite && remaining !== 0;
   const klausurenUnbalanced = !configOnly && isCrashkurs && crashRemaining !== 0;
   const callIncomplete = !configOnly && callEnabled && canScheduleCall && (!callDate || !callTime);
-  const submitBlocked = hoursUnbalanced || klausurenUnbalanced || callIncomplete;
-  const submitBlockedReason = hoursUnbalanced
+  const submitBlocked = templatesLoading || hoursUnbalanced || klausurenUnbalanced || callIncomplete;
+  const submitBlockedReason = templatesLoading
+    ? (templatesFailed ? 'E-Mail-Vorlagen konnten nicht geladen werden.' : 'E-Mail-Vorlagen werden geladen …')
+    : hoursUnbalanced
     ? 'Die Stundenverteilung geht nicht auf.'
     : klausurenUnbalanced
       ? 'Die Klausurenverteilung geht nicht auf.'
@@ -919,6 +1077,20 @@ ${priceRow('gold', 'Nur Besprechung (1 h/Klausur), keine Korrektur')}
           {/* Template-Auswahl */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">E-Mail-Vorlage</label>
+            {templatesFailed ? (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                <span>E-Mail-Vorlagen konnten nicht geladen werden.</span>
+                <button
+                  type="button"
+                  onClick={() => void fetchTemplates(templateCategory, { force: true })}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-red-300 bg-white px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />Erneut versuchen
+                </button>
+              </div>
+            ) : templatesLoading ? (
+              <div aria-busy="true" aria-label="E-Mail-Vorlagen werden geladen" className="h-[42px] w-full animate-pulse rounded-lg bg-gray-100" />
+            ) : (
             <select
               value={selectedTemplateId}
               onChange={e => {
@@ -931,7 +1103,8 @@ ${priceRow('gold', 'Nur Besprechung (1 h/Klausur), keine Korrektur')}
                 <option key={template.id} value={template.id}>{template.icon} {template.title}</option>
               ))}
             </select>
-            {templates.find(t => t.id === selectedTemplateId)?.description && (
+            )}
+            {!templatesLoading && templates.find(t => t.id === selectedTemplateId)?.description && (
               <p className="mt-1 text-xs text-gray-500">{templates.find(t => t.id === selectedTemplateId)?.description}</p>
             )}
           </div>
@@ -1274,6 +1447,7 @@ ${priceRow('gold', 'Nur Besprechung (1 h/Klausur), keine Korrektur')}
           )}
 
           {/* Betreff */}
+          {!templatesLoading && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Betreff</label>
             <input
@@ -1284,9 +1458,19 @@ ${priceRow('gold', 'Nur Besprechung (1 h/Klausur), keine Korrektur')}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
             />
           </div>
+          )}
 
           {/* HTML-Vorlage: gerenderte Vorschau statt Quelltext */}
-          {isHtml && !showSource ? (
+          {templatesLoading ? (
+            !templatesFailed && (
+            <div aria-busy="true" aria-label="E-Mail wird geladen" className="space-y-3">
+              <div className="h-4 w-24 animate-pulse rounded bg-gray-200" />
+              <div className="h-[42px] w-full animate-pulse rounded-lg bg-gray-100" />
+              <div className="h-4 w-36 animate-pulse rounded bg-gray-200" />
+              <div className="h-[320px] w-full animate-pulse rounded-lg bg-gray-100" />
+            </div>
+            )
+          ) : isHtml && !showSource ? (
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-sm font-medium text-gray-700">Vorschau der E-Mail</label>
@@ -1346,7 +1530,7 @@ ${priceRow('gold', 'Nur Besprechung (1 h/Klausur), keine Korrektur')}
           )}
 
           {/* Vorschau */}
-          {showPreview && !(isHtml && !showSource) && (
+          {showPreview && !templatesLoading && !(isHtml && !showSource) && (
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
               <p className="text-xs font-medium text-gray-500 uppercase mb-2">Vorschau</p>
               <p className="text-sm font-semibold text-gray-900 mb-2">{previewSubject}</p>
@@ -1367,7 +1551,7 @@ ${priceRow('gold', 'Nur Besprechung (1 h/Klausur), keine Korrektur')}
 
           </div>
           <div className="flex shrink-0 justify-end space-x-3 border-t border-gray-200 p-4 sm:p-6">
-            {!configOnly && !(isHtml && !showSource) && (
+            {!configOnly && !templatesLoading && !(isHtml && !showSource) && (
             <button
               type="button"
               onClick={() => setShowPreview(prev => !prev)}

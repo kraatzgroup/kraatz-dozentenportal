@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { Lead, useSalesStore } from '../store/salesStore';
+import { useOfferTemplateStore } from '../store/offerTemplateStore';
 import { SalesKanbanOverview } from './vertrieb/SalesKanbanOverview';
 import { SalesCalendar } from './vertrieb/SalesCalendar';
 import { FinalgespraechList } from './vertrieb/FinalgespraechList';
@@ -55,8 +56,12 @@ export function VertriebDashboard() {
   } = useSalesStore();
 
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const fetchOfferTemplates = useOfferTemplateStore(s => s.fetchTemplates);
 
   useEffect(() => {
+    // Angebots-Vorlagen vorab laden, damit das Angebots-Modal sofort gefüllt öffnet
+    void fetchOfferTemplates('angebot');
+    void fetchOfferTemplates('kraatzclub');
     loadAllData().finally(() => setIsInitialLoading(false));
     
     // Subscribe to real-time changes for synchronization
