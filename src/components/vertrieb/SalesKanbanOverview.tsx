@@ -1043,6 +1043,21 @@ export function SalesKanbanOverview({
   };
 
   const selectedMeetingUrl = getSafeHttpUrl(selectedItem?.meetingUrl);
+  const selectedPhaseLabel = selectedItem
+    ? COLUMNS.find(c => c.id === selectedItem.column)?.label ?? STATUS_LABELS[selectedItem.status] ?? 'Beratungsgespräch'
+    : null;
+
+  // ESC schließt das oberste offene Fenster (Verlauf liegt über dem Detail-Modal)
+  useEffect(() => {
+    if (!selectedItem && !historyLead) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (historyLead) setHistoryLead(null);
+      else setSelectedItem(null);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [selectedItem, historyLead]);
 
   return (
     <EditLeadContext.Provider value={handleEditItem}>
@@ -1148,12 +1163,15 @@ export function SalesKanbanOverview({
             )}
           </div>
         )}
-        {!isWeekend && (
         <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-4">
           <h3 className="flex items-center gap-2 font-medium text-blue-900"><Clock className="h-4 w-4" />Heute, {formatDayLabel(today)}<span className="text-xs font-normal text-blue-700">({todosByDay.today.length})</span></h3>
-          <div className="mt-3">{renderTodoList(todosByDay.today, 'Keine anstehenden Beratungsgespräche für heute.')}</div>
+          <div className="mt-3">{renderTodoList(
+            todosByDay.today,
+            isWeekend
+              ? `Wochenende – die nächsten Termine stehen am ${formatDayLabel(nextWorkingDay)} an.`
+              : 'Keine anstehenden Beratungsgespräche für heute.'
+          )}</div>
         </div>
-        )}
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {zuBearbeiten.length > 0 && (
             <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-4">
@@ -1298,7 +1316,7 @@ export function SalesKanbanOverview({
 
       {/* Detail-Modal */}
       {selectedItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setSelectedItem(null)}>
           <div
             role="dialog"
             aria-modal="true"
@@ -1308,7 +1326,7 @@ export function SalesKanbanOverview({
           >
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-blue-700">Beratungsgespräch</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-blue-700">{selectedPhaseLabel}</p>
                 <h3 id="cal-booking-details-title" className="mt-1 text-lg font-semibold text-slate-900">{selectedItem.title}</h3>
               </div>
               <div className="flex items-center gap-2">
@@ -1359,8 +1377,8 @@ export function SalesKanbanOverview({
                 <h4 className="mb-3 font-semibold text-slate-900">Lead-Informationen</h4>
                 <div className="space-y-2">
                   {selectedItem.participant && <div>Name: {selectedItem.participant}</div>}
-                  {selectedItem.email && <div className="flex items-center gap-2"><Mail className="h-4 w-4 shrink-0 text-slate-500" />{selectedItem.email}</div>}
-                  {selectedItem.phone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 shrink-0 text-slate-500" />Telefon: {selectedItem.phone}</div>}
+                  {selectedItem.email && <div className="flex items-center gap-2"><Mail className="h-4 w-4 shrink-0 text-slate-500" /><a href={`mailto:${selectedItem.email}`} className="text-primary hover:underline">{selectedItem.email}</a></div>}
+                  {selectedItem.phone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 shrink-0 text-slate-500" />Telefon: <a href={`tel:${selectedItem.phone.replace(/[^\d+]/g, '')}`} className="text-primary hover:underline">{selectedItem.phone}</a></div>}
                   {selectedItem.studyLocation && <div className="flex items-center gap-2"><MapPin className="h-4 w-4 shrink-0 text-slate-500" />Standort: {selectedItem.studyLocation}</div>}
                   {selectedItem.examGoal && <div><span className="font-medium">Prüfungsziel:</span> {selectedItem.examGoal}</div>}
                   {selectedItem.consultationWishes && <div className="border-t border-slate-200 pt-3"><p className="font-medium">Wünsche für die Beratung</p><p className="mt-1 whitespace-pre-wrap">{selectedItem.consultationWishes}</p></div>}

@@ -62,8 +62,8 @@ export function LeadHistoryModal({ lead, onClose }: LeadHistoryModalProps) {
   if (!lead) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl bg-white shadow-xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div role="dialog" aria-modal="true" className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl bg-white shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex shrink-0 items-center justify-between border-b border-gray-200 p-4 sm:p-6">
           <div className="flex items-center gap-2">
             <History className="h-5 w-5 text-primary" />

@@ -214,7 +214,10 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   // Derive EK view state from URL
   const isEliteKleingruppeRoute = location.pathname.startsWith('/dashboard/elite-kleingruppe');
   const showEliteKleingruppe = isEliteKleingruppeRoute;
-  const isVertriebRoute = isVertrieb && location.pathname.startsWith('/dashboard/vertrieb');
+  const isVertriebRoute = isVertrieb && (
+    location.pathname.startsWith('/dashboard/vertrieb') ||
+    new URLSearchParams(location.search).get('tab') === 'vertrieb'
+  );
   const ekSubTab = urlSubTab ? (EK_SUB_TAB_MAP[urlSubTab] || 'einheiten') : 'einheiten';
   const [duplicateWarning, setDuplicateWarning] = useState<{ show: boolean; existingEntries: any[]; pendingData: any | null }>({
     show: false, existingEntries: [], pendingData: null

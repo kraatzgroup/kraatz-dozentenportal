@@ -338,6 +338,14 @@ export function SalesCalendar() {
     });
   };
 
+  // ISO-8601-Kalenderwoche (Woche mit dem ersten Donnerstag = KW 1)
+  const getIsoWeek = (date: Date) => {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return { week: Math.ceil(((d.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7), year: d.getUTCFullYear() };
+  };
+
   const formatDateStr = (date: Date) => {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   };
@@ -456,7 +464,14 @@ export function SalesCalendar() {
           </div>
           <h3 className="text-lg font-semibold">
             {viewMode === 'day' && `${selectedDate.getDate()}. ${months[selectedDate.getMonth()]} ${selectedDate.getFullYear()}`}
-            {viewMode === 'week' && `KW ${Math.ceil((selectedDate.getDate() + new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1).getDay()) / 7)} - ${months[selectedDate.getMonth()]} ${selectedDate.getFullYear()}`}
+            {viewMode === 'week' && (() => {
+              const weekDates = getWeekDates();
+              const first = weekDates[0];
+              const last = weekDates[6];
+              const { week, year } = getIsoWeek(selectedDate);
+              const range = `${first.getDate()}.${first.getMonth() !== last.getMonth() ? `${first.getMonth() + 1}.` : ''}–${last.getDate()}.${last.getMonth() + 1}.`;
+              return `KW ${week} · ${range} ${year}`;
+            })()}
             {viewMode === 'month' && `${months[calMonth]} ${calYear}`}
           </h3>
           <div className="w-24" />

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Users, Phone, Mail, Calendar, Star, MessageSquare, CheckCircle } from 'lucide-react';
+import { Users, Phone, Mail, MessageSquare, CheckCircle } from 'lucide-react';
 import { Lead } from '../../store/salesStore';
 import { supabase } from '../../lib/supabase';
 
@@ -169,19 +169,7 @@ export function AfterSalesList({ leads, onUpdateLead }: AfterSalesListProps) {
                     className="flex items-center px-3 py-1.5 text-xs bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200"
                   >
                     <MessageSquare className="h-3 w-3 mr-1" />
-                    Notiz hinzufügen
-                  </button>
-                  <button
-                    className="flex items-center px-3 py-1.5 text-xs bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200"
-                  >
-                    <Star className="h-3 w-3 mr-1" />
-                    Upsell
-                  </button>
-                  <button
-                    className="flex items-center px-3 py-1.5 text-xs bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
-                  >
-                    <Calendar className="h-3 w-3 mr-1" />
-                    Follow-Up
+                    {lead.notes ? 'Notiz bearbeiten' : 'Notiz hinzufügen'}
                   </button>
                 </div>
 
@@ -214,7 +202,7 @@ export function AfterSalesList({ leads, onUpdateLead }: AfterSalesListProps) {
       {afterSalesLeads.length > 0 && (
         <div className="bg-white rounded-lg shadow p-4">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">Zusammenfassung</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="text-center p-3 bg-emerald-50 rounded-lg">
               <div className="text-2xl font-bold text-emerald-600">{afterSalesLeads.length}</div>
               <div className="text-xs text-gray-500">Aktive Kunden</div>
@@ -224,14 +212,6 @@ export function AfterSalesList({ leads, onUpdateLead }: AfterSalesListProps) {
                 {afterSalesLeads.filter(l => l.study_goal).length}
               </div>
               <div className="text-xs text-gray-500">Mit Studienziel</div>
-            </div>
-            <div className="text-center p-3 bg-yellow-50 rounded-lg">
-              <div className="text-2xl font-bold text-yellow-600">0</div>
-              <div className="text-xs text-gray-500">Upsell-Potenzial</div>
-            </div>
-            <div className="text-center p-3 bg-purple-50 rounded-lg">
-              <div className="text-2xl font-bold text-purple-600">0</div>
-              <div className="text-xs text-gray-500">Empfehlungen</div>
             </div>
           </div>
         </div>

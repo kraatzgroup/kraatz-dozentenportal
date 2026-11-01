@@ -54,8 +54,10 @@ export function VertriebDashboard() {
     subscribeToChanges,
   } = useSalesStore();
 
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+
   useEffect(() => {
-    loadAllData();
+    loadAllData().finally(() => setIsInitialLoading(false));
     
     // Subscribe to real-time changes for synchronization
     const unsubscribe = subscribeToChanges();
@@ -89,7 +91,7 @@ export function VertriebDashboard() {
     <div className="min-h-screen bg-background">
       {/* Tab Navigation */}
       <div className="bg-white border-b border-gray-200">
-        <div className="w-full px-10">
+        <div className="w-full px-4 sm:px-6 lg:px-10">
           <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto" aria-label="Tabs">
             {tabs.map((tab) => (
               <button
@@ -114,7 +116,11 @@ export function VertriebDashboard() {
       </div>
 
       {/* Main Content */}
-      <main className="w-full py-6 px-10">
+      <main className="w-full py-4 sm:py-6 px-4 sm:px-6 lg:px-10">
+        {isInitialLoading && activeTab !== 'calendar' ? (
+          <DashboardSkeleton />
+        ) : (
+        <>
         {activeTab === 'overview' && (
           <SalesKanbanOverview
             calBookings={calBookings}
@@ -148,8 +154,38 @@ export function VertriebDashboard() {
             onUpdateLead={(id, data) => updateLead(id, data as Partial<Lead>)}
           />
         )}
-
+        </>
+        )}
       </main>
+    </div>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse" aria-busy="true" aria-label="Vertriebsdaten werden geladen">
+      <div className="rounded-xl bg-white p-4 shadow-sm sm:p-6">
+        <div className="h-6 w-32 rounded bg-gray-200" />
+        <div className="mt-2 h-4 w-72 max-w-full rounded bg-gray-100" />
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          {[0, 1].map(i => (
+            <div key={i} className="space-y-2 rounded-lg border border-gray-100 p-4">
+              <div className="h-4 w-40 rounded bg-gray-200" />
+              <div className="h-14 rounded-lg bg-gray-100" />
+              <div className="h-14 rounded-lg bg-gray-100" />
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} className="min-h-[330px] space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
+            <div className="mb-3 h-4 w-24 rounded bg-gray-200" />
+            <div className="h-16 rounded-md bg-white" />
+            <div className="h-16 rounded-md bg-white" />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
