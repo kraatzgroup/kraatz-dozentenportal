@@ -122,13 +122,12 @@ const CARD_STYLES: Record<OfferTier | 'individuell' | 'elite', { bg: string; tex
 const ELITE_TEMPLATE_ID = 'angebot-elite';
 const PROBEHOEREN_TEMPLATE_ID = 'elite-probehoeren';
 const CRASHKURS_TEMPLATE_ID = 'klausuren-crashkurs';
-const CRASHKURS_PRICE_H = 158.5;
-const CRASHKURS_EXAMINER_H = 168.5;
-const CRASHKURS_PACKAGES = [
-  { id: 'p6', label: '6 Klausuren (ZR 3 · ÖR 2 · StR 1)', total: '6', zr: '3', oer: '2', str: '1', variant: 'standard' as const },
-  { id: 'p21', label: '21 Klausuren (ZR 10 · ÖR 6 · StR 5)', total: '21', zr: '10', oer: '6', str: '5', variant: 'standard' as const },
-  { id: 'p24', label: '24 Klausuren (ZR 12 · ÖR 8 · StR 4 · 36 Std.)', total: '24', zr: '12', oer: '8', str: '4', variant: 'flat' as const },
-];
+// Einheitspreis für alle Dozenten (Mischkalkulation): Platin = Korrektur 0,5 h + Besprechung 1 h, Gold = nur Besprechung 1 h
+const CRASHKURS_OPTIONS: Record<OfferTier, { price: number; hoursPerExam: number; info: string }> = {
+  platin: { price: 237.75, hoursPerExam: 1.5, info: 'Besprechung inkl. Korrektur (mit 0,5 h/Klausur berechnet)' },
+  gold: { price: 158.5, hoursPerExam: 1, info: 'Besprechung' },
+};
+const CRASHKURS_DEFAULT = { total: '24', subjects: { zr: '12', oer: '8', str: '4' } };
 const ELITE_PACKAGE = { name: 'ELITE Kleingruppe 1. Staatsexamen', hours: 382, price: 9785, installments: 13, installment: 752.7 };
 type Salutation = 'herr' | 'frau' | 'divers';
 
@@ -314,12 +313,9 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
   const [callDate, setCallDate] = useState('');
   const [callTime, setCallTime] = useState('');
   const [probestundeEnabled, setProbestundeEnabled] = useState(false);
-  const [crashTotalInput, setCrashTotalInput] = useState('6');
-  const [crashSubjects, setCrashSubjects] = useState<Record<SubjectKey, string>>({ zr: '3', oer: '2', str: '1' });
-  const [crashMonths, setCrashMonths] = useState(2);
-  const [crashVariant, setCrashVariant] = useState<'standard' | 'flat'>('standard');
-  const [crashPackage, setCrashPackage] = useState('p6');
-  const [crashHourlyRate, setCrashHourlyRate] = useState('148.50');
+  const [crashTotalInput, setCrashTotalInput] = useState(CRASHKURS_DEFAULT.total);
+  const [crashSubjects, setCrashSubjects] = useState<Record<SubjectKey, string>>(CRASHKURS_DEFAULT.subjects);
+  const [crashTier, setCrashTier] = useState<OfferTier>('platin');
   const [beginDate, setBeginDate] = useState(getNextMonday);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
@@ -408,15 +404,17 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
   const crashTotal = Math.round(parseFloat(crashTotalInput) || 0);
   const crashDistributed = SUBJECTS.reduce((sum, sub) => sum + (parseFloat(crashSubjects[sub.key]) || 0), 0);
   const crashRemaining = crashTotal - crashDistributed;
-  const crashRate = parseFloat(crashHourlyRate.replace(',', '.')) || CRASHKURS_PRICE_H;
   const canScheduleCall = /chstes Telefonat/.test(body);
   const callWhen = callEnabled && canScheduleCall ? formatCallWhen(callDate, callTime) : '';
   const callMissingDetails = callEnabled && canScheduleCall && (!callDate || !callTime);
   const canToggleProbestunde = body.includes('<!--IF:probestunde-->');
-  const crashHours = crashTotal * 1.5;
-  const crashPrice = Math.round(crashHours * crashRate * 100) / 100;
+  const crashOption = CRASHKURS_OPTIONS[crashTier];
   const selectedPackage = !showPackageFields
     ? null
+    : isCrashkurs
+      ? crashTotal > 0
+        ? { name: `Klausuren Crashkurs | ${crashTier.toUpperCase()}`, hours: crashTotal * crashOption.hoursPerExam, price: Math.round(crashTotal * crashOption.price * 100) / 100 }
+        : null
     : isElite
       ? { name: ELITE_PACKAGE.name, hours: ELITE_PACKAGE.hours, price: ELITE_PACKAGE.price }
       : totalHours > 0
@@ -465,14 +463,11 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
     setRateOverride(Math.abs(rate - defaultHourlyRate) < 0.005 ? null : rate);
   };
 
-  const changeCrashPackage = (id: string) => {
-    setCrashPackage(id);
-    const pkg = CRASHKURS_PACKAGES.find(p => p.id === id);
-    if (!pkg) return;
-    setCrashTotalInput(pkg.total);
-    setCrashSubjects({ zr: pkg.zr, oer: pkg.oer, str: pkg.str });
-    setCrashVariant(pkg.variant);
+  const resetCrashDefault = () => {
+    setCrashTotalInput(CRASHKURS_DEFAULT.total);
+    setCrashSubjects(CRASHKURS_DEFAULT.subjects);
   };
+  const crashIsDefault = crashTotalInput === CRASHKURS_DEFAULT.total && SUBJECTS.every(s => crashSubjects[s.key] === CRASHKURS_DEFAULT.subjects[s.key]);
 
   const changeCrashTotal = (value: string) => {
     setCrashTotalInput(value);
@@ -542,16 +537,35 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
     });
     if (selectedTemplateId === CRASHKURS_TEMPLATE_ID) {
       values['[K_Zusammenfassung]'] = `${crashTotal} Original-Klausuren &ndash; Zivilrecht (ZR): ${crashSubjects.zr}, &Ouml;ffentliches Recht (&Ouml;R): ${crashSubjects.oer}, Strafrecht (StR): ${crashSubjects.str}.`;
-      const h = CRASHKURS_PRICE_H;
-      const ex = CRASHKURS_EXAMINER_H;
-      values['[K_Preisblock]'] = crashVariant === 'flat'
-        ? `<p style="margin:0 0 10px;font-size:15px;line-height:1.7;">${crashTotal} Klausuren mit ${formatHours(crashHours)} Stunden (Stundensatz: ${formatEuro(crashRate)}) = <strong style="color:#000000;">${formatEuro(crashPrice)}</strong>${crashMonths ? ` (${crashMonths} ${crashMonths === 1 ? 'Monat' : 'Monate'} &agrave; ${formatEuro(crashPrice / crashMonths)})` : ''}.</p>`
-        : `<p style="margin:0 0 6px;font-size:15px;line-height:1.7;"><strong style="color:#000000;">&bdquo;Platin&ldquo; &ndash; Option:</strong> Korrektur (0,5 h) + Besprechung (1,0 h) mit ${formatEuro(h)}/h = 1,5 h/Klausur = ${formatEuro(h * 1.5)}/Klausur (Option: ausschlie&szlig;lich Pr&uuml;fer als Dozent: ${formatEuro(ex)}/h = ${formatEuro(ex * 1.5)}/Klausur)</p>
-<p style="margin:0 0 6px;font-size:15px;line-height:1.7;"><strong style="color:#000000;">&bdquo;Gold&ldquo; &ndash; Option:</strong> Nur Besprechung ohne Korrektur (1,0 h/Klausur) mit ${formatEuro(h)}/h = ${formatEuro(h)}/Klausur (Option: ausschlie&szlig;lich Pr&uuml;fer als Dozent: ${formatEuro(ex)}/h = ${formatEuro(ex)}/Klausur)</p>
-<p style="margin:0 0 10px;font-size:15px;line-height:1.7;"><strong style="color:#000000;">&bdquo;Bronze&ldquo; &ndash; Option:</strong> Nur Korrektur ohne Besprechung (0,5 h/Klausur) mit ${formatEuro(h)}/h = ${formatEuro(h * 0.5)}/Klausur (Option: ausschlie&szlig;lich Pr&uuml;fer als Dozent: ${formatEuro(ex)}/h = ${formatEuro(ex * 0.5)}/Klausur)</p>`;
+      values['[K_Anzahl]'] = String(crashTotal);
+      const crashName = (t: OfferTier) => `Klausuren Crashkurs | ${t.toUpperCase()}`;
+      const crashScope = (t: OfferTier) => `${crashTotal} Klausuren + ${crashTotal} Std. Besprechung${t === 'platin' ? ' inkl. Korrektur' : ''}`;
+      const cs = CARD_STYLES[crashTier];
+      const tbl = 'role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"';
+      const cardRow = (label: string, value: string) => `<tr><td style="padding:4px 0;">${label}</td><td align="right" style="padding:4px 0;font-weight:600;">${value}</td></tr>`;
+      values['[K_Karte]'] = `<table ${tbl} style="${cs.bg}border-radius:12px;"><tr><td style="padding:10px;"><table ${tbl} style="border:2px solid ${cs.frame};border-radius:8px;">
+<tr><td style="padding:12px;${cs.pattern}"><table ${tbl} style="border:2px solid ${cs.frame};border-radius:6px;${cs.bg}"><tr><td style="padding:16px 18px;color:${cs.text};">
+<p style="margin:0 0 12px;text-align:center;"><span style="display:inline-block;background-color:${cs.frame};color:${cs.tagText};font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:5px 12px;border-radius:12px;">Ihr pers&ouml;nliches Angebot</span></p>
+<p style="margin:0 0 14px;font-size:22px;font-weight:400;color:${cs.title};">${crashName(crashTier)}</p>
+<table ${tbl} style="font-size:15px;color:${cs.text};">
+${cardRow('Umfang', crashScope(crashTier))}
+${cardRow('Verteilung', `ZR ${crashSubjects.zr} &middot; &Ouml;R ${crashSubjects.oer} &middot; StR ${crashSubjects.str}`)}
+${cardRow('Preis pro Klausur', formatEuro(crashOption.price))}
+${cardRow('Investition', formatEuro(crashTotal * crashOption.price))}
+</table>
+</td></tr></table></td></tr></table></td></tr></table>`;
+      const priceRow = (t: OfferTier, detail: string) => {
+        const selected = crashTier === t;
+        const style = TIER_EMAIL_STYLES[t] + 'padding:14px 16px;';
+        return `<tr><td style="${style}border-radius:10px 0 0 10px;${selected ? 'border:3px solid #2D84C1;border-right:0;' : ''}"><strong>${crashName(t)}</strong> ${selected ? '<span style="display:inline-block;background-color:#2D84C1;color:#FFFFFF;font-size:10px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:10px;vertical-align:middle;">IHR PAKET</span>' : ''}<br><span style="font-size:12px;">${detail}</span></td><td align="right" style="${style}border-radius:0 10px 10px 0;font-size:18px;font-weight:700;white-space:nowrap;${selected ? 'border:3px solid #2D84C1;border-left:0;' : ''}">${formatEuro(CRASHKURS_OPTIONS[t].price)}<br><span style="font-size:11px;font-weight:400;">pro Klausur</span></td></tr>`;
+      };
+      values['[K_Preisblock]'] = `<table ${tbl} style="font-size:14px;line-height:1.5;border-collapse:separate;border-spacing:0 8px;">
+${priceRow('platin', 'Besprechung (1 h/Klausur) UND Korrektur (0,5 h/Klausur)')}
+${priceRow('gold', 'Nur Besprechung (1 h/Klausur), keine Korrektur')}
+</table>`;
     }
     return values;
-  }, [lead, firstName, lastName, salutation, selectedPackage, matchedTier, isElite, cardKey, beginDate, months, hourlyRate, monthlyRate, rateOverride, totalHours, subjectHours, selectedTemplateId, crashTotal, crashSubjects, crashMonths, crashVariant, crashHours, crashRate, crashPrice, crashPackage]);
+  }, [lead, firstName, lastName, salutation, selectedPackage, matchedTier, isElite, cardKey, beginDate, months, hourlyRate, monthlyRate, rateOverride, totalHours, subjectHours, selectedTemplateId, crashTotal, crashSubjects, crashTier, crashOption]);
 
   // Bedingte Blöcke (<!--IF:key-->…<!--/IF:key-->) entfernen, wenn der Wert fehlt
   const applyConditionals = (text: string) => {
@@ -881,47 +895,56 @@ export function PipelineOfferModal({ lead, onClose, onSent, templateCategory = '
           {showPackageFields && isCrashkurs && (
           <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Paket</label>
-              <select value={crashPackage} onChange={e => changeCrashPackage(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
-                {CRASHKURS_PACKAGES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-                <option value="custom">Individuell festlegen</option>
-              </select>
+              <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
+                <PackageIcon className="h-4 w-4 mr-1" />Paket
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['platin', 'gold'] as OfferTier[]).map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setCrashTier(t)}
+                    style={{
+                      background: t === 'platin'
+                        ? 'linear-gradient(135deg,#f8fafc 0%,#cfd6de 25%,#ffffff 45%,#aeb7c2 70%,#e9edf1 100%)'
+                        : 'linear-gradient(135deg,#fff6c9 0%,#e8c14f 25%,#fff3b0 45%,#c9972b 70%,#f3d878 100%)',
+                    }}
+                    className={`text-left p-3 rounded-lg border-2 shadow-sm transition-all hover:brightness-105 ${
+                      crashTier === t
+                        ? (t === 'platin' ? 'border-slate-500 ring-2 ring-slate-400/60 shadow-md' : 'border-amber-600 ring-2 ring-amber-500/60 shadow-md')
+                        : (t === 'platin' ? 'border-slate-300 opacity-80' : 'border-amber-300 opacity-80')
+                    }`}
+                  >
+                    <p className={`text-base font-bold tracking-widest ${t === 'platin' ? 'text-slate-700' : 'text-amber-900'}`}>{t.toUpperCase()}</p>
+                    <p className={`text-xs ${t === 'platin' ? 'text-slate-600' : 'text-amber-800'}`}>{crashTotal} Klausuren + {crashTotal} Std. {CRASHKURS_OPTIONS[t].info}</p>
+                    <p className={`text-xs font-semibold ${t === 'platin' ? 'text-slate-700' : 'text-amber-900'}`}>{formatEuro(CRASHKURS_OPTIONS[t].price)}/Klausur · {formatEuro(crashTotal * CRASHKURS_OPTIONS[t].price)}</p>
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-gray-900">Verteilung</p>
-              <select value={crashVariant} onChange={e => setCrashVariant(e.target.value as 'standard' | 'flat')} className="rounded-lg border border-gray-300 px-2 py-1 text-xs">
-                <option value="standard">Pro Klausur (Platin/Gold/Bronze)</option>
-                <option value="flat">Pauschal (Stundensatz)</option>
-              </select>
+              <p className="text-sm font-semibold text-gray-900">Klausuren &amp; Verteilung</p>
+              {!crashIsDefault && (
+                <button type="button" onClick={resetCrashDefault} className="text-xs text-primary hover:underline">
+                  Standard (24 Klausuren) wiederherstellen
+                </button>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Klausuren gesamt</label>
-                <input type="number" min="0" value={crashTotalInput} onChange={e => { setCrashPackage('custom'); changeCrashTotal(e.target.value); }} className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent" />
+                <label className="block text-xs font-semibold text-primary mb-1">Klausuren gesamt</label>
+                <input type="number" min="0" value={crashTotalInput} onChange={e => changeCrashTotal(e.target.value)} className="w-full px-2 py-1.5 text-sm font-semibold text-gray-900 bg-primary/5 border-2 border-primary rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent" />
               </div>
               {SUBJECTS.map(sub => (
                 <div key={sub.key}>
                   <label className="block text-xs font-medium text-gray-700 mb-1">{sub.label.replace(' (ZR)', '').replace(' (ÖR)', '').replace(' (StR)', '')}</label>
-                  <input type="number" min="0" value={crashSubjects[sub.key]} onChange={e => { setCrashPackage('custom'); setCrashSubjects(prev => ({ ...prev, [sub.key]: e.target.value })); }} className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent" />
+                  <input type="number" min="0" value={crashSubjects[sub.key]} onChange={e => setCrashSubjects(prev => ({ ...prev, [sub.key]: e.target.value }))} className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent" />
                 </div>
               ))}
             </div>
             <p className={`text-sm font-medium ${crashRemaining === 0 ? 'text-green-600' : 'text-amber-600'}`}>
               {crashRemaining === 0 ? `✓ Verteilung geht auf (${crashTotal} Klausuren)` : crashRemaining > 0 ? `Noch ${crashRemaining} Klausur(en) zu verteilen` : `${-crashRemaining} Klausur(en) zu viel verteilt`}
             </p>
-            {crashVariant === 'flat' && (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Laufzeit (Monate)</label>
-                  <input type="number" min="1" value={crashMonths} onChange={e => setCrashMonths(Number(e.target.value))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Stundensatz (€/h)</label>
-                  <input type="text" inputMode="decimal" value={crashHourlyRate} onChange={e => setCrashHourlyRate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent" />
-                </div>
-                <p className="col-span-2 text-xs text-gray-600">Gesamt: {formatEuro(crashPrice)} · {formatHours(crashHours)} Std. (1,5 h/Klausur)</p>
-              </div>
-            )}
           </div>
           )}
 
