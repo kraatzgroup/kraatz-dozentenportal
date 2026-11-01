@@ -81,6 +81,12 @@ interface PipelineItem {
   offerPackageLine: string | null;
 }
 
+interface TodoEntry {
+  item: PipelineItem;
+  /** Zeitstempel des geplanten 2. Gesprächs (ms), sonst null für Beratungsgespräche. */
+  scheduledAt: number | null;
+}
+
 // Kommende Termine zuerst (nach Startzeit), Terminlose ans Ende
 const sortByStartsAt = (arr: PipelineItem[]) =>
   [...arr].sort((a, b) => {
@@ -274,7 +280,7 @@ function CardContent({ item, isNew }: { item: PipelineItem; isNew: boolean }) {
       {isNew && item.date && new Date(`${item.date}T12:00:00`).getTime() < Date.now() && (
         <p className="mt-1 text-xs font-medium text-amber-600">Vergangener Call</p>
       )}
-      {(item.column === 'trial_pending' || item.column === 'finalgespraech' || item.column === 'closed') && item.offerPackageLine && (
+      {(item.column === 'trial_pending' || item.column === 'finalgespraech' || item.column === 'closed' || item.column === 'post_offer_call') && item.offerPackageLine && (
         <p className="mt-1 text-xs text-amber-800">{item.offerPackageLine}</p>
       )}
       {item.column === 'downsell' ? (
@@ -484,6 +490,7 @@ export function SalesKanbanOverview({
 
   const today = useMemo(() => new Date(), []);
   const todayKey = formatDateKey(today);
+  const isWeekend = today.getDay() === 0 || today.getDay() === 6;
   const nextWorkingDay = useMemo(() => getNextWorkingDay(today), [today]);
   const nextWorkingDayKey = formatDateKey(nextWorkingDay);
   const tomorrow = useMemo(() => {
@@ -739,6 +746,23 @@ export function SalesKanbanOverview({
   const followUpEscalated = useMemo(() => followUpDue.filter(item => item.escalated), [followUpDue]);
   const followUpDueNonEscalated = useMemo(() => followUpDue.filter(item => !item.escalated), [followUpDue]);
 
+  // Zukünftig geplante Anrufe (2. Gespräch): im To-Do-Bereich oben sichtbar machen
+  const upcomingCalls = useMemo(() => {
+    const now = Date.now();
+    const byLead = new Map<string, number>();
+    callTodos.forEach(t => {
+      const ms = new Date(`${t.scheduled_date}T${t.scheduled_time || '00:00'}`).getTime();
+      if (Number.isNaN(ms)) return;
+      const prev = byLead.get(t.lead_id);
+      if (prev === undefined || ms < prev) byLead.set(t.lead_id, ms);
+    });
+    return items
+      .filter(item => item.lead && byLead.has(item.lead.id))
+      .map(item => ({ item, scheduledAt: byLead.get(item.lead!.id)! }))
+      .filter(({ scheduledAt }) => scheduledAt > now)
+      .sort((a, b) => a.scheduledAt - b.scheduledAt);
+  }, [items, callTodos]);
+
   // Stattgefundene geplante Anrufe (2. Gespräch): ganz oben zum Weiterverarbeiten
   const doneCalls = useMemo(
     () => items
@@ -792,17 +816,29 @@ export function SalesKanbanOverview({
 
   // Anstehende Beratungsgespräche (Status 'new', noch nicht begonnen)
   const newItems = useMemo(() => items.filter(item => item.status === 'new' && !isPastCall(item)), [items]);
-  const todosByDay = useMemo(() => ({
-    today: sortByStartsAt(newItems.filter(item => item.date === todayKey)),
-    nextWorkingDay: sortByStartsAt(newItems.filter(item => item.date === nextWorkingDayKey)),
-  }), [newItems, nextWorkingDayKey, todayKey]);
+  const todosByDay = useMemo(() => {
+    const sortEntries = (arr: TodoEntry[]) => [...arr].sort((a, b) => {
+      const at = a.scheduledAt ?? (a.item.startsAt ? new Date(a.item.startsAt).getTime() : 0);
+      const bt = b.scheduledAt ?? (b.item.startsAt ? new Date(b.item.startsAt).getTime() : 0);
+      return at - bt;
+    });
+    const consultToday: TodoEntry[] = newItems.filter(item => item.date === todayKey).map(item => ({ item, scheduledAt: null }));
+    const consultNext: TodoEntry[] = newItems.filter(item => item.date === nextWorkingDayKey).map(item => ({ item, scheduledAt: null }));
+    const scheduledToday: TodoEntry[] = upcomingCalls.filter(({ scheduledAt }) => formatDateKey(new Date(scheduledAt)) === todayKey).map(({ item, scheduledAt }) => ({ item, scheduledAt }));
+    const scheduledLater: TodoEntry[] = upcomingCalls.filter(({ scheduledAt }) => formatDateKey(new Date(scheduledAt)) !== todayKey).map(({ item, scheduledAt }) => ({ item, scheduledAt }));
+    return {
+      today: sortEntries([...consultToday, ...scheduledToday]),
+      nextWorkingDay: sortEntries([...consultNext, ...scheduledLater]),
+    };
+  }, [newItems, upcomingCalls, todayKey, nextWorkingDayKey]);
 
-  const renderTodoList = (todoItems: PipelineItem[], emptyLabel: string) => (
+  const renderTodoList = (todoItems: TodoEntry[], emptyLabel: string) => (
     <div className="space-y-2">
       {todoItems.length === 0 ? (
         <p className="py-3 text-sm text-slate-400">{emptyLabel}</p>
-      ) : todoItems.map(item => {
+      ) : todoItems.map(({ item, scheduledAt }) => {
         const examTag = getExamTag(item.examGoal);
+        const scheduled = scheduledAt != null ? new Date(scheduledAt) : null;
         return (
           <div
             key={item.id}
@@ -826,11 +862,19 @@ export function SalesKanbanOverview({
                   <p className="text-sm font-medium text-slate-900">{item.title}</p>
                   {examTag && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800">{examTag}</span>}
                 </div>
-                <p className="text-xs text-slate-500">Beratungsgespräch</p>
+                <p className="text-xs text-slate-500">{scheduled ? '2. Gespräch' : 'Beratungsgespräch'}</p>
+                {scheduled && item.offerPackageLine && <p className="mt-1 text-xs text-amber-800">{item.offerPackageLine}</p>}
                 {item.description && <p className="mt-1 text-xs text-slate-500">{item.description}</p>}
               </div>
             </div>
-            {item.time && <span className="flex shrink-0 items-center gap-1 text-xs text-blue-600"><Clock className="h-3 w-3" />{item.time}</span>}
+            {scheduled ? (
+              <div className="shrink-0 text-right">
+                <p className="text-xs font-medium text-blue-600">{scheduled.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}</p>
+                <p className="text-xs text-slate-500">{scheduled.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr</p>
+              </div>
+            ) : (
+              item.time && <span className="flex shrink-0 items-center gap-1 text-xs text-blue-600"><Clock className="h-3 w-3" />{item.time}</span>
+            )}
           </div>
         );
       })}
@@ -1013,59 +1057,63 @@ export function SalesKanbanOverview({
           </div>
           <Calendar className="h-5 w-5 text-primary" />
         </div>
-        {followUpEscalated.length > 0 && (
-          <div className="mb-4 rounded-lg border border-rose-300 bg-rose-50/70 p-4">
-            <h3 className="flex items-center gap-2 font-medium text-rose-900">
-              <Phone className="h-4 w-4" />2. Gespräch überfällig
-              <span className="text-xs font-normal text-rose-700">({followUpEscalated.length})</span>
-            </h3>
-            <p className="mt-1 text-xs text-rose-800">Follow-up seit mehr als 24 Stunden fällig – bitte sofort anrufen.</p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {followUpEscalated.map(item => (
-                <DraggableCard key={item.id} item={item} isNew={false} onSelect={setSelectedItem} />
-              ))}
-            </div>
-          </div>
-        )}
-        {rejectedTrials.length > 0 && (
-          <div className="mb-4 rounded-lg border border-rose-300 bg-rose-50/70 p-4">
-            <h3 className="flex items-center gap-2 font-medium text-rose-900">
-              <GraduationCap className="h-4 w-4" />Probestunde abgelehnt
-              <span className="text-xs font-normal text-rose-700">({rejectedTrials.length})</span>
-            </h3>
-            <p className="mt-1 text-xs text-rose-800">Dozent hat die Probestunde abgelehnt – bitte neu anfragen.</p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {rejectedTrials.map(item => (
-                <DraggableCard
-                  key={item.id}
-                  item={item}
-                  isNew={false}
-                  onSelect={() => {
-                    if (item.lead && item.rejectedTrial) {
-                      const t = item.rejectedTrial;
-                      setTrialRequest({
-                        lead: item.lead,
-                        initial: {
-                          teilnehmer_name: t.teilnehmer_name || item.lead.name,
-                          teilnehmer_email: t.teilnehmer_email || item.lead.email,
-                          teilnehmer_phone: t.teilnehmer_phone || item.lead.phone,
-                          scheduled_date: toDateTimeLocal(t.scheduled_date) || getNextMondayDateTime(),
-                          dozent_id: undefined,
-                          rechtsgebiet: t.rechtsgebiet || undefined,
-                          uni_standort: t.uni_standort || undefined,
-                          landesrecht: t.landesrecht || undefined,
-                          notes: t.notes || undefined,
-                          duration: t.duration || 60,
-                          lead_id: item.lead.id,
-                        },
-                        rejectedDozentId: t.dozent_id || null,
-                        rejectedDozentName: t.dozent_name || null,
-                      });
-                    }
-                  }}
-                />
-              ))}
-            </div>
+        {(followUpEscalated.length > 0 || rejectedTrials.length > 0) && (
+          <div className="mb-4 grid gap-4 sm:grid-cols-2">
+            {followUpEscalated.length > 0 && (
+              <div className="rounded-lg border border-rose-300 bg-rose-50/70 p-4">
+                <h3 className="flex items-center gap-2 font-medium text-rose-900">
+                  <Phone className="h-4 w-4" />2. Gespräch überfällig
+                  <span className="text-xs font-normal text-rose-700">({followUpEscalated.length})</span>
+                </h3>
+                <p className="mt-1 text-xs text-rose-800">Follow-up seit mehr als 24 Stunden fällig – bitte sofort anrufen.</p>
+                <div className="mt-3 grid grid-cols-1 gap-2">
+                  {followUpEscalated.map(item => (
+                    <DraggableCard key={item.id} item={item} isNew={false} onSelect={setSelectedItem} />
+                  ))}
+                </div>
+              </div>
+            )}
+            {rejectedTrials.length > 0 && (
+              <div className="rounded-lg border border-rose-300 bg-rose-50/70 p-4">
+                <h3 className="flex items-center gap-2 font-medium text-rose-900">
+                  <GraduationCap className="h-4 w-4" />Probestunde abgelehnt
+                  <span className="text-xs font-normal text-rose-700">({rejectedTrials.length})</span>
+                </h3>
+                <p className="mt-1 text-xs text-rose-800">Dozent hat die Probestunde abgelehnt – bitte neu anfragen.</p>
+                <div className="mt-3 grid grid-cols-1 gap-2">
+                  {rejectedTrials.map(item => (
+                    <DraggableCard
+                      key={item.id}
+                      item={item}
+                      isNew={false}
+                      onSelect={() => {
+                        if (item.lead && item.rejectedTrial) {
+                          const t = item.rejectedTrial;
+                          setTrialRequest({
+                            lead: item.lead,
+                            initial: {
+                              teilnehmer_name: t.teilnehmer_name || item.lead.name,
+                              teilnehmer_email: t.teilnehmer_email || item.lead.email,
+                              teilnehmer_phone: t.teilnehmer_phone || item.lead.phone,
+                              scheduled_date: toDateTimeLocal(t.scheduled_date) || getNextMondayDateTime(),
+                              dozent_id: undefined,
+                              rechtsgebiet: t.rechtsgebiet || undefined,
+                              uni_standort: t.uni_standort || undefined,
+                              landesrecht: t.landesrecht || undefined,
+                              notes: t.notes || undefined,
+                              duration: t.duration || 60,
+                              lead_id: item.lead.id,
+                            },
+                            rejectedDozentId: t.dozent_id || null,
+                            rejectedDozentName: t.dozent_name || null,
+                          });
+                        }
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
         {(followUpDueNonEscalated.length > 0 || finalDue.length > 0) && (
@@ -1100,10 +1148,12 @@ export function SalesKanbanOverview({
             )}
           </div>
         )}
+        {!isWeekend && (
         <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-4">
           <h3 className="flex items-center gap-2 font-medium text-blue-900"><Clock className="h-4 w-4" />Heute, {formatDayLabel(today)}<span className="text-xs font-normal text-blue-700">({todosByDay.today.length})</span></h3>
           <div className="mt-3">{renderTodoList(todosByDay.today, 'Keine anstehenden Beratungsgespräche für heute.')}</div>
         </div>
+        )}
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {zuBearbeiten.length > 0 && (
             <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-4">

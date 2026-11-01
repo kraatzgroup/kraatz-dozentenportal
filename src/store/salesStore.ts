@@ -259,6 +259,7 @@ interface SalesState {
   updatePackage: (id: string, data: Partial<Package>) => Promise<void>;
   updateFollowUp: (id: string, data: Partial<FollowUp>) => Promise<void>;
   updateTrialLesson: (id: string, data: Partial<TrialLesson>) => Promise<void>;
+  respondToTrialLesson: (id: string, accepted: boolean) => Promise<void>;
   updateSale: (id: string, data: Partial<Sale>) => Promise<void>;
   updateUpsell: (id: string, data: Partial<Upsell>) => Promise<void>;
 
@@ -281,6 +282,83 @@ interface SalesState {
   // Real-time subscriptions
   subscribeToChanges: () => () => void;
 }
+
+const replaceTokens = (text: string, values: Record<string, string>) =>
+  Object.entries(values).reduce((acc, [token, value]) => acc.split(token).join(value), text);
+
+// Benachrichtigt den zugewiesenen Dozenten per E-Mail, wenn eine Probestunde angelegt wird.
+// Best effort: Fehler beim Versand werden vom Aufrufer abgefangen und dürfen die Anlage nicht verhindern.
+const notifyDozentAboutTrialLesson = async (data: Partial<TrialLesson>) => {
+  if (!data.dozent_id) return;
+
+  const { data: dozent } = await supabase
+    .from('profiles')
+    .select('full_name, email')
+    .eq('id', data.dozent_id)
+    .single();
+  if (!dozent?.email) return;
+
+  const scheduled = data.scheduled_date ? new Date(data.scheduled_date) : null;
+  const validDate = scheduled && !Number.isNaN(scheduled.getTime());
+  const termin = validDate
+    ? `${scheduled.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })} · ${scheduled.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`
+    : '–';
+  const kontakt = [data.teilnehmer_email, data.teilnehmer_phone].filter(Boolean).join(' · ') || '–';
+
+  const values: Record<string, string> = {
+    '[Dozent_Name]': dozent.full_name || 'Dozent',
+    '[Teilnehmer]': data.teilnehmer_name || '–',
+    '[Termin]': termin,
+    '[Dauer]': data.duration ? `${data.duration} Minuten` : '–',
+    '[Rechtsgebiet]': data.rechtsgebiet || '–',
+    '[Kontakt]': kontakt,
+    '[Standort]': data.uni_standort || '–',
+    '[Landesrecht]': data.landesrecht || '–',
+    '[Notizen]': data.notes || '–',
+  };
+
+  const { data: template } = await supabase
+    .from('email_templates')
+    .select('subject, body')
+    .eq('id', 'probestunde-dozent')
+    .single();
+
+  const subject = replaceTokens(template?.subject || 'Neue Probestunden-Anfrage: [Teilnehmer]', values);
+  const html = replaceTokens(
+    template?.body || '<p>Neue Probestunden-Anfrage für [Teilnehmer] am [Termin] ([Rechtsgebiet], [Dauer]). Kontakt: [Kontakt].</p>',
+    values
+  );
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return;
+
+  const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      to: dozent.email,
+      toName: dozent.full_name || undefined,
+      subject,
+      html,
+      edgeFunction: 'probestunde-dozent-notify',
+      context: {
+        dozentId: data.dozent_id,
+        leadId: data.lead_id ?? null,
+        teilnehmer: data.teilnehmer_name ?? null,
+        scheduled: data.scheduled_date ?? null,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    throw new Error(result?.error || result?.details || `send-email failed: ${response.status}`);
+  }
+};
 
 export const useSalesStore = create<SalesState>((set, get) => ({
   packages: [],
@@ -805,6 +883,12 @@ export const useSalesStore = create<SalesState>((set, get) => ({
       set({ error: error.message });
       throw error;
     }
+    // Dozenten per E-Mail benachrichtigen (best effort – darf die Anlage nicht verhindern)
+    try {
+      await notifyDozentAboutTrialLesson(data);
+    } catch (mailError) {
+      console.error('Error notifying dozent about trial lesson:', mailError);
+    }
   },
 
   createSale: async (data) => {
@@ -898,6 +982,33 @@ export const useSalesStore = create<SalesState>((set, get) => ({
       await get().fetchTrialLessons();
     } catch (error: any) {
       console.error('Error updating trial lesson:', error);
+      set({ error: error.message });
+      throw error;
+    }
+  },
+
+  // Dozent nimmt eine Probestunde an (accepted=true) oder lehnt sie ab (accepted=false).
+  // Die Edge Function setzt den Status serverseitig (Service-Role) und benachrichtigt die Admins per E-Mail.
+  respondToTrialLesson: async (id, accepted) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Nicht eingeloggt');
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/probestunde-antwort-notify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ trialLessonId: id, accepted }),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result?.error || result?.details || `probestunde-antwort-notify failed: ${response.status}`);
+      }
+      await get().fetchTrialLessons();
+    } catch (error: any) {
+      console.error('Error responding to trial lesson:', error);
       set({ error: error.message });
       throw error;
     }

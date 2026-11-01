@@ -50,7 +50,7 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
   const { fetchMonthlySummary } = hoursStore;
   const getCurrentMonthHours = hoursStore.getCurrentMonthHours;
   const { messages, fetchMessages, markAsRead, markAllAsRead, setupMessageSubscription } = useMessageStore();
-  const { trialLessons, fetchTrialLessons, updateTrialLesson } = useSalesStore();
+  const { trialLessons, fetchTrialLessons, updateTrialLesson, respondToTrialLesson } = useSalesStore();
   const [selectedFolder, setSelectedFolder] = useState<Folder | null>(null);
   
   // Handle folder selection - always clear localStorage to ensure dashboard loads on page refresh
@@ -1616,14 +1616,14 @@ export function Dashboard({ isAdmin = false }: DashboardProps) {
                                   </div>
                                   <div className="mt-3 flex space-x-2">
                                     <button
-                                      onClick={() => updateTrialLesson(lesson.id, { status: 'confirmed', dozent_confirmed: true })}
+                                      onClick={() => respondToTrialLesson(lesson.id, true)}
                                       className="flex-1 px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700 flex items-center justify-center"
                                     >
                                       <Check className="h-3 w-3 mr-1" />
                                       Akzeptieren
                                     </button>
                                     <button
-                                      onClick={() => updateTrialLesson(lesson.id, { status: 'cancelled' })}
+                                      onClick={() => respondToTrialLesson(lesson.id, false)}
                                       className="flex-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700 flex items-center justify-center"
                                     >
                                       <X className="h-3 w-3 mr-1" />
