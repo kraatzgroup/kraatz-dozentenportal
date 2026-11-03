@@ -1568,28 +1568,6 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
 
       if (firstError) throw firstError;
 
-      // Tätigkeitsbericht-Eintrag erstellen für Unterrichtseinheiten und Wiederholungseinheiten
-      if (releaseEventType === 'einheit' && assignedDozentId && releaseDuration > 0) {
-        const hours = releaseDuration / 60;
-        const category = releaseUnitType?.startsWith('wiederholung') ? 'Wiederholungseinheit' : 'Unterrichtseinheit';
-        const group = eliteGroups.find(g => g.id === eliteGroupId);
-        const groupSuffix = group?.group_number
-          ? ` - Elite-Kleingruppe ${group.group_number}`
-          : '';
-        const { error: hoursError } = await supabase.from('dozent_hours').insert({
-          dozent_id: assignedDozentId,
-          date: selectedDate.toISOString().split('T')[0],
-          hours: hours,
-          description: `${category}: ${releaseTitle} (${releaseLegalArea || 'Allgemein'})${groupSuffix}`,
-          category: category,
-          status: 'pending',
-          elite_kleingruppe_id: eliteGroupId
-        });
-        if (hoursError) {
-          console.error('Error creating dozent_hours entry:', hoursError);
-        }
-      }
-
       // Wiederkehrende Termine erstellen
       if (releaseIsRecurring && firstRelease) {
         const recurringReleases = [];
@@ -1618,25 +1596,6 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
 
         if (recurringReleases.length > 0) {
           await supabase.from('elite_kleingruppe_releases').insert(recurringReleases);
-
-          // Tätigkeitsbericht-Einträge für wiederkehrende Termine erstellen
-          if (releaseEventType === 'einheit' && assignedDozentId && releaseDuration > 0) {
-            const hours = releaseDuration / 60;
-            const category = releaseUnitType?.startsWith('wiederholung') ? 'Wiederholungseinheit' : 'Unterrichtseinheit';
-            const hoursEntries = recurringReleases.map(release => ({
-              dozent_id: assignedDozentId,
-              date: release.release_date,
-              hours: hours,
-              description: `${category}: ${release.title} (${releaseLegalArea || 'Allgemein'})`,
-              category: category,
-              status: 'pending',
-              elite_kleingruppe_id: eliteGroupId
-            }));
-            const { error: recurringHoursError } = await supabase.from('dozent_hours').insert(hoursEntries);
-            if (recurringHoursError) {
-              console.error('Error creating dozent_hours entries for recurring releases:', recurringHoursError);
-            }
-          }
         }
       }
 
@@ -1905,52 +1864,6 @@ export function EliteKleingruppe({ isAdmin = true, activeSubTabProp, onSubTabCha
         .eq('id', editingRelease.id);
 
       if (error) throw error;
-
-      // Tätigkeitsbericht-Eintrag aktualisieren für Unterrichtseinheiten und Wiederholungseinheiten
-      if (releaseUnitType && editingRelease.dozent_id && releaseDuration > 0) {
-        const hours = releaseDuration / 60;
-        const category = releaseUnitType?.startsWith('wiederholung') ? 'Wiederholungseinheit' : 'Unterrichtseinheit';
-        const description = `${category}: ${releaseTitle} (${releaseLegalArea || 'Allgemein'})`;
-
-        // Prüfen ob bereits ein Eintrag für dieses Release existiert
-        const { data: existingHours } = await supabase
-          .from('dozent_hours')
-          .select('id')
-          .eq('dozent_id', editingRelease.dozent_id)
-          .eq('date', newDate)
-          .ilike('description', `%${editingRelease.title}%`)
-          .limit(1);
-
-        if (existingHours && existingHours.length > 0) {
-          // Bestehenden Eintrag aktualisieren
-          const { error: updateHoursError } = await supabase
-            .from('dozent_hours')
-            .update({
-              hours: hours,
-              description: description,
-              category: category,
-              elite_kleingruppe_id: editingRelease.elite_kleingruppe_id || selectedEliteGroupId
-            })
-            .eq('id', existingHours[0].id);
-          if (updateHoursError) {
-            console.error('Error updating dozent_hours entry:', updateHoursError);
-          }
-        } else {
-          // Neuen Eintrag erstellen
-          const { error: insertHoursError } = await supabase.from('dozent_hours').insert({
-            dozent_id: editingRelease.dozent_id,
-            date: newDate,
-            hours: hours,
-            description: description,
-            category: category,
-            status: 'pending',
-            elite_kleingruppe_id: editingRelease.elite_kleingruppe_id || selectedEliteGroupId
-          });
-          if (insertHoursError) {
-            console.error('Error creating dozent_hours entry:', insertHoursError);
-          }
-        }
-      }
 
       // Notify participants if description was changed on a released unit
       if (descriptionChanged && releaseDescription && editingRelease.is_released) {
