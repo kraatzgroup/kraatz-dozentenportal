@@ -265,7 +265,7 @@ export function Nachbuchungen() {
   const handleDelete = async (rowsToDelete: NachbuchungRow[]) => {
     const label = [rowsToDelete[0]?.teilnehmer_name, rowsToDelete[0]?.teilnehmer_tn_nummer].filter(Boolean).join(' · ') || '–';
     const msg = rowsToDelete.length === 1
-      ? 'Diese Anfrage wirklich löschen?'
+      ? `Anfrage im Fachgebiet ${rowsToDelete[0].rechtsgebiet} wirklich löschen?`
       : `Alle ${rowsToDelete.length} Anfragen für ${label} wirklich löschen?`;
     if (!window.confirm(msg)) return;
 
@@ -743,7 +743,7 @@ export function Nachbuchungen() {
                 <>
                   Die Anfrage für{' '}
                   <strong>{[resendRows[0].teilnehmer_name, resendRows[0].teilnehmer_tn_nummer].filter(Boolean).join(' · ') || '–'}</strong>{' '}
-                  wird erneut an den Dozenten gesendet. Der bisherige Link wird dabei ungültig.
+                  im Fachgebiet <strong>{resendRows[0].rechtsgebiet}</strong> wird erneut an den Dozenten gesendet. Der bisherige Link wird dabei ungültig.
                 </>
               ) : (
                 <>
