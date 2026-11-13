@@ -361,6 +361,16 @@ export function Nachbuchungen() {
     }
   };
 
+  const openAnswerForRow = (r: NachbuchungRow) => {
+    setViewAnswerParticipantKey(participantKey(r));
+    setViewAnswerRechtsgebiet(r.rechtsgebiet);
+    setZustandeSelection(
+      r.nachbuchung_zustande === true ? 'ja' : r.nachbuchung_zustande === false ? 'nein' : 'offen'
+    );
+    setZustandeStunden(r.nachbuchung_stunden != null ? String(r.nachbuchung_stunden) : '');
+    setZustandeProvision(r.nachbuchung_provision != null ? String(r.nachbuchung_provision) : '');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!rechtsgebiet || !dozentId) {
@@ -801,6 +811,7 @@ export function Nachbuchungen() {
                       <th className="px-4 py-3">Rechtsgebiet</th>
                       <th className="px-4 py-3">Stunden</th>
                       <th className="px-4 py-3">Provision</th>
+                      <th className="px-4 py-3 text-right">Aktionen</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -814,6 +825,18 @@ export function Nachbuchungen() {
                         <td className="px-4 py-3 text-gray-600">{r.nachbuchung_stunden != null ? r.nachbuchung_stunden : '–'}</td>
                         <td className="px-4 py-3 text-gray-600">
                           {r.nachbuchung_provision != null ? `${r.nachbuchung_provision} €` : '–'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => openAnswerForRow(r)}
+                              title="Bearbeiten"
+                              className="p-1.5 rounded-md text-gray-400 hover:text-primary hover:bg-gray-50"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -835,6 +858,7 @@ export function Nachbuchungen() {
                       <th className="px-4 py-3">Teilnehmer</th>
                       <th className="px-4 py-3">Dozent</th>
                       <th className="px-4 py-3">Rechtsgebiet</th>
+                      <th className="px-4 py-3 text-right">Aktionen</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -845,6 +869,18 @@ export function Nachbuchungen() {
                         </td>
                         <td className="px-4 py-3 text-gray-900">{dozentNameMap[r.dozent_id || ''] || '–'}</td>
                         <td className="px-4 py-3 text-gray-600">{r.rechtsgebiet}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => openAnswerForRow(r)}
+                              title="Bearbeiten"
+                              className="p-1.5 rounded-md text-gray-400 hover:text-primary hover:bg-gray-50"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
