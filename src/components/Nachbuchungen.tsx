@@ -345,6 +345,14 @@ export function Nachbuchungen() {
         },
       });
       if (error) throw error;
+
+      if (zustande !== null) {
+        const { error: abschlussError } = await supabase.functions.invoke('nachbuchung-abschluss', {
+          body: { id: viewAnswerCurrent.id },
+        });
+        if (abschlussError) console.error('Abschluss-Mail fehlgeschlagen:', abschlussError);
+      }
+
       addToast('Nachbuchung vermerkt', 'success');
       await fetchList();
     } catch (err) {
