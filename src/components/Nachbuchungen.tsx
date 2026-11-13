@@ -180,9 +180,13 @@ export function Nachbuchungen() {
   const viewAnswerRechtsgebiete = [...new Set(viewAnswerRows.map((r) => r.rechtsgebiet))];
   const viewAnswerCurrent = viewAnswerRows.find((r) => r.rechtsgebiet === viewAnswerRechtsgebiet) || null;
 
+  const activeRows = rows.filter((r) => r.nachbuchung_zustande === null);
+  const nachbuchungenRows = rows.filter((r) => r.nachbuchung_zustande === true);
+  const keineNachbuchungenRows = rows.filter((r) => r.nachbuchung_zustande === false);
+
   const groupedRows = (() => {
     const map = new Map<string, NachbuchungRow[]>();
-    rows.forEach((r) => {
+    activeRows.forEach((r) => {
       const k = participantKey(r);
       const arr = map.get(k);
       if (arr) arr.push(r);
@@ -767,6 +771,81 @@ export function Nachbuchungen() {
           </div>
         )}
       </div>
+
+      {/* Abgeschlossen (dritte Ebene) */}
+      {(nachbuchungenRows.length > 0 || keineNachbuchungenRows.length > 0) && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="p-4 sm:p-5 border-b border-gray-100">
+            <h3 className="font-semibold text-gray-900">Abgeschlossen</h3>
+          </div>
+
+          <div className="p-4 sm:p-5 border-b border-gray-100">
+            <h4 className="text-sm font-semibold text-green-700 mb-3">Nachbuchungen</h4>
+            {nachbuchungenRows.length === 0 ? (
+              <p className="text-sm text-gray-500">Keine</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-100 text-sm">
+                  <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                    <tr>
+                      <th className="px-4 py-3">Teilnehmer</th>
+                      <th className="px-4 py-3">Dozent</th>
+                      <th className="px-4 py-3">Rechtsgebiet</th>
+                      <th className="px-4 py-3">Stunden</th>
+                      <th className="px-4 py-3">Provision</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {nachbuchungenRows.map((r) => (
+                      <tr key={r.id}>
+                        <td className="px-4 py-3 text-gray-900">
+                          {[r.teilnehmer_name, r.teilnehmer_tn_nummer].filter(Boolean).join(' · ') || '–'}
+                        </td>
+                        <td className="px-4 py-3 text-gray-900">{dozentNameMap[r.dozent_id || ''] || '–'}</td>
+                        <td className="px-4 py-3 text-gray-600">{r.rechtsgebiet}</td>
+                        <td className="px-4 py-3 text-gray-600">{r.nachbuchung_stunden != null ? r.nachbuchung_stunden : '–'}</td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {r.nachbuchung_provision != null ? `${r.nachbuchung_provision} €` : '–'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="p-4 sm:p-5">
+            <h4 className="text-sm font-semibold text-gray-500 mb-3">Keine Nachbuchungen</h4>
+            {keineNachbuchungenRows.length === 0 ? (
+              <p className="text-sm text-gray-500">Keine</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-100 text-sm">
+                  <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                    <tr>
+                      <th className="px-4 py-3">Teilnehmer</th>
+                      <th className="px-4 py-3">Dozent</th>
+                      <th className="px-4 py-3">Rechtsgebiet</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {keineNachbuchungenRows.map((r) => (
+                      <tr key={r.id}>
+                        <td className="px-4 py-3 text-gray-900">
+                          {[r.teilnehmer_name, r.teilnehmer_tn_nummer].filter(Boolean).join(' · ') || '–'}
+                        </td>
+                        <td className="px-4 py-3 text-gray-900">{dozentNameMap[r.dozent_id || ''] || '–'}</td>
+                        <td className="px-4 py-3 text-gray-600">{r.rechtsgebiet}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {resendRows && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
