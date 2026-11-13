@@ -87,6 +87,7 @@ export function Nachbuchungen() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [resendRows, setResendRows] = useState<NachbuchungRow[] | null>(null);
+  const [entrySelect, setEntrySelect] = useState<{ action: 'edit' | 'resend' | 'delete'; rows: NachbuchungRow[]; selectedId: string } | null>(null);
   const [viewAnswerParticipantKey, setViewAnswerParticipantKey] = useState<string | null>(null);
   const [viewAnswerRechtsgebiet, setViewAnswerRechtsgebiet] = useState('');
 
@@ -294,6 +295,29 @@ export function Nachbuchungen() {
     setResendRows(null);
     addToast(`${ok} Anfrage(n) erneut gesendet`, 'success');
     await fetchList();
+  };
+
+  const applyEntryAction = (action: 'edit' | 'resend' | 'delete', row: NachbuchungRow) => {
+    if (action === 'edit') startEdit(row);
+    else if (action === 'resend') setResendRows([row]);
+    else if (action === 'delete') handleDelete([row]);
+  };
+
+  const openEntryAction = (action: 'edit' | 'resend' | 'delete', gRows: NachbuchungRow[]) => {
+    const candidates = action === 'resend' ? gRows.filter((r) => r.status === 'ausstehend') : gRows;
+    if (candidates.length === 0) return;
+    if (candidates.length === 1) {
+      applyEntryAction(action, candidates[0]);
+      return;
+    }
+    setEntrySelect({ action, rows: candidates, selectedId: candidates[0].id });
+  };
+
+  const confirmEntrySelect = () => {
+    if (!entrySelect) return;
+    const row = entrySelect.rows.find((r) => r.id === entrySelect.selectedId);
+    if (row) applyEntryAction(entrySelect.action, row);
+    setEntrySelect(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -612,7 +636,6 @@ export function Nachbuchungen() {
               <tbody className="divide-y divide-gray-100">
                 {groupedRows.map((gRows) => {
                   const r0 = gRows[0];
-                  const single = gRows.length === 1;
                   const allAnswered = gRows.every((r) => r.status === 'beantwortet');
                   const anyAnswered = gRows.some((r) => r.status === 'beantwortet');
                   const hasAusstehend = gRows.some((r) => r.status === 'ausstehend');
@@ -673,19 +696,17 @@ export function Nachbuchungen() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
-                          {single && (
-                            <button
-                              type="button"
-                              onClick={() => startEdit(r0)}
-                              title="Ändern"
-                              className="p-1.5 rounded-md text-gray-400 hover:text-primary hover:bg-gray-50"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                          )}
                           <button
                             type="button"
-                            onClick={() => setResendRows(gRows.filter((r) => r.status === 'ausstehend'))}
+                            onClick={() => openEntryAction('edit', gRows)}
+                            title="Ändern"
+                            className="p-1.5 rounded-md text-gray-400 hover:text-primary hover:bg-gray-50"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openEntryAction('resend', gRows)}
                             title={hasAusstehend ? 'Erneut senden' : 'Bereits beantwortet'}
                             disabled={!hasAusstehend}
                             className="p-1.5 rounded-md text-gray-400 hover:text-primary hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -694,7 +715,7 @@ export function Nachbuchungen() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleDelete(gRows)}
+                            onClick={() => openEntryAction('delete', gRows)}
                             title="Löschen"
                             className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50"
                           >
@@ -820,6 +841,49 @@ export function Nachbuchungen() {
                 className="px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90"
               >
                 Schließen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {entrySelect && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-lg max-w-sm w-full p-5">
+            <h4 className="font-semibold text-gray-900 mb-3">
+              {entrySelect.action === 'edit'
+                ? 'Eintrag zum Ändern auswählen'
+                : entrySelect.action === 'resend'
+                  ? 'Eintrag zum erneuten Senden auswählen'
+                  : 'Eintrag zum Löschen auswählen'}
+            </h4>
+            <label className={labelClass}>Rechtsgebiet</label>
+            <select
+              value={entrySelect.selectedId}
+              onChange={(e) => setEntrySelect({ ...entrySelect, selectedId: e.target.value })}
+              className={inputClass}
+            >
+              {entrySelect.rows.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.rechtsgebiet}
+                  {r.status === 'beantwortet' ? ' (beantwortet)' : ' (ausstehend)'}
+                </option>
+              ))}
+            </select>
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => setEntrySelect(null)}
+                className="px-3 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                onClick={confirmEntrySelect}
+                className="px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90"
+              >
+                Weiter
               </button>
             </div>
           </div>
