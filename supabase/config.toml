@@ -408,3 +408,7 @@ verify_jwt = false
 [functions.nachbuchung-erinnerung]
 enabled = true
 verify_jwt = false
+
+[functions.nachbuchung-zustande]
+enabled = true
+verify_jwt = true

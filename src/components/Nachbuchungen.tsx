@@ -38,6 +38,7 @@ interface NachbuchungRow {
   antwort_stunden: number | null;
   antwort_erreichbar: string | null;
   antwort_notiz: string | null;
+  nachbuchung_zustande: boolean | null;
 }
 
 function splitName(full: string): { vorname: string; nachname: string } {
@@ -91,6 +92,7 @@ export function Nachbuchungen() {
   const [entrySelect, setEntrySelect] = useState<{ action: 'edit' | 'resend' | 'delete'; rows: NachbuchungRow[]; selectedId: string } | null>(null);
   const [viewAnswerParticipantKey, setViewAnswerParticipantKey] = useState<string | null>(null);
   const [viewAnswerRechtsgebiet, setViewAnswerRechtsgebiet] = useState('');
+  const [zustandeSelection, setZustandeSelection] = useState<'offen' | 'ja' | 'nein'>('offen');
 
   const query = searchTerm.trim().toLowerCase();
   const filteredTeilnehmer = query
@@ -117,7 +119,7 @@ export function Nachbuchungen() {
   const fetchList = async () => {
     const { data, error } = await supabase
       .from('nachbuchungen')
-      .select('id, teilnehmer_id, teilnehmer_name, teilnehmer_tn_nummer, dozent_id, rechtsgebiet, status, sent_at, responded_at, reminder_sent_at, antwort_bedarf, antwort_stunden, antwort_erreichbar, antwort_notiz')
+      .select('id, teilnehmer_id, teilnehmer_name, teilnehmer_tn_nummer, dozent_id, rechtsgebiet, status, sent_at, responded_at, reminder_sent_at, antwort_bedarf, antwort_stunden, antwort_erreichbar, antwort_notiz, nachbuchung_zustande')
       .order('sent_at', { ascending: false });
 
     if (error) {
@@ -320,6 +322,22 @@ export function Nachbuchungen() {
     const row = entrySelect.rows.find((r) => r.id === entrySelect.selectedId);
     if (row) applyEntryAction(entrySelect.action, row);
     setEntrySelect(null);
+  };
+
+  const saveZustande = async () => {
+    if (!viewAnswerCurrent) return;
+    const zustande = zustandeSelection === 'ja' ? true : zustandeSelection === 'nein' ? false : null;
+    try {
+      const { error } = await supabase.functions.invoke('nachbuchung-zustande', {
+        body: { id: viewAnswerCurrent.id, zustande },
+      });
+      if (error) throw error;
+      addToast('Nachbuchung vermerkt', 'success');
+      await fetchList();
+    } catch (err) {
+      console.error(err);
+      addToast('Fehler beim Speichern des Vermerks', 'error');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -671,6 +689,13 @@ export function Nachbuchungen() {
                               setViewAnswerParticipantKey(participantKey(r0));
                               const firstAnswered = gRows.find((r) => r.status === 'beantwortet');
                               setViewAnswerRechtsgebiet(firstAnswered ? firstAnswered.rechtsgebiet : r0.rechtsgebiet);
+                              setZustandeSelection(
+                                firstAnswered?.nachbuchung_zustande === true
+                                  ? 'ja'
+                                  : firstAnswered?.nachbuchung_zustande === false
+                                    ? 'nein'
+                                    : 'offen'
+                              );
                             }}
                             title="Antwort ansehen"
                             className="group flex flex-col items-start"
@@ -780,7 +805,18 @@ export function Nachbuchungen() {
                 <label className={labelClass}>Rechtsgebiet</label>
                 <select
                   value={viewAnswerRechtsgebiet}
-                  onChange={(e) => setViewAnswerRechtsgebiet(e.target.value)}
+                  onChange={(e) => {
+                    const rg = e.target.value;
+                    setViewAnswerRechtsgebiet(rg);
+                    const rowForRg = viewAnswerRows.find((r) => r.rechtsgebiet === rg);
+                    setZustandeSelection(
+                      rowForRg?.nachbuchung_zustande === true
+                        ? 'ja'
+                        : rowForRg?.nachbuchung_zustande === false
+                          ? 'nein'
+                          : 'offen'
+                    );
+                  }}
                   className={inputClass}
                 >
                   {viewAnswerRechtsgebiete.map((rg) => (
@@ -831,14 +867,53 @@ export function Nachbuchungen() {
               )}
             </div>
 
-            <div className="flex justify-end">
+            <div className="border-t border-gray-100 pt-4 mt-2">
+              <span className={labelClass}>Nachbuchung zustande gekommen?</span>
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                {(
+                  [
+                    { value: 'offen', label: 'Offen' },
+                    { value: 'ja', label: 'Ja' },
+                    { value: 'nein', label: 'Nein' },
+                  ] as { value: 'offen' | 'ja' | 'nein'; label: string }[]
+                ).map((o) => (
+                  <label
+                    key={o.value}
+                    className={`flex items-center gap-2 px-3 py-2 border rounded-md cursor-pointer text-sm transition-colors ${
+                      zustandeSelection === o.value
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="zustande"
+                      value={o.value}
+                      checked={zustandeSelection === o.value}
+                      onChange={() => setZustandeSelection(o.value)}
+                      className="h-4 w-4 text-primary focus:ring-primary"
+                    />
+                    {o.label}
+                  </label>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={saveZustande}
+                className="w-full px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90"
+              >
+                Vermerk speichern
+              </button>
+            </div>
+
+            <div className="flex justify-end mt-3">
               <button
                 type="button"
                 onClick={() => {
                   setViewAnswerParticipantKey(null);
                   setViewAnswerRechtsgebiet('');
                 }}
-                className="px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90"
+                className="px-3 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50"
               >
                 Schließen
               </button>
