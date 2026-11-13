@@ -54,17 +54,6 @@ function participantKey(r: NachbuchungRow): string {
   return r.teilnehmer_id || `name:${r.teilnehmer_name || ''}`;
 }
 
-function statusInfo(row: NachbuchungRow): { label: string; className: string; dot: string } {
-  if (row.status === 'beantwortet') {
-    return { label: 'Antwort eingereicht', className: 'bg-green-100 text-green-700', dot: 'bg-green-500' };
-  }
-  const overdue = Date.now() - new Date(row.sent_at).getTime() > 3 * 24 * 60 * 60 * 1000;
-  if (overdue) {
-    return { label: 'Handlungsbedarf', className: 'bg-red-100 text-red-700', dot: 'bg-red-500' };
-  }
-  return { label: 'Ausstehend', className: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' };
-}
-
 export function Nachbuchungen() {
   const { addToast } = useToastStore();
 
@@ -181,6 +170,17 @@ export function Nachbuchungen() {
     : [];
   const viewAnswerRechtsgebiete = [...new Set(viewAnswerRows.map((r) => r.rechtsgebiet))];
   const viewAnswerCurrent = viewAnswerRows.find((r) => r.rechtsgebiet === viewAnswerRechtsgebiet) || null;
+
+  const groupedRows = (() => {
+    const map = new Map<string, NachbuchungRow[]>();
+    rows.forEach((r) => {
+      const k = participantKey(r);
+      const arr = map.get(k);
+      if (arr) arr.push(r);
+      else map.set(k, [r]);
+    });
+    return [...map.values()];
+  })();
 
   const selectTeilnehmer = (t: TeilnehmerOption) => {
     setSelectedTeilnehmerId(t.id);
@@ -592,19 +592,41 @@ export function Nachbuchungen() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {rows.map((r) => {
-                  const info = statusInfo(r);
-                  const teilnehmerLabel = [r.teilnehmer_name, r.teilnehmer_tn_nummer].filter(Boolean).join(' · ');
+                {groupedRows.map((gRows) => {
+                  const r0 = gRows[0];
+                  const single = gRows.length === 1;
+                  const allAnswered = gRows.every((r) => r.status === 'beantwortet');
+                  const anyAnswered = gRows.some((r) => r.status === 'beantwortet');
+
+                  const teilnehmerLabel = [r0.teilnehmer_name, r0.teilnehmer_tn_nummer].filter(Boolean).join(' · ');
+                  const rechtsgebiete = [...new Set(gRows.map((r) => r.rechtsgebiet))].join(', ');
+                  const dozenten = [...new Set(gRows.map((r) => dozentNameMap[r.dozent_id || ''] || '–'))].join(', ');
+                  const sentAt = gRows.reduce((max, r) => (r.sent_at > max ? r.sent_at : max), '');
+                  const respondedAt = gRows.reduce((max, r) => (r.responded_at && r.responded_at > max ? r.responded_at : max), '');
+
+                  let info: { label: string; className: string; dot: string };
+                  if (allAnswered) {
+                    info = { label: 'Antwort eingereicht', className: 'bg-green-100 text-green-700', dot: 'bg-green-500' };
+                  } else if (anyAnswered) {
+                    info = { label: 'Teilweise beantwortet', className: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' };
+                  } else {
+                    const overdue = Date.now() - new Date(sentAt).getTime() > 3 * 24 * 60 * 60 * 1000;
+                    info = overdue
+                      ? { label: 'Handlungsbedarf', className: 'bg-red-100 text-red-700', dot: 'bg-red-500' }
+                      : { label: 'Ausstehend', className: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' };
+                  }
+
                   return (
-                    <tr key={r.id}>
+                    <tr key={r0.id}>
                       <td className="px-4 py-3">
-                        {r.status === 'beantwortet' ? (
+                        {anyAnswered ? (
                           <button
                             type="button"
                             onClick={() => {
-                            setViewAnswerParticipantKey(participantKey(r));
-                            setViewAnswerRechtsgebiet(r.rechtsgebiet);
-                          }}
+                              setViewAnswerParticipantKey(participantKey(r0));
+                              const firstAnswered = gRows.find((r) => r.status === 'beantwortet');
+                              setViewAnswerRechtsgebiet(firstAnswered ? firstAnswered.rechtsgebiet : r0.rechtsgebiet);
+                            }}
                             title="Antwort ansehen"
                             className="group flex flex-col items-start"
                           >
@@ -622,39 +644,45 @@ export function Nachbuchungen() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-gray-900">{teilnehmerLabel || '–'}</td>
-                      <td className="px-4 py-3 text-gray-900">{dozentNameMap[r.dozent_id || ''] || '–'}</td>
-                      <td className="px-4 py-3 text-gray-600">{r.rechtsgebiet}</td>
-                      <td className="px-4 py-3 text-gray-600">{new Date(r.sent_at).toLocaleDateString('de-DE')}</td>
+                      <td className="px-4 py-3 text-gray-900">{dozenten}</td>
+                      <td className="px-4 py-3 text-gray-600">{rechtsgebiete}</td>
+                      <td className="px-4 py-3 text-gray-600">{new Date(sentAt).toLocaleDateString('de-DE')}</td>
                       <td className="px-4 py-3 text-gray-600">
-                        {r.responded_at ? new Date(r.responded_at).toLocaleDateString('de-DE') : '–'}
+                        {respondedAt ? new Date(respondedAt).toLocaleDateString('de-DE') : '–'}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => startEdit(r)}
-                            title="Ändern"
-                            className="p-1.5 rounded-md text-gray-400 hover:text-primary hover:bg-gray-50"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setResendConfirm(r)}
-                            title={r.status === 'ausstehend' ? 'Erneut senden' : 'Bereits beantwortet'}
-                            disabled={r.status !== 'ausstehend'}
-                            className="p-1.5 rounded-md text-gray-400 hover:text-primary hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            <Send className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(r)}
-                            title="Löschen"
-                            className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          {single && (
+                            <button
+                              type="button"
+                              onClick={() => startEdit(r0)}
+                              title="Ändern"
+                              className="p-1.5 rounded-md text-gray-400 hover:text-primary hover:bg-gray-50"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                          )}
+                          {single && (
+                            <button
+                              type="button"
+                              onClick={() => setResendConfirm(r0)}
+                              title={r0.status === 'ausstehend' ? 'Erneut senden' : 'Bereits beantwortet'}
+                              disabled={r0.status !== 'ausstehend'}
+                              className="p-1.5 rounded-md text-gray-400 hover:text-primary hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <Send className="h-4 w-4" />
+                            </button>
+                          )}
+                          {single && (
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(r0)}
+                              title="Löschen"
+                              className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
