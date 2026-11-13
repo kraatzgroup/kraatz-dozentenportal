@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { MessageSquare, LogOut, Users, Clock, FileText, Calendar, Edit2, X, Check, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Receipt, Search, Download, Eye, Mail, Send, Trash2, Settings, TrendingUp, GraduationCap, LayoutDashboard, Bell, Upload, UserPlus, HelpCircle, BookOpen, RefreshCw, CheckCircle, AlertCircle, Key } from 'lucide-react';
+import { MessageSquare, LogOut, Users, Clock, FileText, Calendar, Edit2, X, Check, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Receipt, Search, Download, Eye, Mail, Send, Trash2, Settings, TrendingUp, GraduationCap, LayoutDashboard, Bell, Upload, UserPlus, HelpCircle, BookOpen, RefreshCw, CheckCircle, AlertCircle, Key, BookPlus } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
 import { useFileStore } from '../store/fileStore';
@@ -25,6 +25,7 @@ import { EliteKleingruppe } from './EliteKleingruppe';
 import { VertraegeManager } from './vertraege/VertraegeManager';
 import { VbAdminDashboard } from './vb-chat/VbAdminDashboard';
 import { KraatzClubZugang } from './KraatzClubZugang';
+import { Nachbuchungen } from './Nachbuchungen';
 import { generateTeilnehmerStundenPDF } from '../utils/pdfGenerator';
 
 // Helper function to check if teilnehmer is active based on contract dates
@@ -126,15 +127,15 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const accountingTabs = ['vertraege'];
-  const verwaltungTabs = ['dozenten', 'teilnehmer', 'kalender', 'elite-kleingruppe', 'vertraege', 'kraatz-club-zugang'];
+  const verwaltungTabs = ['dozenten', 'teilnehmer', 'kalender', 'elite-kleingruppe', 'vertraege', 'kraatz-club-zugang', 'nachbuchungen'];
   const allowedTabs = isAccountingMode ? accountingTabs : isVerwaltungMode ? verwaltungTabs : null;
   const defaultTab = isAccountingMode ? 'vertraege' : isVerwaltungMode ? 'dozenten' : 'uebersicht';
   const storageKey = isAccountingMode ? 'accountingDashboardTab' : isVerwaltungMode ? 'verwaltungDashboardTab' : 'adminDashboardTab';
 
-  const [activeTab, setActiveTabState] = useState<'uebersicht' | 'dozenten' | 'teilnehmer' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard' | 'elite-kleingruppe' | 'vertraege' | 'klausurenkorrektur' | 'kraatz-club-zugang'>(() => {
+  const [activeTab, setActiveTabState] = useState<'uebersicht' | 'dozenten' | 'teilnehmer' | 'rechnungen' | 'kalender' | 'emails' | 'vertrieb' | 'integrationen' | 'dozenten-dashboard' | 'elite-kleingruppe' | 'vertraege' | 'klausurenkorrektur' | 'kraatz-club-zugang' | 'nachbuchungen'>(() => {
     // Check URL parameter first
     const tabParam = searchParams.get('tab');
-    const allTabs = ['uebersicht', 'dozenten', 'teilnehmer', 'rechnungen', 'kalender', 'emails', 'vertrieb', 'integrationen', 'dozenten-dashboard', 'elite-kleingruppe', 'vertraege', 'klausurenkorrektur', 'kraatz-club-zugang'];
+    const allTabs = ['uebersicht', 'dozenten', 'teilnehmer', 'rechnungen', 'kalender', 'emails', 'vertrieb', 'integrationen', 'dozenten-dashboard', 'elite-kleingruppe', 'vertraege', 'klausurenkorrektur', 'kraatz-club-zugang', 'nachbuchungen'];
     if (tabParam === 'leads') {
       return allowedTabs && !allowedTabs.includes('vertrieb') ? defaultTab : 'vertrieb';
     }
@@ -1821,6 +1822,19 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
               >
                 <Key className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
                 <span className="hidden sm:inline">Kraatz Club Zugang</span>
+              </button>
+              )}
+              {(isAdmin || isVerwaltungMode) && !isDozent && (
+              <button
+                onClick={() => { setActiveTab('nachbuchungen'); }}
+                className={`${
+                  activeTab === 'nachbuchungen'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm sm:text-base flex items-center`}
+              >
+                <BookPlus className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
+                <span className="hidden sm:inline">Nachbuchungen</span>
               </button>
               )}
             </nav>
@@ -4374,6 +4388,10 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
 
         {activeTab === 'kraatz-club-zugang' && !isDozent && (
           <KraatzClubZugang />
+        )}
+
+        {activeTab === 'nachbuchungen' && !isDozent && (
+          <Nachbuchungen />
         )}
       </main>
 

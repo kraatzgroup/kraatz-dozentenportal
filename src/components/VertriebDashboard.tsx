@@ -7,9 +7,10 @@ import { SalesKanbanOverview } from './vertrieb/SalesKanbanOverview';
 import { SalesCalendar } from './vertrieb/SalesCalendar';
 import { FinalgespraechList } from './vertrieb/FinalgespraechList';
 import { AfterSalesList } from './vertrieb/AfterSalesList';
+import { Nachbuchungen } from './Nachbuchungen';
 
-type TabType = 'overview' | 'calendar' | 'finalgespraech' | 'aftersales';
-const VALID_TABS: TabType[] = ['overview', 'calendar', 'finalgespraech', 'aftersales'];
+type TabType = 'overview' | 'calendar' | 'finalgespraech' | 'aftersales' | 'nachbuchungen';
+const VALID_TABS: TabType[] = ['overview', 'calendar', 'finalgespraech', 'aftersales', 'nachbuchungen'];
 
 export function VertriebDashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -90,6 +91,7 @@ export function VertriebDashboard() {
     { id: 'calendar' as TabType, label: 'Kalender' },
     { id: 'finalgespraech' as TabType, label: 'Finalgespräch', badge: leads.filter(l => l.status === 'finalgespraech' || l.status === 'post_trial_call').length },
     { id: 'aftersales' as TabType, label: 'After Sales', badge: leads.filter(l => l.status === 'contract_closed').length },
+    { id: 'nachbuchungen' as TabType, label: 'Nachbuchungen' },
   ];
 
   return (
@@ -158,6 +160,10 @@ export function VertriebDashboard() {
             leads={leads}
             onUpdateLead={(id, data) => updateLead(id, data as Partial<Lead>)}
           />
+        )}
+
+        {activeTab === 'nachbuchungen' && (
+          <Nachbuchungen />
         )}
         </>
         )}

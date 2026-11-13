@@ -12,6 +12,7 @@ import { VbMasterclassPage } from './components/vb-chat/VbMasterclassPage';
 import { VbWiederholungPage } from './components/vb-chat/VbWiederholungPage';
 import { VbKorrekturDashboard } from './components/vb-chat/VbKorrekturDashboard';
 import { VbKorrekturLayout } from './components/vb-chat/VbKorrekturLayout';
+import { NachbuchungDozentForm } from './components/NachbuchungDozentForm';
 
 // Lazy load heavy components
 const UserManagement = lazy(() => import('./components/UserManagement').then(m => ({ default: m.UserManagement })));
@@ -101,10 +102,18 @@ function App() {
     );
   }
 
+  // Nachbuchung: immer als Bare-Page rendern (ausschließlich das Formular,
+  // kein Header, keine Navigation, kein Footer) – unabhängig davon, ob der
+  // Dozent über den Magic-Link bereits eingeloggt ist oder nicht.
+  if (window.location.pathname.startsWith('/nachbuchung/')) {
+    return <NachbuchungDozentForm />;
+  }
+
   // Not authenticated → show login. Ausnahme: die AGB sind öffentlich
   // einsehbar (der Footer öffnet /agbs in einem neuen Tab).
   if (!user) {
-    if (window.location.pathname === '/agbs') {
+    const pathname = window.location.pathname;
+    if (pathname === '/agbs') {
       return (
         <div className="min-h-screen bg-background flex flex-col">
           <Suspense fallback={SuspenseFallback}>
