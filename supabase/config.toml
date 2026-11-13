@@ -403,3 +403,8 @@ verify_jwt = false
 [functions.memberspot-kraatzclub-callback]
 enabled = true
 verify_jwt = false
+
+# Wird von pg_cron (jede Nacht 06:00) ohne JWT aufgerufen
+[functions.nachbuchung-erinnerung]
+enabled = true
+verify_jwt = false

@@ -33,6 +33,7 @@ interface NachbuchungRow {
   status: 'ausstehend' | 'beantwortet';
   sent_at: string;
   responded_at: string | null;
+  reminder_sent_at: string | null;
   antwort_bedarf: boolean | null;
   antwort_stunden: number | null;
   antwort_erreichbar: string | null;
@@ -114,7 +115,7 @@ export function Nachbuchungen() {
   const fetchList = async () => {
     const { data, error } = await supabase
       .from('nachbuchungen')
-      .select('id, teilnehmer_id, teilnehmer_name, teilnehmer_tn_nummer, dozent_id, rechtsgebiet, status, sent_at, responded_at, antwort_bedarf, antwort_stunden, antwort_erreichbar, antwort_notiz')
+      .select('id, teilnehmer_id, teilnehmer_name, teilnehmer_tn_nummer, dozent_id, rechtsgebiet, status, sent_at, responded_at, reminder_sent_at, antwort_bedarf, antwort_stunden, antwort_erreichbar, antwort_notiz')
       .order('sent_at', { ascending: false });
 
     if (error) {
@@ -610,8 +611,10 @@ export function Nachbuchungen() {
                   } else if (anyAnswered) {
                     info = { label: 'Teilweise beantwortet', className: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' };
                   } else {
-                    const overdue = Date.now() - new Date(sentAt).getTime() > 3 * 24 * 60 * 60 * 1000;
-                    info = overdue
+                    const anyOverdueAfterReminder = gRows.some(
+                      (r) => r.reminder_sent_at && Date.now() - new Date(r.reminder_sent_at).getTime() > 24 * 60 * 60 * 1000
+                    );
+                    info = anyOverdueAfterReminder
                       ? { label: 'Handlungsbedarf', className: 'bg-red-100 text-red-700', dot: 'bg-red-500' }
                       : { label: 'Ausstehend', className: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' };
                   }
