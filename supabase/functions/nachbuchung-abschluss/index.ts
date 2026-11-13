@@ -89,11 +89,11 @@ Deno.serve(async (req) => {
           <strong>${row.nachbuchung_stunden ?? '–'} Stunden</strong> zustande gekommen.
         </p>
         <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
-          Du kannst eine Pauschale in Form einer Provision in Höhe von
+          Sie können eine Pauschale in Form einer Provision in Höhe von
           <strong>${row.nachbuchung_provision ?? '–'} €</strong> mit der nächsten Rechnung einreichen.
         </p>
         <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
-          Vielen Dank für deine Kooperation.
+          Vielen Dank für Ihre Kooperation.
         </p>`
       : `
         <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
           <strong>${row.rechtsgebiet}</strong> ist leider keine Nachbuchung zustande gekommen.
         </p>
         <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
-          Vielen Dank für deine Kooperation.
+          Vielen Dank für Ihre Kooperation.
         </p>`;
 
     const emailHtml = `
@@ -112,7 +112,7 @@ Deno.serve(async (req) => {
         <div style="padding: 30px 20px; background-color: white;">
           <h2 style="color: #333; margin: 0 0 20px 0; font-size: 20px;">${zustande ? 'Nachbuchung zustande gekommen' : 'Nachbuchung nicht zustande gekommen'}</h2>
           <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
-            Hallo ${dozent.full_name || 'lieber Dozent, liebe Dozentin'},
+            Guten Tag ${dozent.full_name || 'sehr geehrter Dozent, sehr geehrte Dozentin'},
           </p>
           ${bodyText}
         </div>

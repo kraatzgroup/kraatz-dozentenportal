@@ -127,7 +127,7 @@ Deno.serve(async (req) => {
           <div style="padding: 30px 20px; background-color: white;">
             <h2 style="color: #333; margin: 0 0 20px 0; font-size: 20px;">Nachbuchungsbedarf</h2>
             <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
-              Hallo ${dozent.full_name || 'lieber Dozent, liebe Dozentin'},
+              Guten Tag ${dozent.full_name || 'sehr geehrter Dozent, sehr geehrte Dozentin'},
             </p>
             <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
               bei Ihrer Teilnehmerin bzw. Ihrem Teilnehmer <strong>${teilnehmerLabel}</strong>
