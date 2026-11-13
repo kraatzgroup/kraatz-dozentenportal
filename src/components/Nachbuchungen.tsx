@@ -86,7 +86,7 @@ export function Nachbuchungen() {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [resendConfirm, setResendConfirm] = useState<NachbuchungRow | null>(null);
+  const [resendRows, setResendRows] = useState<NachbuchungRow[] | null>(null);
   const [viewAnswerParticipantKey, setViewAnswerParticipantKey] = useState<string | null>(null);
   const [viewAnswerRechtsgebiet, setViewAnswerRechtsgebiet] = useState('');
 
@@ -248,35 +248,52 @@ export function Nachbuchungen() {
     }
   };
 
-  const handleDelete = async (row: NachbuchungRow) => {
-    if (!window.confirm('Diese Anfrage wirklich löschen?')) return;
+  const deleteRequest = async (id: string): Promise<boolean> => {
     try {
-      const { error } = await supabase.functions.invoke('nachbuchung-loeschen', { body: { id: row.id } });
+      const { error } = await supabase.functions.invoke('nachbuchung-loeschen', { body: { id } });
       if (error) throw error;
-      addToast('Anfrage gelöscht', 'success');
-      await fetchList();
+      return true;
     } catch (err) {
       console.error(err);
-      addToast('Fehler beim Löschen', 'error');
+      return false;
     }
   };
 
-  const handleResend = async (row: NachbuchungRow) => {
+  const handleDelete = async (rowsToDelete: NachbuchungRow[]) => {
+    const label = [rowsToDelete[0]?.teilnehmer_name, rowsToDelete[0]?.teilnehmer_tn_nummer].filter(Boolean).join(' · ') || '–';
+    const msg = rowsToDelete.length === 1
+      ? 'Diese Anfrage wirklich löschen?'
+      : `Alle ${rowsToDelete.length} Anfragen für ${label} wirklich löschen?`;
+    if (!window.confirm(msg)) return;
+
+    let ok = 0;
+    for (const r of rowsToDelete) {
+      if (await deleteRequest(r.id)) ok++;
+    }
+    addToast(`${ok} Anfrage(n) gelöscht`, 'success');
+    await fetchList();
+  };
+
+  const resendRequest = async (id: string): Promise<boolean> => {
     try {
-      const { error } = await supabase.functions.invoke('nachbuchung-erneut-senden', { body: { id: row.id } });
+      const { error } = await supabase.functions.invoke('nachbuchung-erneut-senden', { body: { id } });
       if (error) throw error;
-      addToast('Anfrage erneut gesendet', 'success');
-      await fetchList();
+      return true;
     } catch (err) {
       console.error(err);
-      addToast('Fehler beim erneuten Senden', 'error');
+      return false;
     }
   };
 
   const confirmResend = async () => {
-    if (!resendConfirm) return;
-    await handleResend(resendConfirm);
-    setResendConfirm(null);
+    if (!resendRows) return;
+    let ok = 0;
+    for (const r of resendRows) {
+      if (await resendRequest(r.id)) ok++;
+    }
+    setResendRows(null);
+    addToast(`${ok} Anfrage(n) erneut gesendet`, 'success');
+    await fetchList();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -598,6 +615,7 @@ export function Nachbuchungen() {
                   const single = gRows.length === 1;
                   const allAnswered = gRows.every((r) => r.status === 'beantwortet');
                   const anyAnswered = gRows.some((r) => r.status === 'beantwortet');
+                  const hasAusstehend = gRows.some((r) => r.status === 'ausstehend');
 
                   const teilnehmerLabel = [r0.teilnehmer_name, r0.teilnehmer_tn_nummer].filter(Boolean).join(' · ');
                   const rechtsgebiete = [...new Set(gRows.map((r) => r.rechtsgebiet))].join(', ');
@@ -665,27 +683,23 @@ export function Nachbuchungen() {
                               <Pencil className="h-4 w-4" />
                             </button>
                           )}
-                          {single && (
-                            <button
-                              type="button"
-                              onClick={() => setResendConfirm(r0)}
-                              title={r0.status === 'ausstehend' ? 'Erneut senden' : 'Bereits beantwortet'}
-                              disabled={r0.status !== 'ausstehend'}
-                              className="p-1.5 rounded-md text-gray-400 hover:text-primary hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                              <Send className="h-4 w-4" />
-                            </button>
-                          )}
-                          {single && (
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(r0)}
-                              title="Löschen"
-                              className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => setResendRows(gRows.filter((r) => r.status === 'ausstehend'))}
+                            title={hasAusstehend ? 'Erneut senden' : 'Bereits beantwortet'}
+                            disabled={!hasAusstehend}
+                            className="p-1.5 rounded-md text-gray-400 hover:text-primary hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <Send className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(gRows)}
+                            title="Löschen"
+                            className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -697,19 +711,29 @@ export function Nachbuchungen() {
         )}
       </div>
 
-      {resendConfirm && (
+      {resendRows && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-xl shadow-lg max-w-sm w-full p-5">
             <h4 className="font-semibold text-gray-900 mb-2">Erneut senden?</h4>
             <p className="text-sm text-gray-600 mb-4">
-              Die Anfrage für{' '}
-              <strong>{[resendConfirm.teilnehmer_name, resendConfirm.teilnehmer_tn_nummer].filter(Boolean).join(' · ') || '–'}</strong>{' '}
-              wird erneut an den Dozenten gesendet. Der bisherige Link wird dabei ungültig.
+              {resendRows.length === 1 ? (
+                <>
+                  Die Anfrage für{' '}
+                  <strong>{[resendRows[0].teilnehmer_name, resendRows[0].teilnehmer_tn_nummer].filter(Boolean).join(' · ') || '–'}</strong>{' '}
+                  wird erneut an den Dozenten gesendet. Der bisherige Link wird dabei ungültig.
+                </>
+              ) : (
+                <>
+                  <strong>{resendRows.length} ausstehende Anfragen</strong> für{' '}
+                  <strong>{[resendRows[0].teilnehmer_name, resendRows[0].teilnehmer_tn_nummer].filter(Boolean).join(' · ') || '–'}</strong>{' '}
+                  werden erneut an den Dozenten gesendet. Die bisherigen Links werden dabei ungültig.
+                </>
+              )}
             </p>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setResendConfirm(null)}
+                onClick={() => setResendRows(null)}
                 className="px-3 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50"
               >
                 Abbrechen
