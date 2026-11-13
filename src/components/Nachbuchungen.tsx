@@ -33,6 +33,10 @@ interface NachbuchungRow {
   status: 'ausstehend' | 'beantwortet';
   sent_at: string;
   responded_at: string | null;
+  antwort_bedarf: boolean | null;
+  antwort_stunden: number | null;
+  antwort_erreichbar: string | null;
+  antwort_notiz: string | null;
 }
 
 function splitName(full: string): { vorname: string; nachname: string } {
@@ -89,6 +93,7 @@ export function Nachbuchungen() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [resendConfirm, setResendConfirm] = useState<NachbuchungRow | null>(null);
+  const [viewAnswer, setViewAnswer] = useState<NachbuchungRow | null>(null);
 
   const query = searchTerm.trim().toLowerCase();
   const filteredTeilnehmer = query
@@ -115,7 +120,7 @@ export function Nachbuchungen() {
   const fetchList = async () => {
     const { data, error } = await supabase
       .from('nachbuchungen')
-      .select('id, teilnehmer_id, teilnehmer_name, teilnehmer_tn_nummer, dozent_id, rechtsgebiet, status, sent_at, responded_at')
+      .select('id, teilnehmer_id, teilnehmer_name, teilnehmer_tn_nummer, dozent_id, rechtsgebiet, status, sent_at, responded_at, antwort_bedarf, antwort_stunden, antwort_erreichbar, antwort_notiz')
       .order('sent_at', { ascending: false });
 
     if (error) {
@@ -582,10 +587,25 @@ export function Nachbuchungen() {
                   return (
                     <tr key={r.id}>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${info.className}`}>
-                          <span className={`h-1.5 w-1.5 rounded-full ${info.dot}`} />
-                          {info.label}
-                        </span>
+                        {r.status === 'beantwortet' ? (
+                          <button
+                            type="button"
+                            onClick={() => setViewAnswer(r)}
+                            title="Antwort ansehen"
+                            className="group flex flex-col items-start"
+                          >
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${info.className} group-hover:ring-2 group-hover:ring-primary/40`}>
+                              <span className={`h-1.5 w-1.5 rounded-full ${info.dot}`} />
+                              {info.label}
+                            </span>
+                            <span className="text-xs text-primary mt-1">Antwort ansehen</span>
+                          </button>
+                        ) : (
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${info.className}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${info.dot}`} />
+                            {info.label}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-gray-900">{teilnehmerLabel || '–'}</td>
                       <td className="px-4 py-3 text-gray-900">{dozentNameMap[r.dozent_id || ''] || '–'}</td>
@@ -655,6 +675,62 @@ export function Nachbuchungen() {
                 className="px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90"
               >
                 Erneut senden
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    {viewAnswer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-5">
+            <h4 className="font-semibold text-gray-900 mb-4">Antwort des Dozenten</h4>
+
+            <div className="space-y-2 text-sm mb-5">
+              <p>
+                <span className="text-gray-500">Teilnehmer:</span>{' '}
+                <span className="text-gray-900 font-medium">
+                  {[viewAnswer.teilnehmer_name, viewAnswer.teilnehmer_tn_nummer].filter(Boolean).join(' · ') || '–'}
+                </span>
+              </p>
+              <p>
+                <span className="text-gray-500">Dozent:</span>{' '}
+                <span className="text-gray-900 font-medium">{dozentNameMap[viewAnswer.dozent_id || ''] || '–'}</span>
+              </p>
+              <p>
+                <span className="text-gray-500">Rechtsgebiet:</span>{' '}
+                <span className="text-gray-900 font-medium">{viewAnswer.rechtsgebiet}</span>
+              </p>
+              <p>
+                <span className="text-gray-500">Nachbuchungsbedarf:</span>{' '}
+                <span className="text-gray-900 font-medium">{viewAnswer.antwort_bedarf ? 'Ja' : 'Nein'}</span>
+              </p>
+              {viewAnswer.antwort_bedarf && viewAnswer.antwort_stunden !== null && (
+                <p>
+                  <span className="text-gray-500">Zusatzstunden:</span>{' '}
+                  <span className="text-gray-900 font-medium">{viewAnswer.antwort_stunden}</span>
+                </p>
+              )}
+              {viewAnswer.antwort_bedarf && viewAnswer.antwort_erreichbar && (
+                <p>
+                  <span className="text-gray-500">Erreichbarkeit:</span>{' '}
+                  <span className="text-gray-900 font-medium">{viewAnswer.antwort_erreichbar}</span>
+                </p>
+              )}
+              {viewAnswer.antwort_notiz && (
+                <div>
+                  <span className="text-gray-500">Notiz:</span>
+                  <p className="text-gray-900 mt-1 whitespace-pre-wrap">{viewAnswer.antwort_notiz}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setViewAnswer(null)}
+                className="px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90"
+              >
+                Schließen
               </button>
             </div>
           </div>

@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
 
     const relevantStaff = (staff || []).filter((p) => {
       const roles = new Set([p.role, ...(p.additional_roles || [])]);
-      return roles.has('admin') || roles.has('verwaltung') || roles.has('vertrieb');
+      return roles.has('admin');
     });
 
     const mailgunApiKey = Deno.env.get('MAILGUN_API_KEY');
