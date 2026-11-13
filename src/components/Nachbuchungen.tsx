@@ -82,6 +82,7 @@ export function Nachbuchungen() {
   const [dozentDropdownOpen, setDozentDropdownOpen] = useState(false);
   const [dozentEmail, setDozentEmail] = useState('');
   const dozentRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLDivElement>(null);
 
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -225,6 +226,7 @@ export function Nachbuchungen() {
   };
 
   const startEdit = (row: NachbuchungRow) => {
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     setEditingId(row.id);
     setRechtsgebiet(row.rechtsgebiet);
     setDozentId(row.dozent_id || '');
@@ -367,7 +369,7 @@ export function Nachbuchungen() {
   return (
     <div className="max-w-6xl mx-auto space-y-5">
       {/* Formular */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 sm:p-6">
+      <div ref={formRef} className={`bg-white rounded-xl shadow-sm border p-5 sm:p-6 ${editingId ? 'border-primary ring-2 ring-primary/20' : 'border-gray-100'}`}>
         <div className="flex items-center gap-2 mb-4">
           <BookPlus className="h-5 w-5 text-primary" />
           <h3 className="font-semibold text-gray-900">
