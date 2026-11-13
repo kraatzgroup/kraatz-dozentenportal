@@ -54,14 +54,28 @@ Deno.serve(async (req) => {
     const zustandeRaw = body?.zustande;
     const zustande = zustandeRaw === true ? true : zustandeRaw === false ? false : null;
 
+    const stundenRaw = body?.stunden;
+    const provisionRaw = body?.provision;
+    const stunden = stundenRaw !== undefined && stundenRaw !== null && stundenRaw !== '' ? Number(stundenRaw) : null;
+    const provision = provisionRaw !== undefined && provisionRaw !== null && provisionRaw !== '' ? Number(provisionRaw) : null;
+
+    const update: Record<string, unknown> = { nachbuchung_zustande: zustande };
+    if (zustande === true) {
+      update.nachbuchung_stunden = stunden;
+      update.nachbuchung_provision = provision;
+    } else {
+      update.nachbuchung_stunden = null;
+      update.nachbuchung_provision = null;
+    }
+
     const { error } = await supabase
       .from('nachbuchungen')
-      .update({ nachbuchung_zustande: zustande })
+      .update(update)
       .eq('id', id);
 
     if (error) throw error;
 
-    return json({ ok: true, zustande });
+    return json({ ok: true, zustande, stunden, provision });
   } catch (error) {
     console.error('❌ Error:', error);
     return json({ error: error instanceof Error ? error.message : 'Unknown error' }, 500);

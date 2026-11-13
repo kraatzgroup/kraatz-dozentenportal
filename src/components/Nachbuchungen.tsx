@@ -39,6 +39,8 @@ interface NachbuchungRow {
   antwort_erreichbar: string | null;
   antwort_notiz: string | null;
   nachbuchung_zustande: boolean | null;
+  nachbuchung_stunden: number | null;
+  nachbuchung_provision: number | null;
 }
 
 function splitName(full: string): { vorname: string; nachname: string } {
@@ -93,6 +95,8 @@ export function Nachbuchungen() {
   const [viewAnswerParticipantKey, setViewAnswerParticipantKey] = useState<string | null>(null);
   const [viewAnswerRechtsgebiet, setViewAnswerRechtsgebiet] = useState('');
   const [zustandeSelection, setZustandeSelection] = useState<'offen' | 'ja' | 'nein'>('offen');
+  const [zustandeStunden, setZustandeStunden] = useState('');
+  const [zustandeProvision, setZustandeProvision] = useState('');
 
   const query = searchTerm.trim().toLowerCase();
   const filteredTeilnehmer = query
@@ -119,7 +123,7 @@ export function Nachbuchungen() {
   const fetchList = async () => {
     const { data, error } = await supabase
       .from('nachbuchungen')
-      .select('id, teilnehmer_id, teilnehmer_name, teilnehmer_tn_nummer, dozent_id, rechtsgebiet, status, sent_at, responded_at, reminder_sent_at, antwort_bedarf, antwort_stunden, antwort_erreichbar, antwort_notiz, nachbuchung_zustande')
+      .select('id, teilnehmer_id, teilnehmer_name, teilnehmer_tn_nummer, dozent_id, rechtsgebiet, status, sent_at, responded_at, reminder_sent_at, antwort_bedarf, antwort_stunden, antwort_erreichbar, antwort_notiz, nachbuchung_zustande, nachbuchung_stunden, nachbuchung_provision')
       .order('sent_at', { ascending: false });
 
     if (error) {
@@ -329,7 +333,12 @@ export function Nachbuchungen() {
     const zustande = zustandeSelection === 'ja' ? true : zustandeSelection === 'nein' ? false : null;
     try {
       const { error } = await supabase.functions.invoke('nachbuchung-zustande', {
-        body: { id: viewAnswerCurrent.id, zustande },
+        body: {
+          id: viewAnswerCurrent.id,
+          zustande,
+          stunden: zustandeStunden,
+          provision: zustandeProvision,
+        },
       });
       if (error) throw error;
       addToast('Nachbuchung vermerkt', 'success');
@@ -696,6 +705,8 @@ export function Nachbuchungen() {
                                     ? 'nein'
                                     : 'offen'
                               );
+                              setZustandeStunden(firstAnswered?.nachbuchung_stunden != null ? String(firstAnswered.nachbuchung_stunden) : '');
+                              setZustandeProvision(firstAnswered?.nachbuchung_provision != null ? String(firstAnswered.nachbuchung_provision) : '');
                             }}
                             title="Antwort ansehen"
                             className="group flex flex-col items-start"
@@ -816,6 +827,8 @@ export function Nachbuchungen() {
                           ? 'nein'
                           : 'offen'
                     );
+                    setZustandeStunden(rowForRg?.nachbuchung_stunden != null ? String(rowForRg.nachbuchung_stunden) : '');
+                    setZustandeProvision(rowForRg?.nachbuchung_provision != null ? String(rowForRg.nachbuchung_provision) : '');
                   }}
                   className={inputClass}
                 >
@@ -873,8 +886,8 @@ export function Nachbuchungen() {
                 {(
                   [
                     { value: 'offen', label: 'Offen' },
-                    { value: 'ja', label: 'Ja' },
                     { value: 'nein', label: 'Nein' },
+                    { value: 'ja', label: 'Ja' },
                   ] as { value: 'offen' | 'ja' | 'nein'; label: string }[]
                 ).map((o) => (
                   <label
@@ -897,6 +910,35 @@ export function Nachbuchungen() {
                   </label>
                 ))}
               </div>
+
+              {zustandeSelection === 'ja' && (
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className={labelClass}>Stunden</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={zustandeStunden}
+                      onChange={(e) => setZustandeStunden(e.target.value)}
+                      placeholder="z. B. 10"
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Provision (€)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={zustandeProvision}
+                      onChange={(e) => setZustandeProvision(e.target.value)}
+                      placeholder="z. B. 150"
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={saveZustande}
