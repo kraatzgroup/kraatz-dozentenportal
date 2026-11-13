@@ -50,6 +50,10 @@ function isPlaceholderEmail(email: string): boolean {
   return /^dozent\d+@kraatz-group\.de$/i.test(email.trim());
 }
 
+function participantKey(r: NachbuchungRow): string {
+  return r.teilnehmer_id || `name:${r.teilnehmer_name || ''}`;
+}
+
 function statusInfo(row: NachbuchungRow): { label: string; className: string; dot: string } {
   if (row.status === 'beantwortet') {
     return { label: 'Antwort eingereicht', className: 'bg-green-100 text-green-700', dot: 'bg-green-500' };
@@ -93,7 +97,8 @@ export function Nachbuchungen() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [resendConfirm, setResendConfirm] = useState<NachbuchungRow | null>(null);
-  const [viewAnswer, setViewAnswer] = useState<NachbuchungRow | null>(null);
+  const [viewAnswerParticipantKey, setViewAnswerParticipantKey] = useState<string | null>(null);
+  const [viewAnswerRechtsgebiet, setViewAnswerRechtsgebiet] = useState('');
 
   const query = searchTerm.trim().toLowerCase();
   const filteredTeilnehmer = query
@@ -170,6 +175,12 @@ export function Nachbuchungen() {
     : [];
 
   const dozentEmailInvalid = !!dozentId && (isPlaceholderEmail(dozentEmail) || dozentEmail.trim() === '');
+
+  const viewAnswerRows = viewAnswerParticipantKey
+    ? rows.filter((r) => r.status === 'beantwortet' && participantKey(r) === viewAnswerParticipantKey)
+    : [];
+  const viewAnswerRechtsgebiete = [...new Set(viewAnswerRows.map((r) => r.rechtsgebiet))];
+  const viewAnswerCurrent = viewAnswerRows.find((r) => r.rechtsgebiet === viewAnswerRechtsgebiet) || null;
 
   const selectTeilnehmer = (t: TeilnehmerOption) => {
     setSelectedTeilnehmerId(t.id);
@@ -590,7 +601,10 @@ export function Nachbuchungen() {
                         {r.status === 'beantwortet' ? (
                           <button
                             type="button"
-                            onClick={() => setViewAnswer(r)}
+                            onClick={() => {
+                            setViewAnswerParticipantKey(participantKey(r));
+                            setViewAnswerRechtsgebiet(r.rechtsgebiet);
+                          }}
                             title="Antwort ansehen"
                             className="group flex flex-col items-start"
                           >
@@ -680,46 +694,63 @@ export function Nachbuchungen() {
           </div>
         </div>
       )}
-    {viewAnswer && (
+    {viewAnswerCurrent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-5">
             <h4 className="font-semibold text-gray-900 mb-4">Antwort des Dozenten</h4>
+
+            {viewAnswerRechtsgebiete.length > 1 && (
+              <div className="mb-4">
+                <label className={labelClass}>Rechtsgebiet</label>
+                <select
+                  value={viewAnswerRechtsgebiet}
+                  onChange={(e) => setViewAnswerRechtsgebiet(e.target.value)}
+                  className={inputClass}
+                >
+                  {viewAnswerRechtsgebiete.map((rg) => (
+                    <option key={rg} value={rg}>
+                      {rg}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div className="space-y-2 text-sm mb-5">
               <p>
                 <span className="text-gray-500">Teilnehmer:</span>{' '}
                 <span className="text-gray-900 font-medium">
-                  {[viewAnswer.teilnehmer_name, viewAnswer.teilnehmer_tn_nummer].filter(Boolean).join(' · ') || '–'}
+                  {[viewAnswerCurrent.teilnehmer_name, viewAnswerCurrent.teilnehmer_tn_nummer].filter(Boolean).join(' · ') || '–'}
                 </span>
               </p>
               <p>
                 <span className="text-gray-500">Dozent:</span>{' '}
-                <span className="text-gray-900 font-medium">{dozentNameMap[viewAnswer.dozent_id || ''] || '–'}</span>
+                <span className="text-gray-900 font-medium">{dozentNameMap[viewAnswerCurrent.dozent_id || ''] || '–'}</span>
               </p>
               <p>
                 <span className="text-gray-500">Rechtsgebiet:</span>{' '}
-                <span className="text-gray-900 font-medium">{viewAnswer.rechtsgebiet}</span>
+                <span className="text-gray-900 font-medium">{viewAnswerCurrent.rechtsgebiet}</span>
               </p>
               <p>
                 <span className="text-gray-500">Nachbuchungsbedarf:</span>{' '}
-                <span className="text-gray-900 font-medium">{viewAnswer.antwort_bedarf ? 'Ja' : 'Nein'}</span>
+                <span className="text-gray-900 font-medium">{viewAnswerCurrent.antwort_bedarf ? 'Ja' : 'Nein'}</span>
               </p>
-              {viewAnswer.antwort_bedarf && viewAnswer.antwort_stunden !== null && (
+              {viewAnswerCurrent.antwort_bedarf && viewAnswerCurrent.antwort_stunden !== null && (
                 <p>
                   <span className="text-gray-500">Zusatzstunden:</span>{' '}
-                  <span className="text-gray-900 font-medium">{viewAnswer.antwort_stunden}</span>
+                  <span className="text-gray-900 font-medium">{viewAnswerCurrent.antwort_stunden}</span>
                 </p>
               )}
-              {viewAnswer.antwort_bedarf && viewAnswer.antwort_erreichbar && (
+              {viewAnswerCurrent.antwort_bedarf && viewAnswerCurrent.antwort_erreichbar && (
                 <p>
                   <span className="text-gray-500">Erreichbarkeit:</span>{' '}
-                  <span className="text-gray-900 font-medium">{viewAnswer.antwort_erreichbar}</span>
+                  <span className="text-gray-900 font-medium">{viewAnswerCurrent.antwort_erreichbar}</span>
                 </p>
               )}
-              {viewAnswer.antwort_notiz && (
+              {viewAnswerCurrent.antwort_notiz && (
                 <div>
                   <span className="text-gray-500">Notiz:</span>
-                  <p className="text-gray-900 mt-1 whitespace-pre-wrap">{viewAnswer.antwort_notiz}</p>
+                  <p className="text-gray-900 mt-1 whitespace-pre-wrap">{viewAnswerCurrent.antwort_notiz}</p>
                 </div>
               )}
             </div>
@@ -727,7 +758,10 @@ export function Nachbuchungen() {
             <div className="flex justify-end">
               <button
                 type="button"
-                onClick={() => setViewAnswer(null)}
+                onClick={() => {
+                  setViewAnswerParticipantKey(null);
+                  setViewAnswerRechtsgebiet('');
+                }}
                 className="px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90"
               >
                 Schließen
