@@ -91,9 +91,6 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (!row) return json({ error: 'Anfrage nicht gefunden' }, 404);
-    if (row.status !== 'ausstehend') {
-      return json({ error: 'Nur ausstehende Anfragen können erneut gesendet werden' }, 400);
-    }
 
     const { data: dozent } = await supabase
       .from('profiles')

@@ -306,7 +306,7 @@ export function Nachbuchungen() {
   };
 
   const openEntryAction = (action: 'edit' | 'resend' | 'delete', gRows: NachbuchungRow[]) => {
-    const candidates = action === 'resend' ? gRows.filter((r) => r.status === 'ausstehend') : gRows;
+    const candidates = gRows;
     if (candidates.length === 0) return;
     if (candidates.length === 1) {
       applyEntryAction(action, candidates[0]);
@@ -640,7 +640,6 @@ export function Nachbuchungen() {
                   const r0 = gRows[0];
                   const allAnswered = gRows.every((r) => r.status === 'beantwortet');
                   const anyAnswered = gRows.some((r) => r.status === 'beantwortet');
-                  const hasAusstehend = gRows.some((r) => r.status === 'ausstehend');
 
                   const teilnehmerLabel = [r0.teilnehmer_name, r0.teilnehmer_tn_nummer].filter(Boolean).join(' · ');
                   const rechtsgebiete = [...new Set(gRows.map((r) => r.rechtsgebiet))].join(', ');
@@ -709,9 +708,8 @@ export function Nachbuchungen() {
                           <button
                             type="button"
                             onClick={() => openEntryAction('resend', gRows)}
-                            title={hasAusstehend ? 'Erneut senden' : 'Bereits beantwortet'}
-                            disabled={!hasAusstehend}
-                            className="p-1.5 rounded-md text-gray-400 hover:text-primary hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                            title="Erneut senden"
+                            className="p-1.5 rounded-md text-gray-400 hover:text-primary hover:bg-gray-50"
                           >
                             <Send className="h-4 w-4" />
                           </button>
