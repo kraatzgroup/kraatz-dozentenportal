@@ -698,7 +698,8 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
                   email: formData.email.trim(),
                   fullName: fullName,
                   role: 'dozent',
-                  userId: dozentId // Use existing profile ID for migration
+                  userId: dozentId, // Use existing profile ID for migration
+                  sendWelcomeEmail: false // Kein Mailversand - Einladung nur via Benutzerverwaltung
                 }),
               });
 
@@ -735,7 +736,7 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
         await supabase.from('elite_kleingruppe_dozenten').delete().eq('dozent_id', dozentId);
         
         if (userAccountCreated) {
-          addToast('Dozent wurde aktualisiert und Benutzeraccount wurde erstellt. Einladungs-E-Mail wurde gesendet.', 'success');
+          addToast('Dozent wurde aktualisiert und Benutzeraccount wurde erstellt.', 'success');
         } else {
           addToast('Dozent wurde aktualisiert', 'success');
         }
@@ -758,8 +759,11 @@ export function DozentForm({ dozent, onClose, onSaved, onDelete }: DozentFormPro
               body: JSON.stringify({
                 email: formData.email.trim(),
                 fullName: fullName,
-                role: 'dozent'
+                role: 'dozent',
                 // No userId - this is a new user, not a migration
+                // Kein automatischer Mailversand: Einladung geht nur über den
+                // Button in der Benutzerverwaltung raus.
+                sendWelcomeEmail: false
               }),
             });
 

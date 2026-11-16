@@ -13,6 +13,7 @@ interface CreateUserRequest {
   additionalRoles?: string[];
   eliteKleingruppe?: string;
   userId?: string; // Optional: Use existing profile ID instead of creating new one
+  sendWelcomeEmail?: boolean; // Default true; pass false to create the account without any email
 }
 
 // Generate a secure random password
@@ -72,7 +73,7 @@ Deno.serve(async (req) => {
     );
 
     console.log(`📋 [${requestId}] Parsing request body...`);
-    const { email, fullName, role = 'dozent', additionalRoles = [], eliteKleingruppe, userId: requestedUserId } = await req.json() as CreateUserRequest;
+    const { email, fullName, role = 'dozent', additionalRoles = [], eliteKleingruppe, userId: requestedUserId, sendWelcomeEmail = true } = await req.json() as CreateUserRequest;
     console.log(`📋 [${requestId}] Request data:`, { email, fullName, role, additionalRoles, eliteKleingruppe, requestedUserId });
 
     // Validate input
@@ -222,7 +223,9 @@ Deno.serve(async (req) => {
     }
 
     // Generate magic link and send email for new users or re-invitations
-    if (shouldSendEmail) {
+    // Only when the caller explicitly allows it: welcome mails are triggered
+    // manually via the resend-welcome-email button in the Benutzerverwaltung.
+    if (shouldSendEmail && sendWelcomeEmail) {
       // Send welcome email (function generates its own magic link internally)
       console.log(`📧 [${requestId}] Calling send-welcome-email for: ${email}`);
       const welcomeEmailUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/send-welcome-email`;
