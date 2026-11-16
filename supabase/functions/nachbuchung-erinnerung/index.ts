@@ -133,17 +133,8 @@ Deno.serve(async (req) => {
                 Bitte geben Sie uns über den folgenden Link kurz Bescheid.
               </p>
               <div style="text-align: center; margin: 30px 0;">
-                <a href="${link}"
-                   style="display: inline-block; background-color: #2e83c2; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold;">
-                  Formular öffnen
-                </a>
-              </div>
-              <div style="text-align: center; margin: 30px 0;">
                 <a href="${link}" style="display: inline-block; text-decoration: none;">
-                  <div style="background-color: #000000; border-radius: 10px; padding: 26px 34px;">
-                    <span style="display: inline-block; width: 54px; height: 54px; line-height: 54px; background-color: #2e83c2; border-radius: 50%; color: #ffffff; font-size: 22px; text-align: center;">&#9654;</span>
-                    <p style="color: #ffffff; margin: 12px 0 0 0; font-size: 14px; font-weight: bold;">Video-Ansprache ansehen</p>
-                  </div>
+                  <img src="https://gkkveloqajxghhflkfru.supabase.co/storage/v1/object/public/Videos-Portal/ansprache-video-preview.png" alt="Video-Ansprache ansehen" style="width: 100%; max-width: 480px; height: auto; border-radius: 12px; display: block; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
                 </a>
               </div>
               <div style="background-color: #e9ecef; padding: 15px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #6c757d;">
