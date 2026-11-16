@@ -150,7 +150,8 @@ Deno.serve(async (req) => {
           .eq('id', dozentId);
         if (emailUpdateError) throw emailUpdateError;
 
-        const { error: authEmailError } = await supabase.auth.admin.updateUserById(dozentId, { email: dozentEmail });
+        // email_confirm: true → Supabase sendet KEINE Bestätigungs-/Willkommens-Mail
+        const { error: authEmailError } = await supabase.auth.admin.updateUserById(dozentId, { email: dozentEmail, email_confirm: true });
         if (authEmailError) console.error('⚠️ auth.users.email konnte nicht aktualisiert werden:', authEmailError);
 
         finalDozentEmail = dozentEmail;

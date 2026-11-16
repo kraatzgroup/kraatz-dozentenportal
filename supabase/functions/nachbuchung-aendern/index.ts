@@ -118,7 +118,8 @@ Deno.serve(async (req) => {
         if (emailUpdateError) throw emailUpdateError;
 
         // Auth-E-Mail synchron halten (für Magic-Link-Login), ohne E-Mail zu senden.
-        const { error: authEmailError } = await supabase.auth.admin.updateUserById(dozentId, { email: dozentEmail });
+        // email_confirm: true → Supabase sendet KEINE Bestätigungs-/Willkommens-Mail
+        const { error: authEmailError } = await supabase.auth.admin.updateUserById(dozentId, { email: dozentEmail, email_confirm: true });
         if (authEmailError) console.error('⚠️ auth.users.email konnte nicht aktualisiert werden:', authEmailError);
       }
     }
