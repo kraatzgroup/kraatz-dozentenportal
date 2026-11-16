@@ -8,7 +8,11 @@ const inputClass =
 const labelClass = 'block text-sm font-medium text-gray-700 mb-1';
 
 const VIDEO_URL =
+  'https://gkkveloqajxghhflkfru.supabase.co/storage/v1/object/public/Videos-Portal/ansprache-dozenten-720p.mp4';
+const VIDEO_FALLBACK_URL =
   'https://gkkveloqajxghhflkfru.supabase.co/storage/v1/object/public/Videos-Portal/Ansprache%20Dozentenmp4.mp4';
+const VIDEO_POSTER_URL =
+  'https://gkkveloqajxghhflkfru.supabase.co/storage/v1/object/public/Videos-Portal/ansprache-video-preview.png';
 
 type Reason = 'invalid' | 'expired' | 'already_answered' | 'error';
 
@@ -142,10 +146,15 @@ export function NachbuchungDozentForm() {
 
           <video
             controls
+            playsInline
             preload="metadata"
-            src={VIDEO_URL}
+            poster={VIDEO_POSTER_URL}
             className="w-full rounded-lg mb-6 bg-black"
-          />
+          >
+            <source src={VIDEO_URL} type="video/mp4" />
+            <source src={VIDEO_FALLBACK_URL} type="video/mp4" />
+            Ihr Browser unterstützt die Video-Wiedergabe nicht.
+          </video>
 
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6 space-y-1 text-sm">
             <p>
