@@ -79,10 +79,12 @@ Deno.serve(async (req) => {
     console.log(`✅ [${requestId}] Profile email updated`);
 
     // Then update auth user email
+    // email_confirm: true -> Supabase sends NO confirmation mail to the new address.
+    // Welcome/invite mails are only sent via the explicit resend-welcome-email button.
     console.log(`🔑 [${requestId}] Updating auth user email...`);
     const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
       userId,
-      { email: newEmail }
+      { email: newEmail, email_confirm: true }
     );
 
     if (updateError) {
