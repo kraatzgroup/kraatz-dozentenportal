@@ -4,6 +4,7 @@ console.log('🚀 nachbuchung-erneut-senden edge function loaded');
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { logNotification } from '../_shared/notification-log.ts';
+import { notifyNachbuchungRecipients } from '../_shared/nachbuchung-notify.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -206,6 +207,21 @@ Deno.serve(async (req) => {
           context: { nachbuchungId: row.id, teilnehmerName: row.teilnehmer_name, rechtsgebiet: row.rechtsgebiet },
         });
       }
+    }
+
+    if (emailSent) {
+      await notifyNachbuchungRecipients({
+        supabase,
+        event: 'send',
+        edgeFunction: 'nachbuchung-erneut-senden',
+        details: {
+          dozentName: dozent.full_name,
+          teilnehmerName: row.teilnehmer_name,
+          teilnehmerTnNummer: row.teilnehmer_tn_nummer,
+          rechtsgebiet: row.rechtsgebiet,
+          bodyText: `Die Nachbuchungs-Anfrage für <strong>${teilnehmerLabel}</strong> wurde erneut an <strong>${dozent.full_name || 'den Dozenten'}</strong> versendet.`,
+        },
+      });
     }
 
     return json({ ok: true, emailSent });

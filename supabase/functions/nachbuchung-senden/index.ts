@@ -4,6 +4,7 @@ console.log('🚀 nachbuchung-senden edge function loaded');
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { logNotification } from '../_shared/notification-log.ts';
+import { notifyNachbuchungRecipients } from '../_shared/nachbuchung-notify.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -279,6 +280,21 @@ Deno.serve(async (req) => {
           context: { nachbuchungId: inserted.id, teilnehmerName: finalTeilnehmerName, rechtsgebiet },
         });
       }
+    }
+
+    if (emailSent) {
+      await notifyNachbuchungRecipients({
+        supabase,
+        event: 'send',
+        edgeFunction: 'nachbuchung-senden',
+        details: {
+          dozentName: dozent.full_name,
+          teilnehmerName: finalTeilnehmerName,
+          teilnehmerTnNummer: finalTeilnehmerTn,
+          rechtsgebiet,
+          bodyText: `Die Nachbuchungs-Anfrage für <strong>${[finalTeilnehmerName, finalTeilnehmerTn].filter(Boolean).join(' · ')}</strong> wurde an <strong>${dozent.full_name || 'den Dozenten'}</strong> versendet.`,
+        },
+      });
     }
 
     return json({ success: true, id: inserted.id, emailSent });

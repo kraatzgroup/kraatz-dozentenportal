@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { BookPlus, Loader2, Send, RefreshCw, Search, UserPlus, Pencil, Trash2 } from 'lucide-react';
+import { BookPlus, Loader2, Send, RefreshCw, Search, UserPlus, Pencil, Trash2, Bell, ChevronDown, ChevronUp, Plus } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useToastStore } from '../store/toastStore';
+import { useAuthStore } from '../store/authStore';
 
 const inputClass =
   'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm';
@@ -59,8 +60,24 @@ function participantKey(r: NachbuchungRow): string {
   return r.teilnehmer_id || `name:${r.teilnehmer_name || ''}`;
 }
 
+interface NotifyRecipient {
+  id: string;
+  email: string;
+  name: string | null;
+  notify_send: boolean;
+  notify_response: boolean;
+  notify_reminder: boolean;
+}
+
+const NOTIFY_FLAGS = [
+  { key: 'notify_send', label: 'Anfrage versendet' },
+  { key: 'notify_response', label: 'Rückmeldung Dozent' },
+  { key: 'notify_reminder', label: 'Erinnerung (72 h)' },
+] as const;
+
 export function Nachbuchungen() {
   const { addToast } = useToastStore();
+  const isAdmin = useAuthStore((s) => s.isAdmin);
 
   const [teilnehmer, setTeilnehmer] = useState<TeilnehmerOption[]>([]);
   const [dozenten, setDozenten] = useState<DozentOption[]>([]);
@@ -98,6 +115,13 @@ export function Nachbuchungen() {
   const [zustandeSelection, setZustandeSelection] = useState<'offen' | 'ja' | 'nein'>('offen');
   const [zustandeStunden, setZustandeStunden] = useState('');
   const [zustandeProvision, setZustandeProvision] = useState('');
+
+  // Benachrichtigungs-Empfänger (nur Admin)
+  const [notifyOpen, setNotifyOpen] = useState(false);
+  const [notifyRecipients, setNotifyRecipients] = useState<NotifyRecipient[]>([]);
+  const [notifySaving, setNotifySaving] = useState(false);
+  const [newNotifyName, setNewNotifyName] = useState('');
+  const [newNotifyEmail, setNewNotifyEmail] = useState('');
 
   const query = searchTerm.trim().toLowerCase();
   const filteredTeilnehmer = query
@@ -163,6 +187,70 @@ export function Nachbuchungen() {
     };
     load();
   }, []);
+
+  const fetchNotifyRecipients = async () => {
+    const { data, error } = await supabase
+      .from('nachbuchung_notification_recipients')
+      .select('id, email, name, notify_send, notify_response, notify_reminder')
+      .order('email');
+    if (error) {
+      console.error('Fehler beim Laden der Empfänger:', error);
+      return;
+    }
+    setNotifyRecipients((data || []) as NotifyRecipient[]);
+  };
+
+  useEffect(() => {
+    if (isAdmin) fetchNotifyRecipients();
+  }, [isAdmin]);
+
+  const toggleNotifyFlag = async (recipient: NotifyRecipient, flag: keyof Omit<NotifyRecipient, 'id' | 'email' | 'name'>) => {
+    const next = !recipient[flag];
+    setNotifyRecipients((prev) => prev.map((r) => (r.id === recipient.id ? { ...r, [flag]: next } : r)));
+    const { error } = await supabase
+      .from('nachbuchung_notification_recipients')
+      .update({ [flag]: next })
+      .eq('id', recipient.id);
+    if (error) {
+      setNotifyRecipients((prev) => prev.map((r) => (r.id === recipient.id ? { ...r, [flag]: !next } : r)));
+      addToast('Einstellung konnte nicht gespeichert werden', 'error');
+    }
+  };
+
+  const addNotifyRecipient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const email = newNotifyEmail.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      addToast('Bitte eine gültige E-Mail-Adresse eingeben', 'error');
+      return;
+    }
+    setNotifySaving(true);
+    const { error } = await supabase
+      .from('nachbuchung_notification_recipients')
+      .insert({ email, name: newNotifyName.trim() || null });
+    setNotifySaving(false);
+    if (error) {
+      addToast(error.code === '23505' ? 'Diese E-Mail ist bereits eingetragen' : 'Empfänger konnte nicht hinzugefügt werden', 'error');
+      return;
+    }
+    setNewNotifyName('');
+    setNewNotifyEmail('');
+    addToast('Empfänger hinzugefügt', 'success');
+    await fetchNotifyRecipients();
+  };
+
+  const removeNotifyRecipient = async (recipient: NotifyRecipient) => {
+    const { error } = await supabase
+      .from('nachbuchung_notification_recipients')
+      .delete()
+      .eq('id', recipient.id);
+    if (error) {
+      addToast('Empfänger konnte nicht entfernt werden', 'error');
+      return;
+    }
+    setNotifyRecipients((prev) => prev.filter((r) => r.id !== recipient.id));
+    addToast('Empfänger entfernt', 'success');
+  };
 
   const filteredDozenten = rechtsgebiet
     ? dozenten.filter((d) => (d.legal_areas || []).includes(rechtsgebiet))
@@ -648,6 +736,108 @@ export function Nachbuchungen() {
           </div>
         </form>
       </div>
+
+      {/* Benachrichtigungs-Empfänger (nur Admin) */}
+      {isAdmin && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setNotifyOpen((o) => !o)}
+            className="w-full p-4 sm:p-5 flex items-center justify-between gap-4 hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Bell className="h-5 w-5 text-primary" />
+              <div className="text-left">
+                <h3 className="font-semibold text-gray-900">E-Mail-Benachrichtigungen</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Zusätzliche Empfänger für Nachbuchungs-Ereignisse. Admins werden bei Rückmeldungen immer benachrichtigt.
+                </p>
+              </div>
+            </div>
+            {notifyOpen ? <ChevronUp className="h-5 w-5 text-gray-400" /> : <ChevronDown className="h-5 w-5 text-gray-400" />}
+          </button>
+
+          {notifyOpen && (
+            <div className="px-4 sm:px-5 pb-5 border-t border-gray-100">
+              <form onSubmit={addNotifyRecipient} className="flex flex-col sm:flex-row gap-2 mt-4">
+                <input
+                  type="text"
+                  value={newNotifyName}
+                  onChange={(e) => setNewNotifyName(e.target.value)}
+                  placeholder="Name (optional)"
+                  className={`${inputClass} sm:w-56`}
+                />
+                <input
+                  type="email"
+                  value={newNotifyEmail}
+                  onChange={(e) => setNewNotifyEmail(e.target.value)}
+                  placeholder="E-Mail-Adresse"
+                  required
+                  className={`${inputClass} flex-1`}
+                />
+                <button
+                  type="submit"
+                  disabled={notifySaving}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {notifySaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  Hinzufügen
+                </button>
+              </form>
+
+              {notifyRecipients.length > 0 ? (
+                <div className="overflow-x-auto mt-4">
+                  <table className="min-w-full divide-y divide-gray-100 text-sm">
+                    <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                      <tr>
+                        <th className="px-4 py-3">Empfänger</th>
+                        {NOTIFY_FLAGS.map((f) => (
+                          <th key={f.key} className="px-4 py-3 text-center">{f.label}</th>
+                        ))}
+                        <th className="px-4 py-3 text-right">Aktionen</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {notifyRecipients.map((r) => (
+                        <tr key={r.id}>
+                          <td className="px-4 py-3">
+                            <div className="text-gray-900">{r.name || r.email}</div>
+                            {r.name && <div className="text-xs text-gray-500">{r.email}</div>}
+                          </td>
+                          {NOTIFY_FLAGS.map((f) => (
+                            <td key={f.key} className="px-4 py-3 text-center">
+                              <input
+                                type="checkbox"
+                                checked={r[f.key]}
+                                onChange={() => toggleNotifyFlag(r, f.key)}
+                                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                              />
+                            </td>
+                          ))}
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => removeNotifyRecipient(r)}
+                              className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50"
+                              title="Entfernen"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 mt-4">
+                  Noch keine zusätzlichen Empfänger eingetragen.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Ampel-Liste */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">

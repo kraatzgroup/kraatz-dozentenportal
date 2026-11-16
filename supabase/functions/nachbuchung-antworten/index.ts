@@ -5,6 +5,7 @@ console.log('🚀 nachbuchung-antworten edge function loaded');
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { logNotification } from '../_shared/notification-log.ts';
+import { notifyNachbuchungRecipients } from '../_shared/nachbuchung-notify.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -217,6 +218,24 @@ Deno.serve(async (req) => {
         });
       }
     }
+
+    await notifyNachbuchungRecipients({
+      supabase,
+      event: 'response',
+      edgeFunction: 'nachbuchung-antworten',
+      excludeEmails: relevantStaff.map((s) => s.email),
+      details: {
+        dozentName: dozentLabel,
+        teilnehmerName: row.teilnehmer_name,
+        teilnehmerTnNummer: row.teilnehmer_tn_nummer,
+        rechtsgebiet: row.rechtsgebiet,
+        extraRows: [
+          ['Nachbuchungsbedarf', bedarfText],
+          ...(bedarf && stunden ? [['Zusatzstunden', String(stunden)] as [string, string]] : []),
+        ],
+        bodyText: `<strong>${dozentLabel}</strong> hat das Nachbuchungsformular für <strong>${teilnehmerLabel}</strong> ausgefüllt.`,
+      },
+    });
 
     return json({ ok: true });
   } catch (error) {

@@ -4,6 +4,7 @@ console.log('🚀 nachbuchung-erinnerung edge function loaded');
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { logNotification } from '../_shared/notification-log.ts';
+import { notifyNachbuchungRecipients } from '../_shared/nachbuchung-notify.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -116,6 +117,7 @@ Deno.serve(async (req) => {
 
       const link = (await generateMagicLink(supabase, dozent.email, rawToken)) || `${PORTAL_URL}/nachbuchung/${rawToken}`;
       const teilnehmerLabel = [row.teilnehmer_name, row.teilnehmer_tn_nummer].filter(Boolean).join(' · ');
+      let emailSentToDozent = false;
 
       if (mailgunApiKey) {
         const emailHtml = `
@@ -174,6 +176,7 @@ Deno.serve(async (req) => {
           let providerMessageId: string | undefined;
           if (mailgunResponse.ok) {
             sentCount++;
+            emailSentToDozent = true;
             try { providerMessageId = JSON.parse(mailgunBody)?.id; } catch { /* ignore */ }
           } else {
             console.error('❌ Mailgun error:', mailgunBody);
@@ -208,6 +211,21 @@ Deno.serve(async (req) => {
         }
       } else {
         skipped++;
+      }
+
+      if (mailgunApiKey && emailSentToDozent) {
+        await notifyNachbuchungRecipients({
+          supabase,
+          event: 'reminder',
+          edgeFunction: 'nachbuchung-erinnerung',
+          details: {
+            dozentName: dozent.full_name,
+            teilnehmerName: row.teilnehmer_name,
+            teilnehmerTnNummer: row.teilnehmer_tn_nummer,
+            rechtsgebiet: row.rechtsgebiet,
+            bodyText: `<strong>${dozent.full_name || 'Der Dozent'}</strong> hat seit über 72 Stunden nicht auf die Nachbuchungs-Anfrage für <strong>${teilnehmerLabel}</strong> reagiert. Eine Erinnerungs-E-Mail wurde versendet.`,
+          },
+        });
       }
     }
 
