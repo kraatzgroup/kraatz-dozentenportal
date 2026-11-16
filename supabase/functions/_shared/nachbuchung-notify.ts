@@ -59,12 +59,32 @@ export async function notifyNachbuchungRecipients(params: {
   edgeFunction: string;
   details: NotifyDetails;
   excludeEmails?: string[];
+  /** Admins (role=admin) zusaetzlich zu den konfigurierten Empfaengern benachrichtigen. */
+  includeAdmins?: boolean;
 }): Promise<number> {
-  const { supabase, event, edgeFunction, details, excludeEmails = [] } = params;
+  const { supabase, event, edgeFunction, details, excludeEmails = [], includeAdmins = false } = params;
   const mailgunApiKey = Deno.env.get('MAILGUN_API_KEY');
   if (!mailgunApiKey) return 0;
 
   const recipients = await loadRecipients(supabase, event);
+
+  if (includeAdmins) {
+    const { data: admins } = await supabase
+      .from('profiles')
+      .select('email, full_name, role, additional_roles')
+      .eq('is_archived', false)
+      .not('email', 'is', null);
+    const seen = new Set(recipients.map((r) => r.email.trim().toLowerCase()));
+    for (const a of admins || []) {
+      const roles = new Set([a.role, ...(a.additional_roles || [])]);
+      const email = (a.email || '').trim().toLowerCase();
+      if (roles.has('admin') && email && !seen.has(email)) {
+        seen.add(email);
+        recipients.push({ email: a.email, name: a.full_name });
+      }
+    }
+  }
+
   const excluded = new Set(excludeEmails.map((e) => e.trim().toLowerCase()));
   const targets = recipients.filter((r) => !excluded.has(r.email.trim().toLowerCase()));
   if (targets.length === 0) return 0;

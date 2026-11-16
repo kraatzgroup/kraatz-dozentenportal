@@ -214,6 +214,7 @@ Deno.serve(async (req) => {
         supabase,
         event: 'send',
         edgeFunction: 'nachbuchung-erneut-senden',
+        includeAdmins: true,
         details: {
           dozentName: dozent.full_name,
           teilnehmerName: row.teilnehmer_name,

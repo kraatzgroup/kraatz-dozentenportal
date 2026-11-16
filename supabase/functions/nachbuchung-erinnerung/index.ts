@@ -218,6 +218,7 @@ Deno.serve(async (req) => {
           supabase,
           event: 'reminder',
           edgeFunction: 'nachbuchung-erinnerung',
+          includeAdmins: true,
           details: {
             dozentName: dozent.full_name,
             teilnehmerName: row.teilnehmer_name,

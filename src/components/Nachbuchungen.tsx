@@ -750,7 +750,7 @@ export function Nachbuchungen() {
               <div className="text-left">
                 <h3 className="font-semibold text-gray-900">E-Mail-Benachrichtigungen</h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Zusätzliche Empfänger für Nachbuchungs-Ereignisse. Admins werden bei Rückmeldungen immer benachrichtigt.
+                  Zusätzliche Empfänger für Nachbuchungs-Ereignisse. Admins werden bei allen Ereignissen immer benachrichtigt.
                 </p>
               </div>
             </div>
