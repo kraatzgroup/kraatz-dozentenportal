@@ -1798,7 +1798,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 <span className="hidden sm:inline">Elite-Kleingruppe</span>
               </button>
               )}
-              {(isAdmin || isVerwaltungMode || isAccountingMode) && !isDozent && (
+              {(isAdmin || isVerwaltungMode || isAccountingMode) && (!isDozent || isVerwaltungMode || isAccountingMode) && (
               <button
                 onClick={() => { setActiveTab('vertraege'); }}
                 className={`${
@@ -1811,7 +1811,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 <span className="hidden sm:inline">Verträge</span>
               </button>
               )}
-              {(isAdmin || isVerwaltungMode || isAccountingMode) && !isDozent && (
+              {(isAdmin || isVerwaltungMode || isAccountingMode) && (!isDozent || isVerwaltungMode || isAccountingMode) && (
               <button
                 onClick={() => { setActiveTab('kraatz-club-zugang'); }}
                 className={`${
@@ -1824,7 +1824,7 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
                 <span className="hidden sm:inline">Kraatz Club Zugang</span>
               </button>
               )}
-              {(isAdmin || isVerwaltungMode) && !isDozent && (
+              {(isAdmin || isVerwaltungMode) && (!isDozent || isVerwaltungMode) && (
               <button
                 onClick={() => { setActiveTab('nachbuchungen'); }}
                 className={`${
@@ -4382,15 +4382,15 @@ export function AdminDashboard({ mode = 'admin' }: { mode?: 'admin' | 'accountin
           <EliteKleingruppe />
         )}
 
-        {activeTab === 'vertraege' && !isDozent && (
+        {activeTab === 'vertraege' && (!isDozent || isVerwaltungMode || isAccountingMode) && (
           <VertraegeManager />
         )}
 
-        {activeTab === 'kraatz-club-zugang' && !isDozent && (
+        {activeTab === 'kraatz-club-zugang' && (!isDozent || isVerwaltungMode || isAccountingMode) && (
           <KraatzClubZugang />
         )}
 
-        {activeTab === 'nachbuchungen' && !isDozent && (
+        {activeTab === 'nachbuchungen' && (!isDozent || isVerwaltungMode) && (
           <Nachbuchungen />
         )}
       </main>
