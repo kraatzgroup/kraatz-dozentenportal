@@ -208,7 +208,7 @@ Deno.serve(async (req) => {
             </p>
             <div style="text-align: center; margin: 30px 0;">
               <a href="${link}" style="display: inline-block; text-decoration: none;">
-                <img src="https://gkkveloqajxghhflkfru.supabase.co/storage/v1/object/public/Videos-Portal/ansprache-video-preview.png" alt="Video-Ansprache ansehen" style="width: 100%; max-width: 480px; height: auto; border-radius: 12px; display: block; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
+                <img src="https://gkkveloqajxghhflkfru.supabase.co/storage/v1/object/public/Videos-Portal/ansprache-video-preview.gif" alt="Video-Ansprache ansehen" style="width: 100%; max-width: 480px; height: auto; border-radius: 12px; display: block; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
               </a>
             </div>
             <div style="background-color: #e9ecef; padding: 15px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #6c757d;">
