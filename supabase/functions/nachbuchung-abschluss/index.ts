@@ -3,6 +3,7 @@
 console.log('🚀 nachbuchung-abschluss edge function loaded');
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { logNotification } from '../_shared/notification-log.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -136,12 +137,40 @@ Deno.serve(async (req) => {
         headers: { Authorization: `Basic ${btoa(`api:${mailgunApiKey}`)}` },
         body: formData,
       });
+      const mailgunBody = await mailgunResponse.text();
+      let providerMessageId: string | undefined;
+      if (mailgunResponse.ok) {
+        try { providerMessageId = JSON.parse(mailgunBody)?.id; } catch { /* ignore */ }
+      }
+      await logNotification({
+        edgeFunction: 'nachbuchung-abschluss',
+        supabaseAdmin: supabase,
+        recipientEmail: dozent.email,
+        recipientName: dozent.full_name,
+        subject,
+        sender: 'Kraatz Group Portal <postmaster@kraatz-group.de>',
+        status: mailgunResponse.ok ? 'sent' : 'failed',
+        providerMessageId,
+        errorMessage: mailgunResponse.ok ? undefined : mailgunBody,
+        context: { nachbuchungId: row.id, teilnehmerName: row.teilnehmer_name, rechtsgebiet: row.rechtsgebiet, zustande },
+      });
       if (!mailgunResponse.ok) {
-        console.error('❌ Mailgun error:', await mailgunResponse.text());
+        console.error('❌ Mailgun error:', mailgunBody);
         return json({ ok: false, error: 'Mailgun error' }, 502);
       }
     } catch (mailgunError) {
       console.error('❌ Failed to send email:', mailgunError);
+      await logNotification({
+        edgeFunction: 'nachbuchung-abschluss',
+        supabaseAdmin: supabase,
+        recipientEmail: dozent.email,
+        recipientName: dozent.full_name,
+        subject,
+        sender: 'Kraatz Group Portal <postmaster@kraatz-group.de>',
+        status: 'failed',
+        errorMessage: mailgunError instanceof Error ? mailgunError.message : String(mailgunError),
+        context: { nachbuchungId: row.id, teilnehmerName: row.teilnehmer_name, rechtsgebiet: row.rechtsgebiet, zustande },
+      });
       return json({ ok: false, error: 'Failed to send email' }, 502);
     }
 

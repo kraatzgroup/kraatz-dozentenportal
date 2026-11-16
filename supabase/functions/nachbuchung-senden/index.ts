@@ -3,6 +3,7 @@
 console.log('🚀 nachbuchung-senden edge function loaded');
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { logNotification } from '../_shared/notification-log.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -244,11 +245,38 @@ Deno.serve(async (req) => {
           body: formData,
         });
         emailSent = mailgunResponse.ok;
-        if (!mailgunResponse.ok) {
-          console.error('❌ Mailgun error:', await mailgunResponse.text());
+        const mailgunBody = await mailgunResponse.text();
+        let providerMessageId: string | undefined;
+        if (mailgunResponse.ok) {
+          try { providerMessageId = JSON.parse(mailgunBody)?.id; } catch { /* ignore */ }
+        } else {
+          console.error('❌ Mailgun error:', mailgunBody);
         }
+        await logNotification({
+          edgeFunction: 'nachbuchung-senden',
+          supabaseAdmin: supabase,
+          recipientEmail: finalDozentEmail,
+          recipientName: dozent.full_name,
+          subject: `Nachbuchungsbedarf: ${finalTeilnehmerName}`,
+          sender: 'Kraatz Group Portal <postmaster@kraatz-group.de>',
+          status: emailSent ? 'sent' : 'failed',
+          providerMessageId,
+          errorMessage: emailSent ? undefined : mailgunBody,
+          context: { nachbuchungId: inserted.id, teilnehmerName: finalTeilnehmerName, rechtsgebiet },
+        });
       } catch (mailgunError) {
         console.error('❌ Failed to send email:', mailgunError);
+        await logNotification({
+          edgeFunction: 'nachbuchung-senden',
+          supabaseAdmin: supabase,
+          recipientEmail: finalDozentEmail,
+          recipientName: dozent.full_name,
+          subject: `Nachbuchungsbedarf: ${finalTeilnehmerName}`,
+          sender: 'Kraatz Group Portal <postmaster@kraatz-group.de>',
+          status: 'failed',
+          errorMessage: mailgunError instanceof Error ? mailgunError.message : String(mailgunError),
+          context: { nachbuchungId: inserted.id, teilnehmerName: finalTeilnehmerName, rechtsgebiet },
+        });
       }
     }
 

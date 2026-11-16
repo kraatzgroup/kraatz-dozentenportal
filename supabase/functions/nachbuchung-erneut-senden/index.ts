@@ -3,6 +3,7 @@
 console.log('🚀 nachbuchung-erneut-senden edge function loaded');
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { logNotification } from '../_shared/notification-log.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -172,9 +173,38 @@ Deno.serve(async (req) => {
           body: formData,
         });
         emailSent = mailgunResponse.ok;
-        if (!mailgunResponse.ok) console.error('❌ Mailgun error:', await mailgunResponse.text());
+        const mailgunBody = await mailgunResponse.text();
+        let providerMessageId: string | undefined;
+        if (mailgunResponse.ok) {
+          try { providerMessageId = JSON.parse(mailgunBody)?.id; } catch { /* ignore */ }
+        } else {
+          console.error('❌ Mailgun error:', mailgunBody);
+        }
+        await logNotification({
+          edgeFunction: 'nachbuchung-erneut-senden',
+          supabaseAdmin: supabase,
+          recipientEmail: dozent.email,
+          recipientName: dozent.full_name,
+          subject: `Nachbuchungsbedarf: ${row.teilnehmer_name}`,
+          sender: 'Kraatz Group Portal <postmaster@kraatz-group.de>',
+          status: emailSent ? 'sent' : 'failed',
+          providerMessageId,
+          errorMessage: emailSent ? undefined : mailgunBody,
+          context: { nachbuchungId: row.id, teilnehmerName: row.teilnehmer_name, rechtsgebiet: row.rechtsgebiet },
+        });
       } catch (mailgunError) {
         console.error('❌ Failed to send email:', mailgunError);
+        await logNotification({
+          edgeFunction: 'nachbuchung-erneut-senden',
+          supabaseAdmin: supabase,
+          recipientEmail: dozent.email,
+          recipientName: dozent.full_name,
+          subject: `Nachbuchungsbedarf: ${row.teilnehmer_name}`,
+          sender: 'Kraatz Group Portal <postmaster@kraatz-group.de>',
+          status: 'failed',
+          errorMessage: mailgunError instanceof Error ? mailgunError.message : String(mailgunError),
+          context: { nachbuchungId: row.id, teilnehmerName: row.teilnehmer_name, rechtsgebiet: row.rechtsgebiet },
+        });
       }
     }
 

@@ -3,6 +3,7 @@
 console.log('🚀 nachbuchung-erinnerung edge function loaded');
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { logNotification } from '../_shared/notification-log.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -169,15 +170,41 @@ Deno.serve(async (req) => {
             headers: { Authorization: `Basic ${btoa(`api:${mailgunApiKey}`)}` },
             body: formData,
           });
+          const mailgunBody = await mailgunResponse.text();
+          let providerMessageId: string | undefined;
           if (mailgunResponse.ok) {
             sentCount++;
+            try { providerMessageId = JSON.parse(mailgunBody)?.id; } catch { /* ignore */ }
           } else {
-            console.error('❌ Mailgun error:', await mailgunResponse.text());
+            console.error('❌ Mailgun error:', mailgunBody);
             skipped++;
           }
+          await logNotification({
+            edgeFunction: 'nachbuchung-erinnerung',
+            supabaseAdmin: supabase,
+            recipientEmail: dozent.email,
+            recipientName: dozent.full_name,
+            subject: `Erinnerung: Rückmeldung zur Nachbuchung (${teilnehmerLabel})`,
+            sender: 'Kraatz Group Portal <postmaster@kraatz-group.de>',
+            status: mailgunResponse.ok ? 'sent' : 'failed',
+            providerMessageId,
+            errorMessage: mailgunResponse.ok ? undefined : mailgunBody,
+            context: { nachbuchungId: row.id, teilnehmerName: row.teilnehmer_name, rechtsgebiet: row.rechtsgebiet },
+          });
         } catch (mailgunError) {
           console.error('❌ Failed to send email:', mailgunError);
           skipped++;
+          await logNotification({
+            edgeFunction: 'nachbuchung-erinnerung',
+            supabaseAdmin: supabase,
+            recipientEmail: dozent.email,
+            recipientName: dozent.full_name,
+            subject: `Erinnerung: Rückmeldung zur Nachbuchung (${teilnehmerLabel})`,
+            sender: 'Kraatz Group Portal <postmaster@kraatz-group.de>',
+            status: 'failed',
+            errorMessage: mailgunError instanceof Error ? mailgunError.message : String(mailgunError),
+            context: { nachbuchungId: row.id, teilnehmerName: row.teilnehmer_name, rechtsgebiet: row.rechtsgebiet },
+          });
         }
       } else {
         skipped++;
