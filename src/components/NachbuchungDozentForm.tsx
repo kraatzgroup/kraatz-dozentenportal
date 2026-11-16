@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Loader2, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -12,7 +12,7 @@ const VIDEO_URL =
 const VIDEO_FALLBACK_URL =
   'https://gkkveloqajxghhflkfru.supabase.co/storage/v1/object/public/Videos-Portal/Ansprache%20Dozentenmp4.mp4';
 const VIDEO_POSTER_URL =
-  'https://gkkveloqajxghhflkfru.supabase.co/storage/v1/object/public/Videos-Portal/ansprache-video-preview.png';
+  'https://gkkveloqajxghhflkfru.supabase.co/storage/v1/object/public/Videos-Portal/ansprache-video-preview.gif';
 
 type Reason = 'invalid' | 'expired' | 'already_answered' | 'error';
 
@@ -42,6 +42,8 @@ export function NachbuchungDozentForm() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
+  const [videoStarted, setVideoStarted] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -145,17 +147,36 @@ export function NachbuchungDozentForm() {
             Hallo {data.dozent_name || ''} — bitte geben Sie uns eine kurze Rückmeldung.
           </p>
 
-          <video
-            controls
-            playsInline
-            preload="metadata"
-            poster={VIDEO_POSTER_URL}
-            className="w-full rounded-lg mb-6 bg-black"
-          >
-            <source src={VIDEO_URL} type="video/mp4" />
-            <source src={VIDEO_FALLBACK_URL} type="video/mp4" />
-            Ihr Browser unterstützt die Video-Wiedergabe nicht.
-          </video>
+          <div className="relative w-full rounded-lg mb-6 overflow-hidden bg-black aspect-video">
+            <video
+              ref={videoRef}
+              controls
+              playsInline
+              preload="metadata"
+              className="w-full h-full"
+            >
+              <source src={VIDEO_URL} type="video/mp4" />
+              <source src={VIDEO_FALLBACK_URL} type="video/mp4" />
+              Ihr Browser unterstützt die Video-Wiedergabe nicht.
+            </video>
+            {!videoStarted && (
+              <button
+                type="button"
+                aria-label="Video-Ansprache ansehen"
+                onClick={() => {
+                  setVideoStarted(true);
+                  videoRef.current?.play();
+                }}
+                className="absolute inset-0 w-full h-full cursor-pointer"
+              >
+                <img
+                  src={VIDEO_POSTER_URL}
+                  alt="Video-Ansprache ansehen"
+                  className="w-full h-full object-cover"
+                />
+              </button>
+            )}
+          </div>
 
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6 space-y-1 text-sm">
             <p>
