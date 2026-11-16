@@ -37,6 +37,7 @@ interface NachbuchungRow {
   antwort_bedarf: boolean | null;
   antwort_stunden: number | null;
   antwort_erreichbar: string | null;
+  antwort_grund_lernziel: string | null;
   antwort_notiz: string | null;
   nachbuchung_zustande: boolean | null;
   nachbuchung_stunden: number | null;
@@ -123,7 +124,7 @@ export function Nachbuchungen() {
   const fetchList = async () => {
     const { data, error } = await supabase
       .from('nachbuchungen')
-      .select('id, teilnehmer_id, teilnehmer_name, teilnehmer_tn_nummer, dozent_id, rechtsgebiet, status, sent_at, responded_at, reminder_sent_at, antwort_bedarf, antwort_stunden, antwort_erreichbar, antwort_notiz, nachbuchung_zustande, nachbuchung_stunden, nachbuchung_provision')
+      .select('id, teilnehmer_id, teilnehmer_name, teilnehmer_tn_nummer, dozent_id, rechtsgebiet, status, sent_at, responded_at, reminder_sent_at, antwort_bedarf, antwort_stunden, antwort_erreichbar, antwort_grund_lernziel, antwort_notiz, nachbuchung_zustande, nachbuchung_stunden, nachbuchung_provision')
       .order('sent_at', { ascending: false });
 
     if (error) {
@@ -994,6 +995,12 @@ export function Nachbuchungen() {
                   <span className="text-gray-500">Erreichbarkeit:</span>{' '}
                   <span className="text-gray-900 font-medium">{viewAnswerCurrent.antwort_erreichbar}</span>
                 </p>
+              )}
+              {viewAnswerCurrent.antwort_bedarf && viewAnswerCurrent.antwort_grund_lernziel && (
+                <div>
+                  <span className="text-gray-500">Grund / Lernziel:</span>
+                  <p className="text-gray-900 mt-1 whitespace-pre-wrap">{viewAnswerCurrent.antwort_grund_lernziel}</p>
+                </div>
               )}
               {viewAnswerCurrent.antwort_notiz && (
                 <div>

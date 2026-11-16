@@ -64,6 +64,7 @@ Deno.serve(async (req) => {
     const stunden = body?.stunden ? Number(body.stunden) : null;
     const erreichbar = typeof body?.erreichbar === 'string' ? body.erreichbar : null;
     const notiz = typeof body?.notiz === 'string' ? body.notiz : null;
+    const grundLernziel = typeof body?.grund_lernziel === 'string' ? body.grund_lernziel : null;
 
     const { error: updateError } = await supabase
       .from('nachbuchungen')
@@ -73,6 +74,7 @@ Deno.serve(async (req) => {
         antwort_bedarf: bedarf,
         antwort_stunden: bedarf ? stunden : null,
         antwort_erreichbar: bedarf ? erreichbar : null,
+        antwort_grund_lernziel: bedarf ? grundLernziel : null,
         antwort_notiz: notiz,
       })
       .eq('id', row.id);
@@ -143,6 +145,11 @@ Deno.serve(async (req) => {
                 <tr>
                   <td style="padding: 8px 0; color: #666; font-size: 14px;"><strong>Erreichbarkeit</strong></td>
                   <td style="padding: 8px 0; color: #333; font-size: 14px;">${erreichbar}</td>
+                </tr>` : ''}
+                ${bedarf && grundLernziel ? `
+                <tr>
+                  <td style="padding: 8px 0; color: #666; font-size: 14px;"><strong>Grund / Lernziel</strong></td>
+                  <td style="padding: 8px 0; color: #333; font-size: 14px;">${grundLernziel}</td>
                 </tr>` : ''}
                 ${notiz ? `
                 <tr>

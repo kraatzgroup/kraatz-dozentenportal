@@ -37,6 +37,7 @@ export function NachbuchungDozentForm() {
   const [bedarf, setBedarf] = useState<boolean | null>(null);
   const [stunden, setStunden] = useState('');
   const [erreichbar, setErreichbar] = useState('');
+  const [grundLernziel, setGrundLernziel] = useState('');
   const [notiz, setNotiz] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -71,7 +72,7 @@ export function NachbuchungDozentForm() {
     setSubmitting(true);
     try {
       const { data: res, error: invokeError } = await supabase.functions.invoke('nachbuchung-antworten', {
-        body: { token, bedarf, stunden, erreichbar, notiz },
+        body: { token, bedarf, stunden, erreichbar, grund_lernziel: grundLernziel, notiz },
       });
       if (invokeError) throw invokeError;
       if (res?.ok) {
@@ -199,13 +200,23 @@ export function NachbuchungDozentForm() {
             {bedarf && (
               <>
                 <div>
-                  <label className={labelClass}>Wie viel Nachbuchungsbedarf (Stunden)?</label>
+                  <label className={labelClass}>Geplante Zusatzstunden</label>
                   <input
                     type="number"
                     min="0"
                     value={stunden}
                     onChange={(e) => setStunden(e.target.value)}
                     placeholder="z. B. 10"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Grund / Lernziel</label>
+                  <textarea
+                    value={grundLernziel}
+                    onChange={(e) => setGrundLernziel(e.target.value)}
+                    rows={3}
+                    placeholder="Warum werden Zusatzstunden empfohlen? Was soll erreicht werden?"
                     className={inputClass}
                   />
                 </div>
