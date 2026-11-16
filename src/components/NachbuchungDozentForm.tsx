@@ -7,6 +7,9 @@ const inputClass =
 
 const labelClass = 'block text-sm font-medium text-gray-700 mb-1';
 
+const VIDEO_URL =
+  'https://gkkveloqajxghhflkfru.supabase.co/storage/v1/object/public/Videos-Portal/Ansprache%20Dozentenmp4.mp4';
+
 type Reason = 'invalid' | 'expired' | 'already_answered' | 'error';
 
 interface LoadedData {
@@ -136,6 +139,13 @@ export function NachbuchungDozentForm() {
           <p className="text-sm text-gray-500 mb-6">
             Hallo {data.dozent_name || ''} — bitte geben Sie uns eine kurze Rückmeldung.
           </p>
+
+          <video
+            controls
+            preload="metadata"
+            src={VIDEO_URL}
+            className="w-full rounded-lg mb-6 bg-black"
+          />
 
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6 space-y-1 text-sm">
             <p>

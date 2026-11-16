@@ -212,6 +212,14 @@ Deno.serve(async (req) => {
                 Formular öffnen
               </a>
             </div>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${link}" style="display: inline-block; text-decoration: none;">
+                <div style="background-color: #000000; border-radius: 10px; padding: 26px 34px;">
+                  <span style="display: inline-block; width: 54px; height: 54px; line-height: 54px; background-color: #2e83c2; border-radius: 50%; color: #ffffff; font-size: 22px; text-align: center;">&#9654;</span>
+                  <p style="color: #ffffff; margin: 12px 0 0 0; font-size: 14px; font-weight: bold;">Video-Ansprache ansehen</p>
+                </div>
+              </a>
+            </div>
             <div style="background-color: #e9ecef; padding: 15px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #6c757d;">
               <p style="margin: 0 0 10px 0; color: #495057; font-size: 14px;">
                 <strong>Alternative:</strong> Falls der Button nicht funktioniert, kopieren Sie diesen Link:
